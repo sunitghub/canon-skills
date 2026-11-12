@@ -1,5 +1,29 @@
 #!/usr/bin/env bash
 
+# _worktree_main_tickets <dir> — t-6be7: when <dir> is a linked worktree (its .git is a FILE: "gitdir: <repo>/.git/worktrees/<name>"),
+# the main checkout's .tickets path; nothing otherwise. One owner of the pointer rules, shared by tickets_dir and `sprint eval-verdict`.
+_worktree_main_tickets() {
+  local dir="$1" gitdir
+  [[ -f "$dir/.git" ]] || return 0
+  gitdir="$(sed -n 's/^gitdir: //p' "$dir/.git")"
+  case "$gitdir" in
+    # t-7301: Git for Windows writes a drive-letter pointer ("C:/Users/.../.git/worktrees/x"). It is absolute, so
+    # it must not be joined onto $dir; map it to the shell's own form when cygpath can (matches `pwd -P`).
+    [A-Za-z]:[\\/]*)
+      gitdir="${gitdir//\\//}"
+      if command -v cygpath >/dev/null 2>&1; then
+        local mapped
+        if mapped="$(cygpath -u "$gitdir" 2>/dev/null)" && [[ -n "$mapped" ]]; then gitdir="$mapped"; fi
+      fi
+      ;;
+    /*) ;;
+    *) gitdir="$dir/$gitdir" ;;
+  esac
+  case "$gitdir" in
+    */worktrees/*) echo "$(dirname "${gitdir%/worktrees/*}")/.tickets" ;;
+  esac
+}
+
 tickets_dir() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
@@ -19,27 +43,9 @@ tickets_dir() {
     # MAIN checkout, never per-worktree, so resolve the gitdir pointer back to
     # the real repo root instead of treating the worktree itself as one.
     if [[ -f "$dir/.git" ]]; then
-      local gitdir
-      gitdir="$(sed -n 's/^gitdir: //p' "$dir/.git")"
-      case "$gitdir" in
-        # t-7301: Git for Windows writes a drive-letter pointer ("C:/Users/.../.git/worktrees/x"). It is absolute, so
-        # it must not be joined onto $dir; map it to the shell's own form when cygpath can (matches `pwd -P`).
-        [A-Za-z]:[\\/]*)
-          gitdir="${gitdir//\\//}"
-          if command -v cygpath >/dev/null 2>&1; then
-            local mapped
-            if mapped="$(cygpath -u "$gitdir" 2>/dev/null)" && [[ -n "$mapped" ]]; then gitdir="$mapped"; fi
-          fi
-          ;;
-        /*) ;;
-        *) gitdir="$dir/$gitdir" ;;
-      esac
-      case "$gitdir" in
-        */worktrees/*)
-          echo "$(dirname "${gitdir%/worktrees/*}")/.tickets"
-          return 0
-          ;;
-      esac
+      local main_tickets
+      main_tickets="$(_worktree_main_tickets "$dir")"
+      if [[ -n "$main_tickets" ]]; then echo "$main_tickets"; return 0; fi
     fi
     dir="$(dirname "$dir")"
   done

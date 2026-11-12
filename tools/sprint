@@ -1390,6 +1390,14 @@ cmd_eval_verdict() {
   ticket_file="$tdir/ticket.md"
   [[ -f "$report" ]] || { echo "Sprint $id: eval-report.md not found." >&2; exit 1; }
   [[ -f "$ticket_file" ]] || { echo "Sprint $id: ticket.md not found." >&2; exit 1; }
+  # t-6be7: a worktree that holds its own .tickets/ copy wins over main's, so a stale failing report there counted a failure main never had.
+  # Which copy is read is unchanged (t-fff4 item 3); the difference is said, naming both, never chosen silently.
+  local wt main_tickets
+  wt="$(worktree_root 2>/dev/null)" || wt=""
+  main_tickets="$(_worktree_main_tickets "$wt" 2>/dev/null)" || main_tickets=""
+  if [[ -n "$main_tickets" && ! "$main_tickets/$id" -ef "$tdir" && -f "$main_tickets/$id/eval-report.md" ]] && ! cmp -s "$report" "$main_tickets/$id/eval-report.md"; then
+    echo "Sprint $id: eval-report.md differs between this worktree ($report) and the main checkout ($main_tickets/$id/eval-report.md); recording into this worktree's copy." >&2
+  fi
 
   local current new
   current="$(get_field "$ticket_file" eval_fail_count 2>/dev/null)"

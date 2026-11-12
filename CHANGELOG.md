@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: `sprint eval-verdict` in a linked worktree that holds its own `.tickets/` copy now says so on stderr, naming both paths, when that copy's `eval-report.md` differs from the main checkout's. A stale failing report there used to count a failure main never had (the 2026-11-05 false failures); which copy is read is unchanged. The gate case `eval-verdict-worktree-copy` is now a run case (t-6be7). Shell only.
+
 ## [0.55.4] - 2026-11-12
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version.
