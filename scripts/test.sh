@@ -296,11 +296,14 @@ SERIAL=(   # --list labels that share state with another suite, each with its re
   tests/sprint-check-skill-eval-go.sh
   tests/skill-eval-parity.sh
 )
-# Suites started first (t-b792): xargs starts the batch in file order, so a slow suite that sits late in list order starts late and sets the
-# wall time (test-sh-runner.sh was 53rd and started about a minute in). Longest first, from the `== slowest 10` block of a full run; a stale
-# entry costs speed only. Printing, --list and the exit code stay in list order.
-LONGEST=(tests/test-sh-runner.sh tools/canon-go/internal/daemon tests/canon-update.sh tests/sprint-check-live-docs.sh tests/canon-uninstall.sh
-  tests/sprint.sh tests/evidence.sh)
+# Suites started first (t-b792, t-045f): xargs starts the batch in file order, so a slow suite that sits late in list order starts late and sets the
+# wall time. The 20 suites with the highest median seconds over recent stamped runs, longest first; a stale entry costs speed only. Refresh:
+# take each suite's median seconds from the `== suite times` blocks of recent stamped full runs and keep the top 20. Printing, --list and the exit code stay in list order.
+LONGEST=(tests/sprint.sh tests/evidence.sh tests/canon-cli.sh tests/tkt-merge-pr.sh tests/canon-update.sh tests/skills-refresh.sh
+  tests/test-sh-runner.sh tests/canon-uninstall.sh tools/canon-go/internal/daemon tests/fetch-win-binaries.sh tests/secret-scan.sh
+  tests/sprint-check-live-docs.sh tests/sprint-pipeline.sh tests/tkt-finish-record.sh tests/skills-add-sprint.sh
+  tests/canon-packages.sh tests/cloud-round-trip.sh tests/mutant-sweep.sh tools/canon-go/internal/board
+  tests/release-daemon-publish.sh)
 run_parallel() {
   local i n s w t hit
   local -a B=()
