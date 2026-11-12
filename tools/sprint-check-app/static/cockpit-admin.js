@@ -510,10 +510,15 @@ async function igLoad(refresh){
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
   let dflt=''; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); const id=(m.defaults.eval||{}).anthropic; const e=(m.models.anthropic||[]).find(x=>x.id===id); dflt=e?e.name:''; }catch(e){}   // what the Admin page picks for the gates; the agent file's own model is only the floor
-  const [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
-  let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
+  let [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
+  // t-dccb: a differing file is said at the top: the strip leaves green, and the note under it names the files and whether the close is blocked
+  const bad=r.state==='verified'?(r.files||[]).filter(x=>x.status!=='match'):[];
+  if(bad.length){ cls='warn'; label='Files differ'; }
+  const badNote=()=>{ const names=bad.slice(0,3).map(x=>`<code>${esc(x.path)}</code>`).join(', ')+(bad.length>3?` +${bad.length-3} more`:'');
+    return `<div class="setting-d ig-block">${r.blocking?'A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back':'A script or launcher differs from the release. It was changed after install: put it back unless you made the change'}: ${names}.</div>`; };
+  let h=`<div class="ig-strip ig-${cls}"><b>${esc(label)}</b>${r.tag?' \u00b7 '+esc(r.tag):''}${r.state==='verified'?` \u00b7 ${r.match} of ${r.total} files match${bad.length?` \u00b7 ${bad.length} differ${bad.length===1?'s':''}`:''}${r.source==='cached'?' \u00b7 saved list':''}`:''}`+
     `<button type="button" class="ig-again b-accent" id="ig-again">Check again</button></div>`+
-    `<div class="setting-d">${esc(r.reason||note)}</div>`;
+    (bad.length?badNote():`<div class="setting-d">${esc(r.reason||note)}</div>`);
   {
     const files=r.files||[];
     const stateLabel=(IG_STATE[r.state]||[0,r.state])[1];
@@ -546,9 +551,7 @@ async function igLoad(refresh){
       const inAgents=g==='agents'?rows.concat(files.filter(x=>(r.agents||[]).some(a=>a.graded_by===x.path))):rows;
       return `<div class="ig-ghead"><span class="ig-group">${esc(name)}</span><span class="ig-count">${rows.length} file${rows.length===1?'':'s'}</span>${pill(inAgents)}</div>${body}`;
     }).join('');
-    if(r.state==='verified'&&r.flagged&&!r.blocking) h+='<div class="setting-d ig-block">A script or launcher differs from the release. It was changed after install: put it back unless you made the change.</div>';
     if(r.state==='verified'&&!r.scripts_listed) h+='<div class="setting-d">This release\u2019s list does not name its scripts, so they are not checked.</div>';
-    if(r.state==='verified'&&r.blocking) h+='<div class="setting-d ig-block">A gate file or gate prompt differs, so <code>sprint complete</code> will refuse to close until it is put back.</div>';
   }
   box.innerHTML=h;
   document.getElementById('ig-again').addEventListener('click',()=>igLoad(true));

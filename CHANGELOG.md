@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: Admin > Integrity stayed green ("Verified · 93 of 94 files match") when a file differed, with the red group and its note far down the page. The strip now turns the warning colour, reads "Files differ" with the count of differing files, and a note right under it names the first three files and says whether `sprint complete` is blocked (a gate file or prompt) or the change is only flagged (a script or launcher). A clean install is unchanged (t-dccb). Go changed: the page script is embedded in the board, so this ships with the next daemon release.
+
 - Fixed: `sprint eval-verdict` in a linked worktree that holds its own `.tickets/` copy now says so on stderr, naming both paths, when that copy's `eval-report.md` differs from the main checkout's. A stale failing report there used to count a failure main never had (the 2026-11-05 false failures); which copy is read is unchanged. The gate case `eval-verdict-worktree-copy` is now a run case (t-6be7). Shell only.
 
 ## [0.55.4] - 2026-11-12

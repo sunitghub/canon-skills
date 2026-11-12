@@ -14620,6 +14620,61 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('#ig-body')).toContainText('does not name its scripts');
   });
 
+  // t-dccb. Protects Admin > Integrity: a differing file is said at the TOP (user's Windows VM, 2026-11-12: the strip stayed green "Verified, 93 of 94 files
+  // match" while the red group sat below the fold): the strip leaves green, reads "Files differ" with the count of differing files, and one note under it,
+  // before any group, names the files and says whether the close is blocked.
+  test('Admin > Integrity: the strip and a top note say a file differs (t-dccb)', async ({ page }) => {
+    const F = (path, group, gate, status) => ({ path, group, gate, status, restore: status === 'match' ? undefined : 'canon update --reinstall' });
+    const clean = [F('tools/sprint', 'tools', true, 'match'), F('tools/sprint.cmd', 'scripts', false, 'match')];
+    let body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 2, total: 2, blocking: false, flagged: false, scripts_listed: true, files: clean };
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: {} }, models: { anthropic: [] } } }));
+    await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    await page.locator('#ad-tab-integrity').click();
+    const noteBeforeGroups = () => page.evaluate(() => { const n = document.querySelector('#ig-body .ig-block'), g = document.querySelector('#ig-body .ig-ghead'); return !!n && !!g && !!(n.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING); });
+    // all match: unchanged
+    await expect(page.locator('#ig-body .ig-strip')).toHaveClass(/ig-ok/);
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('Verified');
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('2 of 2 files match');
+    await expect(page.locator('.ig-block')).toHaveCount(0);
+    // one script differs: flagged, not blocking
+    body = { ...body, match: 1, flagged: true, files: [clean[0], F('tools/sprint.cmd', 'scripts', false, 'changed')] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toHaveClass(/ig-warn/);
+    await expect(page.locator('#ig-body .ig-strip')).not.toHaveClass(/ig-ok/);
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('Files differ');
+    await expect(page.locator('#ig-body .ig-strip')).not.toContainText('Verified');
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('1 of 2 files match \u00b7 1 differs');
+    await expect(page.locator('.ig-block')).toHaveCount(1);
+    await expect(page.locator('.ig-block')).toContainText('A script or launcher differs');
+    await expect(page.locator('.ig-block')).toContainText('tools/sprint.cmd');
+    await expect(page.locator('.ig-block')).not.toContainText('sprint complete');
+    expect(await noteBeforeGroups()).toBe(true);
+    // a gate file differs: blocking
+    body = { ...body, match: 1, blocking: true, flagged: false, files: [F('tools/sprint', 'tools', true, 'changed'), clean[1]] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toHaveClass(/ig-warn/);
+    await expect(page.locator('.ig-block')).toContainText('sprint complete');
+    await expect(page.locator('.ig-block')).toContainText('tools/sprint');
+    expect(await noteBeforeGroups()).toBe(true);
+    // four differ: three named, then "+1 more", with a plural count
+    const four = ['a.sh', 'b.sh', 'c.sh', 'd.sh'].map(n => F('tools/' + n, 'scripts', false, 'changed'));
+    body = { ...body, match: 0, total: 4, blocking: false, flagged: true, files: four };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('0 of 4 files match \u00b7 4 differ');
+    await expect(page.locator('.ig-block')).toContainText('tools/a.sh');
+    await expect(page.locator('.ig-block')).toContainText('tools/c.sh');
+    await expect(page.locator('.ig-block')).not.toContainText('tools/d.sh');
+    await expect(page.locator('.ig-block')).toContainText('+1 more');
+    // not a verified install: the old strip, no note
+    body = { state: 'not-from-release', reason: 'this install follows main', match: 0, total: 0, blocking: false, files: [] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toContainText('Not a release install');
+    await expect(page.locator('.ig-block')).toHaveCount(0);
+  });
+
   // t-2af0. Protects Admin > Integrity: the four states each say what they are and only a verified install lists files; a changed
   // gate file shows red with its restore command as copyable text; "Check again" asks for a refresh; and the page makes no write call.
   test('Admin > Integrity: states, a changed gate file with its restore command, Check again, and no write route (t-2af0)', async ({ page }) => {
