@@ -281,6 +281,12 @@ func TestTicketMachinesEvidenceRows(t *testing.T) {
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); rows[1].First != "2026-11-04T10:00:00Z" || rows[1].Last != "2026-11-04T15:00:00Z" {
 		t.Fatalf("folded row spans = %q..%q, want 10:00..15:00", rows[1].First, rows[1].Last)
 	}
+	// the merged log is the OLDER one: the folded row's First moves back to it, Last stays the cloud log's
+	tm("pre-gate.log", "2026-11-04T08:00:00Z")
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); rows[1].First != "2026-11-04T08:00:00Z" || rows[1].Last != "2026-11-04T10:00:00Z" {
+		t.Fatalf("older merged log: folded row spans = %q..%q, want 08:00..10:00", rows[1].First, rows[1].Last)
+	}
+	tm("pre-gate.log", "2026-11-04T15:00:00Z")
 	// a log of a different machine is still its own row, and with no cloud log the merged one is still "other"
 	writeFile(t, filepath.Join(ev, "other.log"), "HEAD abc 2026-11-04T10:00:00Z\n$ x\n# on Debian 12, Linux 6.1.0, amd64, 8 cores, 16 GB; bash 5.2.15\nok\n")
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 3 || rows[1].Count+rows[2].Count != 3 {
