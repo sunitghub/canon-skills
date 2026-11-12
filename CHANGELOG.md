@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.2] - 2026-11-12
+
+Run `canon update`. Shell only: no daemon restart is needed.
+
 - Added: `tools/evidence.sh stamp` now says so on stderr when you stamp `mutant-sweep`, `test-sh` or `board-spec` before the reviewer has written `review-notes.md`: the reviewer's fixes make that log stale. Measured in four days: 39 of 81 sweeps and 18 of 32 suite runs were taken first, 6.2 of 18.8 hours of stamped time. Advisory; the stamp, its log and its exit code are unchanged (t-c923).
 
 ## [0.55.1] - 2026-11-12
