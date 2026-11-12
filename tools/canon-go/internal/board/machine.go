@@ -299,15 +299,15 @@ func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 	byLast(out)
 	ev := evidenceMachines(evidenceDir)
 	byLast(ev)
+	lineKey := func(l string) string { return strings.ToLower(strings.TrimSpace(l)) }
 	hostLines := map[string]bool{}
 	for _, h := range out {
 		if h.Line != "" {
-			hostLines[strings.ToLower(strings.TrimSpace(h.Line))] = true
+			hostLines[lineKey(h.Line)] = true
 		}
 	}
 	// t-42ed: one cloud machine leaves logs in two places: evidence/cloud/ (tkt import-results) and evidence/ (the merged PR), so it showed twice,
 	// "cloud" and "other machine", under one machine line. A log that would be an "other" row but names a cloud row's machine joins that row.
-	lineKey := func(l string) string { return strings.ToLower(strings.TrimSpace(l)) }
 	cloudAt := map[string]int{}
 	for i, r := range ev {
 		if r.Where == "cloud" {
@@ -334,15 +334,19 @@ func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 			folded[i] = true
 		}
 	}
+	kept := ev[:0:0]
 	for i, r := range ev {
-		if folded[i] {
-			continue
+		if !folded[i] {
+			kept = append(kept, r)
 		}
+	}
+	byLast(kept) // a folded cloud row's Last moved: the newest-first order is taken again
+	for _, r := range kept {
 		switch {
 		case r.Where == "cloud":
 		case len(hosts) == 0:
 			r.Where = "local"
-		case hostLines[strings.ToLower(strings.TrimSpace(r.Line))]:
+		case hostLines[lineKey(r.Line)]:
 			continue // the same machine as a host row: already shown there
 		default:
 			r.Where = "other"

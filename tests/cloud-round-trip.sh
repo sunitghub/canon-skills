@@ -275,7 +275,9 @@ assert_eq 1 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: Plan9')"
 assert_eq 3 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"; assert_contains "$out" "  evidence ran on: Haiku R1 x86 (this machine: $THIS_MACHINE)"
 hl="$(printf '%s\n' "$out" | grep 'evidence ran on: Evil')"
 [[ "$hl" != *[^A-Za-z0-9._\ /=:+,?\(\)-]* ]] || fail "import-results echoed a raw byte: $(printf '%q' "$hl")"
-[[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt $((125 + ${#THIS_MACHINE})) ]]   # the evidence part is cut at 80; the rest is "this machine" || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"
+# the line is "  evidence ran on: " (19) + the evidence part cut at 80 characters + " (this machine: " (16) + this machine + ")" (1); the hostile
+# fixture holds one two-byte character that the cut counts once and tr turns into two ?, so the part is 81 bytes: an exact bound, no slack
+[[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -le $((116 + ${#THIS_MACHINE} + 1)) ]] || fail "import-results did not sanitize or cap line 3 (len ${#hl}): $(printf '%q' "$hl")"
 [[ "$out" != *Hidden* && "$out" != *"evidence ran on: $(uname -s) "* ]] || fail "import-results named a subfolder log or this machine's OS"
 [[ "$out" != *Linked* && "$out" != *Plan8* && "$out" != *"evidence ran on:  ("* ]] || fail "import-results read a symlink, an older log's output line or an empty # on line: $out"
 # t-278d: the closing line names the re-grade triggers (advice only). Docs and non-Go tools: none; the board: its trigger.
@@ -533,4 +535,23 @@ cd "$W/lite-cloud"; export STUB_CLOUD=1
 grep -q '^demo:' ".tickets/$noted/ticket.md" && fail "a plain ticket's quoted marker set demo: $(cat ".tickets/$noted/ticket.md")"
 cd "$W"; unset STUB_CLOUD
 
+
+# t-42ed: _evidence_os_lines on its own: a log that starts with this machine's first word is not foreign; with a board that has no `machine`
+# the line falls back to uname; a hostile machine line is cut and filtered.
+EV="$(mktemp -d)"; mkdir -p "$EV/evidence"
+printf 'HEAD a 2026-11-04T10:00:00Z\n$ x\n# on Windows 10 10.0.19045, amd64, 8 cores, 16 GB; bash 5.2.21\nok\n' > "$EV/evidence/win.log"
+printf 'HEAD a 2026-11-04T10:00:00Z\n$ x\n# on Plan9 4.0 mips; bash 5.2.21\nok\n' > "$EV/evidence/p9.log"
+fn="$(sed -n '/^_evidence_os_lines() {/,/^}/p' "$TKT")"
+osl() { ( source "$ROOT/tools/platform-lib.sh"; eval "$fn"; _evidence_os_lines "$EV" ); }
+out="$(SPRINT_CHECK_BIN="$STUB_BOARD" osl)"
+[[ "$out" == "  evidence ran on: Plan9 4.0 mips (this machine: $THIS_MACHINE)" ]] || fail "a log of this machine's OS name (Windows) was printed, or Plan9 was not: $out"
+out="$(SPRINT_CHECK_BIN=/nonexistent/board osl)"
+assert_contains "$out" "(this machine: $(uname -srm))"
+printf '#!/bin/sh\ncase "$1" in --help) echo "machine [--json]" ;; machine) printf "Evil\\033[2J %%0300d\\n" 7 ;; esac\n' > "$W/evil-board"; chmod +x "$W/evil-board"
+out="$(SPRINT_CHECK_BIN="$W/evil-board" osl)"
+[[ "$out" != *$'\033'* ]] || fail "a control byte in the board's machine line reached the terminal: $(printf '%q' "$out")"
+while IFS= read -r l; do   # each line: 19 + 80 (the log) + 16 + 120 (the machine line, cut) + 1
+  [[ ${#l} -le 236 ]] || fail "a long machine line was not cut: ${#l} characters: $l"
+done <<< "$out"
+rm -rf "$EV"
 echo "cloud-round-trip: ok"

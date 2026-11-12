@@ -265,12 +265,43 @@ func TestTicketMachinesEvidenceRows(t *testing.T) {
 	if len(rows) != 2 || rows[1].Where != "cloud" || rows[1].Count != 2 || rows[1].First > rows[1].Last {
 		t.Fatalf("one cloud machine, two logs = %+v, want the host then ONE cloud row with count 2", rows)
 	}
+	// First and Last come from the logs' own times: distinct mtimes, the folded row spans both
+	tm := func(rel, ts string) {
+		t.Helper()
+		at, err := time.Parse(time.RFC3339, ts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(filepath.Join(ev, rel), at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tm("cloud/test-sh.log", "2026-11-04T10:00:00Z")
+	tm("pre-gate.log", "2026-11-04T15:00:00Z")
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); rows[1].First != "2026-11-04T10:00:00Z" || rows[1].Last != "2026-11-04T15:00:00Z" {
+		t.Fatalf("folded row spans = %q..%q, want 10:00..15:00", rows[1].First, rows[1].Last)
+	}
 	// a log of a different machine is still its own row, and with no cloud log the merged one is still "other"
 	writeFile(t, filepath.Join(ev, "other.log"), "HEAD abc 2026-11-04T10:00:00Z\n$ x\n# on Debian 12, Linux 6.1.0, amd64, 8 cores, 16 GB; bash 5.2.15\nok\n")
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 3 || rows[1].Count+rows[2].Count != 3 {
 		t.Fatalf("a different machine = %+v, want the host, the cloud row (2) and its own row (1)", rows)
 	}
+	// order: the other machine's log is newer (12:00) than the cloud row's own log (10:00), but the fold moved the cloud row's Last to 15:00: it leads
+	tm("other.log", "2026-11-04T12:00:00Z")
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); rows[1].Where != "cloud" || rows[2].Where != "other" {
+		t.Fatalf("order after the fold = %+v, want the host, the folded cloud row (15:00), then the other machine (12:00)", rows)
+	}
 	os.Remove(filepath.Join(ev, "other.log"))
+	// a log that names the host's own line stays with the host even when a cloud log names that line too: no fold into the cloud row
+	writeFile(t, filepath.Join(ev, "test-sh.log"), "HEAD a 2026-11-04T10:00:00Z\n$ x\n# on "+machine.Get().Line()+"; bash 5.2.21\nok\n")
+	writeFile(t, filepath.Join(ev, "cloud", "h.log"), "HEAD a 2026-11-04T10:00:00Z\n$ x\n# on "+machine.Get().Line()+"; bash 5.2.21\nok\n")
+	_, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18")
+	for _, r := range rows {
+		if r.Where == "cloud" && r.Line == machine.Get().Line() && r.Count != 1 {
+			t.Fatalf("a log of the host's own line joined a cloud row: %+v", r)
+		}
+	}
+	os.Remove(filepath.Join(ev, "cloud", "h.log"))
 	os.RemoveAll(filepath.Join(ev, "cloud"))
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 2 || rows[1].Where != "other" || rows[1].Count != 1 {
 		t.Fatalf("no cloud log = %+v, want the merged log alone as the other machine", rows)
@@ -294,5 +325,21 @@ func TestNoteMachineSeenEmulatedArchCorrectsAVMRow(t *testing.T) {
 	ev, _ := events.Latest(home, "machine.seen", "", func(e events.Event) bool { return e.Data["host"] == "win-vm" })
 	if ev.Data["arch"] != now.Arch {
 		t.Fatalf("stored arch = %q, want the whole label", ev.Data["arch"])
+	}
+}
+
+// t-42ed: with no host row at all (a ticket worked before hosts were recorded) the evidence machine is "local" and a cloud log is its own row:
+// nothing folds, because the local machine is not a cloud one.
+func TestTicketMachinesNoHostRowsDoNotFold(t *testing.T) {
+	root := resolvedOrAbs(setupTestProject(t))
+	home := events.Home()
+	os.RemoveAll(filepath.Join(home, "events"))
+	t.Cleanup(func() { os.RemoveAll(filepath.Join(home, "events")) })
+	ev := filepath.Join(ticketsDirForRoot(root), "t-nohost", "evidence")
+	line := "HEAD abc 2026-11-04T10:00:00Z\n$ x\n# on Ubuntu 24.04.5 LTS, Linux 6.18.44, amd64, 4 cores, 16 GB; bash 5.2.21\nok\n"
+	writeFile(t, filepath.Join(ev, "cloud", "machine.log"), line)
+	writeFile(t, filepath.Join(ev, "pre-gate.log"), line)
+	if _, rows := machinesGet(t, "/api/ticket-machines?ticket=t-nohost"); len(rows) != 2 || rows[0].Count != 1 || rows[1].Count != 1 {
+		t.Fatalf("no host rows = %+v, want the cloud log and the local log as two rows", rows)
 	}
 }

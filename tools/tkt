@@ -3481,6 +3481,7 @@ _evidence_os_lines() {
   # under Git Bash mixes ARM64 with x86_64); uname only when the board program has no `machine`. A line is this machine's when its first word
   # matches the first word of that line or the kernel name (logs stamped before t-c542 start with the kernel name).
   here="$(machine_line 2>/dev/null)" && [[ -n "$here" ]] || here="$(uname -srm 2>/dev/null)" || here=unknown
+  here="$(printf '%s' "${here:0:120}" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,()-' '?')"   # the board's own text, but printed from a file-reading command: allowlisted and capped
   first="${here%%[ ,]*}"; kern="$(uname -s 2>/dev/null)" || kern=""
   for f in "$tdir"/evidence/*.log; do
     [[ -f "$f" && ! -L "$f" ]] || continue
