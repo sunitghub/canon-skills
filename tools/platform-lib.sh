@@ -205,6 +205,7 @@ v1_daemon_down() { local h; h="$(printf '%s' "${V1_HDR:-}" | tr 'A-Z' 'a-z')"; [
 # case-insensitive, but lower-casing a whole path would merge /c/Foo and /c/foo on macOS and Linux. NOT handled: \\?\ and device paths,
 # drive-relative C:x, 8.3 names, per-folder case sensitivity. A key is for comparing, never a path to hand to another program. t-141a gives the
 # shell side the same contract. Use: awk "$canon_awk_pkey"'...program...' (the text ends in a newline).
+# shellcheck disable=SC2034  # read by the scripts that source this file (tools/sprint)
 canon_awk_pkey='function pkey(p,   unc) {
   unc = (p ~ /^\\\\+[^\\]/)
   gsub(/\\+/, "/", p)
