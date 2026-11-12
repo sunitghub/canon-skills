@@ -184,6 +184,9 @@ for l3 in '# on ' '# on    '; do   # review: an empty OS shows nothing, as in im
 done
 longcmd="$(head -c 3000 /dev/zero | tr '\0' y)"   # review: line 3 is read past a long line 2 (same bound as line2_of)
 put h.log "HEAD $C1 $T\n\$ $longcmd\n# on Linux 6.8 x86_64; bash 5.2.37\nexit 0\n"; ev check "$ID"; assert_contains "$out" " on: Linux 6.8 x86_64, bash 5.2.37 cmd: yyy"
+# t-0317: an emulated machine's line (parentheses, 89 characters) shows whole, not cut or with ? for the brackets
+put h.log "HEAD $C1 $T\n\$ true\n# on Windows 11 10.0.26100, arm64 (canon runs as amd64, emulated), 8 cores, 16 GB; bash 5.2.37\nexit 0\n"; ev check "$ID"
+assert_contains "$out" " on: Windows 11 10.0.26100, arm64 (canon runs as amd64, emulated), 8 cores, 16 GB, bash 5.2.37 cmd: true"
 put h.log "HEAD $C1 $T\n\$ true\n# onion\nexit 0\n"; ev check "$ID"; [[ "$out" != *" on: "* ]] || fail "evidence: a line 3 not starting \`# on \` was shown: $out"
 put h.log "HEAD $C1 $T\n\$ true\n# on Linux 6.8 x86_64; bash 5.2.0\r\nexit 0\n"; ev check "$ID"
 assert_contains "$out" ") on: Linux 6.8 x86_64, bash 5.2.0 cmd: true"

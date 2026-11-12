@@ -255,7 +255,7 @@ nfile="$(mktemp)"; trap 'rm -f "$nfile"' EXIT
 
 stamp_re='^HEAD ([0-9a-f]{7,40}) ([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?)$'
 exit_re='^exit (0|[1-9][0-9]{0,2})$'
-safe() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,\\-' '?'; }
+safe() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,()\\-' '?'; }
 
 shopt -s nullglob
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum -- "$1" | cut -d' ' -f1; else shasum -a 256 -- "$1" | cut -d' ' -f1; fi; }
@@ -301,7 +301,7 @@ classify_one() {
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
   osline="$(head -c 16384 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || osline=""   # t-a83a; an old log has none. Bound as line2_of: a long line 2 must not cut it
-  if [[ "$osline" == '# on '* && "${osline:5}" =~ [^[:space:]] ]]; then osline="${osline:5:80}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
+  if [[ "$osline" == '# on '* && "${osline:5}" =~ [^[:space:]] ]]; then osline="${osline:5:100}"; shown=" on: $(safe "${osline//; /, }")$shown"; fi
   SHOWN="$shown"; STAMP="${sha:0:7}"
   wtline="stale $base exit=$CODE (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"   # tracked files differ from HEAD in the working tree
   KIND=stale
