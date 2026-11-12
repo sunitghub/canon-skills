@@ -14668,6 +14668,19 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-block')).toContainText('tools/c.sh');
     await expect(page.locator('.ig-block')).not.toContainText('tools/d.sh');
     await expect(page.locator('.ig-block')).toContainText('+1 more');
+    // t-dccb review: the sentence follows what differs. A manifest-only difference is not "a script or launcher"; a gate file listed fourth still leads the note
+    body = { ...body, match: 1, total: 2, blocking: false, flagged: false, files: [F('tools/cockpit-daemon.sha256', 'programs', false, 'changed'), clean[1]] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('#ig-body .ig-strip')).toHaveClass(/ig-warn/);
+    await expect(page.locator('.ig-block')).toContainText('A file differs from the release');
+    await expect(page.locator('.ig-block')).toContainText('tools/cockpit-daemon.sha256');
+    await expect(page.locator('.ig-block')).not.toContainText('script or launcher');
+    await expect(page.locator('.ig-block')).not.toContainText('sprint complete');
+    body = { ...body, match: 0, total: 5, blocking: true, flagged: true, files: [...four.slice(0, 3), F('tools/sprint', 'tools', true, 'changed'), F('tools/e.sh', 'scripts', false, 'changed')] };
+    await page.locator('#ig-again').click();
+    await expect(page.locator('.ig-block')).toContainText('sprint complete');
+    await expect(page.locator('.ig-block code').nth(1)).toHaveText('tools/sprint');      // after the note's own `sprint complete`: the gate file leads, though it is fourth in the response
+    await expect(page.locator('.ig-block')).toContainText('+2 more');
     // not a verified install: the old strip, no note
     body = { state: 'not-from-release', reason: 'this install follows main', match: 0, total: 0, blocking: false, files: [] };
     await page.locator('#ig-again').click();
