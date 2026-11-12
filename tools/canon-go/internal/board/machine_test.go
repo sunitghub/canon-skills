@@ -257,6 +257,24 @@ func TestTicketMachinesEvidenceRows(t *testing.T) {
 	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 2 || rows[1].Where != "cloud" {
 		t.Fatalf("cloud log = %+v, want the host then a cloud row", rows)
 	}
+
+	// t-42ed: the same cloud machine's other log, merged into evidence/ with the PR (a different file, the same machine line, any case):
+	// one row, "2 evidence logs", not a second "other machine"
+	writeFile(t, filepath.Join(ev, "pre-gate.log"), "HEAD abc 2026-11-04T10:00:00Z\n$ x\n# on "+strings.ToUpper(strings.TrimSuffix(strings.TrimPrefix(strings.Split(ubuntu, "\n")[2], "# on "), "; bash 5.2.21"))+"; bash 5.2.21\nok\n")
+	_, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18")
+	if len(rows) != 2 || rows[1].Where != "cloud" || rows[1].Count != 2 || rows[1].First > rows[1].Last {
+		t.Fatalf("one cloud machine, two logs = %+v, want the host then ONE cloud row with count 2", rows)
+	}
+	// a log of a different machine is still its own row, and with no cloud log the merged one is still "other"
+	writeFile(t, filepath.Join(ev, "other.log"), "HEAD abc 2026-11-04T10:00:00Z\n$ x\n# on Debian 12, Linux 6.1.0, amd64, 8 cores, 16 GB; bash 5.2.15\nok\n")
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 3 || rows[1].Count+rows[2].Count != 3 {
+		t.Fatalf("a different machine = %+v, want the host, the cloud row (2) and its own row (1)", rows)
+	}
+	os.Remove(filepath.Join(ev, "other.log"))
+	os.RemoveAll(filepath.Join(ev, "cloud"))
+	if _, rows = machinesGet(t, "/api/ticket-machines?ticket=t-fb18"); len(rows) != 2 || rows[1].Where != "other" || rows[1].Count != 1 {
+		t.Fatalf("no cloud log = %+v, want the merged log alone as the other machine", rows)
+	}
 }
 
 // t-0317: an existing VM row says amd64; once the board reports the emulated label that is a changed fact, written once and stored whole

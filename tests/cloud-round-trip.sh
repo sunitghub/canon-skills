@@ -238,7 +238,12 @@ assert_eq "" "$(printf 'docs/x.md\n' | _regrade_triggers "$W/hr" 0)"
 mkdir -p ".tickets/$id/evidence" "$W/outside" && printf 'HEAD 0 T\n$ true\n# on Linked 1 x; bash 5\nexit 0\n' > "$W/outside/l.log"
 ln -sf "$W/outside/l.log" ".tickets/$id/evidence/zz-link.log"; mkdir -p ".tickets/$id/evidence/dir.log"   # never followed / not a file
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)"
-out="$("$TKT" import-results "$id" --pr 58)"
+# t-42ed: "this machine" in the trail comes from machine_line (the board's `machine`), not uname: a board that answers with an ARM64 Windows VM's
+# emulated line stands in for the VM, and every other subcommand goes to the real board.
+STUB_BOARD="$W/stub-board"
+printf '#!/bin/sh\ncase "$1" in\n  --help) "%s" --help; echo "machine [--json]" ;;\n  machine) echo "Windows 11 10.0.26200, arm64 (canon runs as amd64, emulated), 4 cores, 6 GB" ;;\n  *) exec "%s" "$@" ;;\nesac\n' "$SPRINT_CHECK_BIN" "$SPRINT_CHECK_BIN" > "$STUB_BOARD"; chmod +x "$STUB_BOARD"
+THIS_MACHINE="Windows 11 10.0.26200, arm64 (canon runs as amd64, emulated), 4 cores, 6 GB"
+out="$(SPRINT_CHECK_BIN="$STUB_BOARD" "$TKT" import-results "$id" --pr 58)"
 [[ "$out" != *"next: tkt land"* ]] || fail "a closed ticket should print no next: line (t-b650): $out"
 for f in acceptance.md eval-report.md evidence/report.json plan.md; do cmp -s "$X/.tickets/$id/$f" ".tickets/$id/$f" || fail "$f did not come back byte-for-byte"; done
 cmp -s "$A/$d/plan.md" ".tickets/$id/.before-import/plan.md" || fail "the local plan.md was not kept in .before-import/"
@@ -264,12 +269,13 @@ assert_contains "$imp" "files: 14"; assert_contains "$imp" "ticket status: close
 assert_contains "$imp" "graded head: $STUB_PR_HEAD"; assert_contains "$imp" "PR: #58 head $STUB_PR_HEAD: matches graded-head"
 assert_contains "$imp" "evidence: Plan9 4.0 mips (this machine:"
 # t-a83a: one line per foreign OS, sanitized and capped; this machine's OS and subfolders say nothing
-assert_contains "$out" "  evidence ran on: Plan9 4.0 mips (this machine: $(uname -srm))"
+assert_contains "$out" "  evidence ran on: Plan9 4.0 mips (this machine: $THIS_MACHINE)"
+[[ "$out" != *"x86_64"* ]] || fail "the trail still names this machine through uname: $out"
 assert_eq 1 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: Plan9')"
-assert_eq 3 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"; assert_contains "$out" "  evidence ran on: Haiku R1 x86 (this machine: "
+assert_eq 3 "$(printf '%s\n' "$out" | grep -c 'evidence ran on: ')"; assert_contains "$out" "  evidence ran on: Haiku R1 x86 (this machine: $THIS_MACHINE)"
 hl="$(printf '%s\n' "$out" | grep 'evidence ran on: Evil')"
 [[ "$hl" != *[^A-Za-z0-9._\ /=:+,?\(\)-]* ]] || fail "import-results echoed a raw byte: $(printf '%q' "$hl")"
-[[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt 160 ]] || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"
+[[ "$hl" == "  evidence ran on: Evil??2J? 1.0 ??xxx"* && ${#hl} -lt $((125 + ${#THIS_MACHINE})) ]]   # the evidence part is cut at 80; the rest is "this machine" || fail "import-results did not sanitize or cap line 3: $(printf '%q' "$hl")"
 [[ "$out" != *Hidden* && "$out" != *"evidence ran on: $(uname -s) "* ]] || fail "import-results named a subfolder log or this machine's OS"
 [[ "$out" != *Linked* && "$out" != *Plan8* && "$out" != *"evidence ran on:  ("* ]] || fail "import-results read a symlink, an older log's output line or an empty # on line: $out"
 # t-278d: the closing line names the re-grade triggers (advice only). Docs and non-Go tools: none; the board: its trigger.

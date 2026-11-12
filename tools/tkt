@@ -3476,14 +3476,18 @@ _regrade_line() {
 # written by evidence.sh stamp) whose kernel name differs from this machine's, since an OS-only failure would not show in that log.
 # The text comes from a pushed branch: only the allowlisted characters are printed, at most 80.
 _evidence_os_lines() {
-  local tdir="$1" f os here kern seen=$'\n'
-  here="$(uname -srm 2>/dev/null)" || here=unknown; kern="${here%% *}"
+  local tdir="$1" f os here first kern seen=$'\n'
+  # t-42ed: this machine is named by the one owner, machine_line (canon-go machine: on an ARM64 VM running the amd64 program it says so; uname
+  # under Git Bash mixes ARM64 with x86_64); uname only when the board program has no `machine`. A line is this machine's when its first word
+  # matches the first word of that line or the kernel name (logs stamped before t-c542 start with the kernel name).
+  here="$(machine_line 2>/dev/null)" && [[ -n "$here" ]] || here="$(uname -srm 2>/dev/null)" || here=unknown
+  first="${here%%[ ,]*}"; kern="$(uname -s 2>/dev/null)" || kern=""
   for f in "$tdir"/evidence/*.log; do
     [[ -f "$f" && ! -L "$f" ]] || continue
     os="$(head -c 16384 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '3p' | tr -d '\r')" || os=""   # as evidence.sh: a long line 2 must not cut line 3
     [[ "$os" == '# on '* ]] || continue
     os="${os#'# on '}"; os="${os%%;*}"; os="$(printf '%s' "${os:0:80}" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,-' '?')"
-    [[ "$os" =~ [^[:space:]] && "${os%% *}" != "$kern" && "$seen" != *$'\n'"$os"$'\n'* ]] || continue
+    [[ "$os" =~ [^[:space:]] && "${os%% *}" != "$first" && "${os%% *}" != "$kern" && "$seen" != *$'\n'"$os"$'\n'* ]] || continue
     seen+="$os"$'\n'
     echo "  evidence ran on: $os (this machine: $here)"
   done

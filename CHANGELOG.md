@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: the ticket's Machines tab listed one cloud machine twice, a "cloud" row and an "other machine" row with the same Linux line: the cloud session's logs sit in `evidence/cloud/` (`tkt import-results`) and in `evidence/` (the merged PR). A log in `evidence/` that names a cloud row's machine now joins that row (its count added), so the tab reads one row, "2 evidence logs". A log of a different machine still gets its own row (t-42ed).
+- Fixed: `tkt import-results` named "this machine" in its trail through `uname`, which under Git Bash on an ARM64 Windows VM mixes `ARM64` and `x86_64`. It now uses the same machine line as the evidence headers (`canon-go machine`, e.g. `Windows 11 10.0.26200, arm64 (canon runs as amd64, emulated), 4 cores, 6 GB`), `uname` only when the board has no `machine` (t-42ed). Go changed: daemon release.
+
 ## [0.55.5] - 2026-11-12
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version. Five fixes, most of them found on the Windows VM.

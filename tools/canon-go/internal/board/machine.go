@@ -241,7 +241,8 @@ func evidenceMachines(dir string) []ticketMachine {
 
 // ticketMachines is the Machines node: one row per host from the ticket's events in this project (with its newest
 // machine.seen), then every evidence machine: cloud (under evidence/cloud/), local when no event named a host (a ticket worked
-// before hosts were recorded), other when its machine line matches no host row (a cloud log merged into evidence/);
+// before hosts were recorded), other when its machine line matches no host row and no cloud row (a log from another machine);
+// a log merged into evidence/ that names a cloud row's machine joins that row (t-42ed);
 // a log naming a host's own machine line adds no row. Newest last-seen first within each group.
 func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 	live := map[string]bool{}
@@ -304,7 +305,39 @@ func ticketMachines(home, root, evidenceDir, id string) []ticketMachine {
 			hostLines[strings.ToLower(strings.TrimSpace(h.Line))] = true
 		}
 	}
-	for _, r := range ev {
+	// t-42ed: one cloud machine leaves logs in two places: evidence/cloud/ (tkt import-results) and evidence/ (the merged PR), so it showed twice,
+	// "cloud" and "other machine", under one machine line. A log that would be an "other" row but names a cloud row's machine joins that row.
+	lineKey := func(l string) string { return strings.ToLower(strings.TrimSpace(l)) }
+	cloudAt := map[string]int{}
+	for i, r := range ev {
+		if r.Where == "cloud" {
+			if _, ok := cloudAt[lineKey(r.Line)]; !ok {
+				cloudAt[lineKey(r.Line)] = i
+			}
+		}
+	}
+	folded := map[int]bool{}
+	if len(hosts) > 0 {
+		for i, r := range ev {
+			ci, ok := cloudAt[lineKey(r.Line)]
+			if r.Where == "cloud" || hostLines[lineKey(r.Line)] || !ok {
+				continue
+			}
+			c := &ev[ci]
+			c.Count += r.Count
+			if r.First != "" && (c.First == "" || r.First < c.First) {
+				c.First = r.First
+			}
+			if r.Last > c.Last {
+				c.Last = r.Last
+			}
+			folded[i] = true
+		}
+	}
+	for i, r := range ev {
+		if folded[i] {
+			continue
+		}
 		switch {
 		case r.Where == "cloud":
 		case len(hosts) == 0:
