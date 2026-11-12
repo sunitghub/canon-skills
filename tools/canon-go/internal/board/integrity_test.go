@@ -157,7 +157,7 @@ func TestIntegrityManifestChangeShowsButDoesNotBlock(t *testing.T) {
 	f := newIntegFx(t)
 	f.edit(integrityManifest, "other\n")
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Blocking || f.status(r, integrityManifest) != "changed" {
+	if r.State != integrityVerified || r.Blocking || r.Flagged || f.status(r, integrityManifest) != "changed" { // the manifest is not a script: not the scripts flag
 		t.Errorf("a changed programs manifest is shown, never blocking: %+v", r)
 	}
 }

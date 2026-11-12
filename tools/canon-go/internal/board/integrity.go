@@ -84,7 +84,7 @@ type integrityResult struct {
 	Match    int              `json:"match"`
 	Total    int              `json:"total"`
 	Blocking bool             `json:"blocking"` // a gate file or gate prompt differs in a verified install
-	// t-16f5: any executable file differs (flagged red, never blocking); ScriptsListed is false for a release list written before exec_files.
+	// t-16f5: a script or launcher (group scripts) differs (flagged red, never blocking); ScriptsListed is false for a release list written before exec_files.
 	Flagged       bool `json:"flagged"`
 	ScriptsListed bool `json:"scripts_listed"`
 }
@@ -437,7 +437,9 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 		if f.Status == "match" {
 			res.Match++
 		} else {
-			res.Flagged = true
+			if f.Group == "scripts" {
+				res.Flagged = true
+			}
 			if gitErr == nil {
 				f.Restore = "git -C " + shellQuote(root) + " checkout -- " + p
 			} else {

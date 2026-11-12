@@ -71,9 +71,9 @@ complete
 
 # t-16f5: an edited launcher (not a gate file, as on the Windows VM: tools/sprint.cmd) and a changed programs manifest never refuse, but the
 # close names the launcher on its one integrity line. Before this ticket the line said every file matched.
-new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/sprint.cmd"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
-complete; not_refused "a non-gate change"
-assert_contains "$out" "integrity: 14 of 16 files match release v9.8.7; tools/cockpit-daemon.sha256 differs"
+new_install "$inst"; printf '#' >> "$inst/tools/cockpit-daemon.sha256"
+complete; not_refused "a changed programs manifest"
+assert_contains "$out" "integrity: 15 of 16 files match release v9.8.7"
 new_install "$inst"; printf '@echo Updated\n' >> "$inst/tools/sprint.cmd"
 complete; not_refused "an edited launcher"
 assert_contains "$out" "integrity: 15 of 16 files match release v9.8.7; tools/sprint.cmd differs"

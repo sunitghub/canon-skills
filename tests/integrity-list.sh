@@ -74,6 +74,8 @@ assert_contains "$r" "does not exist here"
 mkdir -p "$W/repo/scripts" && cp "$LIST" "$W/repo/scripts/"
 g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
 for f in "${g[@]}"; do mkdir -p "$W/repo/$(dirname "$f")"; echo x > "$W/repo/$f"; done
+# t-16f5: a shebang alone and the executable bit alone each make a file executable (in the real tree both always coincide, so only a fixture can tell the rules apart)
+printf '#!/bin/sh\n' > "$W/repo/tools/shebang-only"; echo x > "$W/repo/tools/mode-only"; chmod 755 "$W/repo/tools/mode-only"; echo x > "$W/repo/tools/plain-data"
 git -C "$W/repo" init -q -b main; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A
 git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm base
 mkdir "$W/o2"
@@ -81,6 +83,9 @@ r="$("$W/repo/scripts/integrity-list.sh" v1.0.0 "$W/o2" HEAD 2>&1)" && fail "int
 assert_contains "$r" "has no SLIM_EXCLUDE list to read"
 echo 'SLIM_EXCLUDE=(tests tools/canon-go/internal)' > "$W/repo/scripts/release-zip.sh"; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm zip
 "$W/repo/scripts/integrity-list.sh" v1.0.0 "$W/o2" HEAD >/dev/null || fail "integrity-list: a clean fixture repo was refused"
+ex="$(python3 -I -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))["exec_files"]))' "$W/o2/integrity-1.0.0.json")"
+assert_contains "$ex" "tools/shebang-only"; assert_contains "$ex" "tools/mode-only"
+[[ " $ex " != *" tools/plain-data "* ]] || fail "integrity-list: a plain data file was listed as executable"
 echo y > "$W/repo/has space.txt"; git -C "$W/repo" -c user.email=t@t -c user.name=t add -A; git -C "$W/repo" -c user.email=t@t -c user.name=t commit -qm odd
 r="$("$W/repo/scripts/integrity-list.sh" v1.0.1 "$W/o2" HEAD 2>&1)" && fail "integrity-list: a path with a space was accepted"
 assert_contains "$r" "has a character the list does not allow"
