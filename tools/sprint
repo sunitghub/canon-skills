@@ -1298,6 +1298,10 @@ cmd_check_review_notes() {
 # .tickets/<id>/evidence/manual-qa.md, written by `sprint manual-qa` (a fixed header the pre-flight can check for freshness), listed by
 # `sprint check-evidence`, and read by the evaluator (eval.md step 5b). A criterion tagged [manual] in acceptance.md needs it before the dispatch.
 
+# _mqa_dir <id> — the ticket folder every manual-QA helper and the pre-flight read: CANON_TICKETS_DIR when set (a clone's stamp points it at the
+# sprint's folder), else the project's .tickets/: one rule, so the writer, the [manual] criteria and the record never look in different places.
+_mqa_dir() { echo "${CANON_TICKETS_DIR:-$(tickets_dir)}/$1"; }
+
 # _mqa_clean <text> <max> — one line of printable text: control characters become a space, | becomes /, trimmed, cut at <max>.
 _mqa_clean() {
   local t
@@ -1334,7 +1338,7 @@ cmd_manual_qa() {
   by="$(_mqa_clean "$by" 80)"
   [[ -n "$by" ]] || { echo "sprint manual-qa: --by \"<who tested>\" is required" >&2; exit 1; }
   (( n > 0 )) || { echo "sprint manual-qa: at least one --step is required: what was tested by hand, and its result" >&2; exit 1; }
-  tdir="$(ticket_dir_for "$id")"
+  tdir="$(_mqa_dir "$id")"
   [[ -d "$tdir" && ! -L "$tdir" ]] || { echo "sprint manual-qa: no ticket folder for $id here" >&2; exit 1; }
   edir="$tdir/evidence"
   [[ ! -L "$edir" ]] || { echo "sprint manual-qa: $edir is a symlink: refused" >&2; exit 1; }
@@ -1358,7 +1362,7 @@ cmd_manual_qa() {
 _manual_qa_state() {
   local id="$1" f head l n=0 fails=0 pass=0 in_t=0 sha who root
   MQA_STATE=absent; MQA_MSG=""
-  f="${CANON_TICKETS_DIR:-$(tickets_dir)}/$id/evidence/manual-qa.md"
+  f="$(_mqa_dir "$id")/evidence/manual-qa.md"
   [[ -e "$f" || -L "$f" ]] || return 0
   if [[ -L "$f" || ! -f "$f" ]]; then MQA_STATE=bad; MQA_MSG="it is a symlink or not a plain file"; return 0; fi
   head="$(head -c 65536 -- "$f" | LC_ALL=C tr -d '\000\r')"
@@ -1380,9 +1384,11 @@ _manual_qa_state() {
   (( n > 0 )) || { MQA_STATE=bad; MQA_MSG="no step rows"; return 0; }
   if (( fails > 0 )); then MQA_STATE=failing; MQA_MSG="$fails failing step(s) recorded by $who"; return 0; fi
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"
-  if [[ "$sha" != unknown ]]; then
-    if ! git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null || ! git -C "$root" merge-base --is-ancestor "$sha" HEAD 2>/dev/null ||
-       ! git -C "$root" diff --quiet "$sha" HEAD -- . ':(exclude).tickets' 2>/dev/null; then
+  # the rule evidence.sh check applies to a log: the recorded commit is the graded one or an ancestor with no tracked change since, in the working
+  # tree too. "unknown" (written before the first commit) proves nothing once the project has commits; without git there is nothing to compare.
+  if git -C "$root" rev-parse -q --verify HEAD >/dev/null 2>&1; then
+    if [[ "$sha" == unknown ]] || ! git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null || ! git -C "$root" merge-base --is-ancestor "$sha" HEAD 2>/dev/null ||
+       ! git -C "$root" diff --quiet "$sha" HEAD -- . ':(exclude).tickets' 2>/dev/null || ! git -C "$root" diff --quiet HEAD -- . ':(exclude).tickets' 2>/dev/null; then
       MQA_STATE=stale; MQA_MSG="recorded at ${sha:0:7} by $who; tracked files changed since"; return 0
     fi
   fi
@@ -1391,7 +1397,7 @@ _manual_qa_state() {
 
 # _manual_criteria <id> — one line per criterion under `## Criteria` whose text starts with [manual]: "<number>\t<text>" (numbered among all criteria).
 _manual_criteria() {
-  local f; f="$(ticket_dir_for "$1")/acceptance.md"
+  local f; f="$(_mqa_dir "$1")/acceptance.md"
   [[ -f "$f" && ! -L "$f" ]] || return 0
   head -c 262144 -- "$f" | LC_ALL=C tr -d '\r' | awk '
     /^## / { inc = ($0 == "## Criteria"); next }

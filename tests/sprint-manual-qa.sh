@@ -55,7 +55,7 @@ assert_eq "| $(head -c 200 /dev/zero | tr '\0' z) | n/a |" "$(sed -n 9p "$MQ")" 
 assert_eq "| Delete removes it | pass |" "$(sed -n 10p "$MQ")"      # trimmed, result lower-cased
 assert_eq 10 "$(wc -l < "$MQ" | tr -d ' ')"
 mq "$ID" --by B --step "only|pass"; assert_eq 0 "$code"; assert_eq 7 "$(wc -l < "$MQ" | tr -d ' ')"; assert_contains "$(sed -n 3p "$MQ")" "By: B on"   # replaced
-[[ -z "$(ls -A "$ED" | grep -v '^manual-qa.md$' || true)" ]] || fail "manual-qa left a temp file: $(ls -A "$ED")"
+[[ -z "$(find "$ED" -mindepth 1 -maxdepth 1 ! -name manual-qa.md)" ]] || fail "manual-qa left a temp file: $(ls -A "$ED")"
 
 # --- the pre-flight ---
 rm "$MQ"
@@ -86,6 +86,21 @@ criteria "- [ ] [manual] looks right\n"
 ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md stale: recorded at ${C1:0:7} by Sunit; tracked files changed since"
 assert_contains "$out" "ask them to re-test"
 mq "$ID" --by Sunit --step "re-tested|pass"; ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "ok      manual-qa.md"
+# a record whose HEAD is unknown in a git project proves nothing about the code: stale; an uncommitted tracked change makes a fresh one stale too
+mq "$ID" --by Sunit --step "a|pass"; sed -i.bak "2s/.*/HEAD unknown 2026-10-14T10:00:00Z/" "$MQ"; rm -f "$MQ.bak"
+ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md stale"
+mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 0 "$code"
+echo dirty >> src/a.txt; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md stale"; git checkout -q src/a.txt
+ce "$ID"; assert_eq 0 "$code"
+# the helpers read the same ticket folder as the pre-flight: CANON_TICKETS_DIR moves both the record and the [manual] criteria
+mkdir -p "$WORK/other/$ID"; printf '# Acceptance\n\n## Criteria\n- [ ] [manual] seen elsewhere\n' > "$WORK/other/$ID/acceptance.md"; echo '# t' > "$WORK/other/$ID/ticket.md"
+set +e; out="$(cd "$REPO" && CANON_TICKETS_DIR="$WORK/other" bash "$ROOT/tools/sprint" check-evidence "$ID" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "criterion 1 is tagged [manual] (seen elsewhere)"
+set +e; out="$(cd "$REPO" && CANON_TICKETS_DIR="$WORK/other" bash "$ROOT/tools/sprint" manual-qa "$ID" --by Sunit --step "x|pass" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; [[ -f "$WORK/other/$ID/evidence/manual-qa.md" ]] || fail "manual-qa ignored CANON_TICKETS_DIR"
+set +e; out="$(cd "$REPO" && CANON_TICKETS_DIR="$WORK/other" bash "$ROOT/tools/sprint" check-evidence "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "ok      manual-qa.md"
+mq "$ID" --by Sunit --step "a|pass"
 # failing step: refused on any ticket
 mq "$ID" --by Sunit --step "a|pass" --step "b|fail"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md failing: 1 failing step(s) recorded by Sunit"
 # a malformed or hand-edited record is refused, named
