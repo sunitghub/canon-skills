@@ -68,7 +68,7 @@ func TestMachineCLI(t *testing.T) {
 		t.Fatalf("machine --json = %d", code)
 	}
 	var m map[string]string
-	if err := json.Unmarshal(out.Bytes(), &m); err != nil || m["os"] != machine.Get().OS || m["cpus"] != machine.Get().CPUs {
+	if err := json.Unmarshal(out.Bytes(), &m); err != nil || m["os"] != machine.Get().OS || m["cpus"] != machine.Get().CPUs || m["arch"] != machine.Get().Arch || m["arch"] == "" { // t-0317: the key evidence tooling reads
 		t.Fatalf("machine --json = %q (%v)", out.String(), err)
 	}
 	if _, has := m["host"]; has || strings.Contains(out.String(), machine.Host()) {
