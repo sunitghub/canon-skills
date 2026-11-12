@@ -81,7 +81,7 @@ agent_file_report() {
       [[ -n "${ln//[[:space:]]/}" ]] || continue
       k=$((k + 1)); ((k > 3)) && continue
       out+=" \"${ln:0:80}\""
-    done < <(git -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '/^@@/ { h = 1; next } h && /^\+/ { l = substr($0, 2); gsub(/[[:cntrl:]]/, " ", l); print l }')
+    done < <(git --literal-pathspecs -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '/^@@/ { h = 1; next } h && /^\+/ { l = substr($0, 2); gsub(/[[:cntrl:]]/, " ", l); print l }')
     ((k > 3)) && out+=" +$((k - 3)) more"
   done < <(git -c core.quotePath=false diff --numstat --no-renames "$base" HEAD)
   ((n > 8)) && out+="; +$((n - 8)) more files"

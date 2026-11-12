@@ -285,6 +285,11 @@ reset
 for i in 1 2 3 4 5 6 7 8 9 10; do mkdir -p "d$i"; printf 'n\n' > "d$i/AGENTS.md"; done; commit
 run "$ID"; assert_contains "$out" "; +2 more files" "pre-gate-check: files beyond 8 are counted"
 [[ "$out" != *"d8/AGENTS.md +"* && "$out" != *"d9/AGENTS.md +"* ]] || fail "pre-gate-check: the 9th and later files are counted, not listed: $out"
+# a glob character in a watched path is literal: [ab]/CLAUDE.md must not pull in a/CLAUDE.md's lines
+reset
+mkdir -p "[ab]" a; printf 'lit\n' > "[ab]/CLAUDE.md"; printf 'other\n' > a/CLAUDE.md; commit
+run "$ID"; assert_contains "$out" '[ab]/CLAUDE.md +1/-0 "lit"; ' "pre-gate-check: a glob character in a watched path is matched literally"
+assert_contains "$out" 'a/CLAUDE.md +1/-0 "other"' "pre-gate-check: the file a glob would also match keeps its own lines"
 # a control character in an added line (an escape sequence) never reaches the stamped line or the terminal
 reset
 printf 'a\033[31mred\tb\r\n' > CLAUDE.md; commit
