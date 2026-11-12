@@ -211,6 +211,13 @@ mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/one.sh; commit
 run "$ID"; [[ "$out" != *"no test:"* ]] || fail "pre-gate-check: a test file in the diff must clear no test: $out"
 seq 1 450 | sed 's/^/echo /' > tools/more.txt; seq 1 450 | sed 's/^/echo /' > tools/more2.txt; commit
 run "$ID"; assert_contains "$out" "; total +1" "pre-gate-check: total over total-net"
+# no test file in the diff: a modified source file and a new .tickets file raise no `no test:`; a new non-ASCII source file does, named as is
+reset
+printf '# c\n' >> tools/caller.sh; printf 'x\n' > ".tickets/$ID/extra.txt"
+printf '# Plan\n\n## Files\ntools/caller.sh\n' > ".tickets/$ID/plan.md"; git add -A -f . && git commit -qm modonly
+run "$ID"; assert_contains "$out" "size (advisory): planned 1 files, changed 1, +1/-0; flags none" "pre-gate-check: no test file in the diff, no new source file: no flag"
+printf '#!/usr/bin/env bash\ntrue\n' > "tools/ü.sh"; commit
+run "$ID"; assert_contains "$out" "no test: tools/ü.sh" "pre-gate-check: a new non-ASCII source file with no test is named as is"
 # more than 8 unplanned files: the first 8 are named, the rest counted; no limits table beside the script: skipped, not a pass
 reset
 for i in 1 2 3 4 5 6 7 8 9 10; do printf '#!/usr/bin/env bash\ntrue\n' > "tools/u$i.sh"; done; mkdir -p tests; printf '#!/usr/bin/env bash\ntrue\n' > tests/t.sh; commit
@@ -235,7 +242,7 @@ CANON_TICKETS_DIR="$WORK/tk" run "$ID"; mv "$WORK/tk-away" .tickets
 assert_contains "$out" "planned 1 files, changed 1," "pre-gate-check: the plan is read from CANON_TICKETS_DIR when the checkout has no .tickets/"
 # a malformed limit is skipped, whichever limit and whichever end
 printf '# Plan\n\n## Files\ntools/a.sh\n' > ".tickets/$ID/plan.md"
-for bad in "abc	5" "5	abc" "x12	5" "12x	5"; do
+for bad in "abc	5" "5	abc" "x12	5" "12x	5" "5	12x"; do
   printf 'file-net\t%s\ntotal-net\t%s\n' "${bad%%$'\t'*}" "${bad##*$'\t'}" > "$S/size-caps.tsv"
   set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-gate-check.sh" --run 2>&1)"; set -e
   assert_contains "$out" "size: skipped | no limits in size-caps.tsv" "pre-gate-check: limits '$bad' are skipped"
