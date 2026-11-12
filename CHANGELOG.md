@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-### Added
+## [0.55.0] - 2026-11-11
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon**): the `canon-go` program gained the `finding-classes` report, and a running daemon stays on the old one until restarted.
 
 - A finding that keeps coming back is now counted. The reviewer and evaluator end each finding with `class: <slug>` (one table, `tools/finding-classes.tsv`), `canon-go finding-classes` counts each class across the last tickets, and `sprint start` prints a line when a class has repeated: twice proposes a rule, three times a mechanical check. Advisory; counts begin with the first tagged report. This changes the Go helper, so it ships as a daemon release (t-70f2).
 - `tools/pre-gate-check.sh` now prints a size field before every close: `planned N files, changed M, +A/-D`, with the files `plan.md` does not name, any file or diff over `tools/size-caps.tsv`, and a new file with no test in the diff. It is advisory and never fails the check (t-835f).
