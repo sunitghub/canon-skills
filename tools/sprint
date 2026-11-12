@@ -1670,11 +1670,11 @@ cmd_token_spend() {
   } | TS_PATHS="$tspaths" awk -v last="$last" -v only="$only" "$canon_awk_pkey"'
     function jf(s, name,   m) { if (!match(s, "\"" name "\":\"[^\"]*\"")) return ""; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
     function jn(s, name,   m) { if (!match(s, "\"" name "\":[0-9]+")) return 0; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:/, "", m); return m + 0 }
-    function winpath(c,   q, i, best) {  # t-134b: a turn cwd and the project list are both keys (pkey: C:\\x, C:/x and /c/x are one folder)
-      c = pkey(c)
+    function winpath(c,   q, i, best) {  # c is already a key (pkey: C:\\x, C:/x and /c/x are one folder), as P[] is
       best = ""; for (i = 1; i <= np; i++) { q = P[i]; if ((c == q || index(c, q "/") == 1) && length(q) > length(best)) best = q }
       return best
     }
+    function clean(x) { gsub(/[\001-\037\177]/, "?", x); return length(x) > 120 ? substr(x, 1, 120) "..." : x }
     function h(v) { return v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : sprintf("%d", v) }
     BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np--; for (i = 1; i <= np; i++) P[i] = pkey(P[i]) }
     $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; next }
@@ -1687,7 +1687,7 @@ cmd_token_spend() {
       mo = jf(j, "model")
       u = index(j, "\"usage\":{"); if (!u) next
       SEEN[id] = 1; u = substr(j, u)
-      ts = substr(jf(j, "timestamp"), 1, 19); cw = pkey(jf(j, "cwd")); pr = winpath(jf(j, "cwd"))
+      ts = substr(jf(j, "timestamp"), 1, 19); cw = pkey(jf(j, "cwd")); pr = winpath(cw)
       nread++; if (!(cw in CWSEEN) && ncw < 3) { CWSEEN[cw] = 1; CWL[++ncw] = cw }
       if (pr != "" && (!(pr in FIRST) || ts < FIRST[pr])) FIRST[pr] = ts
       gate = (MT[f] == "canon-reviewer" || MT[f] == "canon-evaluator")
@@ -1725,8 +1725,9 @@ cmd_token_spend() {
       if (!any) {
         print "No transcript turns inside these sprints (Claude Code keeps about 9 days of transcripts)."
         # t-134b: when turns were read but none matched a sprint, say what was compared: a spelling bug (a Windows drive path) names itself
-        if (nread > 0) { cl = ""; for (i = 1; i <= ncw; i++) cl = cl (i > 1 ? ", " : "") CWL[i]
-          pl = ""; np2 = 0; for (w = 1; w <= nw; w++) if (!(WP[w] in PSEEN) && np2 < 3) { PSEEN[WP[w]] = 1; pl = pl (np2++ > 0 ? ", " : "") WP[w] }
+        # a cwd comes from a transcript file: control bytes become ? and each folder is cut at 120 characters
+        if (nread > 0) { cl = ""; for (i = 1; i <= ncw; i++) cl = cl (i > 1 ? ", " : "") clean(CWL[i])
+          pl = ""; np2 = 0; for (w = 1; w <= nw; w++) if (!(WP[w] in PSEEN) && np2 < 3) { PSEEN[WP[w]] = 1; pl = pl (np2++ > 0 ? ", " : "") clean(WP[w]) }
           print "  read " nread " turns in " cl "; the sprints ran in " pl }
         exit }
       print "Token spend per closed sprint (fresh input + output; cache reads apart), from Claude Code transcripts:"
