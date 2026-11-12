@@ -301,16 +301,19 @@ func TestFindingClassesListsRecurredPromotedRule(t *testing.T) {
 	if err := json.Unmarshal([]byte(js), &m); err != nil {
 		t.Fatal(err)
 	}
+	matched := 0
 	for _, r := range m["promoted_rules_recurred"].([]any) {
 		row := r.(map[string]any)
 		if row["class"] != "the-old-slug" {
 			continue
 		}
-		for _, k := range []string{"class", "id", "later_tickets_naming_the_class"} {
-			if _, ok := row[k]; !ok {
-				t.Fatalf("a promoted row lost %q: %v", k, row)
-			}
+		matched++
+		if row["id"] != "P-001" || row["later_tickets_naming_the_class"] != float64(1) {
+			t.Fatalf("a promoted row = %v", row)
 		}
+	}
+	if matched != 1 {
+		t.Fatalf("the recurred rule must be one row keyed class/id/later_tickets_naming_the_class: %v", m["promoted_rules_recurred"])
 	}
 }
 
@@ -399,5 +402,17 @@ func TestFindingClassesDefaultTable(t *testing.T) {
 	e.Reset()
 	if c := findingClassesCLI(nil, &o, &e); c != 2 || !strings.Contains(e.String(), "no canon install found; pass --table <file>") {
 		t.Fatalf("no install: %d %q", c, e.String())
+	}
+}
+
+func TestFindingClassesFirstCreatedLineWins(t *testing.T) {
+	root := t.TempDir()
+	slugs, _ := fcLoadTable(fcTable(t, root))
+	fcTicketFiles(t, root, "t-jjj1", "2026-11-01", review("bloat"), "")
+	fcTicketFiles(t, root, "t-jjj2", "2026-11-05", review("hardcoding"), "")
+	// a second `created:` line in the body must not move t-jjj1 to the newest
+	os.WriteFile(filepath.Join(root, ".tickets", "t-jjj1", "ticket.md"), []byte("---\nid: t-jjj1\ncreated: 2026-11-01\n---\n# t\ncreated: 2030-01-01\n"), 0o644)
+	if r := findingClasses(root, slugs, 1); len(r.Classes) != 1 || r.Classes[0].Slug != "hardcoding" {
+		t.Fatalf("the first created line decides: %+v", r.Classes)
 	}
 }
