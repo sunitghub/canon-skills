@@ -803,3 +803,26 @@ func TestIntegrityListWithoutScriptsAndHostileScriptPath(t *testing.T) {
 		t.Errorf("an unsafe script path is not-checked, named: %+v", r)
 	}
 }
+
+// The key names are a contract with scripts/integrity-list.sh (which writes exec_files) and the page (which reads flagged and scripts_listed):
+// a test that builds the list by marshaling the same struct cannot see a renamed key, so these use the literal text.
+func TestIntegrityExecKeysAreTheScriptsAndThePages(t *testing.T) {
+	var l integrityList
+	if err := json.Unmarshal([]byte(`{"tag":"v1.2.3","exec_files":["tools/a.sh","tools/b.cmd"]}`), &l); err != nil || len(l.ExecFiles) != 2 {
+		t.Fatalf("the release list's key is exec_files: %+v %v", l, err)
+	}
+	b, _ := json.Marshal(integrityResult{Files: []integrityFile{}, Flagged: true, ScriptsListed: true})
+	for _, k := range []string{`"flagged":true`, `"scripts_listed":true`} {
+		if !strings.Contains(string(b), k) {
+			t.Errorf("the page reads %s: %s", k, b)
+		}
+	}
+}
+
+func TestIntegrityScriptListedTwiceCountsOnce(t *testing.T) {
+	f := newIntegFx(t)
+	f.withExec("tools/sprint.cmd", "tools/sprint.cmd", "tools/sprint") // a repeat, and a gate file
+	if r := checkIntegrity(f.deps); r.Total != 15 || r.Match != 15 {
+		t.Fatalf("13 gate paths + the manifest + one launcher, each once: %+v", r)
+	}
+}
