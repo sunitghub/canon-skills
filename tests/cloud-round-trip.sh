@@ -474,7 +474,7 @@ rc=0; out="$(PATH="$W/tarbin:$PATH" "$TKT" import-results t-tarbad 2>&1)" || rc=
 [[ "$rc" == 1 ]] || fail "a failed tar should exit 1: $out"
 assert_contains "$out" "tar failed (exit 3)"
 assert_eq "mine" "$(cat .tickets/t-tarbad/ticket.md)"
-[[ -z "$(ls -A .tickets/t-tarbad | grep -v '^ticket.md$')" ]] || fail "a failed tar left files in the folder"
+[[ -z "$(find .tickets/t-tarbad -mindepth 1 -maxdepth 1 ! -name ticket.md)" ]] || fail "a failed tar left files in the folder"
 cd "$W"
 
 # No results branch: a clear refusal.
