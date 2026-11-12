@@ -37,6 +37,19 @@ ev stamp "$ID" q1 -- bash -c 'echo a b'; ev stamp "$ID" q2 -- bash -c echo a b
 os_line="# on $(uname -srm); bash ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}.${BASH_VERSINFO[2]}"   # t-a83a: the stamp's bash is this one (`bash "$EV"`)
 assert_eq "$os_line" "$(sed -n 3p "$f")"; assert_count 0 "$(hostname)" "$f"
 assert_eq "one two exit 0" "$(sed -n '4,$p' "$f" | tr '\n' ' ' | sed 's/ $//')"
+# --- t-c923: a costly stamp taken before the reviewer is named on stderr; nothing else changes
+rm -f ".tickets/$ID/review-notes.md"
+for n in mutant-sweep test-sh board-spec; do
+  ev stamp "$ID" "$n" -- bash -c 'echo ran'; assert_eq 0 "$code"
+  assert_contains "$out" "stamping $n before the reviewer" "evidence: $n with no review-notes.md is warned"
+  assert_count 0 "before the reviewer" "$ED/$n.log"
+done
+ev stamp "$ID" pre-gate -- bash -c 'echo ran'; [[ "$out" != *"before the reviewer"* ]] || fail "evidence: pre-gate must not be warned: $out"
+ev stamp "$ID" mutant-sweep -- bash -c 'exit 7'; assert_eq 7 "$code" "evidence: the warning does not change the command's exit code"
+assert_contains "$out" "before the reviewer"
+printf 'x\n' > ".tickets/$ID/review-notes.md"
+ev stamp "$ID" mutant-sweep -- bash -c 'echo ran'; [[ "$out" != *"before the reviewer"* ]] || fail "evidence: review-notes.md present must silence the warning: $out"
+rm -f ".tickets/$ID/review-notes.md"
 ev stamp "$ID" suite -- bash -c 'echo failing; exit 7'; assert_eq 7 "$code"                      # the command's own code comes back and is written
 assert_eq "exit 7" "$(tail -n1 "$f")"; assert_count 0 "exit 0" "$f"                                 # a re-stamp replaces the log
 ev stamp "$ID" noeol -- bash -c 'printf "no newline"'; assert_eq 0 "$code"

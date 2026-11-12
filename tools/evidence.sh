@@ -43,6 +43,7 @@ refuse() { echo "evidence: $*" >&2; exit 125; }
 die() { echo "evidence: $*" >&2; exit 2; }
 
 id_re='^t-[a-z0-9]{4}$'
+LATE_STAMPS="mutant-sweep test-sh board-spec"   # t-c923: the costly stamps; one taken before the reviewer is stale once its fixes land (t-07b9 measured 6.2 h of 18.8 h)
 mode="${1-}"
 [[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit ]] || usage
 shift
@@ -214,6 +215,10 @@ if [[ "$mode" == stamp ]]; then
   [[ ! -e "$log" || -f "$log" ]] || refuse "$log is not a plain file"
   if tracked_dirty; then refuse "tracked files differ from HEAD: commit first, because a stamp names the commit that was tested"; fi
   head_sha="$(git -C "$root" rev-parse HEAD)"
+  # t-c923: advisory, stderr only, never in the log: the stamp, the exit code and the event are the same with or without it.
+  if [[ " $LATE_STAMPS " == *" $name "* && ! -f "$tdir/$id/review-notes.md" ]]; then
+    echo "evidence: stamping $name before the reviewer: its fixes will make this log stale; run the reviewer first unless this tier skips it" >&2
+  fi
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
   cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
