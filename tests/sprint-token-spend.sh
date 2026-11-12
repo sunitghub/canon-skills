@@ -157,18 +157,24 @@ assert_contains "$out" "t-wwww"; [[ "$out" != *"No transcript turns"* ]] || fail
 # turns that match no sprint: the message now says how many were read and which folders were compared (three at most, each once, control bytes
 # replaced and a long one cut at 120), and which folders the sprints ran in (a worktree is a second one)
 p3="$(make_project)"; r3="$(cd "$p3" && pwd -P)"; mkdir -p "$cfg/projects/$(printf '%s' "$r3" | sed 's/[^A-Za-z0-9]/-/g')"
-( cd "$p3" && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init && git worktree add -q "$wt/w3" 2>/dev/null )
-w3="$(cd "$wt/w3" && pwd -P)"
+( cd "$p3" && git -c user.name=t -c user.email=t@t commit -q --allow-empty -m init && for n in 3 4 5; do git worktree add -q "$wt/w$n" 2>/dev/null; done )
+w3="$(cd "$wt/w3" && pwd -P)"; w4="$(cd "$wt/w4" && pwd -P)"; w5="$(cd "$wt/w5" && pwd -P)"
 { printf '{"schema":1,"ts":"2026-10-03T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-vvvv"}}\n' "$r3"
   printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-vvvv"}}\n' "$r3"
   printf '{"schema":1,"ts":"2026-10-03T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-uuuu"}}\n' "$w3"
-  printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-uuuu"}}\n' "$w3"; } > "$events/2026-10-03.jsonl"
+  printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-uuuu"}}\n' "$w3"
+  for pair in "t-tttt $r3" "t-ssss $w4" "t-rrrr $w5"; do   # a second sprint in a folder already listed, then two more worktrees: the list holds each once, three at most
+    set -- $pair
+    printf '{"schema":1,"ts":"2026-10-03T15:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"%s"}}\n' "$2" "$1"
+    printf '{"schema":1,"ts":"2026-10-03T15:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"%s"}}\n' "$2" "$1"
+  done; } > "$events/2026-10-03.jsonl"
 long="$(head -c 200 /dev/zero | tr '\0' a)"
 { turn2 msg_v1 18:00:00 "$r3"$'\033[2J'; turn2 msg_v2 18:01:00 "$r3"$'\033[2J'; turn2 msg_v3 18:02:00 "$r3/x"; turn2 msg_v4 18:03:00 "$r3/$long"; turn2 msg_v5 18:04:00 "$r3/z"; } \
   | sed 's/2026-10-02/2026-10-03/' > "$cfg/projects/$(printf '%s' "$r3" | sed 's/[^A-Za-z0-9]/-/g')/v.jsonl"
 out="$(cd "$p3" && "$SPRINT" token-spend --ticket t-vvvv)"
 assert_contains "$out" "No transcript turns inside these sprints"
-assert_contains "$out" "read 5 turns in $r3?[2J, $r3/x, $(printf '%s' "$r3/$long" | cut -c1-120)...; the sprints ran in $r3, $w3"
+assert_contains "$out" "read 5 turns in $r3?[2J, $r3/x, $(printf '%s' "$r3/$long" | cut -c1-120)...; the sprints ran in $r3, $w3, $w4"
+[[ "$out" == *"ran in $r3, $w3, $w4" && "$out" != *"$w5"* ]] || fail "the sprint folders are each listed once, three at most: $out"
 [[ "$out" != *$'\033'* ]] || fail "a control byte from a transcript cwd reached the terminal: $out"
 [[ "$out" != *"$r3/z"* ]] || fail "more than three folders were listed: $out"
 
