@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.15] - 2026-11-13
+
+- Added: `canon_path_key` in `tools/platform-lib.sh`, one pure-string key for a folder however it is spelled (`C:\x`, `C:/x`, `/c/x`, case of the drive letter, doubled separators, a UNC share), with a 41-row corpus (`tests/fixtures/path-keys.tsv`) that runs on any OS. `sprint token-spend` now finds a sprint when git, the events and the transcript spell the worktree three ways, and its no-match message prints each source's raw spelling. Slices 2 and 3 (t-c8c6, t-9d04) move the other comparisons onto it.
+- Changed: the installers no longer tell you to `git init` when you run them in a folder that is not a project (the Cockpit's Project page does it).
+- Fixed: the end-user zip no longer ships the contributor research report (it had pushed the zip over its size cap).
+
 ## [0.55.14] - 2026-11-13
 
 - Changed: the four tiles at the top of the Cockpit's Admin page (Registered projects, Running agents, Needs you, Active projects) are about a third shorter (58px instead of 85px): less padding, a 20px number and a tighter label. They keep their colours and stay on one row. Board only; no daemon restart needed.
