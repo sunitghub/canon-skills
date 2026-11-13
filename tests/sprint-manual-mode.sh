@@ -49,4 +49,36 @@ echo z >> tools/sprint; git add tools/sprint; git commit -qm "gate file"; mq "$I
 assert_eq 1 "$code"; assert_contains "$out" "it changes a gate file or gate prompt (tools/sprint)"
 git reset -q --hard HEAD~1; mkdir -p skills/sprint/reference; echo q > skills/sprint/reference/eval.md
 mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "(skills/sprint/reference/eval.md)"   # an untracked or uncommitted prompt counts too
+# --- the reviewer's cases (t-51c6): tier spellings, a renamed gate file, the list edited or broken, an n/a-only record, and the close itself ---
+rm -rf skills; git reset -q --hard; echo s > tools/sprint; git add tools/sprint; git commit -qm "a gate file"; git update-ref refs/remotes/origin/main HEAD
+for tl in '**Tier:** high-risk' 'Tier: High-Risk'; do   # the spellings _signoff_tier (the close's parser) reads
+  printf '# Plan\n\n## Sign-off\n%s | Risk: x\n' "$tl" > "$TD/plan.md"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+  assert_eq 1 "$code"; assert_contains "$out" "the plan's Tier is high-risk"
+done
+printf '# Plan\n\n## Sign-off\nTier: normal | Risk: x\n' > "$TD/plan.md"
+# a gate file renamed away is a gate-file change (git diff --name-only alone would show only the new name)
+git mv tools/sprint tools/zzz; git commit -qm rename; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "(tools/sprint)"; git reset -q --hard HEAD~1
+# dropping a gate file from the list, in the same change that edits it, hides nothing: the base's list rules, and the list file is itself refused
+sed -i.bak 's/tools\/sprint tools\/evidence.sh/tools\/evidence.sh/' scripts/integrity-list.sh; rm -f scripts/integrity-list.sh.bak; echo z >> tools/sprint
+git add scripts tools; git commit -qm "drop and edit"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "it changes a gate file or gate prompt (tools/sprint)"; git reset -q --hard HEAD~1
+sed -i.bak 's/tools\/sprint tools\/evidence.sh/tools\/evidence.sh/' scripts/integrity-list.sh; rm -f scripts/integrity-list.sh.bak; git add scripts; git commit -qm "list only"
+mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "(scripts/integrity-list.sh)"; git reset -q --hard HEAD~1
+# a base list that is empty or partly unreadable refuses (fails closed); a multi-line list is read in full
+printf 'GATE_FILES=(\n  tools/sprint\n  tools/evidence.sh\n)\nGATE_PROMPTS=()\n' > scripts/integrity-list.sh; git add scripts; git commit -qm "empty prompts"; git update-ref refs/remotes/origin/main HEAD
+mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "GATE_FILES or GATE_PROMPTS is empty"
+printf 'GATE_FILES=(\n  tools/sprint\n  tools/evidence.sh\n)\nGATE_PROMPTS=(skills/sprint/reference/eval.md)\n' > scripts/integrity-list.sh; git add scripts; git commit -qm "multi-line list"; git update-ref refs/remotes/origin/main HEAD
+mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 0 "$code"
+echo z >> tools/sprint; git add tools/sprint; git commit -qm "edit the first of a multi-line list"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "(tools/sprint)"; git reset -q --hard HEAD~1
+# a record where nothing passed (n/a only) is not the user's testing
+mq "$ID" --by Sunit --step "a|n/a"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "at least one step that passed"
+# the close itself checks it (the pre-flight is protocol text; this is the CLI floor): no record, then a record, with the work allowed
+rm -f "$ED/manual-qa.md"; echo "$ID" > .tickets/ACTIVE
+set +e; out="$(cd "$REPO" && bash "$ROOT/tools/sprint" complete 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "cannot close: it is a Manual ticket (manual: true) and the user's testing is not recorded"; assert_contains "$out" 'sprint manual-qa t-abcd --by'
+printf '# Plan\n\n## Sign-off\nTier: high-risk | Risk: x\n' > "$TD/plan.md"; mq "$ID" --by Sunit --step "a|pass"
+set +e; out="$(cd "$REPO" && bash "$ROOT/tools/sprint" complete 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "Manual mode is refused: the plan's Tier is high-risk"
 printf 'sprint-manual-mode: ok\n'

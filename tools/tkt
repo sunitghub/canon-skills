@@ -478,7 +478,7 @@ cmd_manual() {
 
   if [[ "$value" == "true" ]]; then
     set_or_add_field "$file" manual true
-    if grep -qiE '^Tier:[[:space:]]*high-risk' "$(dirname "$file")/plan.md" 2>/dev/null; then
+    if sed 's/\*//g' "$(dirname "$file")/plan.md" 2>/dev/null | tr 'A-Z' 'a-z' | grep -qE '^[[:space:]-]*tier[[:space:]]*:[[:space:]]*high-risk'; then
       echo "warning: $id is a high-risk sprint: Manual mode is refused for it at the close (sprint check-evidence), which keeps the full gates." >&2
     fi
   else
@@ -1307,6 +1307,7 @@ cmd_send_issue() {
   file="$(find_ticket "$id")"
   id="$(get_field "$file" id)"
   tdir="$(dirname "$file")"
+  [[ "$(get_field "$file" manual)" == true ]] && { echo "send-issue: $id is a Manual ticket (manual: true): a person cannot test in the cloud. Run it here, or 'tkt manual $id off' first." >&2; exit 1; }   # t-51c6: before anything is sent or launched
   title="$(get_title "$file")"
   local sent; sent="$(get_field "$file" github)"
   if [[ -n "$sent" && "$(get_field "$file" runs)" == github ]]; then
@@ -1371,7 +1372,6 @@ cmd_send_issue() {
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
   local caps; caps="$(cap_headroom "$root" "$plan" tkt "$id" "$($dry || echo send)")"   # t-cc88: in # Working on this, which import-issue never writes back
 
-  [[ "$(get_field "$file" manual)" == true ]] && { echo "send-issue: $id is a Manual ticket (manual: true): a person cannot test in the cloud. Run it here, or 'tkt manual $id off' first." >&2; exit 1; }
   local lite; lite="$(get_field "$file" demo)"
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local

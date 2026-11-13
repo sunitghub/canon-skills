@@ -1221,6 +1221,7 @@ cmd_complete() {
 
   _gate_integrity           "$id" "$tdir"                || exit 1
   _gate_caps                "$id" "$tdir"                || exit 1
+  _gate_manual              "$id" "$tdir"                || { _gate_reject "$id" "$tdir" sprint manual_qa; exit 1; }
   _gate_sprint_files        "$id" "$tdir" "$acceptance"  || exit 1
   _gate_acceptance_sections "$id" "$acceptance"          || exit 1
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
@@ -1361,7 +1362,7 @@ cmd_manual_qa() {
 # recorded at the graded commit, or at an ancestor with no tracked change since (the ticket folder excluded).
 _manual_qa_state() {
   local id="$1" f head l n=0 fails=0 pass=0 in_t=0 sha who root
-  MQA_STATE=absent; MQA_MSG=""
+  MQA_STATE=absent; MQA_MSG=""; MQA_PASS=0
   f="$(_mqa_dir "$id")/evidence/manual-qa.md"
   [[ -e "$f" || -L "$f" ]] || return 0
   if [[ -L "$f" || ! -f "$f" ]]; then MQA_STATE=bad; MQA_MSG="it is a symlink or not a plain file"; return 0; fi
@@ -1397,6 +1398,7 @@ _manual_qa_state() {
     elif ! git -C "$root" diff --quiet HEAD -- . "${neutral[@]}" 2>/dev/null; then why="tracked files are modified in the working tree"; fi
     if [[ -n "$why" ]]; then MQA_STATE=stale; MQA_MSG="recorded at ${sha:0:7} by $who; $why"; return 0; fi
   fi
+  MQA_PASS="$pass"
   MQA_STATE=fresh; MQA_MSG="HEAD ${sha:0:7} = graded, by $who, $n steps: $pass pass"
 }
 
@@ -1414,6 +1416,11 @@ _manual_criteria() {
       if (tolower(substr(t, 1, 8)) == "[manual]") { t = substr(t, 9); sub(/^[[:space:]]+/, "", t); print n "\t" substr(t, 1, 100) } }'
 }
 
+# _manual_list <script text> <NAME> — the words of the bash array `NAME=( ... )` (one line or several), one per line.
+_manual_list() {
+  printf '%s\n' "$1" | awk -v n="$2" 'index($0, n "=(") == 1 { f = 1; sub(/^[A-Z_]+=\(/, "") } f { e = ($0 ~ /\)/); sub(/\).*$/, ""); gsub(/[[:space:]]+/, "\n"); if ($0 != "") print; if (e) exit }'
+}
+
 # _manual_mode_refusal <id> — t-51c6: why a `manual: true` ticket may not close on the user's testing; prints nothing when it may. The user's testing
 # replaces the reviewer, the mutation sweep and the full-suite stamp, so work whose own gates matter keeps the full close: a high-risk plan, and in
 # canon's own checkout any diff against the base that touches a gate file or gate prompt (the lists are scripts/integrity-list.sh's: one owner, read
@@ -1421,16 +1428,40 @@ _manual_criteria() {
 _manual_mode_refusal() {
   local id="$1" tdir root il base paths p changed
   tdir="$(_mqa_dir "$id")"
-  if grep -qiE '^Tier:[[:space:]]*high-risk' "$tdir/plan.md" 2>/dev/null; then echo "the plan's Tier is high-risk"; return 0; fi
+  [[ "$(_signoff_tier "$tdir/plan.md")" == high-risk ]] && { echo "the plan's Tier is high-risk"; return 0; }   # the one tier parser (_signoff_tier)
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"; il="$root/scripts/integrity-list.sh"
   [[ -f "$il" ]] || return 0
   base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)" || { echo "this is canon's own checkout and the base (origin/main) cannot be found to check for gate-file changes"; return 0; }
-  paths="$(sed -n -e 's/^GATE_FILES=(\(.*\))$/\1/p' -e 's/^GATE_PROMPTS=(\(.*\))$/\1/p' "$il")"
-  [[ -n "$paths" ]] || { echo "the gate-file lists could not be read from scripts/integrity-list.sh"; return 0; }
-  changed="$(git -C "$root" diff --name-only "$base" -- 2>/dev/null; git -C "$root" ls-files --others --exclude-standard 2>/dev/null)"
-  for p in $paths; do
+  # the lists come from the BASE's copy, so editing the list cannot hide a gate file; a change to the list file is itself refused
+  local gf gp lists
+  lists="$(git -C "$root" show "$base:scripts/integrity-list.sh" 2>/dev/null)" || { echo "the gate-file lists cannot be read from $base:scripts/integrity-list.sh"; return 0; }
+  gf="$(_manual_list "$lists" GATE_FILES)"; gp="$(_manual_list "$lists" GATE_PROMPTS)"
+  if [[ -z "$gf" || -z "$gp" ]]; then echo "the gate-file lists could not be read from scripts/integrity-list.sh (GATE_FILES or GATE_PROMPTS is empty)"; return 0; fi
+  changed="$(git -C "$root" diff --name-only --no-renames "$base" -- 2>&1; git -C "$root" ls-files --others --exclude-standard 2>&1)" || true
+  if grep -q '^fatal:\|^error:' <<< "$changed"; then echo "git could not list the changes against $base"; return 0; fi
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
     if grep -qxF -- "$p" <<< "$changed"; then echo "it changes a gate file or gate prompt ($p)"; return 0; fi
-  done
+  done <<< "$gf"$'\n'"$gp"$'\nscripts/integrity-list.sh'
+  return 0
+}
+
+# _gate_manual <id> <ticket dir> — t-51c6: a `manual: true` ticket closes only on the user's recorded testing, so the close itself checks what the
+# pre-flight checks (the pre-flight is protocol text; this is the CLI floor): Manual mode allowed for this work, and a fresh record with a pass.
+_gate_manual() {
+  local id="$1" tdir="$2" why
+  [[ "$(get_field "$tdir/ticket.md" manual 2>/dev/null)" == true ]] || return 0
+  why="$(_manual_mode_refusal "$id")"
+  if [[ -n "$why" ]]; then
+    echo "Sprint $id cannot close: Manual mode is refused: $why. Use the full close ('tkt manual $id off'), which keeps every gate."
+    return 1
+  fi
+  _manual_qa_state "$id"
+  if [[ "$MQA_STATE" != fresh || "$MQA_PASS" -eq 0 ]]; then
+    echo "Sprint $id cannot close: it is a Manual ticket (manual: true) and the user's testing is not recorded (manual-qa.md is ${MQA_STATE}${MQA_MSG:+: $MQA_MSG}$( [[ "$MQA_STATE" == fresh ]] && echo ': no step passed' ))."
+    echo "Ask the user what they tested and what they saw, then record it: sprint manual-qa $id --by \"<name>\" --step \"<what>|pass\" [--step ...]"
+    return 1
+  fi
 }
 
 # cmd_check_evidence <id> — t-a3d7: the pre-flight complete.md step 3 runs before dispatching the evaluator. Reads `evidence.sh check`
@@ -1466,7 +1497,10 @@ cmd_check_evidence() {
   local mcrit mq=0 mbad=0 mnum mtxt
   mcrit="$(_manual_criteria "$id")"; _manual_qa_state "$id"
   case "$MQA_STATE" in
-    fresh) n=$((n + 1)); mq=1; echo "  ok      manual-qa.md ($MQA_MSG)" ;;
+    fresh)
+      n=$((n + 1)); mq=1
+      if (( manual_on && MQA_PASS == 0 )); then bad=$((bad + 1)); mbad=1; echo "  REFUSE  manual-qa.md failing: a Manual ticket needs at least one step that passed ($MQA_MSG)"
+      else echo "  ok      manual-qa.md ($MQA_MSG)"; fi ;;
     stale|failing|bad) n=$((n + 1)); mq=1; bad=$((bad + 1)); mbad=1; echo "  REFUSE  manual-qa.md $MQA_STATE: $MQA_MSG" ;;
     absent)
       if (( manual_on )); then
