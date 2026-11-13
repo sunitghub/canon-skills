@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.8] - 2026-11-13
+
 - Added: `sprint complete` now records one `sprint.cost` event per closed ticket (planning, implementation and gate tokens, cache reads, turns, gate runs, models; numbers only, no text) from Claude Code's transcripts and prints one line: `cost: 576k tokens (gates 533k, 93%), 3 gate runs`, with a plain note when gates took more than half. It is silent when no transcript turn falls inside the sprint, and a repeat writes nothing. `sprint token-spend` shows a ticket's row from the event when its transcripts are gone (they are kept about 9 days). `sprint token-spend --ticket <id> --record` is the command behind it. Go changed (the new event kind): daemon release (t-7e26). Not yet: the Tower and Logbook reading it, and the gate-cost budget hint.
 
 ## [0.55.7] - 2026-11-13
