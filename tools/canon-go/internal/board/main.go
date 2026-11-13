@@ -257,6 +257,12 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	// preview's own sandbox CSP (also added) and this one are both enforced.
 	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	w.Header().Add("Content-Security-Policy", "frame-ancestors 'self'")
+	// t-dfa1: a page on another site cannot read a reply (no CORS), but a blind no-cors GET still runs the route's git and
+	// tickets build in a loop. Refuse it before any work, for every /api route and method, in one place.
+	if strings.HasPrefix(r.URL.Path, "/api/") && apiCrossSite(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	if r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/") { // t-0b89: read only, whatever the method
 		handleAPIv1(w, r)
 		return
@@ -4118,6 +4124,12 @@ var originOKRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost)(:[0-9]{1,5
 
 func originOK(origin string) bool {
 	return origin == "" || originOKRe.MatchString(origin)
+}
+
+// apiCrossSite is true for a request a page on another site sent: a foreign Origin, or the browser's own cross-site mark.
+// No header at all (curl, the CLI) is not cross-site.
+func apiCrossSite(r *http.Request) bool {
+	return !originOK(r.Header.Get("Origin")) || r.Header.Get("Sec-Fetch-Site") == "cross-site"
 }
 
 // agentOriginOK is originOK without the empty pass (t-d42a): a route that starts an agent process needs a loopback

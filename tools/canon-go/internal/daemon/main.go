@@ -419,6 +419,11 @@ func (s *server) guard(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}
+		// t-dfa1: a no-cors GET from another site sends no Origin; the browser's own mark still says cross-site.
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+			http.Error(w, "forbidden: cross-site", http.StatusForbidden)
+			return
+		}
 		next(w, r)
 	}
 }

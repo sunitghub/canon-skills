@@ -4,6 +4,7 @@
 # Guard (the default): with git/gh/tkt on PATH replaced by counting shims, an unbound tree's /api/tickets starts no process,
 # /api/git starts one at an unchanged HEAD, and each of the three answers a matching If-None-Match with an empty 304 and a
 # change with a new ETag. A ticket bound to a worktree still gets its live docs (the positive control: the shims count).
+# t-dfa1: a cross-site GET (Sec-Fetch-Site cross-site, or a foreign Origin) to those routes is 403 and starts no process.
 # t-761b: /api/remote-agents (the Agents list's Cloud group, polled by the Cockpit shell) starts no process when nothing is out on GitHub,
 # one background `tkt github-status` per ticket out on GitHub on a cold poll (the poll answers at once, never waits for GitHub) and none within the board's 30 s cache, and answers an empty 304.
 #   --measure <root>   print the docs table (docs/sprint-check.md "Polling budget") for the project at <root>; read-only GETs
@@ -112,6 +113,13 @@ start_board "$repo"
 [[ "$(procs '/api/tickets?all=1')" == 0.0 ]] || fail "poll-budget: /api/tickets on a tree with no worktree started $(procs '/api/tickets?all=1') processes per request: $(sort "$CALLS" | uniq -c)"
 [[ "$(procs /api/git)" == 1.0 ]] || fail "poll-budget: /api/git at an unchanged HEAD started $(procs /api/git) processes per request, want 1: $(sort "$CALLS" | uniq -c)"
 [[ "$(procs /api/handoff)" == 0.0 ]] || fail "poll-budget: /api/handoff started a process"
+# t-dfa1: a page on another site can fire these blind; each is refused with 403 before any git or tickets work.
+: > "$CALLS"
+for ep in '/api/tickets?all=1' /api/git /api/project-stats /api/v1/sessions; do
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Sec-Fetch-Site: cross-site' "$BASE$ep")" == 403 ]] || fail "poll-budget: cross-site GET $ep was not refused with 403"
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' -H 'Origin: http://evil.example' "$BASE$ep")" == 403 ]] || fail "poll-budget: GET $ep with a foreign Origin was not refused with 403"
+done
+[[ ! -s "$CALLS" ]] || fail "poll-budget: a refused cross-site GET started processes: $(sort "$CALLS" | uniq -c)"
 
 # 2. Each poll: an empty 304 on a matching If-None-Match, a new ETag after a change.
 changed() { # changed <path> <what> <command…>: run the change, then the old ETag must miss
