@@ -174,7 +174,7 @@ long="$(head -c 200 /dev/zero | tr '\0' a)"
 out="$(cd "$p3" && "$SPRINT" token-spend --ticket t-vvvv)"
 assert_contains "$out" "No transcript turns inside these sprints"
 assert_contains "$out" "read 5 turns in $r3?[2J, $r3/x, $(printf '%s' "$r3/$long" | cut -c1-120)...; the sprints ran in $r3, $w3, $w4"
-[[ "$out" == *"ran in $r3, $w3, $w4" && "$out" != *"$w5"* ]] || fail "the sprint folders are each listed once, three at most: $out"
+[[ "$(printf '%s\n' "$out" | sed -n 2p)" == *"ran in $r3, $w3, $w4" && "$out" != *"$w5"* ]] || fail "the sprint folders are each listed once, three at most: $out"
 [[ "$out" != *$'\033'* ]] || fail "a control byte from a transcript cwd reached the terminal: $out"
 [[ "$out" != *"$r3/z"* ]] || fail "more than three folders were listed: $out"
 

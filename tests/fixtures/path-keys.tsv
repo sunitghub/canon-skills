@@ -1,0 +1,39 @@
+# tests/fixtures/path-keys.tsv (t-141a): the corpus for canon_path_key (tools/platform-lib.sh). Three tab-separated columns: input, the expected key, a note.
+# Written by hand from the contract in docs/research-path-and-rule-standards.md section 1.5, not from the function's output. A row marked NOT handled
+# pins what the key deliberately does NOT do, so a later change that starts handling it is a decision, not an accident. Rules (tests/path-forms.sh
+# checks them first): exactly two tabs per line, no field empty or padded with spaces at either end, every input unique. Comment lines start with #.
+C:\Users\x\p	/c/Users/x/p	native Windows spelling (cmd, PowerShell, most JSON)
+C:\\Users\\x\\p	/c/Users/x/p	JSON-escaped backslashes, as a Claude Code transcript writes a cwd
+C:/Users/x/p	/c/Users/x/p	git and Go programs: Git Bash converts a /c/x argument for a native exe
+c:/Users/x/p	/c/Users/x/p	the drive letter's case is folded
+/c/Users/x/p	/c/Users/x/p	Git Bash spelling: already the key
+C:/Users/x/p/	/c/Users/x/p	a trailing slash goes
+C:\Users\x\p\	/c/Users/x/p	a trailing backslash goes
+C://Users//x//p	/c/Users/x/p	doubled separators collapse
+C:\Users/x\p	/c/Users/x/p	mixed separators
+C:	/c	a bare drive
+C:/	/c	a drive root
+/c/	/c	a Git Bash drive root
+D:/Users/x/p	/d/Users/x/p	another drive is another folder
+/Users/x/p	/Users/x/p	a POSIX path is unchanged
+/Users/x/p/	/Users/x/p	a POSIX trailing slash goes
+/Users/X/p	/Users/X/p	case after the drive is kept: /Users/X and /Users/x can be two folders on a case-sensitive system
+/Users//x///p	/Users/x/p	a run of slashes is one
+/	/	the root stays
+//	/	a bare double slash is the root
+///	/	three slashes are the root
+\\host\share\dir	//host/share/dir	UNC: the two leading slashes stay
+\\host\share\	//host/share	a UNC trailing separator goes
+//host/share/dir	//host/share/dir	a forward-slash UNC path
+//host//share/dir	//host/share/dir	a run of slashes after a UNC prefix is one
+C:\Program Files\x	/c/Program Files/x	a space inside a name is kept
+a\b	a/b	a backslash is always a separator, even in a relative name
+../x	../x	a relative path is not made absolute
+C:Users\x	C:Users/x	NOT handled: drive-relative (needs the process's current directory on that drive); only the separator changes
+\\?\C:\x	//?/C:/x	NOT handled: a device path is not equated with C:\x
+C:\a\..\b	/c/a/../b	NOT handled: .. is never resolved (a string cannot know a symlink)
+C:\a\.\b	/c/a/./b	NOT handled: a . segment is left as it is
+C:\PROGRA~1\x	/c/PROGRA~1/x	NOT handled: an 8.3 short name is not expanded
+C:\x.	/c/x.	NOT handled: Windows strips trailing dots and spaces, the key does not
+/var/folders/x	/var/folders/x	NOT handled: macOS /var is a link to /private/var (the identity step handles it, not the key)
+~/p	~/p	a tilde is not expanded

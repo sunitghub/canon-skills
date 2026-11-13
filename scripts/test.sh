@@ -94,6 +94,7 @@ tests=(
   "$ROOT/tests/cockpit-nongit-wording.sh"
   "$ROOT/tests/cockpit-launch-lib.sh"
   "$ROOT/tests/no-python-windows-paths.sh"
+  "$ROOT/tests/path-forms.sh"
   "$ROOT/tests/git-precommit-chain.sh"
   "$ROOT/tests/hooks-lib-settings.sh"
   "$ROOT/tests/git-precommit-hook.sh"

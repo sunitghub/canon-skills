@@ -1864,12 +1864,12 @@ cmd_token_spend() {
       BEGIN { n = split(ENVIRON["TS_PATHS"], P, "\n"); for (i = 1; i <= n; i++) if (P[i] != "") OK[pkey(P[i])] = 1 }
       function fv(name,   m) { if (!match($0, "\"" name "\":\"?[^\",}]*")) return 0; m = substr($0, RSTART, RLENGTH); m = substr(m, index(m, ":") + 1); gsub(/"/, "", m); return m + 0 }
       /"kind":"(sprint\.started|gate\.started|sprint\.completed|sprint\.cost)"/ {
-        pr = pkey(field("project")); if (!(pr in OK)) next
+        rawp = field("project"); pr = pkey(rawp); if (!(pr in OK)) next
         t = field("ticket"); k = field("kind"); ts = substr(field("ts"), 1, 19); key = t SUBSEP pr
         if (k == "sprint.cost") { print "C\t" t "\t" pr "\t" fv("planning") "\t" fv("implementation") "\t" fv("gates") "\t" fv("cache_read"); next }
         if (k == "sprint.started") { if (!(key in S)) { S[key] = ts; G[key] = "" } }
         else if (k == "gate.started") { if ((key in S) && G[key] == "") G[key] = ts }
-        else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts; delete S[key] }
+        else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts "\t" rawp; delete S[key] }
       }')"
   costs="$(printf '%s\n' "$windows" | awk -F'\t' '$1 == "C"')"; windows="$(printf '%s\n' "$windows" | awk -F'\t' '$1 != "C" && NF')"
   [[ -n "$windows" ]] || { [[ -n "$rec" ]] || echo "${notr:-No completed sprints in $evdir for $root.}"; return 0; }
@@ -1902,8 +1902,8 @@ cmd_token_spend() {
     }
     function clean(x) { gsub(/[\001-\037\177]/, "?", x); return length(x) > 120 ? substr(x, 1, 120) "..." : x }
     function h(v) { return v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : sprintf("%d", v) }
-    BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np--; for (i = 1; i <= np; i++) P[i] = pkey(P[i]) }
-    $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; next }
+    BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np--; for (i = 1; i <= np; i++) { PRAW[i] = P[i]; P[i] = pkey(P[i]) } }
+    $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; WR[nw] = $7; next }
     $1 == "C" { CK[$2 SUBSEP $3] = 1; CP[$2 SUBSEP $3] = $4; CI[$2 SUBSEP $3] = $5; CG[$2 SUBSEP $3] = $6; CC[$2 SUBSEP $3] = $7; next }
     $1 == "A" { AP[$2] = $3; TI[$2] = ($4 ~ /^high/ ? "high-risk" : $4); next }
     $1 == "M" { MT[$2] = jf($3, "agentType"); MD[$2] = jf($3, "description"); next }
@@ -1915,7 +1915,7 @@ cmd_token_spend() {
       u = index(j, "\"usage\":{"); if (!u) next
       SEEN[id] = 1; u = substr(j, u)
       ts = substr(jf(j, "timestamp"), 1, 19); cw = pkey(jf(j, "cwd")); pr = winpath(cw)
-      nread++; if (!(cw in CWSEEN) && ncw < 3) { CWSEEN[cw] = 1; CWL[++ncw] = cw }
+      nread++; if (!(cw in CWSEEN) && ncw < 3) { CWSEEN[cw] = 1; CWL[++ncw] = cw; CWR[ncw] = jf(j, "cwd") }
       if (pr != "" && (!(pr in FIRST) || ts < FIRST[pr])) FIRST[pr] = ts
       gate = (MT[f] == "canon-reviewer" || MT[f] == "canon-evaluator")
       hit = 0
@@ -1971,7 +1971,13 @@ cmd_token_spend() {
         # a cwd comes from a transcript file: control bytes become ? and each folder is cut at 120 characters
         if (nread > 0) { cl = ""; for (i = 1; i <= ncw; i++) cl = cl (i > 1 ? ", " : "") clean(CWL[i])
           pl = ""; np2 = 0; for (w = 1; w <= nw; w++) if (!(WP[w] in PSEEN) && np2 < 3) { PSEEN[WP[w]] = 1; pl = pl (np2++ > 0 ? ", " : "") clean(WP[w]) }
-          print "  read " nread " turns in " cl "; the sprints ran in " pl }
+          print "  read " nread " turns in " cl "; the sprints ran in " pl
+          # t-141a: the keys above can look equal while a source is mis-spelled; the raw spelling of each source (a transcript cwd, an event project, the path
+          # list from git) is printed beside them, cleaned the same way, so a spelling bug in ONE source names itself
+          rl = ""; for (i = 1; i <= ncw; i++) rl = rl (i > 1 ? ", " : "") clean(CWR[i])
+          el = ""; np2 = 0; for (w = 1; w <= nw; w++) if (!(WR[w] in ESEEN) && np2 < 3) { ESEEN[WR[w]] = 1; el = el (np2++ > 0 ? ", " : "") clean(WR[w]) }
+          gl = ""; for (i = 1; i <= np && i <= 3; i++) gl = gl (i > 1 ? ", " : "") clean(PRAW[i])
+          print "  raw spellings: cwd " rl "; event project " el "; path list " gl }
         exit }
       print "Token spend per closed sprint (fresh input + output; cache reads apart), from Claude Code transcripts:"
       printf "%-8s %-10s %10s %15s %10s %11s\n", "ticket", "tier", "planning", "implementation", "gates", "cache-read"
