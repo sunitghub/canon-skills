@@ -419,14 +419,18 @@ func (s *server) guard(next http.HandlerFunc) http.HandlerFunc {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}
-		// t-dfa1: a no-cors GET from another site sends no Origin; the browser's own mark still says cross-site.
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
+		// t-dfa1: a no-cors GET from another site sends no Origin; the browser's own mark still says cross-site. Not the
+		// preview path: its page is a sandboxed iframe (no same-origin), so its own scripts and images are cross-site to
+		// the browser, and the unguessable previewToken in the path is that route's gate (t-b19b).
+		if r.Header.Get("Sec-Fetch-Site") == "cross-site" && !previewPathRe.MatchString(r.URL.Path) {
 			http.Error(w, "forbidden: cross-site", http.StatusForbidden)
 			return
 		}
 		next(w, r)
 	}
 }
+
+var previewPathRe = regexp.MustCompile(`^/session/[^/]+/preview/`)
 
 func hostIsLoopback(host string) bool {
 	h := host

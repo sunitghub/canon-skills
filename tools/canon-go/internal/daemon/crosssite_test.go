@@ -3,6 +3,7 @@ package daemon
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -19,6 +20,14 @@ func TestCrossSiteRefused(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		return rec.Code
+	}
+	// The sandboxed preview iframe's own subresources are cross-site to the browser; the path's token is their gate.
+	req := httptest.NewRequest("GET", "http://127.0.0.1:8455/session/abcd/preview/tok/app.js", nil)
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), "cross-site") {
+		t.Errorf("a preview subresource was refused by the cross-site check: %d %s", rec.Code, rec.Body.String())
 	}
 	for _, p := range []string{"/sessions", "/changes"} {
 		if c := get(p, "cross-site"); c != http.StatusForbidden {
