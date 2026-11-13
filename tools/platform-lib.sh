@@ -213,7 +213,6 @@ canon_awk_pkey='function pkey(p,   unc, lead) {
   gsub(/\\+/, "/", p)
   if (unc) p = "/" p
   lead = (p ~ /^\/\/[^\/]/)   # a UNC prefix keeps its two slashes; every other run of slashes is one (Windows collapses them too)
-  if (lead) p = substr(p, 2)
   gsub(/\/+/, "/", p)
   if (lead) p = "/" p
   if (p ~ /^[A-Za-z]:(\/|$)/) p = "/" tolower(substr(p, 1, 1)) substr(p, 3)

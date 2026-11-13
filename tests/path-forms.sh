@@ -85,6 +85,7 @@ case "$*" in
     printf 'worktree %s\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/main\n\n' "$SHIM_ROOT"
     printf 'worktree C:/Users/x/wt\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/feat\n\n'
     printf 'worktree %s\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/esc\n\n' "$SHIM_ESCWT"
+    printf 'worktree C:/Users/x/w4\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/w4\n\n'   # a fourth: the path list shows at most three
     exit 0 ;;
 esac
 exec "$REAL_GIT" "$@"
@@ -92,7 +93,9 @@ SH
 chmod +x "$shim/git"
 ev='C:\\Users\\x\\wt'   # as a JSON string holds C:\Users\x\wt
 { printf '{"schema":1,"ts":"2026-10-02T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-wtsp"}}\n' "$ev"
-  printf '{"schema":1,"ts":"2026-10-02T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-wtsp"}}\n' "$ev"; } > "$chome/events/2026-10-02.jsonl"
+  printf '{"schema":1,"ts":"2026-10-02T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-wtsp"}}\n' "$ev"
+  printf '{"schema":1,"ts":"2026-10-02T15:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-wtdup"}}\n' "$ev"   # a second sprint in the SAME folder
+  printf '{"schema":1,"ts":"2026-10-02T15:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-wtdup"}}\n' "$ev"; } > "$chome/events/2026-10-02.jsonl"
 turn() { printf '{"parentUuid":null,"isSidechain":false,"type":"assistant","message":{"model":"claude-sonnet-5-5","id":"%s","type":"message","role":"assistant","content":[{"type":"text","text":"x"}],"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":20}},"timestamp":"2026-10-02T%s.000Z","cwd":"%s"}\n' "$1" "$2" "$3"; }
 tdir="$cfg/projects/C--Users-x-wt"; mkdir -p "$tdir"   # Claude Code names the folder after the native path: every non-alphanumeric byte becomes -
 
@@ -102,19 +105,21 @@ out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wtsp 2>
 [[ -n "$(printf '%s\n' "$out" | awk '$1 == "t-wtsp"')" ]] || fail "path-forms: no t-wtsp row: $out"
 
 # When nothing matches, the message prints each source's raw spelling beside the keys, so a spelling bug in ONE source names itself.
-turn msg_wt2 14:11:00 '/c/Users/x/zzz' > "$tdir/w.jsonl"
+{ turn msg_wt2 14:11:00 '/c/Users/x/zzz'; turn msg_wt3 14:12:00 '/c/Users/x/yyy'; } > "$tdir/w.jsonl"
 out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wtsp 2>&1)"
 assert_contains "$out" "No transcript turns inside these sprints"
-assert_contains "$out" 'raw spellings: cwd /c/Users/x/zzz; matched event project C:\\Users\\x\\wt; path list '
+assert_contains "$out" 'raw spellings: cwd /c/Users/x/zzz, /c/Users/x/yyy; matched event project C:\\Users\\x\\wt; path list '   # two cwds joined, two sprints in one folder listed once
 assert_contains "$out" "C:/Users/x/wt"
 
 # Every raw spelling on that line is cleaned: a control byte in a kept event project or in the path list reaches the terminal as ?.
-evesc="C:\\Users\\x\\esc"$'\033'"[2Jdir"
+evesc='C:\\Users\\x\\esc'$'\033''[2Jdir'   # JSON-escaped backslashes, as the first event project
 { printf '{"schema":1,"ts":"2026-10-03T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-wesc"}}\n' "$evesc"
   printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-wesc"}}\n' "$evesc"; } > "$chome/events/2026-10-03.jsonl"
 out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wesc 2>&1)"
 assert_contains "$out" "No transcript turns inside these sprints"
 [[ "$out" != *$'\033'* ]] || fail "path-forms: a control byte from an event project or the path list reached the terminal: $(printf '%s' "$out" | tr '\033' '#')"
-assert_contains "$out" 'esc?[2Jdir'
+assert_contains "$out" 'matched event project C:\\Users\\x\\wt, C:\\Users\\x\\esc?[2Jdir; path list '   # the folder once, then the cleaned one
+assert_contains "$out" ', C:/Users/x/wt, C:/Users/x/esc?[2Jdir'               # the path list, joined and cleaned
+[[ "$out" != *"C:/Users/x/w4"* ]] || fail "path-forms: the raw path list shows more than three entries: $out"
 
 printf 'path-forms: ok\n'
