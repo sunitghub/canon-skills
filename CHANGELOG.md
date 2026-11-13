@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.14] - 2026-11-13
+
+- Changed: the four tiles at the top of the Cockpit's Admin page (Registered projects, Running agents, Needs you, Active projects) are about a third shorter (58px instead of 85px): less padding, a 20px number and a tighter label. They keep their colours and stay on one row. Board only; no daemon restart needed.
+
 ## [0.55.13] - 2026-11-13
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version. Update both together: a `canon-go` older than this release refuses a `sprint.cost` event that carries the new fields, so the cost record for that close would be lost without a message.
