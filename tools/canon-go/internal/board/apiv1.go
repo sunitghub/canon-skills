@@ -66,8 +66,8 @@ func v1Send(w http.ResponseWriter, v map[string]any) {
 	sendJSON(w, v)
 }
 
-// handleAPIv1 serves /api/v1/*. handle() has already passed the Host check. OPTIONS answers 204 with Allow and nothing else:
-// no Access-Control-Allow-* header on any response, errors included.
+// handleAPIv1 serves /api/v1/*. handle() has already passed the Host check and refused a foreign Origin or a cross-site request
+// (t-dfa1). OPTIONS answers 204 with Allow and nothing else: no Access-Control-Allow-* header on any response, errors included.
 func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Allow", "GET, OPTIONS")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

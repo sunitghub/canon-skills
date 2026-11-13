@@ -113,7 +113,8 @@ for route in sessions sessions/t-aaaa tickets tickets/t-aaaa sprint/t-aaaa event
   assert_eq "403" "$(code -H 'Host: evil.example' "$B/$route")"
   for m in POST PUT DELETE; do assert_eq "405" "$(code -X "$m" "$B/$route")"; done
 done
-assert_eq "204" "$(code -X OPTIONS -H 'Origin: http://evil.example' -H 'Access-Control-Request-Method: GET' "$B/tickets")"
+assert_eq "403" "$(code -X OPTIONS -H 'Origin: http://evil.example' -H 'Access-Control-Request-Method: GET' "$B/tickets")"   # t-dfa1: a foreign Origin is refused before the route, preflight included
+assert_eq "204" "$(code -X OPTIONS "$B/tickets")"
 for m in OPTIONS POST; do   # a GET of the stream would stream: only its refusals are checked here
   hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/events/stream")"
   if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /events/stream sent an Access-Control header"; fi
