@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-12-2026 18:17
+learnings-sweep last run: 11-12-2026 20:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-51c6](.tickets/t-51c6/learnings.md) | A gate-reduction check must decide its own scope from what a change cannot edit: "is this canon's checkout" read from the working tree let a deleted `scripts/integrity-list.sh` switch the gate-file refusal off, and a hand-rolled tier grep missed spellings the close's parser accepts: read the base (`git show`) and reuse the owner's parser, then probe delete, rename and edit-the-list-too. | UNPROMOTED |
 | 2026-11-13 | [t-aa24](.tickets/t-aa24/learnings.md) | A check that re-implements a parse or a freshness rule another tool owns drifts at once (HANDOFF edits made the record stale while a log stayed fresh; `## Criteria ` and `*` bullets were missed): ask the owner for the rule (`evidence.sh neutral`) or reuse its function, and run the owner's accepted forms through the new reader in the test. | UNPROMOTED |
 | 2026-11-12 | [t-154b](.tickets/t-154b/learnings.md) | When a reviewer's fix changes what the code does, amend the ticket's acceptance criteria in the same step: the evaluator grades the criteria as written, so correct code failed on spec drift and cost a second evaluator run (6.7 minutes, 59k tokens). Also: an existing test is the cheapest probe for a case you did not think of (it showed that a ticketless event exists). | UNPROMOTED |
 | 2026-11-12 | [t-42ed](.tickets/t-42ed/learnings.md) | Editing a line that ends `|| fail "..."` by appending a trailing comment turns the `fail` into part of the comment, and under bash 3.2 a false `[[ ]]` does not trip `set -e`: the assertion can never fail and nothing says so. After any edit to an assertion line, revert-prove it (move the bound until it fails); and a loosened bound needs a measured number, not slack. | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-12-2026 18:17
 | 2026-11-04 | [t-43a7](.tickets/t-43a7/learnings.md) | One prompt text written for one repo layout (`.tickets/` ignored) shipped to both: when text tells an agent what to do about a layout, branch on the same check the tool uses (one helper) and test both layouts; the old fixture silently ran the other layout, so check which one a fixture really is before trusting its assertions. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-04 | [t-c91a](.tickets/t-c91a/learnings.md) | A fixture that performs a step in the same checkout the command later reads (t-2906's tracked-`.tickets/` case closed the ticket in main) hides the layout it was written for: build the fixture through the real flow (close only in the worktree) and add a second layout, or the gap ships and a Windows test finds it. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-04 | [t-fe82](.tickets/t-fe82/learnings.md) | Removing a field also removes what it implicitly did (a saved preference kept a worktree row out of the "N other worktrees" fold): grep specs for the behaviour, not just the field name, and run the full board spec once, since a focused `-g` missed the one test that clicked the now-folded row. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-04 | [t-0a80](.tickets/t-0a80/learnings.md) | When a change alters text a neighbouring test compares (a count capped at "99+"), grep the spec for every reader of that text before the focused run, and put the neighbours in the `--grep`: the focused runs passed and the 35-minute full spec found the old test line. | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 <!-- canon:learnings:END -->
