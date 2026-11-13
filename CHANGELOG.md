@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.11] - 2026-11-13
+
+- Fixed: on a project with Git off, pressing + sprint, then Turn on, then Register now shows the spinner and "Adding sprint…" on the + sprint button until it finishes (the card was rebuilt after Turn on, so the spinner landed on a button that no longer existed). The Git icon of a project with Git off is now greyed, and lights up on hover. Board only; no daemon restart needed.
+
 ## [0.55.10] - 2026-11-13
 
 - Added: Factory > Pipeline draws the Sprint progress card beside "Preview a ticket": for a Normal, Lite, Manual or Manual + Lite ticket it lists every step, with skipped rows struck through (`skipped · Lite`, `skipped · Manual`, `skipped · Lite + Manual`), Your test as `waiting for your test`, the Evaluator as `read-only audit` (or `Haiku` on Lite), a node the project switched off as `off in this project`, and on Manual the close line that your sign-off reads your record back. It sits to the right of the list on a wide page (sticky) and under the chips on a narrow one, and sends nothing. One function, `progressCardHtml`, draws it, so a ticket's live card (t-5ef8) can reuse it. Board JS and CSS only: no daemon release (t-2755).
