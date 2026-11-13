@@ -21367,6 +21367,80 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     expect(b.log.filter(c => c[0] === 'POST')).toHaveLength(0);
   });
 
+  // t-2755: the Sprint progress card beside the list. Prod path: a person opens Factory > Pipeline, picks a kind of ticket and reads its close path;
+  // the page draws it from GET /api/pipeline's nodes (progressCardHtml) and sends nothing.
+  test('the Sprint progress card follows Preview a ticket: skipped, waiting, read-only, Haiku and the sign-off line per kind (t-2755)', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    const card = page.locator('#fac-pipe-cardprev'), row = id => card.locator(`[data-spc-row="${id}"]`), note = id => row(id).locator('.spc-note');
+    const gets = b.log.length;
+    // Normal: every node but the Manual-only one, nothing skipped or waiting
+    await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Normal ticket');
+    await expect(card.locator('.spc-row')).toHaveCount(14);
+    await expect(row('your-test')).toHaveCount(0);
+    await expect(card.locator('.spc-row.gone')).toHaveCount(0);
+    await expect(card.locator('.spc-line')).toHaveCount(0);
+    // Lite: the wrapup gates, skill-eval, break-it, Reviewer, mutation-test skipped; the Evaluator runs on Haiku
+    await page.locator('#fac-pipe-prev [data-pl-prev="lite"]').click();
+    await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Lite ticket');
+    for (const id of ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test']) { await expect(note(id)).toHaveText('skipped \u00b7 Lite'); await expect(row(id)).toHaveClass(/gone/); }
+    await expect(note('eval')).toHaveText('Haiku');
+    await expect(row('security-review')).not.toHaveClass(/gone/);
+    await expect(row('your-test')).toHaveCount(0);
+    // Manual: Your test waits, Reviewer and mutation-test are skipped, the Evaluator is a read-only audit, and Close says what the yes is
+    await page.locator('#fac-pipe-prev [data-pl-prev="manual"]').click();
+    await expect(card.locator('.spc-row')).toHaveCount(15);
+    await expect(note('your-test')).toHaveText('waiting for your test');
+    await expect(note('reviewer')).toHaveText('skipped \u00b7 Manual');
+    await expect(note('eval')).toHaveText('read-only audit');
+    await expect(row('code-reviewer')).not.toHaveClass(/gone/);
+    await expect(row('close').locator('.spc-line')).toHaveText('Your sign-off closes: the question reads your record back.');
+    // Manual + Lite: the screenshot's card
+    await page.locator('#fac-pipe-prev [data-pl-prev="both"]').click();
+    await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Manual + Lite ticket');
+    await expect(note('reviewer')).toHaveText('skipped \u00b7 Lite + Manual');
+    await expect(note('code-simplifier')).toHaveText('skipped \u00b7 Lite');
+    await expect(note('eval')).toHaveText('read-only audit');
+    await expect(note('your-test')).toHaveText('waiting for your test');
+    // display only: choosing a kind sent no request
+    expect(b.log.length).toBe(gets);
+    expect(b.log.filter(c => c[0] === 'POST')).toHaveLength(0);
+  });
+
+  test('the card shows a node this project switched off, in every kind, and escapes a node id (t-2755)', async ({ page }) => {
+    const b = await board(page);
+    (await b.of('proj-a')).off.add('doc-audit');
+    await open(page);
+    const card = page.locator('#fac-pipe-cardprev'), row = id => card.locator(`[data-spc-row="${id}"]`);
+    for (const k of ['normal', 'lite', 'manual', 'both']) {
+      await page.locator(`#fac-pipe-prev [data-pl-prev="${k}"]`).click();
+      await expect(row('doc-audit').locator('.spc-note')).toHaveText('off in this project');
+      await expect(row('doc-audit')).toHaveClass(/gone/);
+    }
+    // a node id holding markup is text, not an element
+    await page.route('**/api/pipeline**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, exists: false, text: '', can_reset: false, changed: false,
+      nodes: [{ id: '<img src=x onerror=window.__spc=1>', kind: 'gate', order: 1, on: true, locked: false, group: '', when: '', prompt: '', reason: '' }] }) }));
+    await page.locator('#fac-pipe-project').selectOption('proj-b');
+    await expect(card.locator('.spc-row')).toHaveCount(1);
+    await expect(card.locator('img')).toHaveCount(0);
+    await expect(card.locator('.spc-n')).toContainText('<img src=x');
+    expect(await page.evaluate(() => window.__spc)).toBeUndefined();
+  });
+
+  test('the card sits beside the list on a wide page (sticky) and under the chips on a narrow one (t-2755)', async ({ page }) => {
+    await board(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await open(page);
+    const rows = page.locator('#fac-pipe-rows'), card = page.locator('#fac-pipe-cardprev');
+    const wide = { r: await rows.boundingBox(), c: await card.boundingBox() };
+    expect(wide.c.x).toBeGreaterThan(wide.r.x + wide.r.width - 1);
+    await expect(card).toHaveCSS('position', 'sticky');
+    await page.setViewportSize({ width: 500, height: 900 });
+    const narrow = { r: await rows.boundingBox(), c: await card.boundingBox() };
+    expect(narrow.c.y).toBeGreaterThanOrEqual(narrow.r.y + narrow.r.height - 1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
   test('lists the 15 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
     const b = await board(page);
     await open(page);

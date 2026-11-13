@@ -70,6 +70,23 @@
   .pl-row.skp,.pl-row.idle{opacity:.6}
   .pl-sk{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;border:1px solid var(--amber);color:var(--amber);border-radius:999px;padding:0 7px;vertical-align:1px}
   .pl-sk.mn{border-color:var(--accent);color:var(--accent)}
+  /* t-2755: the Sprint progress card beside the list: a sticky second column on a wide page, under the chips on a narrow one */
+  .pl-split{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+  .spc{border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:var(--bg-subtle, var(--bg));align-self:start}
+  .spc-head{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px}
+  .spc-rail{list-style:none;margin:0;padding:0 0 0 4px;border-left:1px solid var(--border-muted)}
+  .spc-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:5px 0 5px 14px;font-size:13px}
+  .spc-dot{position:absolute;left:-5px;top:11px;width:9px;height:9px;border-radius:50%;border:1px solid var(--border);background:var(--bg)}
+  .spc-n{color:var(--text)}
+  .spc-row.gone .spc-n{text-decoration:line-through;color:var(--text-muted)}
+  .spc-k{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:0 6px}
+  .spc-k.you{border-color:var(--amber);color:var(--amber)}
+  .spc-k.agent{border-color:var(--accent);color:var(--accent)}
+  .spc-note{margin-left:auto;font-size:11px;font-weight:600;color:var(--text-muted)}
+  .spc-note.skip,.spc-note.off{color:var(--amber)}
+  .spc-note.wait,.spc-note.ro{color:var(--accent)}
+  .spc-line{flex-basis:100%;font-size:11.5px;color:var(--text-muted)}
+  @media (min-width:1100px){.pl-split{grid-template-columns:minmax(0,1fr) 300px}.spc{position:sticky;top:12px}}
   .pl-prev{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:10px 0 6px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg)}
   .pl-prev-k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
   .pl-prev-seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}

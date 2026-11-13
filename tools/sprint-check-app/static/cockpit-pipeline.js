@@ -5,26 +5,17 @@
 import { esc, escAttr, toast } from './cockpit-core.js';
 import { getProjects } from './cockpit-projects.js';
 import { showView } from './cockpit-views.js';
+import { TAG, MODES, label, progressCardHtml, skippedBy } from './sprint-progress-card.js';
 
-const LABEL = { start: 'Start', plan: 'Plan', 'approve-plan': 'Approve plan', build: 'Build', 'your-test': 'Your test', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
-const TAG = { step: 'Step', gate: 'Gate', agent: 'Agent', you: 'You' };
 const INLINE = new Set(['code-simplifier', 'code-reviewer', 'security-review', 'doc-audit']);   // run in your session, on its model
 const FILE = 'canon-config/pipeline.yaml';
 let pipePid = '', pipeData = null, pipeBusy = false, pipeGen = 0, focusAfter = '';
 // t-51c6: "Preview a ticket": what a ticket's Lite or Manual option skips, read from each node's skip_on / only (pipeline.yaml, the one list).
 // Display only: nothing here is saved or sent, and a project-level switch-off keeps its own wording.
 let pipePrev = 'normal';
-const PREVIEWS = [['normal', 'Normal'], ['lite', 'Lite'], ['manual', 'Manual'], ['both', 'Manual + Lite']];
-const prevLite = () => pipePrev === 'lite' || pipePrev === 'both';
+const PREVIEWS = MODES;
 const prevManual = () => pipePrev === 'manual' || pipePrev === 'both';
-// the options of the previewed ticket that skip this node: '', 'Lite', 'Manual' or 'Lite + Manual'
-function skippedBy(n) {
-  const on = (n.skip_on || '').split(',');
-  const hit = [prevLite() && on.includes('lite') ? 'Lite' : '', prevManual() && on.includes('manual') ? 'Manual' : ''].filter(Boolean);
-  return hit.join(' + ');
-}
 
-const label = id => LABEL[id] || id;
 const $ = id => document.getElementById(id);
 
 // the dropdown follows the Factory page's project (the GitHub tab's select is the other half; both hold the same value)
@@ -79,7 +70,7 @@ function rowHtml(n, group) {
     ? `<span class="pl-lock" tabindex="0" title="${escAttr(n.reason)}" aria-label="${escAttr(label(n.id))} is locked: ${escAttr(n.reason)}">locked &middot; why</span>`
     : `<button type="button" class="pl-sw" role="switch" data-pl-tg="${escAttr(n.id)}" aria-checked="${n.on}" aria-label="${escAttr(label(n.id))} runs"></button>`;
   const why = n.locked ? n.reason : (n.when ? 'Runs only when: ' + n.when : '');
-  const sb = skippedBy(n), idle = n.only === 'manual' && !prevManual(), ro = n.id === 'eval' && prevManual();
+  const sb = skippedBy(n, pipePrev), idle = n.only === 'manual' && !prevManual(), ro = n.id === 'eval' && prevManual();
   const chips = (sb ? `<span class="pl-sk${sb === 'Manual' ? ' mn' : ''}">skipped &middot; ${esc(sb)}</span>` : '')
     + (idle ? '<span class="pl-sk mn">Manual tickets only</span>' : '')
     + (ro ? '<span class="pl-sk mn">read-only audit &middot; Manual</span>' : '');
@@ -106,6 +97,7 @@ function render(d) {
   src.innerHTML = 'Using: ' + (d.exists ? `<b>${FILE}</b> (${d.changed ? 'your changes' : 'canon\'s default, no changes'})` : '<b>canon\'s default</b> (no project file)');
   const group = d.nodes.filter(n => n.group === 'wrapup').map(n => n.id);
   rows.innerHTML = d.nodes.map(n => rowHtml(n, group)).join('');
+  $('fac-pipe-cardprev').innerHTML = progressCardHtml(d.nodes, pipePrev);   // t-2755: the same nodes, drawn as a ticket's Sprint progress card
   if (focusAfter) {
     const el = rows.querySelector(focusAfter);
     // an arrow that has reached the end is disabled now: keep focus in the row's other arrow, or the row itself
