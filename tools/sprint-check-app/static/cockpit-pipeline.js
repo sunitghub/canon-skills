@@ -13,7 +13,6 @@ let pipePid = '', pipeData = null, pipeBusy = false, pipeGen = 0, focusAfter = '
 // t-51c6: "Preview a ticket": what a ticket's Lite or Manual option skips, read from each node's skip_on / only (pipeline.yaml, the one list).
 // Display only: nothing here is saved or sent, and a project-level switch-off keeps its own wording.
 let pipePrev = 'normal';
-const PREVIEWS = MODES;
 const prevManual = () => pipePrev === 'manual' || pipePrev === 'both';
 
 const $ = id => document.getElementById(id);
@@ -55,6 +54,7 @@ export async function loadPipeline(force) {
 function renderEmpty() {
   pipeData = null;
   $('fac-pipe-rows').innerHTML = '';
+  $('fac-pipe-cardprev').innerHTML = '';   // t-2755: a card for a project that is gone must not stay
   $('fac-pipe-src').innerHTML = '';
   $('fac-pipe-reset').disabled = true;
   $('fac-pipe-yaml').textContent = '';
@@ -89,6 +89,7 @@ function render(d) {
   if (d.exists && !d.ok) reset.disabled = !d.can_reset;
   yaml.textContent = d.exists && d.text ? d.text : 'extends: canon-default\n# a change adds only what differs, for example:\n# off: [mutation-test]\n# wrapup-order: [doc-audit, code-reviewer, code-simplifier]\n';
   sum.textContent = d.exists ? 'The file in canon-config/' : 'The file a first change would write';
+  $('fac-pipe-cardprev').innerHTML = '';   // t-2755: cleared first, so an unreadable file never leaves the last project's card
   if (!d.ok) {
     src.innerHTML = d.exists ? `Using: <b>${FILE}</b> (not readable)` : '';
     rows.innerHTML = `<div class="pl-row pl-err"><span></span><div><span class="pl-n">${esc(d.error || 'The pipeline could not be read.')}</span><span class="pl-w">Fix or remove ${FILE}, or press Reset to rewrite it as canon's default.</span></div><span></span><span></span></div>`;
@@ -141,7 +142,7 @@ export function initPipeline() {
     $('fac-pipe-reset').addEventListener('click', () => send({ op: 'reset' }, "Reset: canon-config/pipeline.yaml now holds canon's default."));
     $('pipe-saved-ok').addEventListener('click', hideSaved);
     $('fac-pipe-prev').innerHTML = '<span class="pl-prev-k">Preview a ticket</span><span class="pl-prev-seg">'
-      + PREVIEWS.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')
+      + MODES.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')
       + '</span><span class="pl-prev-h">Lite and Manual are set per ticket (New Ticket, Options). They only skip optional gates: a gate this project switched off stays off, and locked rows always run. Nothing here saves the preview.</span>';
     $('fac-pipe-prev').addEventListener('click', e => {
       const b = e.target.closest('[data-pl-prev]'); if (!b) return;

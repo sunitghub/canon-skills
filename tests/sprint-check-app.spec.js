@@ -21427,7 +21427,18 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     expect(await page.evaluate(() => window.__spc)).toBeUndefined();
   });
 
-  test('the card sits beside the list on a wide page (sticky) and under the chips on a narrow one (t-2755)', async ({ page }) => {
+  test('a project whose pipeline cannot be read leaves no card, and the empty card takes no room (t-2755)', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    await expect(page.locator('#fac-pipe-cardprev .spc-row').first()).toBeVisible();
+    b.of('proj-b').bad = 'canon-config/pipeline.yaml is not valid';
+    await page.locator('#fac-pipe-project').selectOption('proj-b');
+    await expect(page.locator('#fac-pipe-rows .pl-err')).toBeVisible();
+    await expect(page.locator('#fac-pipe-cardprev')).toBeEmpty();
+    await expect(page.locator('#fac-pipe-cardprev')).toBeHidden();
+  });
+
+  test('the card sits beside the list on a wide page (sticky) and under the chips on a narrow one, and stays in view while the list scrolls (t-2755) @webkit', async ({ page }) => {
     await board(page);
     await page.setViewportSize({ width: 1400, height: 900 });
     await open(page);
@@ -21435,6 +21446,12 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     const wide = { r: await rows.boundingBox(), c: await card.boundingBox() };
     expect(wide.c.x).toBeGreaterThan(wide.r.x + wide.r.width - 1);
     await expect(card).toHaveCSS('position', 'sticky');
+    await page.setViewportSize({ width: 1400, height: 420 });
+    await page.mouse.move(300, 300);
+    await page.mouse.wheel(0, 700);
+    await page.waitForTimeout(200);
+    const box = await card.boundingBox();   // scrolled well past the card's first position: sticky holds it at the top of its scroller
+    expect(box.y).toBeGreaterThanOrEqual(-1); expect(box.y).toBeLessThan(420);
     await page.setViewportSize({ width: 500, height: 900 });
     const narrow = { r: await rows.boundingBox(), c: await card.boundingBox() };
     expect(narrow.c.y).toBeGreaterThanOrEqual(narrow.r.y + narrow.r.height - 1);
