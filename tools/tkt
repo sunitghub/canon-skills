@@ -453,6 +453,41 @@ cmd_demo() {
   printf "%s: demo=%s\n" "$id" "$value"
 }
 
+# t-51c6: tkt manual <id> [on|off] — the ticket's user-tested close: the gates re-test nothing, the user's recorded testing (sprint manual-qa)
+# is the evidence, and the user's yes at the close question is the sign-off. Lite's sibling (complete.md "Manual mode"); absent = false.
+cmd_manual() {
+  local id="${1:-}" value="${2:-}"
+  [[ -z "$id" ]] && { echo "Usage: tkt manual <id> [on|off]" >&2; exit 1; }
+
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+
+  if [[ -z "$value" ]]; then
+    local cur
+    cur="$(get_field "$file" manual)"
+    printf "%s: manual=%s\n" "$id" "${cur:-false}"
+    return 0
+  fi
+
+  case "$value" in
+    on|true)   value=true ;;
+    off|false) value=false ;;
+    *) echo "Error: value must be 'on' or 'off'" >&2; exit 1 ;;
+  esac
+
+  if [[ "$value" == "true" ]]; then
+    set_or_add_field "$file" manual true
+    if grep -qiE '^Tier:[[:space:]]*high-risk' "$(dirname "$file")/plan.md" 2>/dev/null; then
+      echo "warning: $id is a high-risk sprint: Manual mode is refused for it at the close (sprint check-evidence), which keeps the full gates." >&2
+    fi
+  else
+    remove_field "$file" manual
+  fi
+
+  printf "%s: manual=%s\n" "$id" "$value"
+}
+
 # t-37e8: tkt tags <id> [csv] — print a ticket's tags, or replace them (an empty csv clears them).
 cmd_tags() {
   local id="${1:-}"
@@ -605,15 +640,15 @@ cmd_show() {
   file="$(find_ticket "$query")"
 
   if [[ $json -eq 1 ]]; then
-    local body ov dm
+    local body ov dm mn
     body="$(ticket_body "$file")"
     body="${body#"${body%%[!$'\n']*}"}" # the blank line after the title is layout, not content
-    ov="$(get_field "$file" eval_override)"; dm="$(get_field "$file" demo)"
-    printf '{"id":%s,"status":%s,"type":%s,"priority":%s,"created":%s,"title":%s,"body":%s,"eval_override":%s,"eval_fail_count":%s,"demo":%s}\n' \
+    ov="$(get_field "$file" eval_override)"; dm="$(get_field "$file" demo)"; mn="$(get_field "$file" manual)"
+    printf '{"id":%s,"status":%s,"type":%s,"priority":%s,"created":%s,"title":%s,"body":%s,"eval_override":%s,"eval_fail_count":%s,"demo":%s,"manual":%s}\n' \
       "$(json_str "$(get_field "$file" id)")" "$(json_str "$(get_field "$file" status)")" "$(json_str "$(get_field "$file" type)")" \
       "$(json_num "$(get_field "$file" priority)" null)" "$(json_str "$(get_field "$file" created)")" "$(json_str "$(get_title "$file")")" \
       "$(json_str "$body")" "$([[ "$ov" == true ]] && echo true || echo false)" "$(json_num "$(get_field "$file" eval_fail_count)" 0)" \
-      "$([[ "$dm" == true ]] && echo true || echo false)"
+      "$([[ "$dm" == true ]] && echo true || echo false)" "$([[ "$mn" == true ]] && echo true || echo false)"
     return
   fi
 
@@ -1336,6 +1371,7 @@ cmd_send_issue() {
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
   local caps; caps="$(cap_headroom "$root" "$plan" tkt "$id" "$($dry || echo send)")"   # t-cc88: in # Working on this, which import-issue never writes back
 
+  [[ "$(get_field "$file" manual)" == true ]] && { echo "send-issue: $id is a Manual ticket (manual: true): a person cannot test in the cloud. Run it here, or 'tkt manual $id off' first." >&2; exit 1; }
   local lite; lite="$(get_field "$file" demo)"
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local
@@ -3704,12 +3740,17 @@ Commands:
                             (forced Haiku), skipping the advisory reviewer + rest
                             of wrapup. No arg prints the current state; off (default)
                             removes the line. Never drops below the evaluator.
+  manual <id> [on|off]      Mark ticket as user-tested: the gates re-test nothing, your
+                            recorded testing ('sprint manual-qa') is the evidence and
+                            your yes at the close is the sign-off. Evaluator stays,
+                            read-only. No arg prints the state; off (default) removes
+                            the line. Refused at the close for high-risk or gate-file work.
   current                   Show active ticket
   reopen <id>               Set status to open
   ls [--status=X] [--json]  List tickets (unfiltered by default); --json: array of
                             {id,status,type,priority,title}
   show <id> [--json]        Display ticket details; --json: one object {id,status,type,
-                            priority,created,title,body,eval_override,eval_fail_count,demo}
+                            priority,created,title,body,eval_override,eval_fail_count,demo,manual}
   why <file>                Show tickets whose commits touched a file
   learn <id> [--force]      Distill a closed sprint's summary.md deviations +
                             eval-report.md and review-notes.md findings into an UNPROMOTED candidate at
@@ -3814,6 +3855,7 @@ main() {
     ci)             cmd_ci "$@" ;;
     gate)           cmd_gate "$@" ;;
     demo)           cmd_demo "$@" ;;
+    manual)         cmd_manual "$@" ;;
     tags)           cmd_tags "$@" ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;

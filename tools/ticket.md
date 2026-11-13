@@ -27,6 +27,7 @@ tkt reopen <id>               # reopen
 tkt ci <id> [on|off]          # mark CI-eligible for headless grading
 tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
 tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
+tkt manual <id> [on|off]      # user-tested close: your sign-off (sprint manual-qa) replaces re-testing; evaluator read-only
 tkt tags <id> [csv]           # print or replace a ticket's tags (tkt create --tags a,b); the board finds them with tag:x
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
@@ -69,7 +70,7 @@ reconcile the whole repo.
 | Command | Output |
 |---|---|
 | `tkt ls [--status=X] --json` | array of `{"id","status","type","priority","title"}`; `priority` is a number (`null` if the ticket has none); `[]` when none match |
-| `tkt show <id> --json` | `{"id","status","type","priority","created","title","body","eval_override","eval_fail_count","demo"}`; `body` is the text below the title line without its leading blank line; as in text mode, every later line is kept, `# ` and `---` lines included; `eval_override` and `demo` are booleans, `eval_fail_count` a number, defaulting to `false`/`0` when the frontmatter line is absent |
+| `tkt show <id> --json` | `{"id","status","type","priority","created","title","body","eval_override","eval_fail_count","demo","manual"}`; `body` is the text below the title line without its leading blank line; as in text mode, every later line is kept, `# ` and `---` lines included; `eval_override` and `demo` are booleans, `eval_fail_count` a number, defaulting to `false`/`0` when the frontmatter line is absent |
 | `sprint status --json` | `{"active":true,"ticket":<tkt show --json>,"files":{"ticket.md":bool,"acceptance.md":bool,"plan.md":bool}}`; with no active sprint `{"active":false}` and exit 1 |
 
 Strings are JSON-escaped (`"`, `\`, and control characters as `\n`, `\t`, `\r`, `\b`, `\f` or `\u00XX`); UTF-8 passes through. `canon sessions --json` covers live sessions.

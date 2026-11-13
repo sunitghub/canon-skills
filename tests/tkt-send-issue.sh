@@ -191,6 +191,11 @@ assert_grep '^## .* — sent$' ".tickets/$id2/github.md"   # t-1dec: only a real
 assert_grep "^github: acme/app#57$" ".tickets/$id2/ticket.md"
 unset STUB_VIS
 
+# t-51c6: a Manual ticket is refused: a person cannot test in the cloud (nothing is sent, nothing written).
+idm="$("$TKT" create "Manual one" -t task -p 3)"; "$TKT" manual "$idm" on >/dev/null
+assert_contains "$(run_fail "$TKT" send-issue "$idm" --dry-run 2>&1)" "is a Manual ticket (manual: true): a person cannot test in the cloud"
+"$TKT" manual "$idm" off >/dev/null; "$TKT" send-issue "$idm" --dry-run >/dev/null
+
 # Missing acceptance, plan and research: "(none yet)", and a warning.
 id3="$("$TKT" create "Bare" -t task -p 3)"
 "$TKT" send-issue "$id3" --dry-run > "$stub/bare" 2> "$stub/bare.err"

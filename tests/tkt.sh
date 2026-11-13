@@ -140,6 +140,20 @@ assert_contains "$bad_demo_output" "must be 'on' or 'off'"
 demo_usage_output="$(run_fail "$TKT" demo)"
 assert_contains "$demo_usage_output" "Usage: tkt demo <id> [on|off]"
 
+# ── tkt manual (t-51c6): on sets manual: true, off removes it, no-arg prints, bad errors, JSON carries it, a high-risk plan warns ─
+man_id="$("$TKT" create "Manual mode ticket")"
+grep -q "^manual:" ".tickets/$man_id/ticket.md" && fail "expected no 'manual:' line on a fresh ticket" || true
+assert_contains "$("$TKT" manual "$man_id")" "$man_id: manual=false"
+assert_contains "$("$TKT" manual "$man_id" on)" "$man_id: manual=true"
+assert_grep "^manual: true$" ".tickets/$man_id/ticket.md"
+assert_contains "$("$TKT" manual "$man_id")" "$man_id: manual=true"
+printf '# Plan\n\n## Sign-off\nTier: high-risk | Risk: x\n' > ".tickets/$man_id/plan.md"
+assert_contains "$("$TKT" manual "$man_id" on 2>&1)" "high-risk sprint: Manual mode is refused"
+"$TKT" manual "$man_id" off >/dev/null
+grep -q "^manual:" ".tickets/$man_id/ticket.md" && fail "expected 'manual:' line removed after 'manual off'" || true
+assert_contains "$(run_fail "$TKT" manual "$man_id" bogus)" "must be 'on' or 'off'"
+assert_contains "$(run_fail "$TKT" manual)" "Usage: tkt manual <id> [on|off]"
+
 # ── tkt learn (t-0232): distill close artifacts into an UNPROMOTED candidate ──
 
 # 1. Deviations present → an UNPROMOTED candidate with the non-delivered rows + findings.
@@ -502,6 +516,11 @@ assert_json_eq() { # <expected> <js expr over j> <json>
   local actual; actual="$(printf '%s' "$3" | jq_node "$2")" || fail "output is not valid JSON: $3"
   assert_eq "$1" "$actual"
 }
+# t-51c6: the JSON carries manual next to demo
+assert_json_eq "false" 'String(j.manual)' "$("$TKT" show "$man_id" --json)"
+"$TKT" manual "$man_id" on >/dev/null
+assert_json_eq "true|false" '[j.manual,j.demo].join("|")' "$("$TKT" show "$man_id" --json)"
+"$TKT" manual "$man_id" off >/dev/null
 
 json_project="$(make_project)"
 (
