@@ -1955,11 +1955,11 @@ cmd_token_spend() {
           MT2[XM[x]] += XF[x] + XO[x] }
         tk = WT[w] SUBSEP w; ms = ""
         for (i = 1; i <= split(ml, ma, ","); i++) ms = ms (i > 1 ? "," : "") ma[i] ":" MT2[ma[i]]
-        # t-b6ad: the builder is the model with the most implementation (or build) tokens, gates and planning excluded; a model name
-        # that is not a plain id (it came from a transcript) is never chosen, so an odd one yields no builder rather than a guess.
+        # t-b6ad: the builder is the model with the most implementation (or build) tokens, gates and planning excluded. If that top model
+        # is not a plain id (it came from a transcript), there is no builder: never the runner-up, which would be a guess.
         bph = BUILD[w] ? "build" : "implementation"; bm = ""; bv = 0
-        for (i = 1; i <= split(ml, ma, ","); i++) { kk = w SUBSEP bph SUBSEP ma[i]; v = TF[kk] + TO[kk]
-          if (v > bv && ma[i] ~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ && length(ma[i]) <= 80) { bv = v; bm = ma[i] } }
+        for (i = 1; i <= split(ml, ma, ","); i++) { kk = w SUBSEP bph SUBSEP ma[i]; v = TF[kk] + TO[kk]; if (v > bv) { bv = v; bm = ma[i] } }
+        if (bm !~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/) bm = ""
         printf "planning=%d implementation=%d gates=%d cache_read=%d turns=%d gate_runs=%d models=%s%s\n", BUILD[w] ? 0 : PF[tk, "planning"], BUILD[w] ? PF[tk, "build"] : PF[tk, "implementation"], PF[tk, "gates"], PC[tk], TURNS[w], gr, ms, (bm != "" ? " builder=" bm : "")
         exit
       }
@@ -2036,7 +2036,7 @@ _record_cost() {
 # under the same project_root). The id and the builder reach awk through ENVIRON, never -v (which would process backslash escapes).
 _same_model_gates() {
   local id="$1" root="$2" builder="$3" log="$2/.claude/subagent-runs.jsonl"
-  [[ -n "$builder" && "$id" =~ ^[A-Za-z0-9_-]+$ && -f "$log" ]] || return 0
+  [[ -n "$builder" ]] || return 0
   RUNS_ID="$id" RUNS_BUILDER="$builder" awk '
     function val(key,   s) { if (!match($0, "\"" key "\":\"[^\"]*\"")) return ""; s = substr($0, RSTART + length(key) + 4, RLENGTH - length(key) - 5); return s }
     index($0, "\"ticket\":\"" ENVIRON["RUNS_ID"] "\"") {
@@ -2044,8 +2044,8 @@ _same_model_gates() {
       if (role == "reviewer" || role == "evaluator") M[role] = m
     }
     END { out = ""
-      if (M["reviewer"] != "" && M["reviewer"] == ENVIRON["RUNS_BUILDER"]) out = "reviewer"
-      if (M["evaluator"] != "" && M["evaluator"] == ENVIRON["RUNS_BUILDER"]) out = out (out == "" ? "" : ",") "evaluator"
+      if (M["reviewer"] == ENVIRON["RUNS_BUILDER"]) out = "reviewer"
+      if (M["evaluator"] == ENVIRON["RUNS_BUILDER"]) out = out (out == "" ? "" : ",") "evaluator"
       print out }' "$log" 2>/dev/null || true
 }
 _cost_h() { awk -v v="$1" 'BEGIN { print (v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : v) }'; }

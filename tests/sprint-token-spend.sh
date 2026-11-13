@@ -229,23 +229,30 @@ assert_contains "$out" "cost: "
 ln3="$(grep -h '"ticket":"t-bbbb"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
 assert_contains "$ln3" '"builder":"claude-sonnet-5-5"'
 [[ "$ln3" != *same_model* && "$out" != *"note:"* && "$out" != *$'\033'* ]] || fail "an alias or a control-byte row must name no gate and write nothing odd: $ln3 / $out"
-# a transcript model that is not a plain id is never the builder, even when it has the most tokens (three turns against one)
+# a transcript model that is not a plain id: when it is the TOP implementation model there is no builder at all (not the runner-up, which would be a
+# guess), and no gate is named even though the log has a row for this ticket on the runner-up's id (three evil turns against one sonnet turn)
 p4="$(make_project)"; r4="$(cd "$p4" && pwd -P)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}" "$bd" "$p4"' EXIT
-mkdir -p "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')"
-{ printf '{"schema":1,"ts":"2026-10-06T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-hhhh"}}\n' "$r4"
-  printf '{"schema":1,"ts":"2026-10-06T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-hhhh"}}\n' "$r4"; } > "$events/2026-10-06.jsonl"
-{ turn2 msg_h1 14:10:00 "$r4"; for n in 2 3 4; do turn2 "msg_h$n" "14:1$n:00" "$r4" | sed 's/claude-sonnet-5-5/claude-evil'$'\033''[2J/'; done; } \
-  | sed 's/2026-10-02/2026-10-06/' > "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')/h.jsonl"
-mkdir -p "$r4/.claude"   # both gates logged on the builder's model: one line names both
-{ printf '{"ts":"2026-10-06T14:20:00Z","agent_id":"r9","agent_type":"reviewer","ticket":"t-hhhh","model":"claude-sonnet-5-5"}\n'
-  printf '{"ts":"2026-10-06T14:21:00Z","agent_id":"e9","agent_type":"evaluator","ticket":"t-hhhh","model":"claude-sonnet-5-5"}\n'; } > "$r4/.claude/subagent-runs.jsonl"
+mkdir -p "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')" "$r4/.claude"
+sprint_events() { printf '{"schema":1,"ts":"2026-10-06T%s.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"%s"}}\n{"schema":1,"ts":"2026-10-06T%s.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"%s"}}\n' "$2" "$r4" "$1" "$3" "$r4" "$1"; }
+{ sprint_events t-hhhh 14:00:00 14:30:00; sprint_events t-kkkk 15:00:00 15:30:00; sprint_events t-jjjj 16:00:00 16:30:00; } > "$events/2026-10-06.jsonl"
+{ turn2 msg_h1 14:10:00 "$r4"; for n in 2 3 4; do turn2 "msg_h$n" "14:1$n:00" "$r4" | sed 's/claude-sonnet-5-5/claude-evil'$'\033''[2J/'; done
+  turn2 msg_k1 15:10:00 "$r4"; turn2 msg_j1 16:10:00 "$r4"; } | sed 's/2026-10-02/2026-10-06/' > "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')/h.jsonl"
+rl() { printf '{"ts":"2026-10-06T00:00:00Z","agent_id":"%s","agent_type":"%s","ticket":"%s","model":"claude-sonnet-5-5"}\n' "$1" "$2" "$3"; }
+{ rl h1 reviewer t-hhhh; rl k1 reviewer t-kkkk; rl k2 evaluator t-kkkk; rl j1 reviewer t-jjjj; } > "$r4/.claude/subagent-runs.jsonl"
+cost_of() { grep -h "\"ticket\":\"$1\"" "$events"/*.jsonl | grep '"kind":"sprint.cost"'; }
 out="$(cd "$p4" && recspend --ticket t-hhhh)"
-ln4="$(grep -h '"ticket":"t-hhhh"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
-assert_contains "$ln4" '"builder":"claude-sonnet-5-5"'
-[[ "$ln4" != *'"builder":"claude-evil'* ]] || fail "a hostile transcript model became the builder: $ln4"
-assert_contains "$ln4" '"same_model":"reviewer,evaluator"'
+[[ "$(cost_of t-hhhh)" != *'"builder"'* && "$(cost_of t-hhhh)" != *same_model* && "$out" != *"note:"* && "$out" != *$'\033'* ]] || fail "a hostile top model gave a builder, a gate, a note or a control byte: $(cost_of t-hhhh) / $out"
+# both gates logged on the builder's model: one line names both; only the reviewer: the singular reviewer line, not the evaluator
+out="$(cd "$p4" && recspend --ticket t-kkkk)"
+assert_contains "$(cost_of t-kkkk)" '"same_model":"reviewer,evaluator"'
 assert_contains "$out" "note: the reviewer and the evaluator ran on claude-sonnet-5-5, the model that built this change, so neither is independent of it (advisory, never a block)."
-[[ "$out" != *$'\033'* ]] || fail "a control byte from a transcript model reached the terminal: $out"
+out="$(cd "$p4" && recspend --ticket t-jjjj)"
+assert_contains "$(cost_of t-jjjj)" '"same_model":"reviewer"'
+assert_contains "$out" "note: the reviewer ran on claude-sonnet-5-5, the model that built this change, so it is not independent of it (advisory, never a block)."
+[[ "$out" != *evaluator* ]] || fail "only the reviewer's row matches: $out"
+# a ticket whose only turns are gates: its models have no implementation tokens, so there is no builder (a tie or zero must not pick one)
+out="$(recspend --ticket t-ffff)"
+[[ "$(cost_of t-ffff)" != *'"builder"'* ]] || fail "a gates-only ticket has no builder: $(cost_of t-ffff)"
 
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e
