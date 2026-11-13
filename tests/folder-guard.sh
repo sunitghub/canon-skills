@@ -162,7 +162,8 @@ grep -q 'Next: open a terminal in your project folder (for example %s/projects/d
 # install.ps1 has two endings: the bootstrap one (irm ... | iex, canon update: the first-run path) and the file one; both must say it
 # t-141a: the Projects page offers git init per project, so neither installer tells the user to run it first
 grep -qi 'git init' "$ROOT/install.sh" && fail "folder-guard: install.sh still tells the user to git init" || true
-grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -qi 'git init' && fail "folder-guard: install.ps1 still tells the user to git init" || true
+ps1_code="$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1")"   # a variable, not a pipe into grep -q: that reader stops early and can SIGPIPE its writer under pipefail
+grep -qi 'git init' <<<"$ps1_code" && fail "folder-guard: install.ps1 still tells the user to git init" || true
 [[ "$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -c 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo')" == 2 ]] || fail "folder-guard: install.ps1 must print the next step in both its bootstrap and its file ending"
 awk '/^[[:space:]]*#/{next} /^if [(][$]Bootstrap[)] [{]/{b=1; f=0} b&&/Next: open a terminal/{f=1} b&&/canon installed successfully/{ok=f} b&&/^  return/{b=0} END{exit !ok}' "$ROOT/install.ps1" || fail "folder-guard: the bootstrap ending of install.ps1 does not print the next step before it returns"
 
