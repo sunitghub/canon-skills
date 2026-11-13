@@ -1955,7 +1955,12 @@ cmd_token_spend() {
           MT2[XM[x]] += XF[x] + XO[x] }
         tk = WT[w] SUBSEP w; ms = ""
         for (i = 1; i <= split(ml, ma, ","); i++) ms = ms (i > 1 ? "," : "") ma[i] ":" MT2[ma[i]]
-        printf "planning=%d implementation=%d gates=%d cache_read=%d turns=%d gate_runs=%d models=%s\n", BUILD[w] ? 0 : PF[tk, "planning"], BUILD[w] ? PF[tk, "build"] : PF[tk, "implementation"], PF[tk, "gates"], PC[tk], TURNS[w], gr, ms
+        # t-b6ad: the builder is the model with the most implementation (or build) tokens, gates and planning excluded; a model name
+        # that is not a plain id (it came from a transcript) is never chosen, so an odd one yields no builder rather than a guess.
+        bph = BUILD[w] ? "build" : "implementation"; bm = ""; bv = 0
+        for (i = 1; i <= split(ml, ma, ","); i++) { kk = w SUBSEP bph SUBSEP ma[i]; v = TF[kk] + TO[kk]
+          if (v > bv && ma[i] ~ /^[A-Za-z0-9][A-Za-z0-9._-]*$/ && length(ma[i]) <= 80) { bv = v; bm = ma[i] } }
+        printf "planning=%d implementation=%d gates=%d cache_read=%d turns=%d gate_runs=%d models=%s%s\n", BUILD[w] ? 0 : PF[tk, "planning"], BUILD[w] ? PF[tk, "build"] : PF[tk, "implementation"], PF[tk, "gates"], PC[tk], TURNS[w], gr, ms, (bm != "" ? " builder=" bm : "")
         exit
       }
       if (shown == 0) { print (only == "" ? "No completed sprints." : "No completed sprint for " only "."); exit }
@@ -2000,20 +2005,44 @@ cmd_token_spend() {
 # _record_cost <id> <root> <line> — t-7e26: write the ticket's one sprint.cost event (numbers only, no transcript text) from token-spend's
 # machine line, and print the one-line summary. An empty line (no transcripts, no turns, already recorded) writes and prints nothing.
 _record_cost() {
-  local id="$1" root="$2" line="$3" kv f=() planning=0 impl=0 gates=0 runs=0 total pct
+  local id="$1" root="$2" line="$3" kv f=() planning=0 impl=0 gates=0 runs=0 total pct builder="" same=""
   [[ -n "$line" ]] || return 0
   for kv in $line; do
     case "$kv" in
       planning=*) planning="${kv#*=}" ;; implementation=*) impl="${kv#*=}" ;;
-      gates=*) gates="${kv#*=}" ;; gate_runs=*) runs="${kv#*=}" ;;
+      gates=*) gates="${kv#*=}" ;; gate_runs=*) runs="${kv#*=}" ;; builder=*) builder="${kv#*=}" ;;
     esac
     f+=("$kv")
   done
+  # t-b6ad: the gates (reviewer, evaluator) whose logged model is the builder's. Each role's LAST row for this ticket in the gate run log
+  # counts; a missing log, a missing row, or a model that is not a plain id (an alias, a control byte) is "unknown": no field, no note.
+  same="$(_same_model_gates "$id" "$root" "$builder")" || same=""
+  [[ -z "$same" ]] || f+=("same_model=$same")
   canon_event sprint.cost sprint "$root" "ticket=$id" "${f[@]}"
   total=$((planning + impl + gates)); [[ "$total" -gt 0 ]] || return 0
   pct=$((100 * gates / total))
   echo "cost: $(_cost_h "$total") tokens (gates $(_cost_h "$gates"), ${pct}%), $runs gate runs"
   [[ "$pct" -le 50 ]] || echo "  Most of this ticket's tokens went to the close gates, not the building. 'sprint token-spend --ticket $id' shows which."
+  if [[ -n "$same" ]]; then
+    echo "note: the ${same//,/ and } ran on $builder, the model that built this change, so it is not an independent model (advisory, never a block)."
+  fi
+}
+# _same_model_gates <id> <root> <builder> — t-b6ad: "reviewer", "evaluator" or "reviewer,evaluator" for the gates whose logged model equals
+# <builder> (already a plain id: an odd or alias model in a row can never equal it); nothing when the builder is unknown or there is no match. Reads .claude/subagent-runs.jsonl (the file subagent-log.sh writes,
+# under the same project_root). The id and the builder reach awk through ENVIRON, never -v (which would process backslash escapes).
+_same_model_gates() {
+  local id="$1" root="$2" builder="$3" log="$2/.claude/subagent-runs.jsonl"
+  [[ -n "$builder" && "$id" =~ ^[A-Za-z0-9_-]+$ && -f "$log" ]] || return 0
+  RUNS_ID="$id" RUNS_BUILDER="$builder" awk '
+    function val(key,   s) { if (!match($0, "\"" key "\":\"[^\"]*\"")) return ""; s = substr($0, RSTART + length(key) + 4, RLENGTH - length(key) - 5); return s }
+    index($0, "\"ticket\":\"" ENVIRON["RUNS_ID"] "\"") {
+      role = val("agent_type"); m = val("model")
+      if (role == "reviewer" || role == "evaluator") M[role] = m
+    }
+    END { out = ""
+      if (M["reviewer"] != "" && M["reviewer"] == ENVIRON["RUNS_BUILDER"]) out = "reviewer"
+      if (M["evaluator"] != "" && M["evaluator"] == ENVIRON["RUNS_BUILDER"]) out = out (out == "" ? "" : ",") "evaluator"
+      print out }' "$log" 2>/dev/null || true
 }
 _cost_h() { awk -v v="$1" 'BEGIN { print (v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : v) }'; }
 

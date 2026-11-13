@@ -184,6 +184,14 @@ use_fresh_board "$bd/bin"   # canon_event writes through the board binary under 
 recspend() { CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend "$@" --record; }   # the fixtures are dated October: a real clock would prune them as older than the retention
 cost_lines() { cat "$events"/*.jsonl 2>/dev/null | grep -c '"kind":"sprint.cost"' || true; }
 assert_eq 0 "$(cost_lines)"
+# t-b6ad: the gate run log subagent-log.sh writes. t-aaaa's builder is opus (100 implementation tokens against a sonnet implementer's 50).
+# The evaluator's LAST row is opus (its first was sonnet); the reviewer's last row is sonnet (its first was opus); a row for t-aaaab is another ticket.
+mkdir -p "$root/.claude"
+{ printf '{"ts":"2026-10-02T10:30:00Z","agent_id":"r0","agent_type":"reviewer","ticket":"t-aaaa","model":"claude-opus-5-5"}\n'
+  printf '{"ts":"2026-10-02T10:31:00Z","agent_id":"e0","agent_type":"evaluator","ticket":"t-aaaa","model":"claude-sonnet-5-5"}\n'
+  printf '{"ts":"2026-10-02T10:50:00Z","agent_id":"r1","agent_type":"reviewer","ticket":"t-aaaa","model":"claude-sonnet-5-5"}\n'
+  printf '{"ts":"2026-10-02T10:51:00Z","agent_id":"e1","agent_type":"evaluator","ticket":"t-aaaa","model":"claude-opus-5-5"}\n'
+  printf '{"ts":"2026-10-02T10:52:00Z","agent_id":"x1","agent_type":"reviewer","ticket":"t-aaaab","model":"claude-opus-5-5"}\n'; } > "$root/.claude/subagent-runs.jsonl"
 out="$(recspend --ticket t-aaaa)"
 assert_eq "1" "$(cost_lines)"
 ln="$(grep -h '"kind":"sprint.cost"' "$events"/*.jsonl)"
@@ -192,6 +200,10 @@ assert_contains "$ln" '"gates":"343"'; assert_contains "$ln" '"implementation":"
 assert_contains "$ln" '"gate_runs":"1"'; assert_contains "$ln" 'claude-sonnet-5-5:'
 [[ "$ln" != *"content"* && "$ln" != *'"text"'* ]] || fail "a sprint.cost line carries transcript text: $ln"
 assert_contains "$out" "cost: 513 tokens (gates 343, 66%), 1 gate runs"
+# t-b6ad: the builder is the implementation phase's biggest model; only the evaluator ran on it (the reviewer's LAST row is another model, t-aaaab is another ticket)
+assert_contains "$ln" '"builder":"claude-opus-5-5"'; assert_contains "$ln" '"same_model":"evaluator"'
+assert_contains "$out" "note: the evaluator ran on claude-opus-5-5, the model that built this change, so it is not an independent model (advisory, never a block)."
+[[ "$out" != *"reviewer ran"* && "$out" != *"reviewer and"* ]] || fail "the reviewer's last row is sonnet: it must not be named: $out"
 assert_contains "$out" "Most of this ticket's tokens went to the close gates"
 out="$(recspend --ticket t-aaaa)"; assert_eq "" "$out"; assert_eq "1" "$(cost_lines)"   # idempotent
 # the cost survives the transcripts (about 9 days): the row comes from the event
@@ -205,7 +217,29 @@ assert_eq "" "$(recspend --ticket t-zzzz)"; assert_eq "1" "$(cost_lines)"
 # the same cost under a Windows-style spelling of the project (the t-wwww fixture above): recorded, not lost to a path mismatch
 out="$(cd "$p2" && CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend --ticket t-wwww --record)"
 assert_contains "$out" "cost: 120 tokens (gates 0, 0%), 0 gate runs"
+ln2="$(grep -h '"ticket":"t-wwww"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
+assert_contains "$ln2" '"builder":"claude-sonnet-5-5"'   # no Approved: stamp: the build phase; and no .claude/subagent-runs.jsonl in this project
+[[ "$ln2" != *same_model* && "$out" != *"note:"* ]] || fail "no gate run log: no same_model and no note: $ln2 / $out"
 set +e; "$SPRINT" token-spend --record >/dev/null 2>&1; rc=$?; set -e; assert_eq 1 "$rc"   # needs a ticket
+# t-b6ad: a log row that does not name the builder's exact id gives no note: an alias (sonnet), a model with a control byte
+{ printf '{"ts":"2026-10-02T12:50:00Z","agent_id":"e2","agent_type":"evaluator","ticket":"t-bbbb","model":"sonnet"}\n'
+  printf '{"ts":"2026-10-02T12:51:00Z","agent_id":"r2","agent_type":"reviewer","ticket":"t-bbbb","model":"claude-sonnet-5-5\033[2J"}\n'; } >> "$root/.claude/subagent-runs.jsonl"
+out="$(recspend --ticket t-bbbb)"
+assert_contains "$out" "cost: "
+ln3="$(grep -h '"ticket":"t-bbbb"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
+assert_contains "$ln3" '"builder":"claude-sonnet-5-5"'
+[[ "$ln3" != *same_model* && "$out" != *"note:"* && "$out" != *$'\033'* ]] || fail "an alias or a control-byte row must name no gate and write nothing odd: $ln3 / $out"
+# a transcript model that is not a plain id is never the builder, even when it has the most tokens (three turns against one)
+p4="$(make_project)"; r4="$(cd "$p4" && pwd -P)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}" "$bd" "$p4"' EXIT
+mkdir -p "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')"
+{ printf '{"schema":1,"ts":"2026-10-06T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-hhhh"}}\n' "$r4"
+  printf '{"schema":1,"ts":"2026-10-06T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-hhhh"}}\n' "$r4"; } > "$events/2026-10-06.jsonl"
+{ turn2 msg_h1 14:10:00 "$r4"; for n in 2 3 4; do turn2 "msg_h$n" "14:1$n:00" "$r4" | sed 's/claude-sonnet-5-5/claude-evil'$'\033''[2J/'; done; } \
+  | sed 's/2026-10-02/2026-10-06/' > "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')/h.jsonl"
+out="$(cd "$p4" && recspend --ticket t-hhhh)"
+ln4="$(grep -h '"ticket":"t-hhhh"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
+assert_contains "$ln4" '"builder":"claude-sonnet-5-5"'
+[[ "$ln4" != *'"builder":"claude-evil'* ]] || fail "a hostile transcript model became the builder: $ln4"
 
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e

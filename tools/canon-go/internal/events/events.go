@@ -46,7 +46,8 @@ var kinds = map[string][]field{
 	"sprint.started":        {{"ticket", 64}, {"gate_agents", 8}}, // t-ff14: ok | missing; absent when it could not tell
 	"sprint.completed":      {{"ticket", 64}},
 	// t-7e26: one per closed ticket, written by sprint complete from Claude Code's transcripts: token counts by phase, no text
-	"sprint.cost": {{"ticket", 64}, {"planning", 12}, {"implementation", 12}, {"gates", 12}, {"cache_read", 12}, {"turns", 6}, {"gate_runs", 4}, {"models", 120}},
+	"sprint.cost": {{"ticket", 64}, {"planning", 12}, {"implementation", 12}, {"gates", 12}, {"cache_read", 12}, {"turns", 6}, {"gate_runs", 4}, {"models", 120},
+		{"builder", 80}, {"same_model", 24}}, // t-b6ad: builder = the model with the most implementation tokens; same_model = the gates (reviewer, evaluator) logged on it
 	// t-8854: close gates and Cockpit sessions
 	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
 	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}, {"agent", 32}, {"act_on", 4}}, // t-ff14: agent = the transcript's agentType; t-9113: act_on = the reviewer's Act On items

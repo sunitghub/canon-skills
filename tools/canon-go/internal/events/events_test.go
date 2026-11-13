@@ -199,8 +199,8 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"sprint.completed":      {"ticket"},
 		"gate.started":          {"ticket", "role", "attempt", "docs"},
 		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier", "agent", "act_on"},
-		"evidence.stamped":      {"ticket", "name", "exit", "seconds"},                                                           // t-9113
-		"sprint.cost":           {"ticket", "planning", "implementation", "gates", "cache_read", "turns", "gate_runs", "models"}, // t-7e26
+		"evidence.stamped":      {"ticket", "name", "exit", "seconds"},                                                                                    // t-9113
+		"sprint.cost":           {"ticket", "planning", "implementation", "gates", "cache_read", "turns", "gate_runs", "models", "builder", "same_model"}, // t-7e26, t-b6ad
 		"gate.rejected":         {"ticket", "role", "reason"},
 		"budget.warned":         {"ticket", "cap", "used", "limit", "unit", "stage"}, // t-c990
 		"budget.exceeded":       {"ticket", "cap", "used", "limit", "unit", "stage"},
