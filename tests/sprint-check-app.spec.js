@@ -6240,6 +6240,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const tops = await page.locator('#view-admin .tiles .tile').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().top)));
       expect(tops).toHaveLength(4);
       expect(new Set(tops).size).toBe(1);
+      // t-16ce: the tiles are tight (a number over one line of label, at most 60px tall) and nothing clips, in both themes.
+      const theme0 = await page.evaluate(() => document.documentElement.dataset.theme || '');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+        const m = await page.locator('#view-admin .tiles .tile').evaluateAll(els => els.map(e => ({ h: Math.round(e.getBoundingClientRect().height), n: parseFloat(getComputedStyle(e.querySelector('.n')).fontSize), l: e.querySelector('.l').getBoundingClientRect().height, clip: e.scrollHeight > e.clientHeight })));
+        for (const t of m) { expect(t.h, theme).toBeLessThanOrEqual(60); expect(t.n, theme).toBeGreaterThanOrEqual(20); expect(t.l, theme).toBeLessThan(20); expect(t.clip, theme).toBe(false); }
+      }
+      await page.evaluate(t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }, theme0);
       await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
       await expect(page.locator('#ad-reaper')).toContainText('after 5m in a worktree and 30m in a project’s main checkout');
       await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
