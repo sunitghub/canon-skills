@@ -15509,7 +15509,7 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
       expect(on.color, theme).not.toBe(off.color);
       expect(none.opacity, theme).toBeLessThanOrEqual(0.5);
       expect(on.opacity, theme).toBe(1);
-      expect(off.opacity, theme).toBe(1);
+      expect(off.opacity, theme).toBe(0.45);   // t-f55a: git not on yet reads greyed; hover restores it
       for (const st of [on, off, none]) { expect(st.w).toBeGreaterThanOrEqual(28); expect(st.h).toBeGreaterThanOrEqual(28); expect(st.icon).toBe(18); }
       await icon(page, 'proj-plain').focus();
       const outline = await icon(page, 'proj-plain').evaluate(el => getComputedStyle(el).outlineStyle + ' ' + getComputedStyle(el).outlineWidth);
@@ -21164,6 +21164,9 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
       stats: () => ({ updated: '2026-11-05', ticket_count: 0, skills: [] }) });
     const btn = page.locator('.regskill[data-id="busy1"][data-skill="sprint"]');
     await expect(page.locator('.gitstate.is-off')).toHaveCSS('opacity', '0.45');
+    await page.locator('.gitstate.is-off').hover();
+    await expect(page.locator('.gitstate.is-off')).toHaveCSS('opacity', '1');   // hover restores it
+    await page.mouse.move(0, 0);
     await btn.click();
     await page.locator('#cc-ok').click();                              // Turn on: load() rebuilds the card
     await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “busy1”?');
