@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: Check & merge on a worktree ticket in a project that tracks `.tickets/` (does not gitignore it) no longer refuses "no passing evaluator verdict" and then the uncommitted `ticket.md`: it commits the ticket's close record (`chore: record <id> close`, only files under `.tickets/<id>/`) on the branch first, and its preview lists them (t-a01e).
+
 ## [0.55.15] - 2026-11-13
 
 - Added: `canon_path_key` in `tools/platform-lib.sh`, one pure-string key for a folder however it is spelled (`C:\x`, `C:/x`, `/c/x`, case of the drive letter, doubled separators, a UNC share), with a 41-row corpus (`tests/fixtures/path-keys.tsv`) that runs on any OS. `sprint token-spend` now finds a sprint when git, the events and the transcript spell the worktree three ways, and its no-match message prints each source's raw spelling. Slices 2 and 3 (t-c8c6, t-9d04) move the other comparisons onto it.
