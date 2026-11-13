@@ -290,7 +290,9 @@ check_first_snapshot() {
   # a file whose name a pattern reads specially or holds a newline: `[` is escaped so only that file goes; the newline name is refused
   echo x > "$proj/a[1].txt"; echo y > "$proj/a1.txt"
   if printf z > "$proj/we"$'\n'"ird" 2>/dev/null; then
+    snap="$(cat "$proj/.gitignore")"
     r="$(fsreq POST "$port" "?project=$PROJ_ID" "{\"confirm\":true,\"ignore\":[\"we\\nird\"]}")"; assert_eq "400" "${r%% *}"
+    assert_eq "$snap" "$(cat "$proj/.gitignore")"; assert_contains "${r#* }" "not part of the snapshot"   # refused as a name, not blocked by the scan
     rm -f "$proj/we"$'\n'"ird"
   fi
   # a .gitignore that is a symlink is never written through
