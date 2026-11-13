@@ -11,6 +11,7 @@ import (
 // Prod path: every /api route the board and the Cockpit poll.
 func TestCrossSiteAPIRefused(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
+	var body string
 	get := func(path string, hdr map[string]string) int {
 		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8423"+path, nil)
 		for k, v := range hdr {
@@ -18,12 +19,16 @@ func TestCrossSiteAPIRefused(t *testing.T) {
 		}
 		w := httptest.NewRecorder()
 		handle(w, req)
+		body = w.Body.String()
 		return w.Code
 	}
 	refused := []string{"/api/tickets", "/api/git", "/api/project-stats?project=x", "/api/admin/model-tiers", "/api/projects", "/api/v1/sessions", "/api/pipeline"}
 	for _, p := range refused {
 		if c := get(p, map[string]string{"Sec-Fetch-Site": "cross-site"}); c != http.StatusForbidden {
 			t.Errorf("%s cross-site = %d, want 403", p, c)
+		}
+		if body != "forbidden\n" { // the refusal returns before the route runs: nothing else is written
+			t.Errorf("%s cross-site body = %q, want only the refusal", p, body)
 		}
 		if c := get(p, map[string]string{"Origin": "http://evil.example"}); c != http.StatusForbidden {
 			t.Errorf("%s foreign Origin = %d, want 403", p, c)
