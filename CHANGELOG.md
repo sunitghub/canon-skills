@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: when a cloud PR merged on GitHub while a worktree ticket was merged here, local `main` and origin's diverged and canon said "Update it by hand: git pull" (Check & merge) or refused the push (Finish > Push). canon now merges origin's branch into the local one itself (a merge commit, never a rebase or force), resolves the conflicts in its own docs (`HANDOFF.md`'s Recent block and Scratch entries, `LEARNINGS.md` rows) and sets aside a local copy of an imported cloud ticket; any other conflict changes nothing and names the files. Finish's dialog says so before you push (t-dde9).
+
 ## [0.55.16] - 2026-11-13
 
 - Fixed: Check & merge on a worktree ticket in a project that tracks `.tickets/` (does not gitignore it) no longer refuses "no passing evaluator verdict" and then the uncommitted `ticket.md`: it commits the ticket's close record (`chore: record <id> close`, only files under `.tickets/<id>/`) on the branch first, and its preview lists them (t-a01e).

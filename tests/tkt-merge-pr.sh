@@ -69,7 +69,7 @@ chmod +x "$W/bin/gh"
 REAL_GIT="$(command -v git)"
 cat > "$W/bin/git" <<SH
 #!/usr/bin/env bash
-[[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin refs/heads/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
+[[ -n "\${STUB_FF_FETCH_FAIL:-}" && " \$* " == *" fetch -q origin +refs/heads/main:refs/remotes/origin/main "* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 [[ -n "\${STUB_PR_FETCH_FAIL:-}" && " \$* " == *" fetch -q "*" +refs/pull/"* ]] && { echo "fatal: unable to access origin" >&2; exit 128; }
 [[ -n "\${STUB_UPDATE_REF_FAIL:-}" && " \$* " == *" update-ref refs/heads/main "* ]] && { echo "fatal: forced update-ref failure" >&2; exit 128; }
 if [[ " \$* " == *" merge -q --ff-only "* ]]; then
@@ -484,8 +484,10 @@ git branch -qf main "$BASE"; git worktree add -q "$W/wt" main              # mai
 out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: tkt merge-pr $id"
 assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
 git checkout -q main; echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse HEAD)"
-out="$(ff_merge)"; assert_contains "$out" "Local main: has commits origin/main lacks, not a fast-forward; left at ${LOCAL:0:8}"
-assert_eq "$LOCAL" "$(git rev-parse main)"; git reset -q --hard "$BASE"
+out="$(ff_merge)"; assert_contains "$out" "Local main: merged origin/main (${PRHEAD:0:8}) into main: ${LOCAL:0:8} -> "   # t-dde9: diverged: merged, not left
+assert_eq "Merge origin/main into main" "$(git log -1 --format=%s main)"; assert_eq "$LOCAL" "$(git rev-parse main^1)"; assert_eq "$PRHEAD" "$(git rev-parse main^2)"
+[[ "$(git status --porcelain --untracked-files=no)" == "" && -f local.txt ]] || fail "the merge of origin into local main left changes or lost local.txt"
+git reset -q --hard "$BASE"
 # The merge happened, so merge-pr exits 0 whatever the local branch could do (ff_merge runs under set -e).
 git reset -q --hard "$PRHEAD"; out="$(ff_merge)"; assert_contains "$out" "Local main: already at ${PRHEAD:0:8}"
 git reset -q --hard "$BASE"; out="$(STUB_FF_FETCH_FAIL=1 ff_merge)"; assert_contains "$out" "Local main: could not fetch origin/main; update it by hand: git pull"

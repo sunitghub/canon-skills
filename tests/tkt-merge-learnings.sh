@@ -45,7 +45,7 @@ sig() { printf '%s|%s|%s\n' "$(cksum < "$f")" "$(git rev-parse main)" "$(git sta
 # 1. a LEARNINGS.md-only conflict merges: both rows, rows newest first, one stamp (the newest), the tests ran on that file
 rm -f "$W/ran" "$W/seen-learnings"
 out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "a LEARNINGS.md-only conflict should merge: $out"
-assert_contains "$out" "conflicted only in LEARNINGS.md: resolved it"
+assert_contains "$out" "conflicted only in canon's own docs (LEARNINGS.md): resolved it"
 assert_contains "$out" "Merged feat/x into main"
 got="$(git show main:LEARNINGS.md)"
 [[ "$(grep -c '^learnings-sweep last run:' <<< "$got")" == 1 ]] || fail "two stamp lines survived: $got"

@@ -135,12 +135,27 @@ OLD_ORIGIN="$(git -C "$W/origin.git" rev-parse main)"
 # An origin ref never fetched is said, not shown as "0 commits".
 git update-ref -d refs/remotes/origin/main
 out="$("$TKT" finish "$id2" --check < /dev/null 2>&1)"; assert_contains "$out" "origin has no main as last fetched"
-git fetch -q origin
+# t-dde9: origin moved on meanwhile (someone else's commit). --check --fetch names it; Push merges origin's into main here, then pushes.
+L2="$(git rev-parse main)"
+out="$("$TKT" finish "$id2" --check --fetch < /dev/null 2>&1)" || fail "finish --check --fetch failed: $out"
+assert_contains "$out" "finish: push: origin/main has 1 commit(s) main lacks: Push first merges origin/main into main here (a merge commit, never a rebase or force):"
+assert_contains "$out" "someone else"
+assert_eq "$L2" "$(git rev-parse main)"
+# A push origin itself refuses (a hook there) is reported, never forced; the merge made here stays.
+printf '#!/bin/sh\necho "origin says no" >&2\nexit 1\n' > "$W/origin.git/hooks/pre-receive"; chmod +x "$W/origin.git/hooks/pre-receive"
 rc=0; out="$("$TKT" finish "$id2" --push --yes < /dev/null 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a refused push should fail (rc $rc): $out"
+assert_contains "$out" "Local main: merged origin/main"
 assert_contains "$out" "was refused or failed (not forced)"
 assert_eq "$OLD_ORIGIN" "$(git -C "$W/origin.git" rev-parse main)"
 echo "finish --push: a push origin refuses is reported, not forced"
+rm "$W/origin.git/hooks/pre-receive"
+out="$("$TKT" finish "$id2" --push --yes < /dev/null 2>&1)" || fail "finish --push after origin moved failed: $out"
+assert_contains "$out" "pushed main to origin"
+assert_eq "$(git rev-parse main)" "$(git -C "$W/origin.git" rev-parse main)"
+assert_eq "Merge origin/main into main" "$(git log -1 --format=%s main)"
+assert_eq "$L2" "$(git rev-parse main^1)"; assert_eq "$OLD_ORIGIN" "$(git rev-parse main^2)"
+echo "finish --push: origin's new commit is merged into main (a merge commit), then pushed"
 
 # A default branch that does not exist here is refused with the way out, and nothing changes.
 id4="$("$TKT" create "No local main" -t task)"
@@ -155,6 +170,78 @@ rc=0; out="$("$TKT" merge "$id4" --check < /dev/null 2>&1)" || rc=$?
 assert_contains "$out" "origin's default branch main does not exist here"
 git branch -m main-gone main
 echo "merge: refused a default branch that does not exist here"
+
+# t-dde9: the Windows repro. A project that tracks .tickets/, HANDOFF.md and LEARNINGS.md; a worktree ticket merged here (its ticket was
+# committed here first, never pushed) while a cloud PR merged on origin. Both sides' closes rewrote HANDOFF.md's Recent block, added a
+# Scratch entry and a LEARNINGS.md row; the cloud ticket's folder is also here, untracked (import-results), with per-machine fields and
+# github.md. Push merges origin's main in (canon's docs resolved), sets the local ticket copy aside, and pushes.
+hand() { # hand <recent line> <focus> [scratch line]
+  printf '# Handoff\n\n<!-- canon:recent:BEGIN -->\n## Recent activity\n- %s\n<!-- canon:recent:END -->\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\n%s\n<!-- canon:handoff:END -->\n' "$1" "$2"
+  [[ -z "${3:-}" ]] || printf '\n## Scratch\n\n%s\n' "$3"
+}
+learn() { # learn <stamp> <rows...>
+  local stamp="$1"; shift
+  printf '# Learnings\n\nlearnings-sweep last run: %s\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n' "$stamp"
+  printf '%s\n' "$@"; printf '<!-- canon:learnings:END -->\n'
+}
+row() { printf '| %s | [%s](.tickets/%s/learnings.md) | finding of %s | UNPROMOTED |' "$1" "$2" "$2" "$2"; }
+SC_HERE='- 2026-11-13 10:00 — s-aaaa: notes left in wt — paused'; SC_CLOUD='- 2026-11-13 11:00 — s-bbbb: notes left in cloud — paused'
+# markmerged <id>: what tkt merge records on the ticket (the fields tkt finish reads), uncommitted, as tkt merge leaves them.
+markmerged() { awk -v m="$(git rev-parse main)" -v b="$2" '/^---$/ && ++n == 2 { print "merged: " m; print "merged_into: main"; print "merged_branch: " b } { print }' ".tickets/$1/ticket.md" > "$W/mm" && mv "$W/mm" ".tickets/$1/ticket.md"; }
+O3="$W/origin3.git"; git init -q --bare "$O3"
+S3="$W/seed3"; git init -q "$S3"; cd "$S3"
+echo base > base.txt; hand "old" "base focus" > HANDOFF.md; learn "11-01-2026 09:00" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
+git add -A; git commit -qm base; git remote add origin "$O3"; git push -q origin main
+P3="$W/project3"; git clone -q "$O3" "$P3"; git -C "$P3" remote set-head origin main >/dev/null
+C3="$W/cloud3"; git clone -q "$O3" "$C3"
+cd "$P3"
+id5="$("$TKT" create "Worktree" -t task)"; git add ".tickets/$id5/ticket.md"; git commit -qm "chore: add ticket $id5"   # never pushed: the divergence
+git checkout -qb feat/w
+echo w > w.txt; hand "worktree close" "base focus" "$SC_HERE" > HANDOFF.md; learn "11-13-2026 10:00" "$(row 2026-11-13 t-aaaa)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
+git add -A; git commit -qm "the worktree ticket"; git checkout -q main; git merge -q --no-ff feat/w -m "Merge branch 'feat/w'"; markmerged "$id5" feat/w
+(cd "$C3" && mkdir -p .tickets/t-c3j5 && printf -- '---\nid: t-c3j5\nstatus: closed\n---\n# Cloud\n' > .tickets/t-c3j5/ticket.md \
+  && echo report > .tickets/t-c3j5/eval-report.md && echo c > c.txt && hand "cloud close" "base focus" "$SC_CLOUD" > HANDOFF.md \
+  && learn "11-13-2026 11:00" "$(row 2026-11-13 t-bbbb)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md && git add -A && git commit -qm "Merge pull request #2" && git push -q origin main)
+mkdir -p .tickets/t-c3j5; echo report > .tickets/t-c3j5/eval-report.md; echo "sent as #2" > .tickets/t-c3j5/github.md
+printf -- '---\nid: t-c3j5\nstatus: closed\ngithub: 2\nruns: github\n---\n# Cloud\n' > .tickets/t-c3j5/ticket.md
+L3="$(git rev-parse main)"; O3TIP="$(git -C "$O3" rev-parse main)"
+out="$("$TKT" finish "$id5" --check --fetch < /dev/null 2>&1)" || fail "finish --check --fetch failed: $out"
+assert_contains "$out" "origin/main has 1 commit(s) main lacks: Push first merges origin/main into main here"
+assert_eq "$L3" "$(git rev-parse main)"
+out="$("$TKT" finish "$id5" --push --yes < /dev/null 2>&1)" || fail "finish --push failed on the Windows repro: $out"
+assert_contains "$out" "merging origin/main conflicted only in canon's own docs (HANDOFF.md, LEARNINGS.md): resolved, both sides kept"
+assert_contains "$out" "pushed main to origin"
+assert_eq "$(git rev-parse main)" "$(git -C "$O3" rev-parse main)"; assert_eq "$O3TIP" "$(git rev-parse main^2)"
+git show main:HANDOFF.md > "$W/h3"; ! grep -q '^<<<<<<<\|^>>>>>>>' "$W/h3" || fail "conflict markers in the merged HANDOFF.md"
+assert_grep '^base focus$' "$W/h3"; assert_grep "^$SC_HERE\$" "$W/h3"; assert_grep "^$SC_CLOUD\$" "$W/h3"
+assert_grep '^<!-- canon:recent:BEGIN -->$' "$W/h3"
+git show main:LEARNINGS.md > "$W/l3"; assert_grep 't-aaaa' "$W/l3"; assert_grep 't-bbbb' "$W/l3"
+[[ -f c.txt && -f w.txt ]] || fail "the merge did not bring both sides' files"
+assert_grep '^github: 2$' .tickets/t-c3j5/ticket.md; assert_file_exists .tickets/t-c3j5/github.md
+echo "finish --push: the Windows repro (diverged main, HANDOFF/LEARNINGS conflicts, an untracked cloud ticket copy) merges and pushes"
+
+# Refusals: a conflict in a person's HANDOFF.md narrative, or in any other file, changes nothing here or on origin.
+refuse_merge() { # refuse_merge <label> <expected>
+  local rc=0 m o s; m="$(git rev-parse main)"; o="$(git -C "$O3" rev-parse main)"; s="$(git status --porcelain)"
+  out="$("$TKT" finish "$id6" --push --yes < /dev/null 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "finish --push should refuse $1 (rc $rc): $out"
+  assert_contains "$out" "$2"; assert_contains "$out" "nothing pushed"
+  [[ "$(git rev-parse main)" == "$m" && "$(git -C "$O3" rev-parse main)" == "$o" && "$(git status --porcelain)" == "$s" ]] || fail "something changed although $1 was refused"
+  echo "finish --push: refused $1, nothing changed"
+}
+git add -A >/dev/null 2>&1 || true; git commit -qm "local record" >/dev/null 2>&1 || true; git push -q origin main
+(cd "$C3" && git pull -q)
+id6="$("$TKT" create "Narrative" -t task)"; git add ".tickets/$id6/ticket.md"; git commit -qm "chore: add ticket $id6"
+git checkout -qb feat/n; sed -i.bak 's/^base focus$/focus from here/' HANDOFF.md && rm -f HANDOFF.md.bak; echo n > n.txt; git add -A; git commit -qm narrative
+git checkout -q main; git merge -q --no-ff feat/n -m "Merge branch 'feat/n'"; markmerged "$id6" feat/n
+(cd "$C3" && sed -i.bak 's/^base focus$/focus from the cloud/' HANDOFF.md && rm -f HANDOFF.md.bak && git add -A && git commit -qm "cloud narrative" && git push -q origin main)
+"$TKT" finish "$id6" --push --yes < /dev/null >/dev/null 2>&1 && fail "the first push should not get through"   # commits canon's record, then refuses
+refuse_merge "a HANDOFF.md narrative conflict" "conflicts in: HANDOFF.md"
+(cd "$C3" && git reset -q --hard HEAD~1 && echo cloud-code > base.txt && git add -A && git commit -qm "cloud code" && git push -qf origin main)
+git reset -q --hard HEAD; git checkout -q HEAD~1 -- HANDOFF.md 2>/dev/null || true; git checkout -q main -- HANDOFF.md
+echo here-code > base.txt; git add base.txt; git commit -qm "code here"
+refuse_merge "a conflict in a code file" "conflicts in: base.txt"
+cd "$P"
 
 # --dismiss sets finish_dismissed (no --yes, it touches only the ticket's own field) and is refused with --yes.
 rc=0; out="$("$TKT" finish "$id" --dismiss --yes < /dev/null 2>&1)" || rc=$?
