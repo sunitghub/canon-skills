@@ -53,6 +53,8 @@ type pipelineNode struct {
 	When   string         `json:"when,omitempty"`
 	Prompt string         `json:"prompt,omitempty"`
 	Reason string         `json:"reason,omitempty"`
+	SkipOn string         `json:"skip_on,omitempty"` // t-51c6: the ticket options (lite, manual) that skip this node; display only
+	Only   string         `json:"only,omitempty"`    // t-51c6: the node exists for that ticket option alone (manual)
 	Model  *pipelineModel `json:"model,omitempty"`
 }
 
@@ -122,7 +124,7 @@ func pipelineResolve(root string) ([]pipelineNode, error) {
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		f := strings.Split(line, "\t")
-		if len(f) != 9 || !pipelineIDRe.MatchString(f[1]) || len(nodes) >= 200 {
+		if len(f) != 11 || !pipelineIDRe.MatchString(f[1]) || len(nodes) >= 200 {
 			return nil, errors.New("pipeline: the reader printed a line this page cannot read")
 		}
 		order, convErr := strconv.Atoi(f[0])
@@ -136,7 +138,7 @@ func pipelineResolve(root string) ([]pipelineNode, error) {
 			return pipelineClean(s)
 		}
 		nodes = append(nodes, pipelineNode{ID: f[1], Kind: pipelineClean(f[2]), Order: order, On: f[3] == "on", Locked: f[4] == "locked",
-			Group: none(f[5]), When: none(f[6]), Prompt: none(f[7]), Reason: none(f[8])})
+			Group: none(f[5]), When: none(f[6]), Prompt: none(f[7]), Reason: none(f[8]), SkipOn: none(f[9]), Only: none(f[10])})
 	}
 	return nodes, nil
 }

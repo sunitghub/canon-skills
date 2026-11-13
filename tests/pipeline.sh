@@ -38,9 +38,9 @@ assert_eq "$expect" "$("$P" resolve)"
 ids="$("$P" ids | tr '\n' ' ')"
 [[ "$ids" != *repo-check* ]] || fail "pipeline: repo-check is a node again (removed in t-0a7c)"
 mt="$("$P" resolve --full | grep -F "	mutation-test	")"; [[ "$mt" == *"needs python3 (skipped with a reason when it is missing)"* ]] || fail "pipeline: mutation-test does not say it needs python3: $mt"
-# --full: nine tab-separated fields, '-' for none; a locked node carries its reason; every prompt path exists in canon's folder
-while IFS=$'\t' read -r _ id _ _ lk _ _ prompt reason; do
-  [[ -n "$reason" ]] || fail "pipeline: --full line for $id has fewer than 9 fields"
+# --full: eleven tab-separated fields, '-' for none; a locked node carries its reason; every prompt path exists in canon's folder
+while IFS=$'\t' read -r _ id _ _ lk _ _ prompt reason skip only; do
+  [[ -n "$only" ]] || fail "pipeline: --full line for $id has fewer than 11 fields"
   [[ "$lk" != locked || "$reason" != "-" ]] || fail "pipeline: locked node $id has no reason"
   [[ "$prompt" == "-" || -f "$ROOT/$prompt" ]] || fail "pipeline: node $id names a prompt that does not exist: $prompt"
 done < <("$P" resolve --full)
@@ -138,8 +138,8 @@ refuse_default "more than 200 nodes" "nodes:\n$(for n in $(seq 1 201); do printf
 fakedef "${N1}  - id: b\n    kind: step\n    order: 2\n    locked: false\n" resolve --full
 [[ "$FRC" == 0 ]] || fail "pipeline: a valid two-node default was refused: $FOUT"
 fakedef 'nodes:\n  - id: late\n    kind: gate\n    order: 20\n    locked: true\n    reason: "r"\n  - id: early\n    kind: "step"\n    order: 5\n    locked: false\n    group: wrapup\n    when: "w"\n    prompt: p.md\n' resolve --full
-assert_eq "5	early	step	on	open	wrapup	w	p.md	-
-20	late	gate	on	locked	-	-	-	r" "$FOUT"
+assert_eq "5	early	step	on	open	wrapup	w	p.md	-	-	-
+20	late	gate	on	locked	-	-	-	r	-	-" "$FOUT"
 rm "$T/fk/skills/sprint/pipeline.yaml"
 FRC=0; FOUT="$("$T/fk/tools/pipeline.sh" resolve 2>&1)" || FRC=$?
 [[ "$FRC" == 2 && "$FOUT" == *"default pipeline is missing"* ]] || fail "pipeline: a missing default said: $FOUT"
@@ -159,11 +159,21 @@ cli "ids takes no arguments" ids x
 cli "pipeline.sh resolve" bogus
 cli "pipeline.sh resolve"
 out="$("$P" --help)"; [[ "$out" == *"the sprint pipeline's one reader"* && "$out" == *"pipeline.sh check"* ]] || fail "pipeline: --help did not print the usage header: $out"
-out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 8 ]] || fail "pipeline: resolve --full lines do not carry 9 tab-separated fields: $out"
+out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 10 ]] || fail "pipeline: resolve --full lines do not carry 11 tab-separated fields: $out"
+
+# ── t-51c6: skip_on and only. The Pipeline tab and Sprint progress read what each ticket option skips from here (one list) ──
+[[ "$("$P" resolve)" != *your-test* ]] || fail "pipeline: the Manual-only node is in the plain list, so every approve-time pin would change"
+full="$("$P" resolve --full)"
+yt="$(printf '%s\n' "$full" | awk -F'\t' '$2 == "your-test" { print $3 "|" $5 "|" $11 }')"; [[ "$yt" == "you|locked|manual" ]] || fail "pipeline: your-test is not a locked you node that is only for manual: $yt"
+lite="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /lite/ { printf "%s ", $2 }')"; [[ "$lite" == "code-simplifier code-reviewer doc-audit skill-eval break-it reviewer mutation-test " ]] || fail "pipeline: Lite skips $lite"
+man="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /manual/ { printf "%s ", $2 }')"; [[ "$man" == "reviewer mutation-test " ]] || fail "pipeline: Manual skips $man"
+for locked in start plan approve-plan build your-test security-review eval close; do [[ "$(printf '%s\n' "$full" | awk -F'\t' -v n="$locked" '$2 == n { print $10 }')" == "-" ]] || fail "pipeline: locked node $locked is skipped by a ticket option"; done
+refuse_default "node 'a': skip_on must be lite, manual or lite,manual" "${N1}    skip_on: bogus\n"
+refuse_default "node 'a': only must be manual" "${N1}    only: lite\n"
 
 # ── more project-file shapes ──
 d="$(mkproj 'extends: canon-default\noff: [ ]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n')"
-got="$("$P" resolve --project "$d" --full | sed -n 5,7p | cut -f1,2,6)"
+got="$("$P" resolve --project "$d" --full | sed -n 6,8p | cut -f1,2,6)"
 assert_eq "50	doc-audit	wrapup
 52	code-reviewer	wrapup
 54	code-simplifier	wrapup" "$got"

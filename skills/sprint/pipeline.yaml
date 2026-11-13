@@ -9,6 +9,8 @@
 #       group: wrapup           optional; the nodes a project may reorder among themselves
 #       when: "<condition>"     optional; the automatic skip condition (a node that does not apply is skipped, not removed)
 #       prompt: <path>          optional; the file a node's View prompt opens (relative to canon's folder)
+#       skip_on: lite|manual|lite,manual  optional; the ticket options that skip this node (Lite = `demo: true`, Manual = `manual: true`): the one list the Pipeline tab and Sprint progress show; display only, the close protocol (complete.md) is what runs
+#       only: manual            optional; the node exists for that ticket option alone (left out of the plain resolve list, so the approve-time pin is unchanged)
 # A project override lives at <project>/canon-config/pipeline.yaml and holds only what differs (see tools/pipeline.sh):
 #   extends: canon-default
 #   off: [mutation-test]
@@ -37,6 +39,13 @@ nodes:
     order: 40
     locked: true
     reason: "Always runs: it is the sprint's own work."
+  - id: your-test
+    kind: you
+    order: 45
+    locked: true
+    reason: "Manual tickets only: you test by hand, and sprint manual-qa records what you saw. Waiting for your test until a fresh record exists."
+    when: "Manual tickets only"
+    only: manual
   - id: code-simplifier
     kind: gate
     order: 50
@@ -44,6 +53,7 @@ nodes:
     group: wrapup
     when: "code changed (not docs, comments or config only)"
     prompt: skills/wrapup/gates/simplifier.md
+    skip_on: lite
   - id: code-reviewer
     kind: gate
     order: 52
@@ -51,6 +61,7 @@ nodes:
     group: wrapup
     when: "not a single-line or mechanical change"
     prompt: skills/wrapup/gates/reviewer.md
+    skip_on: lite
   - id: doc-audit
     kind: gate
     order: 54
@@ -58,23 +69,27 @@ nodes:
     group: wrapup
     when: "user-facing docs or skill frontmatter changed"
     prompt: skills/doc-audit/SKILL.md
+    skip_on: lite
   - id: skill-eval
     kind: gate
     order: 60
     locked: false
     when: "a skill or gate agent changed (tools/skill-eval-scope.sh)"
     prompt: skills/skill-eval/SKILL.md
+    skip_on: lite
   - id: break-it
     kind: agent
     order: 62
     locked: false
     when: "high-risk or untrusted-input sprint"
     prompt: skills/sprint/reference/break-it.md
+    skip_on: lite
   - id: reviewer
     kind: agent
     order: 70
     locked: false
     prompt: skills/sprint/reference/review.md
+    skip_on: lite,manual
   - id: security-review
     kind: gate
     order: 80
@@ -87,6 +102,7 @@ nodes:
     locked: false
     when: "shell, JS, Python or Go logic files changed; needs python3 (skipped with a reason when it is missing)"
     prompt: skills/mutation-test/SKILL.md
+    skip_on: lite,manual
   - id: eval
     kind: agent
     order: 100

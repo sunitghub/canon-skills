@@ -126,7 +126,7 @@ func TestPipelineGetDefaultCreatesNothing(t *testing.T) {
 		t.Fatalf("GET with no file = %d %v", code, m)
 	}
 	ids := strings.Join(nodeIDs(m), " ")
-	want := "start plan approve-plan build code-simplifier code-reviewer doc-audit skill-eval break-it reviewer security-review mutation-test eval close"
+	want := "start plan approve-plan build your-test code-simplifier code-reviewer doc-audit skill-eval break-it reviewer security-review mutation-test eval close"
 	if ids != want {
 		t.Fatalf("nodes = %q, want %q", ids, want)
 	}
@@ -187,7 +187,7 @@ func TestPipelineOrder(t *testing.T) {
 		t.Fatalf("file = %q", got)
 	}
 	_, g := pipelineGetReq(id)
-	if g["changed"] != true || !strings.HasPrefix(strings.Join(nodeIDs(g), " "), "start plan approve-plan build doc-audit code-reviewer code-simplifier") {
+	if g["changed"] != true || !strings.HasPrefix(strings.Join(nodeIDs(g), " "), "start plan approve-plan build your-test doc-audit code-reviewer code-simplifier") {
 		t.Fatalf("view after order = %v", g)
 	}
 	// putting the default order back: the file is rewritten without the wrapup-order line
@@ -383,13 +383,16 @@ func TestPipelineAFailedProofLeavesTheFileAndNoTempFile(t *testing.T) {
 func TestPipelineRunsTheResolvedTool(t *testing.T) {
 	id, _ := pipelineEnv(t)
 	stub := filepath.Join(t.TempDir(), "stub.sh")
-	os.WriteFile(stub, []byte("#!/usr/bin/env bash\nprintf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tAlways\\n20\\tx-gate\\tgate\\toff\\topen\\twrapup\\tw\\tp.md\\t-\\n'\n"), 0o755)
+	os.WriteFile(stub, []byte("#!/usr/bin/env bash\nprintf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tAlways\\t-\\t-\\n20\\tx-gate\\tgate\\toff\\topen\\twrapup\\tw\\tp.md\\t-\\tlite\\t-\\n'\n"), 0o755)
 	t.Setenv("PIPELINE_BIN", stub)
 	_, g := pipelineGetReq(id)
 	if strings.Join(nodeIDs(g), " ") != "start x-gate" {
 		t.Fatalf("the board did not run the resolved tool: %v", g)
 	}
 	n := g["nodes"].([]any)[1].(map[string]any)
+	if n["skip_on"] != "lite" || n["only"] != nil { // t-51c6: the skip metadata reaches the page
+		t.Fatalf("skip_on/only = %v", n)
+	}
 	if n["on"] != false || n["group"] != "wrapup" || n["when"] != "w" || n["prompt"] != "p.md" {
 		t.Fatalf("node fields = %v", n)
 	}
@@ -399,7 +402,7 @@ func TestPipelineRunsTheResolvedTool(t *testing.T) {
 		t.Fatalf("an unreadable line = %v", g)
 	}
 	// a hostile id on a line is refused, not passed to the page
-	os.WriteFile(stub, []byte("#!/usr/bin/env bash\nprintf '10\\tbad id\\tstep\\ton\\topen\\t-\\t-\\t-\\t-\\n'\n"), 0o755)
+	os.WriteFile(stub, []byte("#!/usr/bin/env bash\nprintf '10\\tbad id\\tstep\\ton\\topen\\t-\\t-\\t-\\t-\\t-\\t-\\n'\n"), 0o755)
 	if _, g := pipelineGetReq(id); g["ok"] != false {
 		t.Fatalf("a hostile id was accepted: %v", g)
 	}
@@ -788,7 +791,7 @@ func TestPipelineReaderOutputIsParsedStrictly(t *testing.T) {
 		_, g := pipelineGetReq(id)
 		return g
 	}
-	g := run("printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\r\\n20\\tx\\tgate\\toff\\topen\\twrapup\\t-\\t-\\t-\\r\\n'\n")
+	g := run("printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\t-\\t-\\r\\n20\\tx\\tgate\\toff\\topen\\twrapup\\t-\\t-\\t-\\t-\\t-\\r\\n'\n")
 	nodes, _ := g["nodes"].([]any)
 	if len(nodes) != 2 {
 		t.Fatalf("CRLF lines = %v", g)
@@ -816,7 +819,7 @@ func TestPipelineReaderOutputIsParsedStrictly(t *testing.T) {
 	}
 	// 200 lines are fine, 201 are refused
 	many := func(n int) string {
-		return "for i in $(seq 1 " + fmt.Sprint(n) + "); do printf '%s\\tn%s\\tstep\\ton\\topen\\t-\\t-\\t-\\t-\\n' \"$i\" \"x$i\"; done\n"
+		return "for i in $(seq 1 " + fmt.Sprint(n) + "); do printf '%s\\tn%s\\tstep\\ton\\topen\\t-\\t-\\t-\\t-\\t-\\t-\\n' \"$i\" \"x$i\"; done\n"
 	}
 	if g := run(many(200)); g["ok"] != true {
 		t.Errorf("200 lines = %v", g)
@@ -832,7 +835,7 @@ func TestPipelineReaderOutputIsParsedStrictly(t *testing.T) {
 		t.Errorf("a refusal = %v", g)
 	}
 	// the default failing: no list can be judged against it, and a change is not made
-	if g := run("case \"$*\" in *--project*) printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\n';; *) echo 'pipeline: default is missing' >&2; exit 2;; esac\n"); g["ok"] != false || g["error"] != "pipeline: default is missing" {
+	if g := run("case \"$*\" in *--project*) printf '10\\tstart\\tstep\\ton\\tlocked\\t-\\t-\\t-\\tr\\t-\\t-\\n';; *) echo 'pipeline: default is missing' >&2; exit 2;; esac\n"); g["ok"] != false || g["error"] != "pipeline: default is missing" {
 		t.Errorf("a failing default = %v", g)
 	}
 	code, m := post(id, `{"op":"toggle","id":"start","on":false}`)

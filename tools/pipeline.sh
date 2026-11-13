@@ -2,7 +2,8 @@
 # pipeline.sh — the sprint pipeline's one reader (t-00e0). canon's default is skills/sprint/pipeline.yaml; a project may hold
 # only what differs in <project>/canon-config/pipeline.yaml.
 #   pipeline.sh resolve [--project <dir>] [--full]   one line per node in run order: <order> <id> <kind> <on|off> <locked|open>
-#                                                    (--full: tab separated, order id kind on|off locked|open group when prompt reason; "-" = none)
+#                                                    (--full: tab separated, order id kind on|off locked|open group when prompt reason skip_on only; "-" = none;
+#                                                    a node with `only:` (it exists for one ticket option) is left out of the plain list, so the approve-time pin is unchanged)
 #   pipeline.sh ids                                  the default's node ids, one per line
 #   pipeline.sh check [--project <dir>]              validate; prints "pipeline: ok (N nodes)"
 # The project file: `extends: canon-default` (required), `off: [a, b]` (or a `  - a` block list), `wrapup-order: [a, b, c]` (or a block
@@ -58,10 +59,10 @@ function parse_default(f,   st, innodes, k, idx, key, v, i) {
       if (N >= 200) fail(f, ln, "more than 200 nodes")
       N++; ID[N] = v; SEEN[v] = N; continue
     }
-    if (line ~ /^    [a-z]+: /) {
+    if (line ~ /^    [a-z_]+: /) {
       if (N == 0) fail(f, ln, "a field before any '- id:'")
       k = line; sub(/^    /, "", k); idx = index(k, ": "); key = substr(k, 1, idx - 1); v = val(f, ln, substr(k, idx + 2))
-      if (key !~ /^(kind|order|locked|reason|group|when|prompt)$/) fail(f, ln, "unknown field '" key "'")
+      if (key !~ /^(kind|order|locked|reason|group|when|prompt|skip_on|only)$/) fail(f, ln, "unknown field '" key "'")
       if ((N, key) in HAVE) fail(f, ln, "field '" key "' twice in node '" ID[N] "'")
       HAVE[N, key] = 1; F[N, key] = v; continue
     }
@@ -77,6 +78,8 @@ function parse_default(f,   st, innodes, k, idx, key, v, i) {
     if (!((i, "locked") in HAVE) || F[i, "locked"] !~ /^(true|false)$/) fail(f, 0, "node '" ID[i] "' needs locked: true or false")
     if (F[i, "locked"] == "true" && F[i, "reason"] == "") fail(f, 0, "locked node '" ID[i] "' needs a reason")
     if ((i, "group") in HAVE && F[i, "group"] != "wrapup") fail(f, 0, "node '" ID[i] "': group must be wrapup")
+    if ((i, "skip_on") in HAVE && F[i, "skip_on"] !~ /^(lite|manual|lite,manual)$/) fail(f, 0, "node '" ID[i] "': skip_on must be lite, manual or lite,manual")
+    if ((i, "only") in HAVE && F[i, "only"] != "manual") fail(f, 0, "node '" ID[i] "': only must be manual")
   }
 }
 function parse_override(f,   st, cur, v, body, parts, m, j, t) {
@@ -147,13 +150,15 @@ BEGIN {
   }
   for (i = 1; i <= N; i++) {
     x = S[i]; id = ID[x]
+    if (full == "" && ((x, "only") in HAVE)) continue
     ord = (x in OVERRIDEORDER) ? OVERRIDEORDER[x] : F[x, "order"]
     on = (id in OFFSET) ? "off" : "on"
     lk = (F[x, "locked"] == "true") ? "locked" : "open"
     if (full != "") {
       grp = ((x, "group") in HAVE) ? F[x, "group"] : "-"; wh = ((x, "when") in HAVE) ? F[x, "when"] : "-"
       pr = ((x, "prompt") in HAVE) ? F[x, "prompt"] : "-"; rs = ((x, "reason") in HAVE) ? F[x, "reason"] : "-"
-      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ord, id, F[x, "kind"], on, lk, grp, wh, pr, rs
+      sk = ((x, "skip_on") in HAVE) ? F[x, "skip_on"] : "-"; ol = ((x, "only") in HAVE) ? F[x, "only"] : "-"
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ord, id, F[x, "kind"], on, lk, grp, wh, pr, rs, sk, ol
     } else printf "%s %s %s %s %s\n", ord, id, F[x, "kind"], on, lk
   }
 }

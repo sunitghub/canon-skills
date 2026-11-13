@@ -38,7 +38,7 @@ got="$(curl -s -H "$O" "$B/api/pipeline")"
 assert_eq "True" "$(printf '%s' "$got" | jget ok)"
 assert_eq "False" "$(printf '%s' "$got" | jget exists)"
 assert_eq "False" "$(printf '%s' "$got" | jget changed)"
-assert_eq "14" "$(printf '%s' "$got" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["nodes"]))')"
+assert_eq "15" "$(printf '%s' "$got" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["nodes"]))')"
 [[ ! -e "$PROJECT/canon-config" ]] || fail "pipeline-api: a GET created canon-config"
 
 # ── the first change creates the file and says so once ──
