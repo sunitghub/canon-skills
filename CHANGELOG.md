@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.12] - 2026-11-13
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version.
+
+- Security: a web page open in your browser can no longer make the board or the Cockpit daemon do work. It could fire blind requests at `127.0.0.1` in a loop, and each one ran git or built the 2.5 MB tickets reply. The board now answers 403, before any work, to any `/api` request that the browser marks cross-site or that carries a foreign Origin, and the daemon does the same for its reads (`/sessions`, `/changes`). `curl`, the `canon` commands, the board's own pages and the Cockpit's tabs are unaffected, and so are previews of static deliverables. A client that sends its own non-loopback Origin (a VS Code webview, say) now gets 403 on `/api`.
+
 ## [0.55.11] - 2026-11-13
 
 - Fixed: on a project with Git off, pressing + sprint, then Turn on, then Register now shows the spinner and "Adding sprint…" on the + sprint button until it finishes (the card was rebuilt after Turn on, so the spinner landed on a button that no longer existed). The Git icon of a project with Git off is now greyed, and lights up on hover. Board only; no daemon restart needed.
