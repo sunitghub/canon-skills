@@ -77,6 +77,8 @@ model runs those two gates is decided by the rules in the README's
 [Which model runs the close gates](how-it-works.md#which-model-runs-the-close-gates) table and
 [`complete.md`](../skills/sprint/reference/complete.md)'s "Model tier for gates."
 
+When the close succeeds, `sprint complete` also records what the ticket cost: one `sprint.cost` event (tokens by phase, turns, gate runs, models; numbers only) and the line `cost: 576k tokens (gates 533k, 93%), 3 gate runs`. It is read from Claude Code's transcripts, so it is skipped when none cover the sprint; `sprint token-spend --ticket <id>` shows it later.
+
 On the board the table is the **Wrapup Gates** entry under Acceptance on a closed ticket;
 [Sprint and gates](https://getcanon.dev/docs/sprint-and-gates.html#close-the-sprint) on getcanon.dev shows one.
 

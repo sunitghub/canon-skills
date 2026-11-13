@@ -202,6 +202,9 @@ rm -rf "$cfg/projects"; mv "$cfg/projects.gone" "$cfg/projects"
 # no turns inside the sprint: nothing recorded, nothing printed
 assert_eq "" "$(recspend --ticket t-dddd)"; assert_eq "1" "$(cost_lines)"
 assert_eq "" "$(recspend --ticket t-zzzz)"; assert_eq "1" "$(cost_lines)"
+# the same cost under a Windows-style spelling of the project (the t-wwww fixture above): recorded, not lost to a path mismatch
+out="$(cd "$p2" && CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend --ticket t-wwww --record)"
+assert_contains "$out" "cost: 120 tokens (gates 0, 0%), 0 gate runs"
 set +e; "$SPRINT" token-spend --record >/dev/null 2>&1; rc=$?; set -e; assert_eq 1 "$rc"   # needs a ticket
 
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
@@ -212,6 +215,6 @@ for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--
   assert_eq 1 "$rc"
 done
 out="$("$SPRINT" token-spend --help)"   # exits 0
-assert_eq "Usage: sprint token-spend [--last N] [--ticket <id>]" "$out"
+assert_eq "Usage: sprint token-spend [--last N] [--ticket <id> [--record]]" "$out"
 
 printf 'sprint-token-spend: ok\n'
