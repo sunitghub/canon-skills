@@ -387,7 +387,7 @@ sprint agent without leaving the browser — no second terminal.
   with the checkout on another branch `merging into main by ref, the checkout stays on <other>`, so nothing is switched
   or stashed; a default branch checked out in another worktree is refused. The dialog's title and button name the target
   (**Run tests & merge into main**). After **Merged**, **Finish…** walks two steps, each its own dialog and button:
-  **Push main** (the dialog first reads origin's branch, so the commits it lists are what a push would really send, and a push origin already had says so; a normal push, never forced, only that branch) and **Reset the worktree**
+  **Push main** (the dialog first reads origin's branch, so the commits it lists are what a push would really send, and a push origin already had says so; a normal push, never forced, only that branch; when origin's branch has commits main lacks, such as a cloud PR merged meanwhile, the dialog lists them and the push first merges origin's into main, under the conflict rules below) and **Reset the worktree**
   (`tkt worktree-reset`, run in the worktree's folder; it refuses uncommitted work). Until both are done the card shows
   **Finish** (and a small **dismiss** if you push and reset yourself). The same steps are `tkt finish <id> --check`,
   `--push --yes`, `--reset --yes` and `--dismiss` in a terminal. The tests run on main + branch in a scratch copy, never in
@@ -395,7 +395,7 @@ sprint agent without leaving the browser — no second terminal.
   as a PR's update of local main: canon's own files are set aside, any other file you edited that the merge changes stops
   it with nothing changed (a merge by ref touches no file of the checkout). Then push and reset with `tkt finish`.
   The ticket gets `merged: <sha>`, the activity log a `branch.merged` event, and `HANDOFF.md` a Recent activity line. Two tickets closed in different checkouts always collide in `LEARNINGS.md` (each close appends a row and rewrites the `last run`
-  line): when that is the only conflicted file, the merge resolves it in the scratch copy (both sides' rows, newest first, an identical row once, the newest stamp), runs the tests on the
+  line), and in `HANDOFF.md`'s Recent activity block and `## Scratch` entries: when those are the only conflicts (t-dde9: a person's `HANDOFF.md` text that both sides changed still refuses), the merge resolves it in the scratch copy (both sides' rows, newest first, an identical row once, the newest stamp), runs the tests on the
   resolved files and lands exactly that tree, saying so; a conflict in any other file still stops it with the files named and nothing changed (`t-27bc`).
   That record is left uncommitted in the main checkout, so **Push** first commits exactly canon's own files for the ticket (`ticket.md`, `cockpit-sessions.md`, and `HANDOFF.md` only when its whole change is the generated Recent activity block)
   as `chore: record merge of <id>`, then pushes; any file you edited stays as it is and is named. A closed ticket's session tab says it can be closed once no session is running, and an End on a tab whose session is already gone finishes at once instead of waiting out the 90 s fallback.
