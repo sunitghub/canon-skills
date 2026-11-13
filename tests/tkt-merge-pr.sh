@@ -149,6 +149,7 @@ assert_contains "$out" "Full log kept at:"; rm -f "$TMPDIR"/tkt-merge-*
 rm -f "$W/ran"; refuses "no terminal without --yes" "no terminal to ask on" --
 [[ ! -e "$W/ran" ]] || fail "the PR's tests ran before anyone said yes"
 assert_contains "$(tail -n 3 "$gt")" "reason: no terminal to ask on"   # t-1dec: this refusal came after the PR was read, so it is on the trail
+# shellcheck disable=SC2010  # names here are canon's own mktemp patterns
 [[ -z "$(ls "$TMPDIR" | grep '^tkt-merge\.' || true)" ]] || fail "a scratch clone was left behind"
 # A PR that deletes scripts/test.sh cannot switch the gate off: the default comes from the base branch, so it runs, fails.
 git checkout -q claude/pr7; git rm -q scripts/test.sh; git commit -qm "drop the suite"; NOSUITE="$(git rev-parse HEAD)"
@@ -232,6 +233,7 @@ merged && fail "an n at the prompt merged"; [[ "$(sig)" == "$before" ]] || fail 
 rm -f "$TMPDIR"/tkt-merge-*
 [[ -z "$(event_line github.merged "$id")" ]] || fail "a refused or declined merge wrote github.merged"   # t-4c09
 out="$(tty_run y "$TKT" merge-pr "$id" 2>&1)" || fail "merge-pr with y failed: $out"
+# shellcheck disable=SC2010  # names here are canon's own mktemp patterns
 [[ -z "$(ls "$TMPDIR" | grep '^tkt-merge-.*-pr[0-9]*\.' || true)" ]] || fail "a passing run kept a log"
 gm="$(event_line github.merged "$id")"; assert_contains "$gm" '"pr":"7"'; assert_contains "$gm" '"source":"tkt"'; [[ "$gm" != *'"actor"'* ]] || fail "a CLI merge claimed an actor: $gm"
 assert_contains "$out" "running scripts/test.sh on main + PR #7"

@@ -121,7 +121,7 @@ git -C "$P" remote set-url origin "$W/origin.git"; git -C "$P" fetch -q origin
 echo "finish --fetch: origin is read first; a push origin already had says so; offline is said"
 
 # A push origin refuses (it moved) is not forced.
-id2="$("$TKT" create "Second" -t task)"; f2=".tickets/$id2/ticket.md"
+id2="$("$TKT" create "Second" -t task)"
 git switch -q main 2>/dev/null || true
 git switch -q chore/other
 WT2="$W/wt2"; git worktree add -q "$WT2" -b feat/y main; WT2="$(cd "$WT2" && pwd -P)"

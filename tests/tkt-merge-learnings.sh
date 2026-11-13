@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # t-27bc: tkt merge (a closed ticket's worktree branch, the board's Check & merge) resolves a conflict that is ONLY in LEARNINGS.md itself:
 # every close appends a row inside the canon:learnings block and rewrites the "last run" stamp, so two tickets closed in different
-# checkouts always collide there. Prod path: `tkt merge` -> _merge_core -> _resolve_learnings_conflict. Both sides' rows are kept
+# checkouts always collide there. Prod path: `tkt merge` -> _merge_core -> _resolve_canon_conflicts. Both sides' rows are kept
 # (newest first, an identical row once, the newest stamp), the tests run on the resolved tree and that tree is what lands. A conflict in any
 # other file, or a LEARNINGS.md with no canon:learnings block, still refuses with nothing changed: a conflict is never hidden.
 set -euo pipefail
@@ -137,11 +137,11 @@ edit_both() {
   (cd "$WT" && learn "11-07-2026 13:00" "$ROW_BR" "$ROW_OLD" | eval "$2" > LEARNINGS.md && git commit -qam "branch edits LEARNINGS.md"); H="$(git -C "$WT" rev-parse HEAD)"
 }
 
-# 7. t-27bc, _resolve_learnings_conflict outside-the-block check: an edit outside the block that only ONE side made, or that both made identically,
+# 7. t-27bc, _resolve_learnings_file outside-the-block check: an edit outside the block that only ONE side made, or that both made identically,
 # is not a conflict: it lands once (guards a person's note from being refused or doubled on the shared file)
 for variant in main-only branch-only same; do
   reset_case
-  m=cat; b=cat
+  m='cat'; b='cat'
   case "$variant" in main-only) m="awk '{ print } END { print \"footer note\" }'";; branch-only) b="awk '{ print } END { print \"footer note\" }'";; same) m="awk '{ print } END { print \"footer note\" }'"; b="awk '{ print } END { print \"footer note\" }'";; esac
   edit_both "$m" "$b"; regraded "$H"
   out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "$variant: a one-sided outside edit should merge: $out"
