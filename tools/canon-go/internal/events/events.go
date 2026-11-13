@@ -45,7 +45,7 @@ var kinds = map[string][]field{
 	"ticket.closed":         {{"ticket", 64}},
 	"sprint.started":        {{"ticket", 64}, {"gate_agents", 8}}, // t-ff14: ok | missing; absent when it could not tell
 	"sprint.completed":      {{"ticket", 64}},
-	// t-7e26: one per closed ticket, written by sprint complete from Claude Code's transcripts: token counts by phase, no text
+	// t-7e26: one per closed ticket, written by sprint complete from Claude Code's transcripts: token counts by phase, model ids, no transcript text
 	"sprint.cost": {{"ticket", 64}, {"planning", 12}, {"implementation", 12}, {"gates", 12}, {"cache_read", 12}, {"turns", 6}, {"gate_runs", 4}, {"models", 120},
 		{"builder", 80}, {"same_model", 24}}, // t-b6ad: builder = the model with the most implementation tokens; same_model = the gates (reviewer, evaluator) logged on it
 	// t-8854: close gates and Cockpit sessions

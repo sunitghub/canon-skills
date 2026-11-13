@@ -202,7 +202,7 @@ assert_contains "$ln" '"gate_runs":"1"'; assert_contains "$ln" 'claude-sonnet-5-
 assert_contains "$out" "cost: 513 tokens (gates 343, 66%), 1 gate runs"
 # t-b6ad: the builder is the implementation phase's biggest model; only the evaluator ran on it (the reviewer's LAST row is another model, t-aaaab is another ticket)
 assert_contains "$ln" '"builder":"claude-opus-5-5"'; assert_contains "$ln" '"same_model":"evaluator"'
-assert_contains "$out" "note: the evaluator ran on claude-opus-5-5, the model that built this change, so it is not an independent model (advisory, never a block)."
+assert_contains "$out" "note: the evaluator ran on claude-opus-5-5, the model that built this change, so it is not independent of it (advisory, never a block)."
 [[ "$out" != *"reviewer ran"* && "$out" != *"reviewer and"* ]] || fail "the reviewer's last row is sonnet: it must not be named: $out"
 assert_contains "$out" "Most of this ticket's tokens went to the close gates"
 out="$(recspend --ticket t-aaaa)"; assert_eq "" "$out"; assert_eq "1" "$(cost_lines)"   # idempotent
@@ -236,10 +236,16 @@ mkdir -p "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')"
   printf '{"schema":1,"ts":"2026-10-06T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-hhhh"}}\n' "$r4"; } > "$events/2026-10-06.jsonl"
 { turn2 msg_h1 14:10:00 "$r4"; for n in 2 3 4; do turn2 "msg_h$n" "14:1$n:00" "$r4" | sed 's/claude-sonnet-5-5/claude-evil'$'\033''[2J/'; done; } \
   | sed 's/2026-10-02/2026-10-06/' > "$cfg/projects/$(printf '%s' "$r4" | sed 's/[^A-Za-z0-9]/-/g')/h.jsonl"
+mkdir -p "$r4/.claude"   # both gates logged on the builder's model: one line names both
+{ printf '{"ts":"2026-10-06T14:20:00Z","agent_id":"r9","agent_type":"reviewer","ticket":"t-hhhh","model":"claude-sonnet-5-5"}\n'
+  printf '{"ts":"2026-10-06T14:21:00Z","agent_id":"e9","agent_type":"evaluator","ticket":"t-hhhh","model":"claude-sonnet-5-5"}\n'; } > "$r4/.claude/subagent-runs.jsonl"
 out="$(cd "$p4" && recspend --ticket t-hhhh)"
 ln4="$(grep -h '"ticket":"t-hhhh"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
 assert_contains "$ln4" '"builder":"claude-sonnet-5-5"'
 [[ "$ln4" != *'"builder":"claude-evil'* ]] || fail "a hostile transcript model became the builder: $ln4"
+assert_contains "$ln4" '"same_model":"reviewer,evaluator"'
+assert_contains "$out" "note: the reviewer and the evaluator ran on claude-sonnet-5-5, the model that built this change, so neither is independent of it (advisory, never a block)."
+[[ "$out" != *$'\033'* ]] || fail "a control byte from a transcript model reached the terminal: $out"
 
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e

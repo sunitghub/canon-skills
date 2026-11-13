@@ -36,6 +36,19 @@ func TestLineShapeAndLimits(t *testing.T) {
 	if title := got["data"].(map[string]any)["title"].(string); len([]rune(title)) != 200 {
 		t.Errorf("title not cut to 200 runes: %d", len([]rune(title)))
 	}
+	// t-b6ad: sprint.cost's builder is cut to 80 characters and same_model to 24.
+	cb, err := Line("sprint.cost", "sprint", "/p", map[string]string{"ticket": "t-abcd", "builder": strings.Repeat("m", 120), "same_model": strings.Repeat("e", 60)}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cg map[string]any
+	if err := json.Unmarshal(cb, &cg); err != nil {
+		t.Fatal(err)
+	}
+	cd := cg["data"].(map[string]any)
+	if len(cd["builder"].(string)) != 80 || len(cd["same_model"].(string)) != 24 {
+		t.Errorf("sprint.cost builder / same_model not cut to 80 / 24: %v", cd)
+	}
 	for name, c := range map[string]struct {
 		kind, source string
 		data         map[string]string

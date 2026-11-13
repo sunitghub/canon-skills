@@ -2002,7 +2002,7 @@ cmd_token_spend() {
   _record_cost "$only" "$root" "$res"
 }
 
-# _record_cost <id> <root> <line> — t-7e26: write the ticket's one sprint.cost event (numbers only, no transcript text) from token-spend's
+# _record_cost <id> <root> <line> — t-7e26: write the ticket's one sprint.cost event (numbers, model ids and gate names only, no transcript text) from token-spend's
 # machine line, and print the one-line summary. An empty line (no transcripts, no turns, already recorded) writes and prints nothing.
 _record_cost() {
   local id="$1" root="$2" line="$3" kv f=() planning=0 impl=0 gates=0 runs=0 total pct builder="" same=""
@@ -2024,7 +2024,11 @@ _record_cost() {
   echo "cost: $(_cost_h "$total") tokens (gates $(_cost_h "$gates"), ${pct}%), $runs gate runs"
   [[ "$pct" -le 50 ]] || echo "  Most of this ticket's tokens went to the close gates, not the building. 'sprint token-spend --ticket $id' shows which."
   if [[ -n "$same" ]]; then
-    echo "note: the ${same//,/ and } ran on $builder, the model that built this change, so it is not an independent model (advisory, never a block)."
+    if [[ "$same" == *,* ]]; then
+      echo "note: the reviewer and the evaluator ran on $builder, the model that built this change, so neither is independent of it (advisory, never a block)."
+    else
+      echo "note: the $same ran on $builder, the model that built this change, so it is not independent of it (advisory, never a block)."
+    fi
   fi
 }
 # _same_model_gates <id> <root> <builder> — t-b6ad: "reviewer", "evaluator" or "reviewer,evaluator" for the gates whose logged model equals
