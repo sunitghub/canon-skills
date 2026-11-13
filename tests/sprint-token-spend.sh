@@ -53,7 +53,7 @@ main="$tdir/s1.jsonl"
 turn 15:05:00 msg_w1 claude-opus-5-5 44 0 0 0 "$wtp" > "$wdir/s2.jsonl"   # t-gggg, in the worktree
 turn 10:45:00 msg_i1 claude-sonnet-5-5 50 0 0 0 > "$tdir/s1/subagents/agent-i1.jsonl"   # implementer: implementation
 printf '{"agentType":"general-purpose","description":"implement"}' > "$tdir/s1/subagents/agent-i1.meta.json"
-turn 10:50:00 msg_g1 claude-sonnet-5-5 40 0 0 0 > "$tdir/s1/subagents/agent-g1.jsonl"   # before gate.started, still a gate
+{ turn 10:50:00 msg_g1 claude-sonnet-5-5 40 0 0 0; turn 10:51:00 msg_g2 claude-sonnet-5-5 0 0 0 0; } > "$tdir/s1/subagents/agent-g1.jsonl"   # before gate.started, still a gate; two turns, one run
 printf '{"agentType":"canon-evaluator","description":"t-aaaa binding evaluator"}' > "$tdir/s1/subagents/agent-g1.meta.json"
 turn 13:15:00 msg_r1 claude-sonnet-5-5 50 0 0 0 > "$tdir/s1/subagents/agent-r1.jsonl"   # a sprint with only its gates here
 printf '{"agentType":"canon-reviewer","description":"t-ffff advisory reviewer"}' > "$tdir/s1/subagents/agent-r1.meta.json"
@@ -106,7 +106,7 @@ phase() { printf '%s\n' "$out" | awk -v p="$1" -v m="$2" '$1 == p && $2 == m' | 
 # phase model turns fresh-in cache-read output
 assert_eq "overlap claude-opus-5-5 1 7 0 0" "$(phase overlap claude-opus-5-5)"
 assert_eq "gates claude-opus-5-5 2 303 0 0" "$(phase gates claude-opus-5-5)"
-assert_eq "gates claude-sonnet-5-5 3 990 0 0" "$(phase gates claude-sonnet-5-5)"
+assert_eq "gates claude-sonnet-5-5 4 990 0 0" "$(phase gates claude-sonnet-5-5)"
 assert_eq "implementation claude-sonnet-5-5 1 50 0 0" "$(phase implementation claude-sonnet-5-5)"
 assert_eq "planning claude-opus-5-5 1 10 1k 10" "$(phase planning claude-opus-5-5)"
 assert_eq "" "$(phase planning '<synthetic>')"
@@ -196,7 +196,7 @@ assert_contains "$out" "Most of this ticket's tokens went to the close gates"
 out="$(recspend --ticket t-aaaa)"; assert_eq "" "$out"; assert_eq "1" "$(cost_lines)"   # idempotent
 # the cost survives the transcripts (about 9 days): the row comes from the event
 mv "$cfg/projects" "$cfg/projects.gone"; mkdir -p "$cfg/projects/$(printf '%s' "$root" | sed 's/[^A-Za-z0-9]/-/g')"
-out="$("$SPRINT" token-spend --ticket t-aaaa)"
+out="$("$SPRINT" token-spend --ticket t-aaaa < <(printf '(standard input):'; turn 10:55:00 msg_stdin claude-opus-5-5 99 0 0 0))"   # a grep that waited on stdin would read this turn
 assert_eq "t-aaaa normal 0 170 343 1k (from the sprint.cost event)" "$(printf '%s\n' "$out" | awk '$1 == "t-aaaa"' | tr -s ' ')"
 rm -rf "$cfg/projects"; mv "$cfg/projects.gone" "$cfg/projects"
 # no turns inside the sprint: nothing recorded, nothing printed
