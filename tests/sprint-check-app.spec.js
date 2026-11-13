@@ -15443,6 +15443,24 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
     await expect(page.locator('#toast')).toContainText('✓ First snapshot of proj-plain saved');
   });
 
+  test('a long findings list shows ten and "and N more"; a path finding has no :line (t-a854)', async ({ page }) => {
+    let turnedOn = false;
+    const findings = [{ path: '.netrc', line: '', rule: 'netrc-file' }, ...Array.from({ length: 11 }, (_, i) => ({ path: `k${i}.txt`, line: String(i + 1), rule: 'aws-access-key' }))];
+    await stubBoard(page, {
+      status: pid => (pid === 'proj-plain' && turnedOn ? { ok: true, tracking: true, synced: null, git_available: true } : defaultStatus(pid)),
+      post: route => { turnedOn = true; return json(route, { ok: true, commit: 'abc1234' }); },
+      snap: { preview: { ok: true, can_snapshot: true, files: 12, bytes: 100, folders: [{ name: '.', files: 12 }], large: [] }, post: route => json(route, { ok: false, blocked: true, error: 'x', findings }, 400) },
+    });
+    await icon(page, 'proj-plain').click();
+    await page.locator('#cc-ok').click();
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#cc-title')).toHaveText('Passwords or keys found');
+    await expect(page.locator('#cc-body')).toContainText('.netrc (netrc-file)');
+    await expect(page.locator('#cc-body')).not.toContainText('.netrc:');
+    await expect(page.locator('#cc-body')).toContainText('and 2 more');
+    await expect(page.locator('#cc-body')).not.toContainText('k10.txt');
+  });
+
   test('Not now on the first-snapshot dialog saves nothing (t-a854)', async ({ page }) => {
     let turnedOn = false;
     const posts = await stubBoard(page, {
