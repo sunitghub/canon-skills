@@ -2344,12 +2344,12 @@ _merge_branch() {
   [[ -z "$bwt" || "$(cd "$bwt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]] \
     || _mb_no "$base is checked out in $bwt, so it cannot be moved from here; switch that worktree to another branch (or finish there), then Check & merge again"
   if [[ ${#rec[@]} -gt 0 ]]; then
-    local shown; shown="$(printf '%s, ' "${rec[@]}" | sed 's/, $//')"
+    local shown cout=""; shown="$(printf '%s, ' "${rec[@]}" | sed 's/, $//')"
     if $check; then echo "merge: will first commit $id's close record on $branch: $shown"
     elif ! $yes; then _mb_no "$id's close record is not committed on $branch ($shown); pass --yes to commit it and merge, or commit it yourself"
     else
-      git -C "$wt" add -- "${rec[@]}" < /dev/null >/dev/null 2>&1 && dirty="$(git -C "$wt" commit -q -m "chore: record $id close" < /dev/null 2>&1)" \
-        || { git -C "$wt" reset -q -- "${rec[@]}" < /dev/null >/dev/null 2>&1 || true; _mb_no "git could not commit $id's close record on $branch: ${dirty:-git add failed}"; }
+      git -C "$wt" add -- "${rec[@]}" < /dev/null >/dev/null 2>&1 && cout="$(git -C "$wt" commit -q -m "chore: record $id close" < /dev/null 2>&1)" \
+        || { git -C "$wt" reset -q -- "${rec[@]}" < /dev/null >/dev/null 2>&1 || true; _mb_no "git could not commit $id's close record on $branch: ${cout:-git add failed}"; }
       echo "merge: committed $id's close record on $branch: $shown"
       head="$(git -C "$root" rev-parse -q --verify "refs/heads/$branch^{commit}")" || _mb_no "git could not read $branch"
     fi
