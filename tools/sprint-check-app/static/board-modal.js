@@ -1,5 +1,5 @@
 import { DEBUG, LIVE_EDITABLE_SLUGS, availableDocTypes, docSlug, loadData, state } from './board-core.js';
-import { LITE_LABEL, LITE_TIP, ticketTags, age, effectiveStatus, esc, escAttr, titleCase, typeBadge } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, MANUAL_LABEL, MANUAL_TIP, ticketTags, age, effectiveStatus, esc, escAttr, titleCase, typeBadge } from './board-helpers.js';
 import { ckRowState, fetchDoc, findTicketById, postWrite, readiness, renderBoard } from './board-render.js';
 import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, saveEdit } from './board-docs.js';
 import { cockpitState } from './board-cockpit.js';
@@ -109,35 +109,39 @@ function renderModalMeta(t) {
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
   bindTagsMeta(t);
 
-  const demoOn = String(t.demo) === 'true';
-  const demoBtn = document.createElement('button');
-  demoBtn.type = 'button';
-  demoBtn.className = 'signoff-demo-toggle';
-  demoBtn.setAttribute('role', 'switch');
-  demoBtn.setAttribute('aria-checked', String(demoOn));
-  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>' + esc(LITE_LABEL) + '</span>';
-  // The demo flag lives in MAIN's ticket.md frontmatter, not the live worktree plan.md, so only a closed ticket locks it.
-  const demoLocked = t.status === 'closed' || t.status === 'cancelled';
-  demoBtn.disabled = demoLocked;
-  demoBtn.title = demoLocked
-    ? 'Ticket is closed — no further edits.'
-    : LITE_TIP;
-  demoBtn.addEventListener('click', async () => {
-    const next = String(t.demo) !== 'true';
-    demoBtn.disabled = true;
-    try {
-      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, `change ${LITE_LABEL}`);
-      if (res.ok) { t.demo = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0.demo = t.demo; adoptTicketWrite(t.id, res.data); }
-    } finally {
-      renderBoard();
-      const cur = state.tickets.find(tk => tk.id === state.selectedId);
-      if (cur) { renderModalMeta(cur); renderModalBody(cur); }
-    }
-  });
-  const item = document.createElement('div');
-  item.className = 'meta-item meta-demo';
-  item.appendChild(demoBtn);
-  document.getElementById('m-meta').appendChild(item);
+  // Lite (`demo`) and Manual (`manual`, t-51c6) are the same kind of switch on the same write path.
+  const optionSwitch = (field, label, tip) => {
+    const on = String(t[field]) === 'true';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = field === 'manual' ? 'signoff-manual-toggle' : 'signoff-demo-toggle';   // each keeps its own class: the tests and styles name them
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-checked', String(on));
+    btn.dataset.option = field;
+    btn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>' + esc(label) + '</span>';
+    // The flag lives in MAIN's ticket.md frontmatter, not the live worktree plan.md, so only a closed ticket locks it.
+    const locked = t.status === 'closed' || t.status === 'cancelled';
+    btn.disabled = locked;
+    btn.title = locked ? 'Ticket is closed — no further edits.' : tip;
+    btn.addEventListener('click', async () => {
+      const next = String(t[field]) !== 'true';
+      btn.disabled = true;
+      try {
+        const res = await postWrite(`/api/ticket/${t.id}/${field}`, { [field]: next }, `change ${label}`);
+        if (res.ok) { t[field] = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0[field] = t[field]; adoptTicketWrite(t.id, res.data); }
+      } finally {
+        renderBoard();
+        const cur = state.tickets.find(tk => tk.id === state.selectedId);
+        if (cur) { renderModalMeta(cur); renderModalBody(cur); }
+      }
+    });
+    const item = document.createElement('div');
+    item.className = 'meta-item meta-demo';
+    item.appendChild(btn);
+    document.getElementById('m-meta').appendChild(item);
+  };
+  optionSwitch('demo', LITE_LABEL, LITE_TIP);
+  optionSwitch('manual', MANUAL_LABEL, MANUAL_TIP);
 }
 
 export function openModal(id) {

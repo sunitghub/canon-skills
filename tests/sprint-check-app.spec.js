@@ -1055,7 +1055,7 @@ test.describe('board modal', () => {
     await expect(page.locator('#create-modal')).not.toContainText('Eval Override');
     await expect(page.locator('#c-gate-eval')).toBeDisabled(); // the open-time reset ran (syncGate) — no leftover reference to the removed pill
     const options = page.locator('#c-ci').locator('xpath=..').locator('button');
-    await expect(options).toHaveText(['CI', 'Eval-only', 'Lite']);
+    await expect(options).toHaveText(['CI', 'Eval-only', 'Lite', 'Manual']);
   });
 
   test('New Ticket Eval-only toggle is CI-gated and writes gate: eval (t-4e57)', async ({ page }) => {
@@ -1125,6 +1125,50 @@ test.describe('board modal', () => {
       // The card renders the DEMO badge
       await expect(card.locator('.lite-badge')).toBeVisible();
       await expect(card.locator('.lite-badge')).toHaveText('LITE');   // t-d0c4: the board says Lite
+    } finally {
+      if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
+    }
+  });
+
+  test('New Ticket Manual chip writes manual: true, shows the MANUAL card badge and the modal switch works (t-51c6)', async ({ page }) => {
+    const title = `Manual toggle test ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+
+      // Manual is independent of Lite and CI: enabled with neither on, and it does not turn Lite on
+      const manualPill = page.locator('#c-manual');
+      await expect(manualPill).toBeEnabled();
+      await manualPill.click();
+      await expect(manualPill).toHaveClass(/active/);
+      await expect(page.locator('#c-demo')).not.toHaveClass(/active/);
+
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = adoptBoardTicket(PROJECT_ROOT, await card.getAttribute('data-id') || '', title);
+      const file = path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md');
+      const tm = fs.readFileSync(file, 'utf8');
+      expect(tm).toMatch(/^manual: true$/m);
+      expect(tm).not.toMatch(/^demo:/m);
+      await expect(card.locator('.manual-badge')).toHaveText('MANUAL');
+      await expect(card.locator('.lite-badge')).toHaveCount(0);
+
+      // The ticket modal's Manual switch turns it off (the route removes the line) and back on
+      await card.click();
+      const sw = page.locator('#m-meta .signoff-manual-toggle');
+      await expect(sw).toHaveAttribute('aria-checked', 'true');
+      await sw.click();
+      await expect(sw).toHaveAttribute('aria-checked', 'false');
+      expect(fs.readFileSync(file, 'utf8')).not.toMatch(/^manual:/m);
+      await sw.click();
+      await expect(sw).toHaveAttribute('aria-checked', 'true');
+      expect(fs.readFileSync(file, 'utf8')).toMatch(/^manual: true$/m);
     } finally {
       if (createdId) removeTestTicket(PROJECT_ROOT, createdId);
     }

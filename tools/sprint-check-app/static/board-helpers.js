@@ -227,6 +227,15 @@ export function ciBadge(t) {
 export const LITE_LABEL = 'Lite';
 export const LITE_TIP = 'Lite close — for live demos or docs/research/UX-mockup work: sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
 
+// t-51c6: Manual, Lite's sibling: the user tests by hand and signs off; the ticket flag is `manual: true`.
+export const MANUAL_LABEL = 'Manual';
+export const MANUAL_TIP = 'Manual close — you test by hand: the reviewer, mutation sweep and full-suite stamp are skipped, the evaluator only audits your recorded testing (read-only), and your yes at the close is the sign-off. Not for high-risk or gate-file work.';
+
+export function manualBadge(t) {
+  if (String(t.manual) !== 'true') return '';
+  return `<span class="manual-badge" title="${escAttr(MANUAL_TIP)} Set with: tkt manual ${esc(t.id)} off">${esc(MANUAL_LABEL.toUpperCase())}</span>`;
+}
+
 export function liteBadge(t) {
   if (String(t.demo) !== 'true') return '';
   return `<span class="lite-badge" title="${escAttr(LITE_TIP)} Set with: tkt demo ${esc(t.id)} off">${esc(LITE_LABEL.toUpperCase())}</span>`;

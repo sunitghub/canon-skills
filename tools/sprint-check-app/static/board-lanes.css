@@ -402,6 +402,16 @@
       background: color-mix(in srgb, var(--lite) 10%, transparent);
     }
     .lite-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+    /* t-51c6: Manual is Lite's sibling in the accent colour, so the two read apart */
+    .manual-badge {
+      --manual: var(--th-accent, var(--accent));
+      font-size: 10px; padding: 0 6px 0 5px; border-radius: 4px; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1;
+      display: inline-flex; align-items: center; gap: 4px; color: var(--manual);
+      border: 1px solid color-mix(in srgb, var(--manual) 55%, transparent);
+      background: color-mix(in srgb, var(--manual) 10%, transparent);
+    }
+    .manual-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
     /* Outcome dot — once per type in the sidebar legend, aggregating closed tickets of that
        type (server omits it below a 2-closed-ticket sample). A dot, not a text pill: the

@@ -1,5 +1,5 @@
 import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, NOW_COLUMN, NOW_DONE_DAYS, NOW_TAG, SHELL_TAB, docSlug, freshShellSessions, hiddenLanes, loadData, state, toggleHiddenLane } from './board-core.js';
-import { ticketTags, age, ciBadge, liteBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreeRun } from './board-helpers.js';
+import { ticketTags, age, ciBadge, liteBadge, manualBadge, divergenceLine, effectiveStatus, esc, escAttr, idQueryDropped, normalizeSearch, outcomeRatio, ticketMatchesQuery, ticketTitleMatches, typeBadge, whyQueryFromInput, worktreeRun } from './board-helpers.js';
 import { openModal } from './board-modal.js';
 import { tagChipsHTML } from './board-tags.js';
 import { moveCard } from './board-docs.js';
@@ -830,6 +830,7 @@ function cardHTML(t, idx, inNow) {
         ${typeBadge(t.type)}
         ${ciBadge(t)}
         ${liteBadge(t)}
+        ${manualBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn b-accent${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
       </div>
       <div class="card-body">

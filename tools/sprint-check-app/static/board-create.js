@@ -1,5 +1,5 @@
 import { TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
-import { LITE_LABEL, LITE_TIP, titleCase } from './board-helpers.js';
+import { LITE_LABEL, LITE_TIP, MANUAL_LABEL, MANUAL_TIP, titleCase } from './board-helpers.js';
 import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
 import { openTagMenu, tagChipsHTML } from './board-tags.js';
 import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
@@ -22,6 +22,7 @@ export function initCreate() {
     let ciEnabled = false;
     let gateEval = false;
     let demoEnabled = false;
+    let manualEnabled = false;
     let templateUntouched = true;
     let stagedVisuals = [];
     let createTags = [];   // t-37e8: the tags picked in the dropdown; sent with the create
@@ -44,6 +45,8 @@ export function initCreate() {
     const gateBtn = document.getElementById('c-gate-eval');
     const demoBtn = document.getElementById('c-demo');
     demoBtn.textContent = LITE_LABEL; demoBtn.title = LITE_TIP;
+    const manualBtn = document.getElementById('c-manual');
+    manualBtn.textContent = MANUAL_LABEL; manualBtn.title = MANUAL_TIP;
 
     // Eval-only is only meaningful when CI is on; keep it disabled + reset otherwise.
     function syncGate() {
@@ -56,13 +59,15 @@ export function initCreate() {
     gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
     // Demo is independent of CI (no gate coupling).
     demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
+    // Manual is independent of Lite and CI too (t-51c6): each only skips optional gates.
+    manualBtn.addEventListener('click', () => { manualEnabled = !manualEnabled; manualBtn.classList.toggle('active', manualEnabled); });
 
     function open() {
       selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-      ciEnabled = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
+      ciEnabled = false; gateEval = false; demoEnabled = false; manualEnabled = false; stagedVisuals = [];
       createTags = []; paintCreateTags();
       ciBtn.classList.remove('active');
-      gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
+      gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); manualBtn.classList.remove('active'); syncGate();
       titleEl.value = ''; detectEl.textContent = '';
       bodyEl.value = TYPE_TEMPLATES['task'] || '';
       queueEl.textContent = '→ will open in: Open';
@@ -132,7 +137,7 @@ export function initCreate() {
       titleEl.style.borderColor = '';
       document.getElementById('c-submit').disabled = true;
       try {
-        const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, tags: createTags }, 'create the ticket');
+        const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, manual: manualEnabled, tags: createTags }, 'create the ticket');
         if (!created.ok) { document.getElementById('c-submit').disabled = false; return; }
         const ticket = created.data;
 

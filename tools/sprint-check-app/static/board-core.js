@@ -377,7 +377,7 @@ export function initCore() {
     // t-d271: the GitHub workflow routes (ticket/<id>/github/*, github/sync*) run tkt in the tab's project.
     // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
     // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-    const WRITE_RE = /^\/api\/(settings$|tickets$|tags$|ticket\/[^/]+\/(status|body|demo|tags|visual|github\/)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|github\/)/;
+    const WRITE_RE = /^\/api\/(settings$|tickets$|tags$|ticket\/[^/]+\/(status|body|demo|manual|tags|visual|github\/)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|github\/)/;
     const _fetch = window.fetch.bind(window);
     window.fetch = function(input, init){
       try {
