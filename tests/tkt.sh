@@ -153,6 +153,7 @@ assert_contains "$("$TKT" manual "$man_id" on 2>&1)" "high-risk sprint: Manual m
 grep -q "^manual:" ".tickets/$man_id/ticket.md" && fail "expected 'manual:' line removed after 'manual off'" || true
 assert_contains "$(run_fail "$TKT" manual "$man_id" bogus)" "must be 'on' or 'off'"
 assert_contains "$(run_fail "$TKT" manual)" "Usage: tkt manual <id> [on|off]"
+assert_contains "$(run_fail "$TKT" manual t-zzzz on)" "no ticket matching"   # an unknown id writes nothing
 
 # ── tkt learn (t-0232): distill close artifacts into an UNPROMOTED candidate ──
 

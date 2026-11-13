@@ -1430,8 +1430,13 @@ _manual_mode_refusal() {
   tdir="$(_mqa_dir "$id")"
   [[ "$(_signoff_tier "$tdir/plan.md")" == high-risk ]] && { echo "the plan's Tier is high-risk"; return 0; }   # the one tier parser (_signoff_tier)
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"; il="$root/scripts/integrity-list.sh"
-  [[ -f "$il" ]] || return 0
-  base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)" || { echo "this is canon's own checkout and the base (origin/main) cannot be found to check for gate-file changes"; return 0; }
+  # canon's own checkout is decided by the BASE having the list, not the working tree: deleting or renaming the list file must not turn the check off
+  base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)" || base=""
+  if [[ -z "$base" ]]; then
+    [[ -f "$il" ]] || return 0   # a project that is not canon, with no remote to compare against
+    echo "this is canon's own checkout and the base (origin/main) cannot be found to check for gate-file changes"; return 0
+  fi
+  git -C "$root" cat-file -e "$base:scripts/integrity-list.sh" 2>/dev/null || return 0   # the base has no gate list: not canon's checkout
   # the lists come from the BASE's copy, so editing the list cannot hide a gate file; a change to the list file is itself refused
   local gf gp lists
   lists="$(git -C "$root" show "$base:scripts/integrity-list.sh" 2>/dev/null)" || { echo "the gate-file lists cannot be read from $base:scripts/integrity-list.sh"; return 0; }

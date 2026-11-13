@@ -72,6 +72,11 @@ printf 'GATE_FILES=(\n  tools/sprint\n  tools/evidence.sh\n)\nGATE_PROMPTS=(skil
 mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 0 "$code"
 echo z >> tools/sprint; git add tools/sprint; git commit -qm "edit the first of a multi-line list"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
 assert_eq 1 "$code"; assert_contains "$out" "(tools/sprint)"; git reset -q --hard HEAD~1
+# deleting or renaming the list file in the same change as a gate-file edit does not switch the check off (canon's checkout is decided by the base)
+git rm -q scripts/integrity-list.sh; echo z >> tools/sprint; git add tools/sprint; git commit -qm "delete the list and edit"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "it changes a gate file or gate prompt (tools/sprint)"; git reset -q --hard HEAD~1
+git mv scripts/integrity-list.sh scripts/zzz.sh; echo z >> tools/sprint; git add tools/sprint; git commit -qm "rename the list and edit"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "it changes a gate file or gate prompt (tools/sprint)"; git reset -q --hard HEAD~1
 # a record where nothing passed (n/a only) is not the user's testing
 mq "$ID" --by Sunit --step "a|n/a"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "at least one step that passed"
 # the close itself checks it (the pre-flight is protocol text; this is the CLI floor): no record, then a record, with the work allowed

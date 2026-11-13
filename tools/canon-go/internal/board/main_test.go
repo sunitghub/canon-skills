@@ -2517,3 +2517,30 @@ func TestRemoteAgents(t *testing.T) {
 		t.Fatal("a project with nothing out on GitHub started a process")
 	}
 }
+
+// t-51c6: Manual is Lite's sibling on the same write path: writeBoolField sets and clears each field alone, is idempotent, and a longer
+// field name that starts the same (manual_x:, demo_x:) is never touched.
+func TestManualWritesLikeDemo(t *testing.T) {
+	setupTestProject(t)
+	tk := createTicket("toggle", "task", "open", 2, "", false, "full", false, false, "", nil, "")
+	id := tk["id"].(string)
+	path := filepath.Join(ticketsDir, id, "ticket.md")
+	read := func() string { raw, _ := os.ReadFile(path); return string(raw) }
+	if !writeBoolField(id, "manual", true, "") || !writeBoolField(id, "manual", true, "") || strings.Count(read(), "\nmanual: true\n") != 1 {
+		t.Fatalf("manual ON must write one line and be idempotent:\n%s", read())
+	}
+	if !writeBoolField(id, "demo", true, "") || !writeBoolField(id, "manual", false, "") || strings.Contains(read(), "manual:") || !strings.Contains(read(), "\ndemo: true\n") {
+		t.Fatalf("manual OFF must remove only the manual line:\n%s", read())
+	}
+	raw := read()
+	os.WriteFile(path, []byte(strings.Replace(raw, "\ndemo: true\n", "\ndemo: true\nmanual_x: keep\ndemo_x: keep\n", 1)), 0644)
+	writeBoolField(id, "manual", true, "")
+	writeBoolField(id, "manual", false, "")
+	writeBoolField(id, "demo", false, "")
+	if got := read(); !strings.Contains(got, "manual_x: keep") || !strings.Contains(got, "demo_x: keep") || strings.Contains(got, "\ndemo: true") {
+		t.Fatalf("a longer field name must survive a toggle:\n%s", got)
+	}
+	if writeBoolField("t-zzzz", "manual", true, "") {
+		t.Fatalf("an unknown ticket must not report success")
+	}
+}
