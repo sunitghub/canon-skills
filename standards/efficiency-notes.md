@@ -4,8 +4,8 @@ description: On-demand domain rules moved out of the always-loaded efficiency st
 category: agent-ops
 tags: [coding, testing, security, shell, windows]
 hidden: true
-version: 1.0.7
-updated: 2026-11-10
+version: 1.0.8
+updated: 2026-11-13
 ---
 
 # Agent Standards: domain notes
@@ -25,6 +25,7 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - Trimming a capped doc to fit its word cap keeps each clause's check, command and failure report: cut elsewhere or raise the cap, never hollow out an instruction (t-e75d; class: cap-trim-drops-instruction; id: P-047).
 - A mass edit of lines whose `git blame` date a tool reads (promoted-report) lists its commits in `.git-blame-ignore-revs` in the same change; afterwards check the derived dates and counts on the real data (t-f74e; class: mass-edit-resets-blame; id: P-063).
 - Before keying a default on a sentinel value (`=== null`), grep every writer of that state: a writer that stores another placeholder (`''`) means the default never runs (t-8be9; class: sentinel-not-written; id: P-070).
+- An edit script that replaces text between markers asserts afterwards that every landmark of the file (function names, section headers) still appears exactly once: `bash -n` accepts a file with a whole block missing (t-29ee; class: marker-replace-deletes-block; id: P-084).
 
 ## Shell strict mode and traps
 
@@ -44,6 +45,9 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - A helper that takes parameters as an env prefix (`GD_GROUP=x _gd …`) also reads them from the caller's environment: unset them at entry and test with them exported (t-d287).
 - Never match `git`/`gh` human text (`Everything up-to-date`, `not found`) under the user's locale: run with `LC_ALL=C`, or use porcelain output or exit codes (t-10ac).
 - Untrusted text goes to awk through `ENVIRON`, never `-v`: `-v` processes backslash escapes (`\n` splits a table row, `\|` vanishes) (t-8a0d; class: awk-v-escapes; id: P-069).
+- A run started with `nohup` ignores SIGHUP and so do its children, so the HUP case in `tests/tkt-merge-pr.sh` fails: run stamps and timing drivers in the foreground (t-7e26, t-045f; class: inherited-ignored-signal; id: P-075).
+- A comment inserted on a `[[ … ]] || fail "…"` line before the `|| fail` makes the `fail` part of the comment, and the bare `[[ ]]` never fails on bash 3.2: revert-prove any edited assertion line, and give a loosened bound a measured number, not slack (t-42ed; class: assert-line-edit-disarms; id: P-078).
+- A shell client of a loopback service passes `curl --noproxy '*'` (an `http_proxy` in the environment otherwise routes it away) and pattern-checks any environment value before it enters a URL or arithmetic (digits, no leading zero, bounded length), both owned by one wrapper (t-ad6f; class: loopback-client-trusts-env; id: P-083).
 
 ## Tests, guards and hermetic runs
 
@@ -72,6 +76,11 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - A test of a local-clock time never assumes a fixed hour gap (DST shifts it): compute the expected value with the same clock call, or pin `TZ=UTC` (t-11e6).
 - A unit test never runs the real OS auth (`dscl -authonly`, `su`, `sudo`/UAC): inject the auth hook, and run the real one only in a named manual check (t-353a).
 - A new per-machine runtime file under `.tickets/<id>/` joins the `.tickets/.gitignore` seed (`tools/tkt`) and the `docs/setup.md` list in the same change (t-10ac).
+- A test that writes through code with a retention or prune (the board's event log) pins the clock that code reads (`CANON_EVENTS_CLOCK`), or the first write prunes a fixture dated weeks ago (t-7e26; class: fixture-pruned-by-retention; id: P-074).
+- A check that needs a rule another tool owns (freshness, a section or bullet parse) calls the owner (`evidence.sh neutral`, `_acceptance_section`), and its test runs every form the owner accepts through the new reader (t-aa24, t-51c6; class: reimplemented-owner-rule; id: P-077).
+- A new warning is tested in every case where it must stay silent, not only the one that fires; when it must go to stderr the test reads the streams separately, because `2>&1` cannot see a dropped `>&2` (t-6be7, t-c923; class: warning-quiet-and-stream-unpinned; id: P-079).
+- A test that loops over rows and `continue`s past those that do not match counts the matched rows and fails unless the count is the expected one: a renamed key otherwise passes with zero rows checked (t-70f2; class: filter-loop-vacuous; id: P-082).
+- Compare numbers as numbers (`-eq`, `(( ))`), never as strings: a fixture line that embeds the temp path changes the string's length per machine; run a changed test once under a long `TMPDIR` (t-8d45; class: numeric-compared-as-string; id: P-085).
 
 ## Security checks and gates
 
@@ -99,6 +108,8 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - A command that gains a write drops every "read-only" label it carries: help text, header comment, docs, and any allow-list that runs it unconfirmed (`term.go` `readOnlyTkt`) (t-c990, t-7c89; class: stale-readonly-label; id: P-055).
 - A reader of any path under a repo-controlled tree (`.tickets/`) Lstats it, reads regular files only, caps the size and opens with O_NONBLOCK, so a symlink is never followed and a FIFO never hangs the route. Adding a route: grep for bare `os.ReadFile` on repo paths; test with a symlink, a FIFO and a cap+1 file (t-ca73; class: repo-path-read-unguarded; id: P-060).
 - When a gate prompt's required label list changes, the shape check keeps accepting reports already written to the old list (choose the list by the labels a report starts with); run the check over every existing report before and after: 0 differences (t-0ca2; class: format-change-breaks-old-artifacts; id: P-064).
+- Text made safe for display (`tr -c '[:print:]' '?'`, a length cap) is a display copy: anything sent back as a key (an ignore list, a path to act on) carries the raw value or an index. Test with a non-ASCII name and one over the cap (t-a854; class: display-copy-used-as-key; id: P-073).
+- A check that can switch a gate off reads its own scope (the gate-file list, the tier) from the base (`git show <base>:<path>`), parses it with the owner's parser, diffs with `--no-renames`, and needs each list non-empty on its own; probe delete, rename and editing the list in the same change (t-51c6; class: gate-scope-from-editable-tree; id: P-076).
 
 ## Destructive commands and user files
 
@@ -116,6 +127,7 @@ The always-on rules are "same fact in several files → one owner" and "a third 
 - Moving, changing the contract of, retiring or renaming a file or mechanism → sweep every doc surface by concept and paraphrase (cross-references, anchors, README prose, other skills), not only the known phrase; an exact-phrase grep proves only known spots; for a "nothing else" or "already in docs" claim, state the search scope and run it unrestricted (`git grep`, no file-type globs) and recompute counts. A rename by string also hits identifiers that only share the prefix: classify each hit, list the kept ones in `acceptance.md`, and exclude exactly that list from the evidence grep. A doc claim about a UI or a tool's flow is checked against the surface the reader sees (render it) and the tool's own printed next step (`t-e6d2`). An inventory of "every way X happens" searches by capability (every way a process or remote session starts) and names its patterns in the file (t-d42a); review a global `sed` per touched file (t-0aa7; class: inventory-by-pattern-incomplete; id: P-022).
 - Before renaming a field to match a plan, read what its published contract promises (`docs/plugins.md`: v1 only gains fields); add the new thing as an optional field instead (t-15b5; class: breaks-published-contract; id: P-011).
 - A command's printed line is a contract: before rewording it, `git grep` `tools/` for readers that match it (a `/^Local [^:]+: /` regex, a `tkt finish` substring), and feed each reader the real output in a test, not a stub (t-e7fb, t-607a; class: printed-text-has-readers; id: P-053).
+- The same holds when a value gets longer: grep every writer's length limit (an event field's cap) and every reader's cut and allowed-character filter (`safe()`, the 80-character display) (t-0317; class: grown-value-truncated; id: P-080).
 
 ## Cross-backend parity
 

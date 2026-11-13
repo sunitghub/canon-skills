@@ -90,7 +90,7 @@ The destinations depend on which project the session is in:
    second copy. If the grep finds the rule already there, the row needs no write: propose it as
    `` `dismissed (covered: <file>)` ``, never as promoted. A row that spans two moments may be split into two proposals (as `t-6328` was).
    Keep any always-loaded rule to one or two lines; its cost is paid every session.
-   In canon itself, tag every placed line `(t-xxxx[, t-yyyy]; class: <short-failure-name>; id: P-nnn)`: the id is the highest existing plus one (`grep -rhoE 'id: P-[0-9]+' standards skills tools docs critique | sort -t- -k2 -n | tail -1`), so a later review can cite it and `canon-go promoted-report` can count it. A consumer's `PROMOTED.md` entry keeps its own form below, with no id.
+   In canon itself, tag every placed line `(t-xxxx[, t-yyyy]; class: <short-failure-name>; id: P-nnn)`: the id is the highest existing plus one (`grep -rhoE 'id: P-[0-9]+' standards skills tools docs critique | sort -t- -k2 -n | tail -1`), so a later review can cite it and `canon-go promoted-report` can count it. The tag ends with `id: P-nnn)`, nothing after the id: after the write run `canon-go promoted-report` and find the new id in it (t-3620; class: promoted-tag-unparsed; id: P-086). A consumer's `PROMOTED.md` entry keeps its own form below, with no id.
 4. For each non-durable row, recommend dismissal with a one-line reason.
 5. Never edit `LEARNINGS.md`, any file under `standards/`, `critique/canon-learnings.md`,
    `CLAUDE.md`, or `AGENTS.md`. In canon this skill's report is its only output. In a consumer
