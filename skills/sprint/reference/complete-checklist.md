@@ -8,7 +8,7 @@ hidden: true
 
 # Sprint Complete — checklist
 
-The normal path; other cases: last table.
+Other cases: last table.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not close approval.
@@ -17,7 +17,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
    refresh docs.
-   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close. Summary quotes its fields.
+   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
@@ -53,7 +53,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
    if it writes a file, run `/learnings-sweep <id>`. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
-10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS, even new, unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
+10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
     **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
@@ -85,4 +85,5 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 | high-risk or untrusted-input sprint (break-it) | step 3 "Break-it" |
 | scenario-backed Test Plan lines | step 4 |
 | a waived, deferred or partial item, or the learnings cap | step 8 |
+| `manual: true` | step 1 "Manual mode" |
 | a release | step 10 "Releases" |

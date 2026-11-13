@@ -26,6 +26,15 @@ superset of what the `bugfix` tier trims. `security-review` always runs even wit
 (its `ran` row records that), and the evaluator is forced to Haiku. Each skipped gate's Wrapup Gates
 row reads `skipped | demo mode`, so a demo close never looks like a full close.
 
+**Manual mode.** When a ticket carries `manual: true` (`tkt manual <id> on`, or the board's Manual
+chip; see [`complete.md`](../skills/sprint/reference/complete.md)'s "Manual mode"), you test by hand and
+the gates re-test nothing: the advisory `reviewer` and the mutation sweep are skipped (rows read
+`skipped | Manual mode`), the full-suite stamp is not required, and the `evaluator` runs read-only,
+checking your recorded testing (`sprint manual-qa`) against the diff and the acceptance. The other
+wrapup gates still run unless the ticket is also Lite; `security-review` and the evaluator always run.
+`sprint check-evidence` waits for your test, and refuses Manual mode for a high-risk plan or a gate-file
+change. The close question reads your record back, and your yes is the sign-off.
+
 ## What each gate checks
 
 | Gate | Checks | Does NOT check / out of scope | Skips when |

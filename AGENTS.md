@@ -53,7 +53,7 @@ Tiers "Review & Eval" default, applied unconditionally to every interactive clos
 
 **Cross-harness note.** Codex and pi dispatch differ (per-agent model only through a `~/.codex/agents/*.toml` custom agent; pi gates run on the pi session model): see `complete.md`'s "Cross-harness caveat" and pi-dispatch bullets.
 
-**North-star (gate floor).** Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator. The one documented exception is a user-set `demo: true` light-close (the evaluator still runs). The full policy — demo mode, the model tier for gates, and the north-star amendments — lives in `skills/sprint/reference/complete.md` (see also `DECISIONS.md` 2026-07-25 / 07-30 / 08-02).
+**North-star (gate floor).** Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator. The documented exceptions are two user-set ticket options that only skip optional gates, `demo: true` (Lite) and `manual: true` (Manual, the user's recorded testing is the evidence): the evaluator still runs (read-only on Manual) and no locked row is skipped. The full policy — demo mode, the model tier for gates, and the north-star amendments — lives in `skills/sprint/reference/complete.md` (see also `DECISIONS.md` 2026-07-25 / 07-30 / 08-02).
 
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
