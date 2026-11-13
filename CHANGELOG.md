@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added: Factory > Pipeline draws the Sprint progress card beside "Preview a ticket": for a Normal, Lite, Manual or Manual + Lite ticket it lists every step, with skipped rows struck through (`skipped · Lite`, `skipped · Manual`, `skipped · Lite + Manual`), Your test as `waiting for your test`, the Evaluator as `read-only audit` (or `Haiku` on Lite), a node the project switched off as `off in this project`, and on Manual the close line that your sign-off reads your record back. It sits to the right of the list on a wide page (sticky) and under the chips on a narrow one, and sends nothing. One function, `progressCardHtml`, draws it, so a ticket's live card (t-5ef8) can reuse it. Board JS and CSS only: no daemon release (t-2755).
+
 ## [0.55.9] - 2026-11-13
 
 - Added: after Turn on for a project, a second dialog offers a first snapshot of its files: it shows the file count, size, top folders and any file over 5 MB before anything is staged, runs the secret scan on the staged files, and saves one commit (`chore: first snapshot of this folder`) only when it is clean. A finding saves nothing, lists `path:line (rule)` (never the value) and offers to ignore those files and save the rest. Not now saves nothing and nothing is pushed (the push offer is t-4d6a; offering the snapshot again later is t-63bb). New routes `GET`/`POST /api/first-snapshot`. The default `.gitignore` canon writes now also ignores `.env`, `.env.*`, `*.pem`, `id_rsa`, `id_ed25519` and `.claude/settings.local.json`. Go changed: daemon release (t-a854).
