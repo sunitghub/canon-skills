@@ -486,6 +486,7 @@ git branch -qf main "$BASE"; git worktree add -q "$W/wt" main              # mai
 out="$(ff_merge)"; assert_contains "$out" "Local main: checked out in $(cd "$W/wt" && pwd -P); left at ${BASE:0:8}. Update it there: tkt merge-pr $id"
 assert_eq "$BASE" "$(git rev-parse main)"; git worktree remove -f "$W/wt"
 git checkout -q main; echo local > local.txt; git add local.txt; git commit -qm "local only"; LOCAL="$(git rev-parse HEAD)"
+git update-ref -d refs/remotes/origin/main   # the cases above rewind origin (other STUB_HEADs): a fresh tracking ref, so only this merge's history counts
 out="$(ff_merge)"; assert_contains "$out" "Local main: merged origin/main (${PRHEAD:0:8}) into main: ${LOCAL:0:8} -> "   # t-dde9: diverged: merged, not left
 assert_eq "Merge origin/main into main" "$(git log -1 --format=%s main)"; assert_eq "$LOCAL" "$(git rev-parse main^1)"; assert_eq "$PRHEAD" "$(git rev-parse main^2)"
 [[ "$(git status --porcelain --untracked-files=no)" == "" && -f local.txt ]] || fail "the merge of origin into local main left changes or lost local.txt"
