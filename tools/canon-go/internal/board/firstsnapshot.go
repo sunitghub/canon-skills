@@ -25,7 +25,8 @@ const firstSnapshotMaxFiles = 200000
 // firstSnapshotIgnoreEntries are the credential shapes the default .gitignore keeps out of a snapshot.
 const firstSnapshotIgnoreEntries = ".env\n.env.*\n*.pem\nid_rsa\nid_ed25519\n.claude/settings.local.json\n"
 
-var secretFindingRe = regexp.MustCompile(`^(?:[0-9a-f]{7,40}:)?(.*):([0-9]+): (\S+)$`)
+// `path:line: rule` for a content hit, `path: rule` for a path rule (.netrc, a key file): the line is optional.
+var secretFindingRe = regexp.MustCompile(`^(?:[0-9a-f]{7,40}:)?(.*?)(?::([0-9]+))?: (\S+)$`)
 
 type snapshotFinding struct {
 	Path string `json:"path"`
@@ -37,6 +38,10 @@ type snapshotFinding struct {
 func canonStartOnly(root string) (bool, string) {
 	if !insideWorkTree(root) {
 		return false, "This folder does not keep a version history yet."
+	}
+	// The folder itself must be the repository's top: inside a parent's repo, `git add -A` would stage the parent's other files too.
+	if top, _, err := gitOutIn(root, 10*time.Second, "rev-parse", "--show-toplevel"); err != nil || !samePath(resolvedOrAbs(strings.TrimSpace(top)), resolvedOrAbs(root)) {
+		return false, "A first snapshot is only offered for a folder that is itself the repository."
 	}
 	n, _, err := gitOutIn(root, 10*time.Second, "rev-list", "--count", "HEAD")
 	if err != nil || strings.TrimSpace(n) != "1" {
@@ -178,7 +183,11 @@ func firstSnapshot(root string, confirm any, ignore []string) map[string]any {
 	ignorePath := filepath.Join(root, ".gitignore")
 	orig, readErr := os.ReadFile(ignorePath)
 	hadIgnore := readErr == nil
+	wrote := false // only a .gitignore this call changed is put back; one it never touched stays as it is
 	restore := func() {
+		if !wrote {
+			return
+		}
 		if hadIgnore {
 			_ = os.WriteFile(ignorePath, orig, 0o644)
 		} else {
@@ -210,6 +219,7 @@ func firstSnapshot(root string, confirm any, ignore []string) map[string]any {
 		if body != "" && !strings.HasSuffix(body, "\n") {
 			body += "\n"
 		}
+		wrote = true
 		if err := os.WriteFile(ignorePath, []byte(body+lines.String()), 0o644); err != nil {
 			restore()
 			return fail("Could not update .gitignore: " + err.Error())
@@ -234,6 +244,7 @@ func firstSnapshot(root string, confirm any, ignore []string) map[string]any {
 			}
 		}
 		reset()
+		restore() // nothing was saved, so .gitignore goes back too; the user's Ignore retry sends every path again
 		return map[string]any{"ok": false, "blocked": true, "findings": found,
 			"error": "The secret scan found something in these files. Nothing was saved."}
 	default:

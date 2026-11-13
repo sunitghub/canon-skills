@@ -275,10 +275,12 @@ check_first_snapshot() {
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{}')"; assert_eq "400" "${r%% *}"
   r="$(fsreq POST "$port" "?project=nope" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
   assert_eq "$snap" "$(snapshot "$proj")"
+  printf 'machine x\n' > "$proj/.netrc"   # a path rule: the scanner names it without a line number
   # a finding: nothing committed, index reset, path:line:rule named, the value never in the answer
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"
   assert_eq "400" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" blocked)"
   assert_contains "${r#* }" '"path":"creds.txt"'; assert_contains "${r#* }" '"line":"1"'; assert_contains "${r#* }" '"rule":"aws-access-key"'
+  assert_contains "${r#* }" '"path":".netrc"'; assert_contains "${r#* }" '"line":""'   # a path finding still reaches the user, so Ignore can offer it
   [[ "${r#* }" != *"$secret"* ]] || fail "$kind: the answer carries the secret value"
   assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
   # ignore only takes previewed files: a made-up path, a traversal and a newline are refused and .gitignore is unchanged
@@ -301,8 +303,16 @@ check_first_snapshot() {
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt"]}')"; assert_eq "400" "${r%% *}"
   assert_eq "keep" "$(cat "$linkdir/target")"
   rm "$proj/.gitignore"; cp "$linkdir/gi.orig" "$proj/.gitignore"
+  # a blocked retry leaves .gitignore as it was: ignoring only creds.txt still trips on .netrc
+  snap="$(cat "$proj/.gitignore")"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt"]}')"; assert_eq "400" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" blocked)"
+  assert_eq "$snap" "$(cat "$proj/.gitignore")"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
+  # a .gitignore this call could not read is never deleted
+  chmod 000 "$proj/.gitignore"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  chmod 644 "$proj/.gitignore"; assert_eq "$snap" "$(cat "$proj/.gitignore")"; git -C "$proj" reset -q
   # ignore the finding, retry: one commit with the neutral message, creds.txt left out, the others in
-  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt","a[1].txt"]}')"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt",".netrc","a[1].txt"]}')"
   assert_eq "200" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" ok)"
   git -C "$proj" ls-files | grep -qx "a1.txt" || fail "$kind: a1.txt was not saved (an unescaped [1] pattern matched it)"
   ! git -C "$proj" ls-files | grep -qx "a\[1\].txt" || fail "$kind: a[1].txt was saved"
@@ -332,9 +342,31 @@ check_snapshot_no_scanner() {
   assert_eq "$snap" "$(cat "$proj/.gitignore")"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
 }
 
+# t-a854: a folder inside a parent's repository is never snapshotted (git add -A would stage the parent's other files), and a scanner that
+# exits 2 (a git failure inside it) saves nothing, like a missing one
+check_snapshot_edges() {
+  local kind="$1" home dflt parent sub r bin proj
+  new_dir; home="$NEW_DIR"; new_dir; dflt="$NEW_DIR"; start_server "$kind" "$dflt" "$home"
+  new_dir; parent="$NEW_DIR"; mkdir "$parent/sub"; echo mine > "$parent/sub/f.txt"; echo other > "$parent/other.txt"
+  git -C "$parent" init -q; git -C "$parent" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "chore: start tracking changes with canon"
+  git -C "$parent" add other.txt   # the parent's own staged work
+  register "$SERVER_PORT" "$parent/sub"; sub="$PROJ_ID"
+  r="$(fsreq GET "$SERVER_PORT" "?project=$sub")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"
+  r="$(fsreq POST "$SERVER_PORT" "?project=$sub" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  assert_eq "other.txt" "$(git -C "$parent" diff --cached --name-only)"; assert_eq "1" "$(git -C "$parent" rev-list --count HEAD)"
+  new_dir; home="$NEW_DIR"; new_dir; bin="$NEW_DIR"; ln -s "$(command -v git)" "$bin/git"; printf '#!/bin/sh\nexit 2\n' > "$bin/bash"; chmod +x "$bin/bash"
+  start_server "$kind" "$dflt" "$home" "$bin"
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$SERVER_PORT" "$proj"
+  req POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null
+  r="$(fsreq POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true}')"
+  assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "could not run"
+  assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
+}
+
 check_backend go
 check_first_snapshot go
 check_snapshot_no_scanner go
+check_snapshot_edges go
 check_no_git go
 # the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
 # shellcheck disable=SC2154  # go_KEYS is assigned by check_backend through eval

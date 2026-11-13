@@ -295,11 +295,9 @@ async function trackChanges(id,name,btn,opts){
 
 // t-a854: right after Turn on, offer to save the folder's files as the first snapshot. The preview comes first and stages nothing; the
 // server runs the secret scan on the staged files and saves nothing when it finds one (we list path:line:rule and offer to ignore those
-// files). Not now is remembered for the session. Only the Projects card asks (a sprint's ensureGit stays a single question).
-const _snapDeclined=new Set();
+// files). Only the Projects card asks (a sprint's ensureGit stays a single question); Not now saves nothing and the dialog is not offered again.
 const fmtMB=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B';
 async function firstSnapshot(id,name){
-  if(_snapDeclined.has(id)) return false;
   let pv=null;
   try{ const r=await fetch('/api/first-snapshot?project='+encodeURIComponent(id)); if(r.ok) pv=await r.json(); }catch(e){}
   if(!pv||!pv.ok||!pv.can_snapshot||!pv.files) return false;
@@ -309,7 +307,7 @@ async function firstSnapshot(id,name){
     +(pv.truncated?' (Showing the first part of a very large folder.)':'')
     +(large?' Large: '+large+'. A large file stays in the history for good; add it to .gitignore first if you do not want that.':'')
     +' Passwords and keys are looked for first, and nothing is saved if any are found. Nothing is uploaded.';
-  if(!(await cockpitConfirm({title:'Save a first snapshot of “'+name+'”?', body, okLabel:'Save snapshot', cancelLabel:'Not now'}))){ _snapDeclined.add(id); return false; }
+  if(!(await cockpitConfirm({title:'Save a first snapshot of “'+name+'”?', body, okLabel:'Save snapshot', cancelLabel:'Not now'}))) return false;
   let ignore=[];
   for(let attempt=0;attempt<3;attempt++){
     const btn=document.querySelector('.gitstate[data-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
@@ -322,7 +320,8 @@ async function firstSnapshot(id,name){
     const { r, res }=out;
     if(res&&res.ok){ toast('✓ First snapshot of '+name+' saved'); load(); return true; }
     if(res&&res.blocked&&(res.findings||[]).length){
-      const list=res.findings.map(f=>f.path+':'+f.line+' ('+f.rule+')').join('\n');
+      const shown=res.findings.slice(0,10), more=res.findings.length-shown.length;
+      const list=shown.map(f=>f.path+(f.line?':'+f.line:'')+' ('+f.rule+')').join('\n')+(more>0?'\nand '+more+' more':'');
       const paths=[...new Set(res.findings.map(f=>f.path))];
       if(!(await cockpitConfirm({title:'Passwords or keys found', body:'Nothing was saved. The scan found these:\n'+list+'\nIgnore these files and save the rest? They stay on your computer but are left out of the history. If a real secret was exposed, change it.', okLabel:'Ignore and save', cancelLabel:'Do not save', danger:true}))) return false;
       ignore=[...new Set([...ignore,...paths])];
