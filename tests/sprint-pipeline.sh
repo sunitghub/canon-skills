@@ -50,6 +50,7 @@ assert_eq "$(printf '%s' "$(pin_of)" | cut -c14-)" "off=- wrapup=$DEFAULT_WRAPUP
 close_docs '' ''
 out="$("$SPRINT" complete 2>&1)"
 assert_contains "$out" "Sprint completed: $ID"
+[[ "$out" != *"cost: "* ]] || fail "a close with no transcripts printed a cost line (t-7e26): $out"
 [[ "$out" != *[Pp]ipeline* ]] || fail "a close with no override printed pipeline output: $out"
 [[ -z "$(events_of)" ]] || fail "a close with no override wrote wrapup.gate_finished: $(events_of)"
 
