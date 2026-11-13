@@ -184,8 +184,14 @@ codex="$(awk '/^\*\*Cross-harness note\.\*\*/{f=1} f && /^[[:space:]]*$/{exit} f
 [[ -n "$codex" ]] || fail "could not find the old Codex paragraph in $old_block"
 grep -q '^\*\*Cross-harness note\.\*\*' "$ROOT/AGENTS.md" || fail "AGENTS.md lost its Cross-harness pointer to complete.md (t-7e5d)"
 grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat, which covers the old Codex note (t-7e5d)"
+# The North-star paragraph is policy that moves on (t-51c6 added the second user-set option, Manual): the old line counts as covered while
+# AGENTS.md keeps a paragraph that opens the same way after END. The old text stays in the fixture because installs still carry it.
+north="$(awk '/^\*\*North-star \(gate floor\)\.\*\*/{print; exit}' "$old_block")"
+[[ -n "$north" ]] || fail "could not find the old North-star paragraph in $old_block"
+printf '%s\n' "$after_end" | grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator\.' || fail "AGENTS.md lost its North-star paragraph after END (t-51c6)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
+  [[ "$l" == "$north" ]] && continue   # covered by the North-star check above
   printf '%s\n' "$block" | grep -xF -- "$l" >/dev/null && continue
   printf '%s\n' "$after_end" | grep -xF -- "$l" >/dev/null && continue
   printf '%s\n' "$codex" | grep -xF -- "$l" >/dev/null && continue   # covered by the pointer + caveat checked above
