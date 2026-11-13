@@ -314,14 +314,15 @@ check_first_snapshot() {
   # ignore the finding, retry: one commit with the neutral message, creds.txt left out, the others in
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt",".netrc","a[1].txt"]}')"
   assert_eq "200" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" ok)"
-  git -C "$proj" ls-files | grep -qx "a1.txt" || fail "$kind: a1.txt was not saved (an unescaped [1] pattern matched it)"
-  ! git -C "$proj" ls-files | grep -qx "a\[1\].txt" || fail "$kind: a[1].txt was saved"
+  tracked="$(git -C "$proj" ls-files)"   # read once: a `grep -q` on a pipe would SIGPIPE its writer under pipefail
+  grep -qx "a1.txt" <<<"$tracked" || fail "$kind: a1.txt was not saved (an unescaped [1] pattern matched it)"
+  ! grep -qx "a\[1\].txt" <<<"$tracked" || fail "$kind: a[1].txt was saved"
   assert_eq "2" "$(git -C "$proj" rev-list --count HEAD)"
   assert_eq "chore: first snapshot of this folder" "$(git -C "$proj" log -1 --format=%s)"
-  git -C "$proj" ls-files | grep -qx "my docs/b c.txt" || fail "$kind: a file with a space was not saved"
-  git -C "$proj" ls-files | grep -qx "src/a.txt" || fail "$kind: src/a.txt was not saved"
-  ! git -C "$proj" ls-files | grep -qx "creds.txt" || fail "$kind: the flagged file was saved"
-  ! git -C "$proj" ls-files | grep -qx ".env" || fail "$kind: .env was saved"
+  grep -qx "my docs/b c.txt" <<<"$tracked" || fail "$kind: a file with a space was not saved"
+  grep -qx "src/a.txt" <<<"$tracked" || fail "$kind: src/a.txt was not saved"
+  ! grep -qx "creds.txt" <<<"$tracked" || fail "$kind: the flagged file was saved"
+  ! grep -qx ".env" <<<"$tracked" || fail "$kind: .env was saved"
   grep -qx "/creds.txt" "$proj/.gitignore" || fail "$kind: the ignored file is not in .gitignore"
   # a second snapshot is refused (a history beyond canon's start commit)
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
