@@ -66,6 +66,16 @@
   .pl-row:first-child{border-top:0}
   .pl-row.sub{padding-left:22px}
   .pl-row.off .pl-n{text-decoration:line-through;color:var(--text-muted)}
+  .pl-row.skp .pl-n{color:var(--text-muted)}
+  .pl-row.skp,.pl-row.idle{opacity:.6}
+  .pl-sk{display:inline-block;margin-left:6px;font-size:10px;font-weight:700;letter-spacing:.04em;border:1px solid var(--amber);color:var(--amber);border-radius:999px;padding:0 7px;vertical-align:1px}
+  .pl-sk.mn{border-color:var(--accent);color:var(--accent)}
+  .pl-prev{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:10px 0 6px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--bg)}
+  .pl-prev-k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
+  .pl-prev-seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  .pl-prev-seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--text-muted);padding:4px 12px;cursor:pointer}
+  .pl-prev-seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+  .pl-prev-h{flex-basis:100%;font-size:11px;color:var(--text-muted)}
   .pl-row.pl-err{grid-template-columns:minmax(0,1fr)}
   .pl-row.pl-err .pl-n{color:var(--col-discarded)}
   .pl-n{display:block;font-weight:600;font-size:13px;color:var(--text)}

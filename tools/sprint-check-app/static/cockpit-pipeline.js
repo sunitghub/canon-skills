@@ -6,11 +6,23 @@ import { esc, escAttr, toast } from './cockpit-core.js';
 import { getProjects } from './cockpit-projects.js';
 import { showView } from './cockpit-views.js';
 
-const LABEL = { start: 'Start', plan: 'Plan', 'approve-plan': 'Approve plan', build: 'Build', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
+const LABEL = { start: 'Start', plan: 'Plan', 'approve-plan': 'Approve plan', build: 'Build', 'your-test': 'Your test', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
 const TAG = { step: 'Step', gate: 'Gate', agent: 'Agent', you: 'You' };
 const INLINE = new Set(['code-simplifier', 'code-reviewer', 'security-review', 'doc-audit']);   // run in your session, on its model
 const FILE = 'canon-config/pipeline.yaml';
 let pipePid = '', pipeData = null, pipeBusy = false, pipeGen = 0, focusAfter = '';
+// t-51c6: "Preview a ticket": what a ticket's Lite or Manual option skips, read from each node's skip_on / only (pipeline.yaml, the one list).
+// Display only: nothing here is saved or sent, and a project-level switch-off keeps its own wording.
+let pipePrev = 'normal';
+const PREVIEWS = [['normal', 'Normal'], ['lite', 'Lite'], ['manual', 'Manual'], ['both', 'Manual + Lite']];
+const prevLite = () => pipePrev === 'lite' || pipePrev === 'both';
+const prevManual = () => pipePrev === 'manual' || pipePrev === 'both';
+// the options of the previewed ticket that skip this node: '', 'Lite', 'Manual' or 'Lite + Manual'
+function skippedBy(n) {
+  const on = (n.skip_on || '').split(',');
+  const hit = [prevLite() && on.includes('lite') ? 'Lite' : '', prevManual() && on.includes('manual') ? 'Manual' : ''].filter(Boolean);
+  return hit.join(' + ');
+}
 
 const label = id => LABEL[id] || id;
 const $ = id => document.getElementById(id);
@@ -67,10 +79,17 @@ function rowHtml(n, group) {
     ? `<span class="pl-lock" tabindex="0" title="${escAttr(n.reason)}" aria-label="${escAttr(label(n.id))} is locked: ${escAttr(n.reason)}">locked &middot; why</span>`
     : `<button type="button" class="pl-sw" role="switch" data-pl-tg="${escAttr(n.id)}" aria-checked="${n.on}" aria-label="${escAttr(label(n.id))} runs"></button>`;
   const why = n.locked ? n.reason : (n.when ? 'Runs only when: ' + n.when : '');
+  const sb = skippedBy(n), idle = n.only === 'manual' && !prevManual(), ro = n.id === 'eval' && prevManual();
+  const chips = (sb ? `<span class="pl-sk${sb === 'Manual' ? ' mn' : ''}">skipped &middot; ${esc(sb)}</span>` : '')
+    + (idle ? '<span class="pl-sk mn">Manual tickets only</span>' : '')
+    + (ro ? '<span class="pl-sk mn">read-only audit &middot; Manual</span>' : '');
+  const skipNote = n.skip_on && !sb ? `<span class="pl-w">Skipped on ${n.skip_on.split(',').map(o => o === 'lite' ? 'Lite' : 'Manual').join(' and ')} tickets</span>` : '';
+  const evalNote = n.id === 'eval' ? `<span class="pl-w">${ro ? 'On a Manual ticket it runs nothing and writes no tests: it checks your record is fresh, has no failing step, and matches the diff and the acceptance.' : 'On a Manual ticket it becomes a read-only audit of your record.'}</span>` : '';
   const model = n.model
     ? `<span class="pl-w"><span class="pl-md" title="${escAttr(n.model.source)}" tabindex="0">model &middot; ${esc(n.model.name)}</span> ${esc(n.model.source)};${n.id === 'eval' ? ' a Lite ticket runs it on Haiku, and' : ''} a ticket's <code>Gate model:</code> wins &middot; <button type="button" class="pl-link" data-pl-admin>change in Admin</button></span>`
     : INLINE.has(n.id) ? '<span class="pl-w">runs in your session &middot; session model</span>' : '';
-  return `<div class="pl-row${n.on ? '' : ' off'}${n.group === 'wrapup' ? ' sub' : ''}" data-pl-row="${escAttr(n.id)}"><span>${tag}</span><div><span class="pl-n">${esc(label(n.id))}</span>${why ? `<span class="pl-w">${esc(why)}</span>` : ''}${model}</div>${mv}${sw}</div>`;
+  const swShown = sb && !n.locked ? `<button type="button" class="pl-sw" role="switch" aria-checked="false" disabled aria-label="${escAttr(label(n.id))} is skipped on this ticket"></button>` : sw;
+  return `<div class="pl-row${n.on ? '' : ' off'}${n.group === 'wrapup' ? ' sub' : ''}${sb ? ' skp' : ''}${idle ? ' idle' : ''}" data-pl-row="${escAttr(n.id)}"><span>${tag}</span><div><span class="pl-n">${esc(label(n.id))}</span>${chips}${why ? `<span class="pl-w">${esc(why)}</span>` : ''}${skipNote}${evalNote}${model}</div>${mv}${swShown}</div>`;
 }
 
 function render(d) {
@@ -129,6 +148,15 @@ export function initPipeline() {
     $('fac-pipe-project').addEventListener('change', () => loadPipeline(false));
     $('fac-pipe-reset').addEventListener('click', () => send({ op: 'reset' }, "Reset: canon-config/pipeline.yaml now holds canon's default."));
     $('pipe-saved-ok').addEventListener('click', hideSaved);
+    $('fac-pipe-prev').innerHTML = '<span class="pl-prev-k">Preview a ticket</span><span class="pl-prev-seg">'
+      + PREVIEWS.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')
+      + '</span><span class="pl-prev-h">Lite and Manual are set per ticket (New Ticket, Options). They only skip optional gates: a gate this project switched off stays off, and locked rows always run. Nothing here saves the preview.</span>';
+    $('fac-pipe-prev').addEventListener('click', e => {
+      const b = e.target.closest('[data-pl-prev]'); if (!b) return;
+      pipePrev = b.dataset.plPrev;
+      $('fac-pipe-prev').querySelectorAll('[data-pl-prev]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      if (pipeData && pipeData.ok) render(pipeData);
+    });
     $('pipe-saved').addEventListener('click', e => { if (e.target === $('pipe-saved')) hideSaved(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && hideSaved()) e.stopPropagation(); }, true);
     $('fac-pipe-rows').addEventListener('click', e => {
