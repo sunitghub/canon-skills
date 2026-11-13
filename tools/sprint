@@ -1238,6 +1238,7 @@ cmd_complete() {
 
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
+  cmd_token_spend --ticket "$id" --record 2>/dev/null || true   # t-7e26: the cost line; never fails a close
   # t-4c09: the audit line for the close: the plan's tier (the word after "Tier:" in the Sign-off), when it names one
   local _tier; _tier="$(_signoff_tier "$tdir/plan.md")"
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
@@ -1821,16 +1822,19 @@ _token_spend_events() {
 # session tokens, so the turns come from Claude Code's own transcripts (main loop + subagents/), read-only; nothing is
 # written. A turn in two sprints' windows counts once, as overlap. Plain awk (no python, for Git Bash), like gate-cost.
 cmd_token_spend() {
-  local last=10 only="" root cfg evdir enc p f
+  local last=10 only="" rec="" notr="" root cfg evdir enc p f
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --last) last="${2:-}"; shift 2 || { echo "Error: --last requires a value" >&2; exit 1; } ;;
       --ticket) only="${2:-}"; shift 2 || { echo "Error: --ticket requires a value" >&2; exit 1; } ;;
+      --record) rec=1; shift ;;
       -h|--help) echo "Usage: sprint token-spend [--last N] [--ticket <id>]"; return 0 ;;
       *) echo "Error: unknown argument: $1" >&2; exit 1 ;;
     esac
   done
   [[ "$last" =~ ^[1-9][0-9]*$ ]] || { echo "Error: --last must be a positive whole number" >&2; exit 1; }
+  # t-7e26: --record (sprint complete's call) writes one sprint.cost event for --ticket and prints its one line; silent when there is nothing to record.
+  [[ -z "$rec" || "$only" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Error: --record needs --ticket <id>" >&2; exit 1; }
   root="$(cd "$(project_root)" && pwd -P)"   # physical, as the events record it (canon_event)
   cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
   evdir="${CANON_HOME:-${HOME:-}/.canon}/events"
@@ -1846,26 +1850,29 @@ cmd_token_spend() {
     for f in "$enc"/*.jsonl; do [[ -f "$f" ]] && mains+=("$f"); done
   done
   if [[ ${#mains[@]} -eq 0 && ${#subs[@]} -eq 0 ]]; then
-    echo "No Claude Code transcripts for $root under $cfg/projects: token-spend reads only Claude Code's (other harnesses keep none it can read)."
-    return 0
-  fi
+    notr="No Claude Code transcripts for $root under $cfg/projects: token-spend reads only Claude Code's (other harnesses keep none it can read)."
+    [[ -z "$rec" ]] || return 0
+  fi   # t-7e26: without transcripts a sprint.cost event can still answer, so the message waits for the events
   local tspaths; tspaths="$(printf '%s\n' "${paths[@]}")"   # via the environment: BSD awk refuses a newline in -v
   local -a evfiles=()
   for f in "$evdir"/*.jsonl "$evdir"/*.jsonl.gz; do [[ -f "$f" ]] && evfiles+=("$f"); done
-  if [[ ${#evfiles[@]} -eq 0 ]]; then echo "No canon events under $evdir: sprint start and complete times are unknown."; return 0; fi
+  if [[ ${#evfiles[@]} -eq 0 ]]; then [[ -n "$rec" ]] || echo "${notr:-No canon events under $evdir: sprint start and complete times are unknown.}"; return 0; fi
   # Sprint windows from the events, oldest file first: ticket, project, start, first gate.started, end.
-  local windows
+  local windows costs
   windows="$(printf '%s\n' "${evfiles[@]}" | sort | _token_spend_events | TS_PATHS="$tspaths" awk "$canon_awk_pkey"'
       function field(name,   m) { if (!match($0, "\"" name "\":\"[^\"]*\"")) return ""; m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
       BEGIN { n = split(ENVIRON["TS_PATHS"], P, "\n"); for (i = 1; i <= n; i++) if (P[i] != "") OK[pkey(P[i])] = 1 }
-      /"kind":"(sprint\.started|gate\.started|sprint\.completed)"/ {
+      function fv(name,   m) { if (!match($0, "\"" name "\":\"?[^\",}]*")) return 0; m = substr($0, RSTART, RLENGTH); m = substr(m, index(m, ":") + 1); gsub(/"/, "", m); return m + 0 }
+      /"kind":"(sprint\.started|gate\.started|sprint\.completed|sprint\.cost)"/ {
         pr = pkey(field("project")); if (!(pr in OK)) next
         t = field("ticket"); k = field("kind"); ts = substr(field("ts"), 1, 19); key = t SUBSEP pr
+        if (k == "sprint.cost") { print "C\t" t "\t" pr "\t" fv("planning") "\t" fv("implementation") "\t" fv("gates") "\t" fv("cache_read"); next }
         if (k == "sprint.started") { if (!(key in S)) { S[key] = ts; G[key] = "" } }
         else if (k == "gate.started") { if ((key in S) && G[key] == "") G[key] = ts }
         else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts; delete S[key] }
       }')"
-  [[ -n "$windows" ]] || { echo "No completed sprints in $evdir for $root."; return 0; }
+  costs="$(printf '%s\n' "$windows" | awk -F'\t' '$1 == "C"')"; windows="$(printf '%s\n' "$windows" | awk -F'\t' '$1 != "C" && NF')"
+  [[ -n "$windows" ]] || { [[ -n "$rec" ]] || echo "${notr:-No completed sprints in $evdir for $root.}"; return 0; }
   # Approval time and tier from each window ticket's plan.md (the Approved: stamp exists since 0.30.6).
   local plans="" t pl
   for t in $(printf '%s\n' "$windows" | cut -f1 | sort -u); do
@@ -1874,14 +1881,19 @@ cmd_token_spend() {
     plans+="$t	$(awk '/^Approved: sha256:/ { a = $3 } END { print a }' "$pl")	$(awk '/^Tier:/ { sub(/^Tier: */, ""); sub(/[^A-Za-z-].*/, ""); print; exit }' "$pl")"$'\n'
   done
   # Subagent files first, so a message id seen in both is claimed by its subagent.
-  {
+  local res
+  res="$({
     printf '%s\n' "$windows" | awk '{ print "W\t" $0 }'
+    [[ -z "$costs" ]] || printf '%s\n' "$costs"
     printf '%s' "$plans" | awk '{ print "A\t" $0 }'
     for f in ${subs[@]+"${subs[@]}"}; do
       [[ -f "${f%.jsonl}.meta.json" ]] && printf 'M\t%s\t%s\n' "$f" "$(tr -d '\n' < "${f%.jsonl}.meta.json")"
     done
-    grep -H '"type":"assistant"' ${subs[@]+"${subs[@]}"} ${mains[@]+"${mains[@]}"} 2>/dev/null
-  } | TS_PATHS="$tspaths" awk -v last="$last" -v only="$only" "$canon_awk_pkey"'
+    # t-7e26: no transcript files at all (only a sprint.cost event to show): grep must not wait on stdin
+    if [[ ${#subs[@]} -gt 0 || ${#mains[@]} -gt 0 ]]; then
+      grep -H '"type":"assistant"' ${subs[@]+"${subs[@]}"} ${mains[@]+"${mains[@]}"} 2>/dev/null || true
+    fi
+  } | TS_PATHS="$tspaths" awk -v last="$last" -v only="$only" -v rec="$rec" "$canon_awk_pkey"'
     function jf(s, name,   m) { if (!match(s, "\"" name "\":\"[^\"]*\"")) return ""; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
     function jn(s, name,   m) { if (!match(s, "\"" name "\":[0-9]+")) return 0; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:/, "", m); return m + 0 }
     function winpath(c,   q, i, best) {  # c is already a key (pkey: C:\\x, C:/x and /c/x are one folder), as P[] is
@@ -1892,6 +1904,7 @@ cmd_token_spend() {
     function h(v) { return v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : sprintf("%d", v) }
     BEGIN { FS = "\t"; np = split(ENVIRON["TS_PATHS"], P, "\n"); while (np > 0 && P[np] == "") np--; for (i = 1; i <= np; i++) P[i] = pkey(P[i]) }
     $1 == "W" { nw++; WT[nw] = $2; WP[nw] = $3; WS[nw] = $4; WG[nw] = $5; WE[nw] = $6; next }
+    $1 == "C" { CK[$2 SUBSEP $3] = 1; CP[$2 SUBSEP $3] = $4; CI[$2 SUBSEP $3] = $5; CG[$2 SUBSEP $3] = $6; CC[$2 SUBSEP $3] = $7; next }
     $1 == "A" { AP[$2] = $3; TI[$2] = ($4 ~ /^high/ ? "high-risk" : $4); next }
     $1 == "M" { MT[$2] = jf($3, "agentType"); MD[$2] = jf($3, "description"); next }
     {
@@ -1913,7 +1926,7 @@ cmd_token_spend() {
         if (c == 0) next
         if (c > 1) hit = 0 }
       # Kept, and given a phase at END: a gate dispatched before its gate.started event moves the gates start back.
-      nt++; XH[nt] = hit; XT[nt] = ts; XM[nt] = mo; XG[nt] = gate
+      nt++; XH[nt] = hit; XFL[nt] = f; XT[nt] = ts; XM[nt] = mo; XG[nt] = gate
       XF[nt] = jn(u, "input_tokens") + jn(u, "cache_creation_input_tokens"); XC[nt] = jn(u, "cache_read_input_tokens"); XO[nt] = jn(u, "output_tokens")
       if (hit && gate && (WG[hit] == "" || ts < WG[hit])) WG[hit] = ts
     }
@@ -1934,8 +1947,19 @@ cmd_token_spend() {
       }
       # The last N windows (or the one ticket asked for), newest last.
       for (w = nw; w >= 1 && shown < last; w--) if (only == "" || WT[w] == only) { L[++shown] = w }
+      if (rec != "") {
+        w = L[1]; if (shown == 0 || !TURNS[w] || ((WT[w] SUBSEP WP[w]) in CK)) exit
+        for (x = 1; x <= nt; x++) if (XH[x] == w) {
+          if (XG[x] && !((XFL[x]) in GF)) { GF[XFL[x]] = 1; gr++ }
+          if (!(XM[x] in MS)) { MS[XM[x]] = 1; ml = ml (ml == "" ? "" : ",") XM[x] }
+          MT2[XM[x]] += XF[x] + XO[x] }
+        tk = WT[w] SUBSEP w; ms = ""
+        for (i = 1; i <= split(ml, ma, ","); i++) ms = ms (i > 1 ? "," : "") ma[i] ":" MT2[ma[i]]
+        printf "planning=%d implementation=%d gates=%d cache_read=%d turns=%d gate_runs=%d models=%s\n", BUILD[w] ? 0 : PF[tk, "planning"], BUILD[w] ? PF[tk, "build"] : PF[tk, "implementation"], PF[tk, "gates"], PC[tk], TURNS[w], gr, ms
+        exit
+      }
       if (shown == 0) { print (only == "" ? "No completed sprints." : "No completed sprint for " only "."); exit }
-      any = 0; for (s = 1; s <= shown; s++) if (TURNS[L[s]]) any = 1
+      any = 0; for (s = 1; s <= shown; s++) if (TURNS[L[s]] || ((WT[L[s]] SUBSEP WP[L[s]]) in CK)) any = 1
       if (!any) {
         print "No transcript turns inside these sprints (Claude Code keeps about 9 days of transcripts)."
         # t-134b: when turns were read but none matched a sprint, say what was compared: a spelling bug (a Windows drive path) names itself
@@ -1948,6 +1972,8 @@ cmd_token_spend() {
       printf "%-8s %-10s %10s %15s %10s %11s\n", "ticket", "tier", "planning", "implementation", "gates", "cache-read"
       for (s = shown; s >= 1; s--) {
         w = L[s]; tk = WT[w] SUBSEP w; pr = WP[w]
+        ck = WT[w] SUBSEP pr
+        if (!TURNS[w] && (ck in CK)) { printf "%-8s %-10s %10s %15s %10s %11s  (from the sprint.cost event)\n", WT[w], (TI[WT[w]] == "" ? "-" : TI[WT[w]]), h(CP[ck]), h(CI[ck]), h(CG[ck]), h(CC[ck]); continue }
         if (!TURNS[w]) { printf "%-8s %-10s  no transcript turns (older than the transcripts kept)\n", WT[w], (TI[WT[w]] == "" ? "-" : TI[WT[w]]); continue }
         pl = BUILD[w] ? "-" : h(PF[tk, "planning"]) (PRE[w] ? "^" : "")
         im = BUILD[w] ? h(PF[tk, "build"]) "*" : h(PF[tk, "implementation"])
@@ -1966,8 +1992,30 @@ cmd_token_spend() {
       print "* build: no Approved: time in plan.md (before 0.30.6), so planning and implementation are one number."
       print "^ approved before sprint start: the plan was written outside this sprint."
       print "~ partial: the sprint began before the oldest transcript kept. overlap: a turn inside two sprints, counted once."
-    }'
+    }')"
+  [[ -n "$rec" ]] || { printf '%s\n' "$res"; return 0; }
+  _record_cost "$only" "$root" "$res"
 }
+
+# _record_cost <id> <root> <line> — t-7e26: write the ticket's one sprint.cost event (numbers only, no transcript text) from token-spend's
+# machine line, and print the one-line summary. An empty line (no transcripts, no turns, already recorded) writes and prints nothing.
+_record_cost() {
+  local id="$1" root="$2" line="$3" kv f=() planning=0 impl=0 gates=0 runs=0 total pct
+  [[ -n "$line" ]] || return 0
+  for kv in $line; do
+    case "$kv" in
+      planning=*) planning="${kv#*=}" ;; implementation=*) impl="${kv#*=}" ;;
+      gates=*) gates="${kv#*=}" ;; gate_runs=*) runs="${kv#*=}" ;;
+    esac
+    f+=("$kv")
+  done
+  canon_event sprint.cost sprint "$root" "ticket=$id" "${f[@]}"
+  total=$((planning + impl + gates)); [[ "$total" -gt 0 ]] || return 0
+  pct=$((100 * gates / total))
+  echo "cost: $(_cost_h "$total") tokens (gates $(_cost_h "$gates"), ${pct}%), $runs gate runs"
+  [[ "$pct" -le 50 ]] || echo "  Most of this ticket's tokens went to the close gates, not the building. 'sprint token-spend --ticket $id' shows which."
+}
+_cost_h() { awk -v v="$1" 'BEGIN { print (v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : v) }'; }
 
 # ---------------------------------------------------------------------------------------------------------------------------------------
 # sprint decisions (t-79bf): DECISIONS.md is read by what applies, never whole, and pruned on write by commands, not hand edits.

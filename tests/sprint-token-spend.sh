@@ -178,6 +178,32 @@ assert_contains "$out" "read 5 turns in $r3?[2J, $r3/x, $(printf '%s' "$r3/$long
 [[ "$out" != *$'\033'* ]] || fail "a control byte from a transcript cwd reached the terminal: $out"
 [[ "$out" != *"$r3/z"* ]] || fail "more than three folders were listed: $out"
 
+# t-7e26: --record writes one sprint.cost event (numbers only), prints the cost line, and writes nothing twice.
+bd="$(mktemp -d)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}" "$bd"' EXIT
+use_fresh_board "$bd/bin"   # canon_event writes through the board binary under test
+recspend() { CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend "$@" --record; }   # the fixtures are dated October: a real clock would prune them as older than the retention
+cost_lines() { cat "$events"/*.jsonl 2>/dev/null | grep -c '"kind":"sprint.cost"' || true; }
+assert_eq 0 "$(cost_lines)"
+out="$(recspend --ticket t-aaaa)"
+assert_eq "1" "$(cost_lines)"
+ln="$(grep -h '"kind":"sprint.cost"' "$events"/*.jsonl)"
+assert_contains "$ln" '"ticket":"t-aaaa"'
+assert_contains "$ln" '"gates":"343"'; assert_contains "$ln" '"implementation":"170"'; assert_contains "$ln" '"turns":"'
+assert_contains "$ln" '"gate_runs":"1"'; assert_contains "$ln" 'claude-sonnet-5-5:'
+[[ "$ln" != *"content"* && "$ln" != *'"text"'* ]] || fail "a sprint.cost line carries transcript text: $ln"
+assert_contains "$out" "cost: 513 tokens (gates 343, 66%), 1 gate runs"
+assert_contains "$out" "Most of this ticket's tokens went to the close gates"
+out="$(recspend --ticket t-aaaa)"; assert_eq "" "$out"; assert_eq "1" "$(cost_lines)"   # idempotent
+# the cost survives the transcripts (about 9 days): the row comes from the event
+mv "$cfg/projects" "$cfg/projects.gone"; mkdir -p "$cfg/projects/$(printf '%s' "$root" | sed 's/[^A-Za-z0-9]/-/g')"
+out="$("$SPRINT" token-spend --ticket t-aaaa)"
+assert_eq "t-aaaa normal 0 170 343 1k (from the sprint.cost event)" "$(printf '%s\n' "$out" | awk '$1 == "t-aaaa"' | tr -s ' ')"
+rm -rf "$cfg/projects"; mv "$cfg/projects.gone" "$cfg/projects"
+# no turns inside the sprint: nothing recorded, nothing printed
+assert_eq "" "$(recspend --ticket t-dddd)"; assert_eq "1" "$(cost_lines)"
+assert_eq "" "$(recspend --ticket t-zzzz)"; assert_eq "1" "$(cost_lines)"
+set +e; "$SPRINT" token-spend --record >/dev/null 2>&1; rc=$?; set -e; assert_eq 1 "$rc"   # needs a ticket
+
 for bad in "--last 0" "--last x" "--last x1" "--last 1x" "--last" "--ticket" "--bogus"; do
   set +e
   # shellcheck disable=SC2086  # split on purpose

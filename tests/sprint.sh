@@ -579,8 +579,18 @@ cat > ".claude/subagent-runs.jsonl" <<'EOF'
 {"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl","tokens":5,"outcome":"pass","model":"claude-sonnet-5"}
 EOF
 [[ -z "$(event_line close.confirmed "$fresh_id")" ]] || fail "a refused close wrote close.confirmed"   # t-4c09: every refusal above left no audit line
-complete_output="$("$SPRINT" complete)"
+# t-7e26: a Claude Code transcript turn inside the sprint's window makes the close write one sprint.cost event and print the cost line;
+# without one (every other close in this file) it writes and prints neither.
+cc_cfg="$(mktemp -d)"; cc_root="$(pwd -P)"; mkdir -p "$cc_cfg/projects/$(printf '%s' "$cc_root" | sed 's/[^A-Za-z0-9]/-/g')"
+cc_start="$(event_line sprint.started "$fresh_id" | sed 's/.*"ts":"\([^"]*\)".*/\1/')"
+printf '{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_cost1","usage":{"input_tokens":40,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":10}},"timestamp":"%s","cwd":"%s"}\n' "$cc_start" "$cc_root" \
+  > "$cc_cfg/projects/$(printf '%s' "$cc_root" | sed 's/[^A-Za-z0-9]/-/g')/s.jsonl"
+sleep 1
+complete_output="$(CLAUDE_CONFIG_DIR="$cc_cfg" "$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
+assert_contains "$complete_output" "cost: 50 tokens (gates 0, 0%), 0 gate runs"
+assert_contains "$(event_line sprint.cost "$fresh_id")" '"implementation":"50"'
+rm -rf "$cc_cfg"
 cc="$(event_line close.confirmed "$fresh_id")"   # t-4c09: the audit line of a real close: the plan's tier, no actor (a command cannot know)
 assert_contains "$cc" '"source":"sprint"'; assert_contains "$cc" '"tier":"normal"'; [[ "$cc" != *'"actor"'* ]] || fail "a CLI close claimed an actor: $cc"
 assert_contains "$(event_line sprint.completed "$fresh_id")" '"source":"sprint"'   # t-f182: after the close, never before
