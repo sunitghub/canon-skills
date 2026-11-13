@@ -21049,7 +21049,7 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
   const seen = [];   // every per-project read the card made: "<route> <pid>"
   // projects: the list; health(pid): the skills-health answer; git(pid): the track-changes status; stats(pid): the project-stats body.
   async function stub(page, { projects, health = () => ({ ok: true, skills: [{ name: 'sprint', problems: [] }], issues: 0 }),
-    git = () => ({ ok: true, tracking: true, synced: null, git_available: true }), stats = () => ({ updated: '2026-11-05', ticket_count: 0, skills: ['sprint'] }), init } = {}) {
+    git = () => ({ ok: true, tracking: true, synced: null, git_available: true }), stats = () => ({ updated: '2026-11-05', ticket_count: 0, skills: ['sprint'] }), init, regHold } = {}) {
     const calls = { track: [], register: [], dereg: [], refresh: [] };
     seen.length = 0;
     if (init) await page.addInitScript(init);
@@ -21063,7 +21063,7 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
       if (route.request().method() === 'POST') { calls.track.push(pid); return json(route, { ok: true, commit: 'abc1234' }); }
       seen.push('track ' + pid); return json(route, git(pid));
     });
-    await page.route('**/api/register-skill*', route => { calls.register.push(new URL(route.request().url()).searchParams.get('project')); return json(route, { ok: true }); });
+    await page.route('**/api/register-skill*', async route => { calls.register.push(new URL(route.request().url()).searchParams.get('project')); if (regHold) await regHold; return json(route, { ok: true }); });
     await page.route('**/api/skills-refresh*', route => { calls.refresh.push(new URL(route.request().url()).searchParams.get('project')); return json(route, { ok: true, output: '' }); });
     await page.goto(BASE + '/cockpit');
     await expect(page.locator('.card')).toHaveCount(projects.length);
@@ -21155,6 +21155,22 @@ test.describe('Projects card: a missing folder, a skill problem, git first (t-3b
     await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “on1”?');
     await page.locator('#cc-cancel').click();
     expect(calls.track).toEqual(['off2']);
+  });
+
+  test('+ sprint after Turn on: the rebuilt card\'s button shows the spinner while registering; a git-off icon is greyed (t-f55a)', async ({ page }) => {
+    let release; const regHold = new Promise(r => { release = r; });
+    await stub(page, { projects: [P('busy1')], regHold,
+      git: () => ({ ok: true, tracking: false, synced: null, git_available: true }),
+      stats: () => ({ updated: '2026-11-05', ticket_count: 0, skills: [] }) });
+    const btn = page.locator('.regskill[data-id="busy1"][data-skill="sprint"]');
+    await expect(page.locator('.gitstate.is-off')).toHaveCSS('opacity', '0.45');
+    await btn.click();
+    await page.locator('#cc-ok').click();                              // Turn on: load() rebuilds the card
+    await expect(page.locator('#cc-title')).toHaveText('Register the “sprint” skill in “busy1”?');
+    await page.locator('#cc-ok').click();                              // Register
+    await expect(btn).toHaveAttribute('aria-busy', 'true');            // the live button, not the one that was clicked
+    release();
+    await expect(btn).not.toHaveAttribute('aria-busy', 'true');
   });
 
   test('a Not now is forgotten once git is on, and git missing from the computer asks nothing', async ({ page }) => {

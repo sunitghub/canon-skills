@@ -237,6 +237,7 @@ async function refreshSkills(id,name,path,btn){
 
 export async function registerSkill(id,name,path,skill,btn){
   skill=skill||'sprint';
+  const liveBtn=()=>btn&&btn.isConnected ? btn : ([...document.querySelectorAll('.regskill')].find(b=>b.dataset.id===id&&b.dataset.skill===skill)||null);
   if(_regBusy.has(id)) return;
   const detail = REG_SKILL_DETAIL[skill] || ('registers the “'+skill+'” skill');
   let noGit='';
@@ -247,6 +248,7 @@ export async function registerSkill(id,name,path,skill,btn){
   if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.'+noGit, okLabel:'Register'}))) return;
   if(_regBusy.has(id)) return;
   _regBusy.add(id);
+  btn=liveBtn();   // Turn on re-rendered the cards: the clicked button may be gone, and the spinner must go on the live one
   const others=[...document.querySelectorAll('.regskill')].filter(b=>b.dataset.id===id&&b!==btn);   // the project's other add buttons wait too
   const was=others.map(b=>b.disabled);
   others.forEach(b=>{ b.disabled=true; });
