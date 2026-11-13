@@ -187,22 +187,23 @@ learn() { # learn <stamp> <rows...>
 row() { printf '| %s | [%s](.tickets/%s/learnings.md) | finding of %s | UNPROMOTED |' "$1" "$2" "$2" "$2"; }
 SC_OLD='- 2026-11-12 09:00 — s-cccc: notes left in old — paused'   # in the base; this checkout deletes it, the cloud keeps it: it stays deleted
 SC_OLD2='- 2026-11-12 09:30 — s-dddd: notes left in old2 — paused'   # in the base; the cloud deletes it, this checkout keeps it: it stays deleted
+SC_KEEP='- 2026-11-12 08:00 — s-eeee: notes left in keep — paused'   # in all three: kept
 SC_HERE='- 2026-11-13 10:00 — s-aaaa: notes left in wt — paused'; SC_CLOUD='- 2026-11-13 11:00 — s-bbbb: notes left in cloud — paused'
 # markmerged <id>: what tkt merge records on the ticket (the fields tkt finish reads), uncommitted, as tkt merge leaves them.
 markmerged() { awk -v m="$(git rev-parse main)" -v b="$2" '/^---$/ && ++n == 2 { print "merged: " m; print "merged_into: main"; print "merged_branch: " b } { print }' ".tickets/$1/ticket.md" > "$W/mm" && mv "$W/mm" ".tickets/$1/ticket.md"; }
 O3="$W/origin3.git"; git init -q --bare "$O3"
 S3="$W/seed3"; git init -q "$S3"; cd "$S3"
-echo base > base.txt; hand "old" "base focus" "$SC_OLD" "$SC_OLD2" > HANDOFF.md; learn "11-01-2026 09:00" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
+echo base > base.txt; hand "old" "base focus" "$SC_KEEP" "$SC_OLD" "$SC_OLD2" > HANDOFF.md; learn "11-01-2026 09:00" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
 git add -A; git commit -qm base; git remote add origin "$O3"; git push -q origin main
 P3="$W/project3"; git clone -q "$O3" "$P3"; git -C "$P3" remote set-head origin main >/dev/null
 C3="$W/cloud3"; git clone -q "$O3" "$C3"
 cd "$P3"
 id5="$("$TKT" create "Worktree" -t task)"; git add ".tickets/$id5/ticket.md"; git commit -qm "chore: add ticket $id5"   # never pushed: the divergence
 git checkout -qb feat/w
-echo w > w.txt; hand "worktree close" "base focus" "$SC_OLD2" "$SC_HERE" > HANDOFF.md; learn "11-13-2026 10:00" "$(row 2026-11-13 t-aaaa)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
+echo w > w.txt; hand "worktree close" "base focus" "$SC_KEEP" "$SC_OLD2" "$SC_HERE" > HANDOFF.md; learn "11-13-2026 10:00" "$(row 2026-11-13 t-aaaa)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md
 git add -A; git commit -qm "the worktree ticket"; git checkout -q main; git merge -q --no-ff feat/w -m "Merge branch 'feat/w'"; markmerged "$id5" feat/w
 (cd "$C3" && mkdir -p .tickets/t-c3j5 && printf -- '---\nid: t-c3j5\nstatus: closed\n---\n# Cloud\n' > .tickets/t-c3j5/ticket.md \
-  && echo report > .tickets/t-c3j5/eval-report.md && echo c > c.txt && hand "cloud close" "base focus" "$SC_OLD" "$SC_CLOUD" > HANDOFF.md \
+  && echo report > .tickets/t-c3j5/eval-report.md && echo c > c.txt && hand "cloud close" "base focus" "$SC_KEEP" "$SC_OLD" "$SC_CLOUD" > HANDOFF.md \
   && learn "11-13-2026 11:00" "$(row 2026-11-13 t-bbbb)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md && git add -A && git commit -qm "Merge pull request #2" && git push -q origin main)
 mkdir -p .tickets/t-c3j5; echo report > .tickets/t-c3j5/eval-report.md; echo "sent as #2" > .tickets/t-c3j5/github.md
 printf -- '---\nid: t-c3j5\nstatus: closed\ngithub: 2\nruns: github\n---\n# Cloud\n' > .tickets/t-c3j5/ticket.md
@@ -215,7 +216,7 @@ assert_contains "$out" "merging origin/main conflicted only in canon's own docs 
 assert_contains "$out" "pushed main to origin"
 assert_eq "$(git rev-parse main)" "$(git -C "$O3" rev-parse main)"; assert_eq "$O3TIP" "$(git rev-parse main^2)"
 git show main:HANDOFF.md > "$W/h3"; ! grep -q '^<<<<<<<\|^>>>>>>>' "$W/h3" || fail "conflict markers in the merged HANDOFF.md"
-assert_grep '^base focus$' "$W/h3"; assert_grep "^$SC_HERE\$" "$W/h3"; assert_grep "^$SC_CLOUD\$" "$W/h3"
+assert_grep '^base focus$' "$W/h3"; assert_grep "^$SC_HERE\$" "$W/h3"; assert_grep "^$SC_KEEP\$" "$W/h3"; assert_grep "^$SC_CLOUD\$" "$W/h3"
 assert_grep '^<!-- canon:recent:BEGIN -->$' "$W/h3"; ! grep -q "s-cccc\|s-dddd" "$W/h3" || fail "a Scratch entry deleted on one side came back"
 [[ "$(grep -n '^<!-- canon:recent:BEGIN -->$' "$W/h3" | cut -d: -f1)" -lt "$(grep -n '^A note of the team' "$W/h3" | cut -d: -f1)" ]] \
   || fail "the Recent block moved from where it was"
