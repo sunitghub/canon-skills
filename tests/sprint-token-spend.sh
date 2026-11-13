@@ -191,7 +191,8 @@ mkdir -p "$root/.claude"
   printf '{"ts":"2026-10-02T10:31:00Z","agent_id":"e0","agent_type":"evaluator","ticket":"t-aaaa","model":"claude-sonnet-5-5"}\n'
   printf '{"ts":"2026-10-02T10:50:00Z","agent_id":"r1","agent_type":"reviewer","ticket":"t-aaaa","model":"claude-sonnet-5-5"}\n'
   printf '{"ts":"2026-10-02T10:51:00Z","agent_id":"e1","agent_type":"evaluator","ticket":"t-aaaa","model":"claude-opus-5-5"}\n'
-  printf '{"ts":"2026-10-02T10:52:00Z","agent_id":"x1","agent_type":"reviewer","ticket":"t-aaaab","model":"claude-opus-5-5"}\n'; } > "$root/.claude/subagent-runs.jsonl"
+  printf '{"ts":"2026-10-02T10:52:00Z","agent_id":"x1","agent_type":"reviewer","ticket":"t-aaaab","model":"claude-opus-5-5"}\n'
+  printf '{"ts":"2026-10-02T10:53:00Z","agent_id":"reviewer-t-aaaa","agent_type":"reviewer","ticket":"t-zzzz","model":"claude-opus-5-5"}\n'; } > "$root/.claude/subagent-runs.jsonl"   # an agent id that ENDS in t-aaaa is not a row for t-aaaa
 out="$(recspend --ticket t-aaaa)"
 assert_eq "1" "$(cost_lines)"
 ln="$(grep -h '"kind":"sprint.cost"' "$events"/*.jsonl)"

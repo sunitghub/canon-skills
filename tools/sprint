@@ -2046,7 +2046,7 @@ _same_model_gates() {
     END { out = ""
       if (M["reviewer"] == ENVIRON["RUNS_BUILDER"]) out = "reviewer"
       if (M["evaluator"] == ENVIRON["RUNS_BUILDER"]) out = out (out == "" ? "" : ",") "evaluator"
-      print out }' "$log" 2>/dev/null || true
+      print out }' "$log" 2>/dev/null   # a missing log makes awk fail: the caller's `|| same=""` turns that into "no gate"
 }
 _cost_h() { awk -v v="$1" 'BEGIN { print (v >= 1e6 ? sprintf("%.1fM", v / 1e6) : v >= 1e3 ? sprintf("%.0fk", v / 1e3) : v) }'; }
 
