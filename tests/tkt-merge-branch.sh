@@ -254,6 +254,10 @@ git -C "$WT6" reset -q -- ".tickets/$id6/summary.md"
 echo outside > "$W/elsewhere"; ln -s "$W/elsewhere" "$WT6/.tickets/$id6/evidence/link.log"   # a link to a real file
 refuses "a symlink in the close record" "no passing evaluator verdict" --yes
 rm "$WT6/.tickets/$id6/evidence/link.log"
+mk="$WT6/.tickets/$id6/.cockpit-old"; echo a > "$mk"; git -C "$WT6" add -f -- "$mk"; git -C "$WT6" commit -qm "an old-layout tracked marker"
+echo b >> "$mk"
+refuses "an edited tracked .cockpit-* marker" "no passing evaluator verdict" --yes
+git -C "$WT6" reset -q --soft "$G6"; git -C "$WT6" rm -qf --cached -- "$mk"; rm "$mk"
 refuses "a close record without --yes" "pass --yes to commit it and merge"
 # --check: lists the record, commits nothing, and is otherwise ready.
 before="$(sig)"

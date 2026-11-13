@@ -2304,11 +2304,14 @@ _merge_branch() {
   if [[ "$src" != "$tdir" ]] && git -C "$wt" diff --cached --quiet < /dev/null 2>/dev/null; then
     while IFS= read -r -d '' ln; do
       p="${ln:3}"
-      if [[ "$p" != ".tickets/$id/"* || "$p" == *..* ]]; then
+      if [[ "$p" != ".tickets/$id/"* ]]; then
         [[ "${ln:0:2}" == '??' ]] && continue   # untracked elsewhere: not part of what merges, as the dirty check below ignores it
         rec=(); break
       fi
-      [[ "${p##*/}" == .cockpit-* ]] && continue
+      if [[ "${p##*/}" == .cockpit-* ]]; then
+        [[ "${ln:0:2}" == '??' ]] && continue   # an untracked marker is never committed; a tracked, edited one is a change the merge must refuse
+        rec=(); break
+      fi
       [[ -f "$wt/$p" && ! -L "$wt/$p" ]] || { rec=(); break; }
       rec+=("$p")
     done < <(git -C "$wt" status --porcelain=v1 -z --untracked-files=all < /dev/null 2>/dev/null || true)
@@ -2344,7 +2347,7 @@ _merge_branch() {
   [[ -z "$bwt" || "$(cd "$bwt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]] \
     || _mb_no "$base is checked out in $bwt, so it cannot be moved from here; switch that worktree to another branch (or finish there), then Check & merge again"
   if [[ ${#rec[@]} -gt 0 ]]; then
-    local shown cout=""; shown="$(printf '%s, ' "${rec[@]}" | sed 's/, $//')"
+    local shown cout=""; shown="$(printf '%s, ' "${rec[@]//[^[:print:]]/?}" | sed 's/, $//')"
     if $check; then echo "merge: will first commit $id's close record on $branch: $shown"
     elif ! $yes; then _mb_no "$id's close record is not committed on $branch ($shown); pass --yes to commit it and merge, or commit it yourself"
     else
