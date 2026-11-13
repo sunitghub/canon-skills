@@ -14,7 +14,7 @@ A source that says nothing about a question is reported as "no guidance found", 
 
 ## Summary of recommendations
 
-1. **No standard says "compare by file identity when both paths exist, a normalised string otherwise".** None of the Go, Python, Rust or Node docs read says it (S8-S16). That rule is canon's own design choice, built on real primitives (Go `os.SameFile`, Python `os.path.samefile`). Call it a design, not a standard.
+1. **No standard says "compare by file identity when both paths exist, a normalised string otherwise".** None of the Go, Python, Rust or Node docs read says it (S8-S15; the Node `fs` page, S16, was read only in part). That rule is canon's own design choice, built on real primitives (Go `os.SameFile`, Python `os.path.samefile`). Call it a design, not a standard.
 2. **Make the string key a pure function** (no filesystem, no OS branch, no environment), the way Python's `ntpath` and Node's `path.win32` are. A pure function runs the same corpus on every OS (S36, S37). Go's own tests cannot do this: they pick Windows cases by `runtime.GOOS` (S35).
 3. **Keep the existing key form `/c/x`** (drive letter lower-cased, nothing else folded). Delete the other three Go and awk definitions; there should be exactly one per language, with the same output (section 1.1).
 4. **Never lower-case the whole path in a key.** The Windows case rules are uncertain (S2, S3), and the failure direction matters: a key that misses a match is safe, a key that merges two real folders is not.
@@ -41,7 +41,7 @@ There are also 26 ad-hoc `filepath.EvalSymlinks` calls in the Go board code (cou
 
 - **Seven path kinds exist** before normalising: DOS, UNC, fully qualified DOS, legacy device, root-relative `\`, drive-relative `C:`, and relative; device paths begin with two separators and `?` or `.` (S1, raw for the key sentences below).
 - **Drive-relative paths depend on hidden state.** `C:Projects\x` is "a relative path from the current directory of the C: drive", and "use of the second form when the first is intended is a common source of bugs" (S1, raw). The drive's current directory is per process, so no pure string function can resolve it (S1, S2).
-- **Normalisation steps** are: identify the path kind, apply the current directory, canonicalise separators, evaluate `.` and `..`, trim certain characters (S1). Forward slashes become backslashes and "a series of slashes that follow the first two slashes are collapsed into a single slash" (S1). All trailing periods and spaces are removed (S1, raw). A segment of three or more periods is a real name (S1).
+- **Normalisation steps** are: identify the path kind, apply the current directory, canonicalise separators, evaluate `.` and `..`, trim certain characters (S1). Forward slashes become backslashes and "a series of slashes that follow the first two slashes are collapsed into a single slash" (S1). If the path does not end in a separator, all trailing periods and spaces are removed (S1, raw). A segment of three or more periods is a real name (S1).
 - **`\\?\` skips normalisation**, but only when the path starts exactly with it (S1, raw: "Unless the path starts exactly with `\\?\` ... it is normalized"). `\\.\` addresses the device namespace, not files, and most APIs do not accept it (S2).
 - **The same file has several spellings.** The page opens one file through six: `c:\`, `\\127.0.0.1\c$\`, `\\LOCALHOST\c$\`, `\\.\c:\`, `\\?\c:\` and `\\.\UNC\LOCALHOST\c$\` (S1, digest). A UNC path's volume is `\\server\share`. A text comparison cannot tell these apart.
 - **Case.** "Directory and file name comparisons are case-insensitive" (S1, raw), drive letters included ("`D:\` and `d:\` refer to the same volume", S2, raw). But Win32 also says "Do not assume case sensitivity" (S2, raw), and NTFS can mark a directory case-sensitive since Windows 10 build 17107; children inherit it, and Windows tools may then fail on such folders (S3, digest).
@@ -64,11 +64,11 @@ There are also 26 ad-hoc `filepath.EvalSymlinks` calls in the Go board code (cou
 - **Node.** `path.win32` and `path.posix` are separate implementations of the same methods (S15, raw), so Windows behaviour is reachable on any OS. `path.basename` is documented as case-sensitive on Windows even though Windows is not (S15, digest). Nothing was found on whether `relative` or `resolve` fold case.
 - **Guidance on identity first, string second: none found** in Go, Python, Rust or Node (the pages above). The libraries give both primitives; none recommends an order.
 
-### 1.5 Contract for `canon_path_key` (shell and awk) and the Go owner
+### 1.5 Contract for the path key (proposed name `canon_path_key`; today's awk function is `canon_awk_pkey`) and the Go owner
 
 This is the recommendation; the sources above support each clause as noted.
 
-**Purpose.** Compare two spellings of the same folder when at least one may not exist yet, or when identity cannot be read. A key is for comparing only. It is never a path to hand to another program (S12-S14 show how a converted path breaks other tools).
+**Purpose.** Compare two spellings of the same folder when at least one may not exist yet, or when identity cannot be read. A key is for comparing only. It is never a path to hand to another program: even Rust's canonical form "may be incompatible with other applications" (S12, raw), and `dunce` converts only when the result is unambiguous (S14, digest).
 
 **Two steps, in this order.**
 
@@ -106,7 +106,7 @@ This is the recommendation; the sources above support each clause as noted.
 - **OWASP Top 10 2021** (S22, digest): categories group CWEs, and the team "decided to focus on the root cause whenever possible".
 - **SRE** (S23, S24, digest): postmortems are blameless; reviewers ask "Was the root cause sufficiently deep?"; unlearned incidents "may recur ad infinitum"; completed postmortems go to a repository and are aggregated to find common themes; action items need an owner, a tracking number and a verifiable end state. Neither page gives a method for counting recurrence of the same cause.
 - **MADR** (S25, digest): a record holds one decision and its rationale; status can read "superseded by ADR-0123". No recurrence concept.
-- **NASA** (S26, digest): the software handbook suggests "recidivism rates (e.g., how often similar non-conformances recur)" as a process-improvement indicator and separates "root cause" from "contributing factors". NASA's lessons-learned system itself could not be read (the site returned nothing); its field list reached us only as a search snippet and is UNVERIFIED.
+- **NASA** (S26, S41, S42). The software handbook suggests "recidivism rates (e.g., how often similar non-conformances recur)" as a process-improvement indicator and separates "root cause" from "contributing factors" (S26, digest). NASA's lessons-learned system keeps a recurrence field per lesson: "Each LLIS entry is in a format specifically designed for learning. They contain an abstract, description of the driving event, summary of the key lesson learned, recommendations, and the evidence of recurrence" (S42, raw, text lines 175-181 of the PDF); and each lesson "includes a summary of the original driving event and recommendations, which feed into NASA's continual improvement through training, best practices, policies, and procedures" (S41, raw). So LLIS records *evidence that a cause recurred* inside each lesson; none of the three sources gives a method for counting recurrence across lessons. The LLIS database itself could not be read (its pages are client-rendered and return no text), so the field list rests on S42 and S41; a search summary says other NASA documents list a fuller set of fields (UNVERIFIED).
 
 ### 2.2 Recommendations
 
@@ -114,7 +114,7 @@ This is the recommendation; the sources above support each clause as noted.
 - **SARIF is an export format, not storage.** If an export is ever wanted: `ruleId` = the `P-nnn` id, the slug in `name`, the concern as a taxon in a canon taxonomy (S17). Building that now has no reader; the ticket should not.
 - **Never reuse an id.** Ruff and CWE both keep retired entries listed (S20, S21). That is observed practice, not a stated rule in either source, so canon should state it as its own rule.
 - **Name a class by the mistake, not the OS.** This matches the user's 2026-11-12 decision and the practice of naming categories by root cause where possible (S22) and asking whether a cause is "sufficiently deep" (S23). It extends `P-027 path-alias-compare` rather than adding a Windows-only class.
-- **Recurrence counting is canon's own design.** No source read gives a counting method or a recurrence key (S23-S26). `canon-go finding-classes` already counts later tickets that name the class or cite the id; keep it, and back-fill the nine past path tickets under the one id so the count is true from the start.
+- **Recurrence counting is canon's own design.** No source read gives a counting method or a recurrence key (S23-S26, S42). `canon-go finding-classes` already counts later tickets that name the class or cite the id; NASA's per-lesson "evidence of recurrence" (S42) is the closest practice read, and the handbook's "recidivism rate" (S26) names the metric, not a method. Keep canon's counter, and back-fill the nine past path tickets under the one id so the count is true from the start.
 
 ## 3. Small data tables that bash, awk and Go all read
 
@@ -228,6 +228,8 @@ Every line was read on 2026-11-13. "raw" means the author checked the quoted wor
 | S38 | https://raw.githubusercontent.com/git/git/master/t/test-lib.sh | read 2026-11-13 | raw (lines 1708, 1709, 1731) |
 | S39 | https://raw.githubusercontent.com/git/git/master/t/test-lib-functions.sh | read 2026-11-13 | digest |
 | S40 | https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax | read 2026-11-13 | digest, first 100,000 of 236,283 characters |
+| S41 | https://www.nasa.gov/nasa-lessons-learned/ | read 2026-11-13 | raw (the "original driving event and recommendations" sentence) |
+| S42 | https://ntrs.nasa.gov/api/citations/20120017921/downloads/20120017921.pdf ("Lessons Learned for Improving Spacecraft Ground Operations", NASA technical paper, 2012) | read 2026-11-13 | raw (PDF text lines 175-181) |
 
 ## Not verified
 
@@ -238,7 +240,7 @@ Every line was read on 2026-11-13. "raw" means the author checked the quoted wor
 - How `os.SameFile` identifies a file on Windows; Node `path.win32.relative` and `resolve` case handling; Rust's `Prefix` documentation; whether any git test stubs `uname`.
 - SARIF: the text of `reportingDescriptor.id` (3.49.3), `isComprehensive`, the `reportingDescriptorRelationship` properties, and `result.taxa` (the last 100,000 characters of the errata text were not read).
 - Whether ESLint, Ruff and CWE ids are permanent; Semgrep's id format rules; the OWASP 2025 edition.
-- NASA's lessons-learned system (the site returned no content) and the claim that cause codes should refer only to causes (a search snippet).
+- The LLIS database entries themselves (llis.nasa.gov pages are client-rendered and returned no text) and the claim that cause codes should refer only to causes (a search snippet). The LLIS field list rests on S42 and S41; a search summary says other NASA documents list more fields.
 - Table Schema whitespace handling; W3C `trim`, `enum`, `pattern` and `minLength` beyond the first 100,000 characters.
 - GitHub's `windows-latest` label and default Windows shell.
 - That `[ a -ef b ]` compares file identity on Git Bash for Windows.
