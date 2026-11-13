@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added: after Turn on for a project, a second dialog offers a first snapshot of its files: it shows the file count, size, top folders and any file over 5 MB before anything is staged, runs the secret scan on the staged files, and saves one commit (`chore: first snapshot of this folder`) only when it is clean. A finding saves nothing, lists `path:line (rule)` (never the value) and offers to ignore those files and save the rest. Not now is remembered for the session and nothing is pushed (the push offer is t-4d6a). New routes `GET`/`POST /api/first-snapshot`. The default `.gitignore` canon writes now also ignores `.env`, `.env.*`, `*.pem`, `id_rsa`, `id_ed25519` and `.claude/settings.local.json`. Go changed: daemon release (t-a854).
+
 ## [0.55.8] - 2026-11-13
 
 - Added: `sprint complete` now records one `sprint.cost` event per closed ticket (planning, implementation and gate tokens, cache reads, turns, gate runs, models; numbers only, no text) from Claude Code's transcripts and prints one line: `cost: 576k tokens (gates 533k, 93%), 3 gate runs`, with a plain note when gates took more than half. It is silent when no transcript turn falls inside the sprint, and a repeat writes nothing. `sprint token-spend` shows a ticket's row from the event when its transcripts are gone (they are kept about 9 days). `sprint token-spend --ticket <id> --record` is the command behind it. Go changed (the new event kind): daemon release (t-7e26). Not yet: the Tower and Logbook reading it, and the gate-cost budget hint.

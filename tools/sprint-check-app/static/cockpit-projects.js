@@ -83,7 +83,7 @@ export async function load(){
   grid.querySelectorAll('.lb-link-row').forEach(r=>r.addEventListener('click',()=>openLogbookFor(r.dataset.logbook)));
   grid.querySelectorAll('.fac-row').forEach(r=>r.addEventListener('click',()=>openFactoryGithub(r.dataset.factory)));
   grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
-  grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));
+  grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',async()=>{ if(b.classList.contains('is-off')&&await trackChanges(b.dataset.id,b.dataset.name,b)) firstSnapshot(b.dataset.id,b.dataset.name); }));
   projects.forEach(p=>{ if(!p.missing) fillCardStats(p.id); });   // t-3ba0: nothing to read in a folder that is gone
   renderSessionSurfaces();
 }
@@ -290,6 +290,47 @@ async function trackChanges(id,name,btn,opts){
     if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return true; }
     toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
   }catch(e){ toast('Request failed'); }
+  return false;
+}
+
+// t-a854: right after Turn on, offer to save the folder's files as the first snapshot. The preview comes first and stages nothing; the
+// server runs the secret scan on the staged files and saves nothing when it finds one (we list path:line:rule and offer to ignore those
+// files). Not now is remembered for the session. Only the Projects card asks (a sprint's ensureGit stays a single question).
+const _snapDeclined=new Set();
+const fmtMB=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B';
+async function firstSnapshot(id,name){
+  if(_snapDeclined.has(id)) return false;
+  let pv=null;
+  try{ const r=await fetch('/api/first-snapshot?project='+encodeURIComponent(id)); if(r.ok) pv=await r.json(); }catch(e){}
+  if(!pv||!pv.ok||!pv.can_snapshot||!pv.files) return false;
+  const folders=(pv.folders||[]).map(f=>(f.name==='.'?'files in the top folder':f.name+'/')+' ('+f.files+')').join(', ');
+  const large=(pv.large||[]).map(f=>f.path+' ('+fmtMB(f.bytes)+')').join(', ');
+  const body=pv.files+' file'+(pv.files===1?'':'s')+', '+fmtMB(pv.bytes)+(folders?': '+folders:'')+'.'
+    +(pv.truncated?' (Showing the first part of a very large folder.)':'')
+    +(large?' Large: '+large+'. A large file stays in the history for good; add it to .gitignore first if you do not want that.':'')
+    +' Passwords and keys are looked for first, and nothing is saved if any are found. Nothing is uploaded.';
+  if(!(await cockpitConfirm({title:'Save a first snapshot of “'+name+'”?', body, okLabel:'Save snapshot', cancelLabel:'Not now'}))){ _snapDeclined.add(id); return false; }
+  let ignore=[];
+  for(let attempt=0;attempt<3;attempt++){
+    const btn=document.querySelector('.gitstate[data-id="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+    const call=async()=>{
+      const r=await fetch('/api/first-snapshot?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true,ignore})});
+      return { r, res: await r.json().catch(()=>({})) };
+    };
+    let out;
+    try{ out=await (btn?withBusy(btn,'',call):call()); }catch(e){ toast('Request failed'); return false; }
+    const { r, res }=out;
+    if(res&&res.ok){ toast('✓ First snapshot of '+name+' saved'); load(); return true; }
+    if(res&&res.blocked&&(res.findings||[]).length){
+      const list=res.findings.map(f=>f.path+':'+f.line+' ('+f.rule+')').join('\n');
+      const paths=[...new Set(res.findings.map(f=>f.path))];
+      if(!(await cockpitConfirm({title:'Passwords or keys found', body:'Nothing was saved. The scan found these:\n'+list+'\nIgnore these files and save the rest? They stay on your computer but are left out of the history. If a real secret was exposed, change it.', okLabel:'Ignore and save', cancelLabel:'Do not save', danger:true}))) return false;
+      ignore=[...new Set([...ignore,...paths])];
+      continue;
+    }
+    toast((res&&res.error)?res.error:'Could not save the snapshot (HTTP '+r.status+')');
+    return false;
+  }
   return false;
 }
 

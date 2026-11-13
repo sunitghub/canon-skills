@@ -15332,7 +15332,7 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
   };
 
   // status(pid) -> the GET body; post(route, pid) -> handles the POST (default: ok).
-  async function stubBoard(page, { status, post, gate } = {}) {
+  async function stubBoard(page, { status, post, gate, snap } = {}) {
     const posts = [];
     await page.route('**/api/projects', route => json(route, PROJECTS));
     await page.route('**/api/project-stats*', route => json(route, { updated: '2026-09-27', ticket_count: 0, skills: ['sprint'] }));
@@ -15346,6 +15346,13 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
       const st = status(pid);
       return st === 'error' ? json(route, { ok: false, error: 'boom' }, 500) : json(route, st);
     });
+    if (snap) {   // t-a854: the first-snapshot preview (GET) and save (POST)
+      posts.snaps = [];
+      await page.route('**/api/first-snapshot*', route => {
+        if (route.request().method() === 'POST') { posts.snaps.push(route.request().postDataJSON()); return snap.post(route, posts.snaps.length); }
+        return json(route, snap.preview);
+      });
+    }
     await page.goto(BASE + '/cockpit');
     await expect(page.locator('.card')).toHaveCount(PROJECTS.length);
     await expect(page.locator('.gitstate:not([hidden])')).toHaveCount(PROJECTS.length - 1);   // the status requests have settled (proj-err stays hidden)
@@ -15408,6 +15415,48 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
     await expect(page.locator('#toast')).toContainText('✓ proj-plain now keeps a version history');
     await expect(icon(page, 'proj-plain')).toHaveClass(/is-on/);
     expect(posts.length).toBe(1);
+  });
+
+  test('Turn on then offers a first snapshot: the preview first, Not now sends nothing; a finding lists path:line:rule and Ignore retries with those files (t-a854)', async ({ page }) => {
+    let turnedOn = false;
+    const preview = { ok: true, can_snapshot: true, files: 5, bytes: 6291456, folders: [{ name: 'src', files: 3 }, { name: '.', files: 2 }], large: [{ path: 'big.bin', bytes: 6000000 }] };
+    const posts = await stubBoard(page, {
+      status: pid => (pid === 'proj-plain' && turnedOn ? { ok: true, tracking: true, synced: null, git_available: true } : defaultStatus(pid)),
+      post: route => { turnedOn = true; return json(route, { ok: true, commit: 'abc1234' }); },
+      snap: { preview, post: (route, n) => (n === 1
+        ? json(route, { ok: false, blocked: true, error: 'x', findings: [{ path: 'creds.txt', line: '1', rule: 'aws-access-key' }] }, 400)
+        : json(route, { ok: true, commit: 'def5678' })) },
+    });
+    await icon(page, 'proj-plain').click();
+    await page.locator('#cc-ok').click();                      // Turn on
+    await expect(page.locator('#cc-title')).toHaveText('Save a first snapshot of “proj-plain”?');
+    await expect(page.locator('#cc-body')).toContainText('5 files, 6.0 MB: src/ (3), files in the top folder (2)');
+    await expect(page.locator('#cc-body')).toContainText('big.bin (5.7 MB)');
+    expect(posts.snaps.length).toBe(0);                        // the preview stages and sends nothing
+    await page.locator('#cc-ok').click();                      // Save snapshot
+    await expect(page.locator('#cc-title')).toHaveText('Passwords or keys found');
+    await expect(page.locator('#cc-body')).toContainText('creds.txt:1 (aws-access-key)');
+    expect(posts.snaps).toEqual([{ confirm: true, ignore: [] }]);
+    await page.locator('#cc-ok').click();                      // Ignore and save
+    await expect.poll(() => posts.snaps.length).toBe(2);
+    expect(posts.snaps[1]).toEqual({ confirm: true, ignore: ['creds.txt'] });
+    await expect(page.locator('#toast')).toContainText('✓ First snapshot of proj-plain saved');
+  });
+
+  test('Not now on the first-snapshot dialog saves nothing (t-a854)', async ({ page }) => {
+    let turnedOn = false;
+    const posts = await stubBoard(page, {
+      status: pid => (pid === 'proj-plain' && turnedOn ? { ok: true, tracking: true, synced: null, git_available: true } : defaultStatus(pid)),
+      post: route => { turnedOn = true; return json(route, { ok: true, commit: 'abc1234' }); },
+      snap: { preview: { ok: true, can_snapshot: true, files: 1, bytes: 10, folders: [{ name: '.', files: 1 }], large: [] }, post: route => json(route, { ok: true, commit: 'x' }) },
+    });
+    await icon(page, 'proj-plain').click();
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#cc-title')).toHaveText('Save a first snapshot of “proj-plain”?');
+    await page.locator('#cc-cancel').click();
+    await page.waitForTimeout(300);
+    expect(posts.snaps.length).toBe(0);
+    await expect(icon(page, 'proj-plain')).toHaveClass(/is-on/);
   });
 
   test('a failed request re-enables the icon and shows the error; On and None do nothing when clicked; a synced folder is warned about', async ({ page }) => {

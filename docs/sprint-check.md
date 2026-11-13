@@ -231,7 +231,11 @@ sprint agent without leaving the browser — no second terminal.
   click to turn on version history*; or *Version history needs Git, which isn't installed on this computer*, where the
   icon is disabled. Only the "not enabled" icon is clickable: it asks you to confirm, then runs `git init` with one
   commit holding only a default `.gitignore` (`POST /api/track-changes`, `t-d538`). Nothing is uploaded and your files stay
-  uncommitted. A folder that is already a repo, or sits inside one, is refused, and a folder inside iCloud Drive,
+  uncommitted until you save a first snapshot: right after Turn on, a second dialog ("Save a first snapshot of ...?") shows the file
+  count, size, top folders and any file over 5 MB, then (`GET`/`POST /api/first-snapshot`, `t-a854`) runs the secret scan
+  (`tools/secret-scan.sh --staged`) on the staged files. A finding saves nothing, names `path:line (rule)` and offers to add those files to
+  `.gitignore`; with none, one commit `chore: first snapshot of this folder` is made. Nothing is pushed. The default `.gitignore`
+  also ignores `.env`, `.env.*`, `*.pem`, `id_rsa`, `id_ed25519` and `.claude/settings.local.json`. A folder that is already a repo, or sits inside one, is refused, and a folder inside iCloud Drive,
   Dropbox, OneDrive or Google Drive gets a sync warning first. The icon is optional: a folder without git is a
   first-class project (`t-5a4b`). An agent starts there with no git step; canon records what changed from a snapshot kept
   under `~/.canon/cockpit/changes/` (never inside the project), the End dialog says how many files the session changed,

@@ -398,6 +398,17 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, trackChangesState(root))
+	case "/api/first-snapshot":
+		root, errMsg, ok := trackChangesRoot(r)
+		if !ok {
+			if errMsg == "" {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+			} else {
+				sendJSONStatus(w, map[string]any{"ok": false, "error": errMsg}, http.StatusBadRequest)
+			}
+			return
+		}
+		sendJSON(w, firstSnapshotPreview(root))
 	case "/api/git":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -703,6 +714,32 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	// t-d538: git init targets an explicitly named folder — never the default by omission.
 	// Handled before the shared ?project resolution so `default` (a standalone board naming
 	// its own folder) isn't rejected as an unknown id. Mirrors server.py's do_POST order.
+	if path == "/api/first-snapshot" { // t-a854: saves the folder's files after Turn on; same folder resolution as track-changes
+		root, errMsg, ok := trackChangesRoot(r)
+		if !ok {
+			if errMsg == "" {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+			} else {
+				sendJSONStatus(w, map[string]any{"ok": false, "error": errMsg}, http.StatusBadRequest)
+			}
+			return
+		}
+		var ignore []string
+		if list, isList := payload["ignore"].([]any); isList {
+			for _, v := range list {
+				if str, isStr := v.(string); isStr {
+					ignore = append(ignore, str)
+				}
+			}
+		}
+		res := firstSnapshot(root, payload["confirm"], ignore)
+		status := http.StatusOK
+		if res["ok"] != true {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	if path == "/api/track-changes" {
 		root, errMsg, ok := trackChangesRoot(r)
 		if !ok {
@@ -6149,7 +6186,8 @@ func registerSkill(root, skill string) map[string]any {
 const trackChangesGitignore = "# Added by canon when this folder started tracking changes.\n" +
 	".DS_Store\nThumbs.db\ndesktop.ini\n" +
 	"node_modules/\n.venv/\n__pycache__/\ndist/\nbuild/\n" +
-	"*.mp4\n*.mov\n*.zip\n"
+	"*.mp4\n*.mov\n*.zip\n" +
+	firstSnapshotIgnoreEntries // t-a854: the credential shapes a first snapshot must not save
 
 const trackChangesMessage = "chore: start tracking changes with canon"
 

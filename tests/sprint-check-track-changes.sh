@@ -112,7 +112,7 @@ for dp,dns,fns in sorted(os.walk(sys.argv[1])):
 # The default .gitignore, written out here as the expected bytes (t-15d8); main.go's
 # trackChangesGitignore must say the same. $(...) drops the final newline, as it does for the file read below.
 EXPECTED_IGNORE="$(printf '%s\n' '# Added by canon when this folder started tracking changes.' .DS_Store Thumbs.db desktop.ini \
-  node_modules/ .venv/ __pycache__/ dist/ build/ '*.mp4' '*.mov' '*.zip')"
+  node_modules/ .venv/ __pycache__/ dist/ build/ '*.mp4' '*.mov' '*.zip' .env '.env.*' '*.pem' id_rsa id_ed25519 .claude/settings.local.json)"
 
 check_backend() {
   local kind="$1" home dflt port proj r code body snap
@@ -244,7 +244,67 @@ check_no_git() {
   assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "Version history needs Git, which isn't installed"; assert_eq "$snap" "$(snapshot "$proj")"
 }
 
+# t-a854: GET/POST /api/first-snapshot — the preview stages nothing; a clean folder is saved as one commit; a finding saves nothing,
+# resets the index and names path:line:rule (never the value); `ignore` takes only previewed files; every refusal changes nothing.
+fsreq() { # fsreq <GET|POST> <port> <query> [body] → "<code> <body>"
+  local out code; out="$(mktemp)"
+  if [[ "$1" == GET ]]; then code="$(curl -s -o "$out" -w '%{http_code}' "http://127.0.0.1:$2/api/first-snapshot$3")"
+  else code="$(curl -s -o "$out" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$2" --data-binary "$4" "http://127.0.0.1:$2/api/first-snapshot$3")"; fi
+  printf '%s %s' "$code" "$(cat "$out")"; rm -f "$out"
+}
+check_first_snapshot() {
+  local kind="$1" home dflt port proj r snap secret
+  new_dir; home="$NEW_DIR"; new_dir; dflt="$NEW_DIR"
+  start_server "$kind" "$dflt" "$home"; port="$SERVER_PORT"
+  # not tracking yet: refused, nothing written
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"; snap="$(snapshot "$proj")"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"; assert_eq "$snap" "$(snapshot "$proj")"
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"
+  req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null
+  mkdir -p "$proj/src" "$proj/my docs"; echo code > "$proj/src/a.txt"; echo more > "$proj/my docs/b c.txt"
+  head -c 6000000 /dev/zero > "$proj/big.bin"
+  secret="AKIA""IOSFODNN7ABCDEFG"   # split so this file is not itself a finding
+  printf 'aws=%s\n' "$secret" > "$proj/creds.txt"; printf 'TOKEN=%s\n' "$secret" > "$proj/.env"
+  # preview: counts, folders, a large file; stages nothing, and the ignored .env is not counted
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "200" "${r%% *}"
+  assert_eq "true" "$(jget "${r#* }" can_snapshot)"; assert_eq "5" "$(jget "${r#* }" files)"
+  assert_contains "${r#* }" '"path":"big.bin"'; assert_contains "${r#* }" '"name":"my docs"'
+  assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
+  # a POST without confirm, an unknown project and a traversal all change nothing
+  snap="$(snapshot "$proj")"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{}')"; assert_eq "400" "${r%% *}"
+  r="$(fsreq POST "$port" "?project=nope" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  assert_eq "$snap" "$(snapshot "$proj")"
+  # a finding: nothing committed, index reset, path:line:rule named, the value never in the answer
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"
+  assert_eq "400" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" blocked)"
+  assert_contains "${r#* }" '"path":"creds.txt"'; assert_contains "${r#* }" '"line":"1"'; assert_contains "${r#* }" '"rule":"aws-access-key"'
+  [[ "${r#* }" != *"$secret"* ]] || fail "$kind: the answer carries the secret value"
+  assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
+  # ignore only takes previewed files: a made-up path, a traversal and a newline are refused and .gitignore is unchanged
+  snap="$(snapshot "$proj")"
+  for bad in '"nope.txt"' '"../x"' '"a\nb"'; do
+    r="$(fsreq POST "$port" "?project=$PROJ_ID" "{\"confirm\":true,\"ignore\":[$bad]}")"; assert_eq "400" "${r%% *}"
+  done
+  assert_eq "$snap" "$(snapshot "$proj")"
+  # ignore the finding, retry: one commit with the neutral message, creds.txt left out, the others in
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt"]}')"
+  assert_eq "200" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" ok)"
+  assert_eq "2" "$(git -C "$proj" rev-list --count HEAD)"
+  assert_eq "chore: first snapshot of this folder" "$(git -C "$proj" log -1 --format=%s)"
+  git -C "$proj" ls-files | grep -qx "my docs/b c.txt" || fail "$kind: a file with a space was not saved"
+  git -C "$proj" ls-files | grep -qx "src/a.txt" || fail "$kind: src/a.txt was not saved"
+  ! git -C "$proj" ls-files | grep -qx "creds.txt" || fail "$kind: the flagged file was saved"
+  ! git -C "$proj" ls-files | grep -qx ".env" || fail "$kind: .env was saved"
+  grep -qx "/creds.txt" "$proj/.gitignore" || fail "$kind: the ignored file is not in .gitignore"
+  # a second snapshot is refused (a history beyond canon's start commit)
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  assert_eq "2" "$(git -C "$proj" rev-list --count HEAD)"
+  printf 'sprint-check-first-snapshot[%s]: ok\n' "$kind"
+}
+
 check_backend go
+check_first_snapshot go
 check_no_git go
 # the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
 assert_eq "git_available,ok,synced,tracking|commit,ok|error,ok" "$go_KEYS"
