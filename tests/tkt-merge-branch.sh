@@ -54,6 +54,7 @@ mv "$W/cwd" ".tickets/$id/.cockpit-cwd"
 echo edited >> "$WT/change.txt"
 refuses "uncommitted changes in the worktree" "uncommitted changes the evaluator did not grade" --yes
 assert_contains "$out" "change.txt"
+refuses "uncommitted changes in the worktree (--check)" "uncommitted changes the evaluator did not grade" --check
 git -C "$WT" checkout -q -- change.txt
 refuses "--pr on a worktree ticket" "--pr is for a ticket sent to GitHub" --pr 3
 refuses "--yes with --check" "do not go together" --yes --check
@@ -230,7 +231,8 @@ id="$id_s"; f="$f_s"; WT="$WT_s"; cd "$P"
 P6="$W/half-tracked"; mkdir "$P6"; cd "$P6"; git init -q
 mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
 echo base > base.txt; git add -A; git commit -qm base
-id6="$("$TKT" create "Half-tracked" -t task)"; f6=".tickets/$id6/ticket.md"; git add "$f6"; git commit -qm "chore: add ticket"
+id6="$("$TKT" create "Half-tracked" -t task)"; f6=".tickets/$id6/ticket.md"; echo n > ".tickets/$id6/notes.md"
+git add "$f6" ".tickets/$id6/notes.md"; git commit -qm "chore: add ticket"
 WT6="$W/wt6"; git worktree add -q "$WT6" -b feat/h; WT6="$(cd "$WT6" && pwd -P)"
 printf '%s\n' "$WT6" > ".tickets/$id6/.cockpit-cwd"
 (cd "$WT6" && echo h > h.txt && git add h.txt && git commit -qm "the branch")
@@ -254,17 +256,23 @@ git -C "$WT6" reset -q -- ".tickets/$id6/summary.md"
 echo outside > "$W/elsewhere"; ln -s "$W/elsewhere" "$WT6/.tickets/$id6/evidence/link.log"   # a link to a real file
 refuses "a symlink in the close record" "no passing evaluator verdict" --yes
 rm "$WT6/.tickets/$id6/evidence/link.log"
+rm "$WT6/.tickets/$id6/notes.md"
+refuses "a deleted tracked file in the close record" "no passing evaluator verdict" --yes
+git -C "$WT6" checkout -q -- ".tickets/$id6/notes.md"
 mk="$WT6/.tickets/$id6/.cockpit-old"; echo a > "$mk"; git -C "$WT6" add -f -- "$mk"; git -C "$WT6" commit -qm "an old-layout tracked marker"
 echo b >> "$mk"
 refuses "an edited tracked .cockpit-* marker" "no passing evaluator verdict" --yes
 git -C "$WT6" reset -q --soft "$G6"; git -C "$WT6" rm -qf --cached -- "$mk"; rm "$mk"
 refuses "a close record without --yes" "pass --yes to commit it and merge"
+# A commit git refuses (a failing pre-commit hook): refused with git's reason, nothing left staged, the branch unmoved.
+printf '#!/bin/sh\necho "hook says no" >&2\nexit 1\n' > "$P6/.git/hooks/pre-commit"; chmod +x "$P6/.git/hooks/pre-commit"
+refuses "a close-record commit git refuses" "git could not commit $id6's close record on feat/h: hook says no" --yes
+assert_eq "$G6" "$(git rev-parse feat/h)"; rm "$P6/.git/hooks/pre-commit"
 # --check: lists the record, commits nothing, and is otherwise ready.
 before="$(sig)"
 out="$("$TKT" merge "$id6" --check < /dev/null 2>&1)" || fail "merge --check refused a half-tracked close record: $out"
-assert_contains "$out" "merge: will first commit $id6's close record on feat/h: "
-assert_contains "$out" ".tickets/$id6/eval-report.md"; assert_contains "$out" ".tickets/$id6/ticket.md"
-assert_contains "$out" ".tickets/$id6/evidence/test-sh.log"; [[ "$out" != *".cockpit-handoff-at-approve"* ]] || fail "--check lists a .cockpit-* marker"
+assert_eq "merge: will first commit $id6's close record on feat/h: .tickets/$id6/ticket.md, .tickets/$id6/eval-report.md, .tickets/$id6/evidence/test-sh.log, .tickets/$id6/summary.md" \
+  "$(grep 'will first commit' <<< "$out")"   # exactly the record: no .cockpit-* marker, nothing outside the folder
 assert_contains "$out" "merge: ready: would run scripts/test.sh on main + feat/h, then merge"
 [[ "$(sig)" == "$before" && "$(git rev-parse feat/h)" == "$G6" ]] || fail "--check changed something"
 echo "merge --check: a half-tracked close record is listed, nothing changed"
