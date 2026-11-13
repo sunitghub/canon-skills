@@ -39,7 +39,7 @@ ids="$("$P" ids | tr '\n' ' ')"
 [[ "$ids" != *repo-check* ]] || fail "pipeline: repo-check is a node again (removed in t-0a7c)"
 mt="$("$P" resolve --full | grep -F "	mutation-test	")"; [[ "$mt" == *"needs python3 (skipped with a reason when it is missing)"* ]] || fail "pipeline: mutation-test does not say it needs python3: $mt"
 # --full: eleven tab-separated fields, '-' for none; a locked node carries its reason; every prompt path exists in canon's folder
-while IFS=$'\t' read -r _ id _ _ lk _ _ prompt reason skip only; do
+while IFS=$'\t' read -r _ id _ _ lk _ _ prompt reason _ only; do
   [[ -n "$only" ]] || fail "pipeline: --full line for $id has fewer than 11 fields"
   [[ "$lk" != locked || "$reason" != "-" ]] || fail "pipeline: locked node $id has no reason"
   [[ "$prompt" == "-" || -f "$ROOT/$prompt" ]] || fail "pipeline: node $id names a prompt that does not exist: $prompt"

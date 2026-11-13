@@ -125,7 +125,7 @@ assert_contains "$out" "Plan approved"
 sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-aaaa/plan.md"
 rm -f "$WORK/.tickets/t-aaaa/plan.md.bak"
 (cd "$WORK" && git add -f ".tickets/t-aaaa/")
-out="$(cd "$WORK" && GITHUB_BASE_REF= run_fail "$SPRINT_HEADLESS" t-aaaa)"
+out="$(cd "$WORK" && GITHUB_BASE_REF='' run_fail "$SPRINT_HEADLESS" t-aaaa)"
 assert_contains "$out" "could not resolve a default base ref"
 
 # ── 5. All guard rails pass; claude -p invocation itself fails ─────────
