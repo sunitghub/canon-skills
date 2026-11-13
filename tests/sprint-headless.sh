@@ -551,6 +551,14 @@ assert_no_model_arg
 (cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
 assert_no_model_arg
 
+# 14l. a manual: true ticket (t-51c6) is ignored like demo is for the gate set: no --model default, nothing about Manual in the run
+seed_eval_ticket t-man0 "manual: true"
+: > "$CAP_ARGS"
+man_out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-man0 --base-ref HEAD 2>&1)"
+assert_no_model_arg
+[[ "$man_out" != *anual* ]] || fail "sprint-headless-eval acted on manual: true: $man_out"
+rm -rf "$WORK/.tickets/t-man0"
+
 rm -rf "$WORK/.tickets/t-demo" "$WORK/.tickets/t-ndm0"
 rm -rf "$STUB_CAP_DIR"; rm -f "$CAP_ARGS"
 
