@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.13] - 2026-11-13
+
+Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version. Update both together: a `canon-go` older than this release refuses a `sprint.cost` event that carries the new fields, so the cost record for that close would be lost without a message.
+
+- Added: when `sprint complete` records what a ticket cost, it also records the model that built the change (the one with the most implementation tokens in Claude Code's transcripts, `builder` on the `sprint.cost` event) and, when the reviewer or the evaluator ran on that same model, prints one advisory line, for example `note: the reviewer and the evaluator ran on claude-sonnet-5-5, the model that built this change, so neither is independent of it`, and records `same_model`. It never blocks a close. A builder that cannot be read (no transcripts, as under Copilot or Codex, or a model name that is not a plain id) gives no line and no field.
+
 ## [0.55.12] - 2026-11-13
 
 Run `canon update`, then restart the daemon (Admin's **Restart Daemon** button): `canon update` fetches the new `canon-go`, but a running daemon stays on the old version.
