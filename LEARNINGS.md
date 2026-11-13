@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 14:05
+learnings-sweep last run: 11-13-2026 14:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-a01e](.tickets/t-a01e/learnings.md) | A merge guard that skips a file class (`.cockpit-*` markers) must skip it in every check that reads the tree, or `--check` says ready while `--yes` refuses after its own side effect | UNPROMOTED |
 | 2026-11-13 | [t-141a](.tickets/t-141a/learnings.md) | A Lite docs sprint stamps only doc-check, so a new file under docs/ that the release zip ships can break the zip's size and file caps (release-zip-slim) and nobody sees it until the next full-suite run (t-9915's report did, found two tickets later): when a docs sprint adds a shipped file, run release-zip-slim or the suite before the close, and put contributor-only files on the zip's exclusion list; a file whose test clones the repo cannot be a mutant-sweep map. | UNPROMOTED |
 | 2026-11-13 | [t-9915](.tickets/t-9915/learnings.md) | A research agent's WebFetch returns a model-written digest, not page text, so its quotes are not byte-exact: check every load-bearing quote against the raw page (curl, line numbers) and tag each source raw or digest; and before naming a source in a criterion, check it is readable (NASA's lessons-learned site is client-rendered, so the criterion failed until two readable sources were found). | UNPROMOTED |
 | 2026-11-13 | [t-16ce](.tickets/t-16ce/learnings.md) | A tool reported missing is not a blocker until you try to install it: WebKit was "not installed", so a Test Plan item was deferred to a follow-up ticket, and `npx playwright install webkit` fixed it in 6 s; also an assertion that cannot fail (`scrollHeight > clientHeight` on an auto-height box) proves nothing, so the reviewer had it removed. | UNPROMOTED |
