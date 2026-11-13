@@ -37,3 +37,9 @@ C:\PROGRA~1\x	/c/PROGRA~1/x	NOT handled: an 8.3 short name is not expanded
 C:\x.	/c/x.	NOT handled: Windows strips trailing dots and spaces, the key does not
 /var/folders/x	/var/folders/x	NOT handled: macOS /var is a link to /private/var (the identity step handles it, not the key)
 ~/p	~/p	a tilde is not expanded
+\\\\host\\share\\dir	//host/share/dir	UNC as JSON writes it: four leading backslashes, doubled separators
+/tmp/a:/b	/tmp/a:/b	a colon inside a name is not a drive
+x/C:/y	x/C:/y	a drive-looking segment after the start is not a drive
+ab:/x	ab:/x	two letters before the colon is not a drive
+1:/x	1:/x	a digit before the colon is not a drive
+C:\Users\José\p	/c/Users/José/p	a non-ASCII byte passes through unchanged

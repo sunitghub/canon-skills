@@ -64,11 +64,18 @@ while IFS=$'\t' read -r input key note; do
   [[ "$got" == "$key" ]] || fail "path-forms: canon_path_key depends on the OS or environment: '$input' gave '$got' under a fake Windows, want '$key'"
 done < "$corpus"
 
+# A newline is encoded (two paths that differ only by one never merge); no argument and an empty path give an empty key (safe under set -u).
+[[ "$(canon_path_key $'/a\n/b')" == '/a%0A/b' ]] || fail "path-forms: a newline in a path must be encoded as %0A, got '$(canon_path_key $'/a\n/b')'"
+[[ "$(canon_path_key $'/a/\n/b')" != "$(canon_path_key $'/a\n/b')" ]] || fail "path-forms: two paths that differ only by a newline got one key"
+( set -u; canon_path_key >/dev/null 2>&1 ) || fail "path-forms: canon_path_key with no argument aborts under set -u"
+[[ -z "$(canon_path_key)" ]] || fail "path-forms: canon_path_key with no argument printed something"
+
 # --- sprint token-spend: git lists the worktree as C:/Users/x/wt, the events name it C:\Users\x\wt (JSON-escaped), the transcript's cwd is /c/Users/x/wt.
 proj="$(make_project)"; root="$(cd "$proj" && pwd -P)"
 cfg="$(mktemp -d)"; chome="$(mktemp -d)"; shim="$(mktemp -d)"
 real_git="$(command -v git)"
-export CLAUDE_CONFIG_DIR="$cfg" CANON_HOME="$chome" SHIM_ROOT="$root" REAL_GIT="$real_git"
+escwt="C:/Users/x/esc"$'\033'"[2Jdir"   # a worktree name with a control byte, as a hostile folder name could carry
+export CLAUDE_CONFIG_DIR="$cfg" CANON_HOME="$chome" SHIM_ROOT="$root" REAL_GIT="$real_git" SHIM_ESCWT="$escwt"
 mkdir -p "$chome/events"
 cat > "$shim/git" <<'SH'
 #!/usr/bin/env bash
@@ -77,6 +84,7 @@ case "$*" in
   *"worktree list --porcelain"*)
     printf 'worktree %s\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/main\n\n' "$SHIM_ROOT"
     printf 'worktree C:/Users/x/wt\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/feat\n\n'
+    printf 'worktree %s\nHEAD 0000000000000000000000000000000000000000\nbranch refs/heads/esc\n\n' "$SHIM_ESCWT"
     exit 0 ;;
 esac
 exec "$REAL_GIT" "$@"
@@ -97,7 +105,16 @@ out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wtsp 2>
 turn msg_wt2 14:11:00 '/c/Users/x/zzz' > "$tdir/w.jsonl"
 out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wtsp 2>&1)"
 assert_contains "$out" "No transcript turns inside these sprints"
-assert_contains "$out" 'raw spellings: cwd /c/Users/x/zzz; event project C:\\Users\\x\\wt; path list '
+assert_contains "$out" 'raw spellings: cwd /c/Users/x/zzz; matched event project C:\\Users\\x\\wt; path list '
 assert_contains "$out" "C:/Users/x/wt"
+
+# Every raw spelling on that line is cleaned: a control byte in a kept event project or in the path list reaches the terminal as ?.
+evesc="C:\\Users\\x\\esc"$'\033'"[2Jdir"
+{ printf '{"schema":1,"ts":"2026-10-03T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-wesc"}}\n' "$evesc"
+  printf '{"schema":1,"ts":"2026-10-03T14:30:00.000Z","kind":"sprint.completed","project":"%s","data":{"ticket":"t-wesc"}}\n' "$evesc"; } > "$chome/events/2026-10-03.jsonl"
+out="$(cd "$proj" && PATH="$shim:$PATH" "$SPRINT" token-spend --ticket t-wesc 2>&1)"
+assert_contains "$out" "No transcript turns inside these sprints"
+[[ "$out" != *$'\033'* ]] || fail "path-forms: a control byte from an event project or the path list reached the terminal: $(printf '%s' "$out" | tr '\033' '#')"
+assert_contains "$out" 'esc?[2Jdir'
 
 printf 'path-forms: ok\n'

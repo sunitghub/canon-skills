@@ -199,8 +199,8 @@ v1_get() {
 v1_daemon_down() { local h; h="$(printf '%s' "${V1_HDR:-}" | tr 'A-Z' 'a-z')"; [[ "$h" =~ x-cockpit-daemon:[[:space:]]*down ]]; }
 
 # canon_awk_pkey — t-134b: the awk source of pkey(p), ONE definition of "the same folder" for awk programs that compare paths (sprint token-spend).
-# A folder has several spellings on Windows: C:\x and the JSON-escaped C:\\x (native tools, Claude Code transcripts), C:/x (git and native programs:
-# Git Bash converts a /c/x argument for a native exe, so canon-go stores it so) and /c/x (Git Bash): all become /c/x. A trailing slash is dropped
+# A folder has several spellings on Windows: C:\x and the JSON-escaped C:\\x (native tools, Claude Code transcripts), C:/x (git and native
+# programs: Git Bash converts a /c/x argument for a native exe, so canon-go stores it so) and /c/x (Git Bash): all become /c/x. A trailing slash is dropped
 # (the root / stays), a run of slashes is one (a UNC prefix keeps its two), a UNC path stays //host/share, a POSIX path is otherwise unchanged. Only the drive letter is lower-cased: Windows paths are
 # case-insensitive, but lower-casing a whole path would merge /c/Foo and /c/foo on macOS and Linux. A backslash is always a separator (a POSIX
 # folder named a\b reads as a/b). NOT handled: \\?\ and device paths,
@@ -224,5 +224,7 @@ canon_awk_pkey='function pkey(p,   unc, lead) {
 
 # canon_path_key <path> — t-141a: the key of ONE path for shell code that compares paths (the same text as canon_awk_pkey, so there is no second
 # definition). A pure function: no filesystem, no environment, no OS test, the same answer on every OS. Compare two keys, never two raw spellings;
-# when both folders exist compare file identity first (`[ a -ef b ]`) and use the key only as the fallback. Never hand a key to another program.
-canon_path_key() { printf '%s\n' "$1" | LC_ALL=C awk "$canon_awk_pkey"'{ print pkey($0) }'; }
+# when both folders exist compare file identity first (`[ a -ef b ]`, unverified on Git Bash, t-c8c6) and use the key only as the fallback. Never hand
+# a key to another program. An empty path has an empty key: two empty keys are "no path", never "the same folder". A newline is encoded as %0A so
+# two paths that differ only by a newline never merge (awk reads a line at a time). No argument is an empty path (safe under `set -u`).
+canon_path_key() { local p="${1-}"; printf '%s\n' "${p//$'\n'/%0A}" | LC_ALL=C awk "$canon_awk_pkey"'{ print pkey($0) }'; }

@@ -1977,7 +1977,7 @@ cmd_token_spend() {
           rl = ""; for (i = 1; i <= ncw; i++) rl = rl (i > 1 ? ", " : "") clean(CWR[i])
           el = ""; np2 = 0; for (w = 1; w <= nw; w++) if (!(WR[w] in ESEEN) && np2 < 3) { ESEEN[WR[w]] = 1; el = el (np2++ > 0 ? ", " : "") clean(WR[w]) }
           gl = ""; for (i = 1; i <= np && i <= 3; i++) gl = gl (i > 1 ? ", " : "") clean(PRAW[i])
-          print "  raw spellings: cwd " rl "; event project " el "; path list " gl }
+          print "  raw spellings: cwd " rl "; matched event project " el "; path list " gl }
         exit }
       print "Token spend per closed sprint (fresh input + output; cache reads apart), from Claude Code transcripts:"
       printf "%-8s %-10s %10s %15s %10s %11s\n", "ticket", "tier", "planning", "implementation", "gates", "cache-read"

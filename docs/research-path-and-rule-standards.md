@@ -79,7 +79,7 @@ This is the recommendation; the sources above support each clause as noted.
 
 | Step | Rule | Source |
 |---|---|---|
-| 1 | a leading `\\` followed by a non-backslash marks a UNC path; it stays `//host/share` | S1 |
+| 1 | two or more leading backslashes followed by a non-backslash mark a UNC path (a JSON-escaped one has four); it stays `//host/share` | S1 |
 | 2 | every run of backslashes becomes one `/` | S1 |
 | 3 | `^[A-Za-z]:(/\|$)` becomes `/` + lower-case drive + the rest: `C:\x`, `C:/x` and `/c/x` give `/c/x` | S1, S2, S4 |
 | 4 | **(addition)** collapse runs of `/` after a UNC prefix or a drive, as Windows does | S1 |

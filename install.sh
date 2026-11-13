@@ -105,9 +105,8 @@ fi
 printf 'Wiring agent hooks...\n'
 bash "$TOOLS/skills.sh" init
 
-# shellcheck disable=SC2034  # RC_FILE is unused here (pre-existing; noticed in t-141a, not removed in this change)
 RC_FILE="$HOME/.bashrc"
-# shellcheck disable=SC2034  # (same: unused)
+# shellcheck disable=SC2034  # RC_FILE is unused here (pre-existing; noticed in t-141a, not removed in this change)
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
 # what current names (a package), or for an older install what its clone is on; the binaries came with the package or its canon update
