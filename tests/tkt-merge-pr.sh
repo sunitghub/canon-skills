@@ -490,6 +490,9 @@ git update-ref -d refs/remotes/origin/main   # the cases above rewind origin (ot
 out="$(ff_merge)"; assert_contains "$out" "Local main: merged origin/main (${PRHEAD:0:8}) into main: ${LOCAL:0:8} -> "   # t-dde9: diverged: merged, not left
 assert_eq "Merge origin/main into main" "$(git log -1 --format=%s main)"; assert_eq "$LOCAL" "$(git rev-parse main^1)"; assert_eq "$PRHEAD" "$(git rev-parse main^2)"
 [[ "$(git status --porcelain --untracked-files=no)" == "" && -f local.txt ]] || fail "the merge of origin into local main left changes or lost local.txt"
+git reset -q --hard "$LOCAL"; git update-ref refs/remotes/origin/main "$LOCAL"   # origin/main last read at a commit origin no longer has: rewritten
+out="$(ff_merge)"; assert_contains "$out" "Local main: origin/main was rewritten (force-pushed: commits it had are gone), so it is not merged in; left at ${LOCAL:0:8}"
+assert_eq "$LOCAL" "$(git rev-parse main)"
 git reset -q --hard "$BASE"
 # The merge happened, so merge-pr exits 0 whatever the local branch could do (ff_merge runs under set -e).
 git reset -q --hard "$PRHEAD"; out="$(ff_merge)"; assert_contains "$out" "Local main: already at ${PRHEAD:0:8}"
