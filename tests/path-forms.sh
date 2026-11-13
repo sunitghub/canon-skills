@@ -39,7 +39,7 @@ for kind in spaces repeat padded empty; do
     spaces) sed "8s/$tab/    /g" "$corpus" ;;                       # a tab-to-spaces edit of one row
     repeat) { cat "$corpus"; grep -v '^#' "$corpus" | sed -n 1p; } ;;   # the first input again
     padded) sed "8s/$tab/ $tab/" "$corpus" ;;                      # a space after the input
-    empty)  sed "8s/$tab[^$tab]*$tab/$tab$tab/" "$corpus" ;;       # an empty key
+    empty)  sed "8s/${tab}[^${tab}]*${tab}/${tab}${tab}/" "$corpus" ;;       # an empty key
   esac > "$tmp/$kind.tsv"
   cmp -s "$corpus" "$tmp/$kind.tsv" && fail "path-forms: the '$kind' variant is identical to the corpus: the edit did nothing"
   if validate_corpus "$tmp/$kind.tsv" >/dev/null 2>&1; then fail "path-forms: the corpus validator accepted a '$kind' edit"; fi
@@ -67,7 +67,8 @@ done < "$corpus"
 # --- sprint token-spend: git lists the worktree as C:/Users/x/wt, the events name it C:\Users\x\wt (JSON-escaped), the transcript's cwd is /c/Users/x/wt.
 proj="$(make_project)"; root="$(cd "$proj" && pwd -P)"
 cfg="$(mktemp -d)"; chome="$(mktemp -d)"; shim="$(mktemp -d)"
-export CLAUDE_CONFIG_DIR="$cfg" CANON_HOME="$chome" SHIM_ROOT="$root" REAL_GIT="$(command -v git)"
+real_git="$(command -v git)"
+export CLAUDE_CONFIG_DIR="$cfg" CANON_HOME="$chome" SHIM_ROOT="$root" REAL_GIT="$real_git"
 mkdir -p "$chome/events"
 cat > "$shim/git" <<'SH'
 #!/usr/bin/env bash
