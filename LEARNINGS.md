@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 05:40
+learnings-sweep last run: 11-13-2026 06:37
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-a854](.tickets/t-a854/learnings.md) | A guard test that asserts only the HTTP status passes a mutant when a second guard returns the same status (a refused name was hidden by the scan's own 400): assert the refusal's message or the state it must not change, and run each guard's revert. A parser for a tool's output must handle every shape the tool prints (the scanner's path findings have no line number). | UNPROMOTED |
 | 2026-11-13 | [t-7e26](.tickets/t-7e26/learnings.md) | A test that closes or records through the real board binary must pin `CANON_EVENTS_CLOCK`: the first write prunes event days older than the retention, so a fixture dated weeks ago vanishes mid-test; and stamping the full suite under `nohup` fails the HUP test in tkt-merge-pr.sh (run it in the foreground). | UNPROMOTED |
 | 2026-11-13 | [t-51c6](.tickets/t-51c6/learnings.md) | A gate-reduction check must decide its own scope from what a change cannot edit: "is this canon's checkout" read from the working tree let a deleted `scripts/integrity-list.sh` switch the gate-file refusal off, and a hand-rolled tier grep missed spellings the close's parser accepts: read the base (`git show`) and reuse the owner's parser, then probe delete, rename and edit-the-list-too. | UNPROMOTED |
 | 2026-11-13 | [t-aa24](.tickets/t-aa24/learnings.md) | A check that re-implements a parse or a freshness rule another tool owns drifts at once (HANDOFF edits made the record stale while a log stayed fresh; `## Criteria ` and `*` bullets were missed): ask the owner for the rule (`evidence.sh neutral`) or reuse its function, and run the owner's accepted forms through the new reader in the test. | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-13-2026 05:40
 | 2026-11-05 | [t-d0ed](.tickets/t-d0ed/learnings.md) | A spec that asserts something is absent passes when its fixture never renders it (the 'no Worktree line' spec used an `open` ticket and the wrong element; a launch spec used an id the launch refuses): seed the state that renders it and revert the fix to see the spec fail. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-04 | [t-1917](.tickets/t-1917/learnings.md) | A CSS state spec that reads a colour while a transition runs passes whether or not the rule works, and `:focus-within` never matches across an iframe (so the tint never showed): turn transitions off, compare exact expected values, click as a user does, and prove the spec with a mutant that flips it, not by a revert that happened to fail once. | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 | 2026-11-04 | [t-43a7](.tickets/t-43a7/learnings.md) | One prompt text written for one repo layout (`.tickets/` ignored) shipped to both: when text tells an agent what to do about a layout, branch on the same check the tool uses (one helper) and test both layouts; the old fixture silently ran the other layout, so check which one a fixture really is before trusting its assertions. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-04 | [t-c91a](.tickets/t-c91a/learnings.md) | A fixture that performs a step in the same checkout the command later reads (t-2906's tracked-`.tickets/` case closed the ticket in main) hides the layout it was written for: build the fixture through the real flow (close only in the worktree) and add a second layout, or the gap ships and a Windows test finds it. | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
