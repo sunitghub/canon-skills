@@ -478,7 +478,8 @@ cmd_manual() {
 
   if [[ "$value" == "true" ]]; then
     set_or_add_field "$file" manual true
-    if sed 's/\*//g' "$(dirname "$file")/plan.md" 2>/dev/null | tr 'A-Z' 'a-z' | grep -qE '^[[:space:]-]*tier[[:space:]]*:[[:space:]]*high-risk'; then
+    local plan_lc; plan_lc="$(sed 's/\*//g' "$(dirname "$file")/plan.md" 2>/dev/null | tr 'A-Z' 'a-z' || true)"
+    if grep -qE '^[[:space:]-]*tier[[:space:]]*:[[:space:]]*high-risk' <<< "$plan_lc"; then
       echo "warning: $id is a high-risk sprint: Manual mode is refused for it at the close (sprint check-evidence), which keeps the full gates." >&2
     fi
   else

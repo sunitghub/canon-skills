@@ -1418,7 +1418,7 @@ _manual_criteria() {
 
 # _manual_list <script text> <NAME> — the words of the bash array `NAME=( ... )` (one line or several), one per line.
 _manual_list() {
-  printf '%s\n' "$1" | awk -v n="$2" 'index($0, n "=(") == 1 { f = 1; sub(/^[A-Z_]+=\(/, "") } f { e = ($0 ~ /\)/); sub(/\).*$/, ""); gsub(/[[:space:]]+/, "\n"); if ($0 != "") print; if (e) exit }'
+  printf '%s\n' "$1" | awk -v n="$2" 'index($0, n "=(") == 1 { f = 1; sub(/^[A-Z_]+=\(/, "") } f { e = ($0 ~ /\)/); sub(/\).*$/, ""); gsub(/[[:space:]]+/, "\n"); if ($0 != "") print; if (e) f = 0 }'
 }
 
 # _manual_mode_refusal <id> — t-51c6: why a `manual: true` ticket may not close on the user's testing; prints nothing when it may. The user's testing

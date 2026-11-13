@@ -127,7 +127,7 @@ function renderModalMeta(t) {
       const next = String(t[field]) !== 'true';
       btn.disabled = true;
       try {
-        const res = await postWrite(`/api/ticket/${t.id}/${field}`, { [field]: next }, `change ${label}`);
+        const res = await postWrite(field === 'manual' ? `/api/ticket/${t.id}/manual` : `/api/ticket/${t.id}/demo`, { [field]: next }, `change ${label}`);   // literal routes: the Cockpit scoping test reads them
         if (res.ok) { t[field] = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0[field] = t[field]; adoptTicketWrite(t.id, res.data); }
       } finally {
         renderBoard();

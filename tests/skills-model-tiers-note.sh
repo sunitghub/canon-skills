@@ -188,7 +188,7 @@ grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complet
 # AGENTS.md keeps a paragraph that opens the same way after END. The old text stays in the fixture because installs still carry it.
 north="$(awk '/^\*\*North-star \(gate floor\)\.\*\*/{print; exit}' "$old_block")"
 [[ -n "$north" ]] || fail "could not find the old North-star paragraph in $old_block"
-printf '%s\n' "$after_end" | grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator\.' || fail "AGENTS.md lost its North-star paragraph after END (t-51c6)"
+grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator\.' <<< "$after_end" || fail "AGENTS.md lost its North-star paragraph after END (t-51c6)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
   [[ "$l" == "$north" ]] && continue   # covered by the North-star check above

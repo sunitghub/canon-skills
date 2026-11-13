@@ -74,7 +74,7 @@
   .pl-prev-k{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
   .pl-prev-seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}
   .pl-prev-seg button{font:inherit;font-size:12px;border:0;background:transparent;color:var(--text-muted);padding:4px 12px;cursor:pointer}
-  .pl-prev-seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+  .pl-prev-seg button[aria-pressed="true"]{background:var(--accent);color:var(--th-on-accent, var(--on-accent))}
   .pl-prev-h{flex-basis:100%;font-size:11px;color:var(--text-muted)}
   .pl-row.pl-err{grid-template-columns:minmax(0,1fr)}
   .pl-row.pl-err .pl-n{color:var(--col-discarded)}
