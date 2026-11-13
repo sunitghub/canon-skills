@@ -303,8 +303,22 @@ check_first_snapshot() {
   printf 'sprint-check-first-snapshot[%s]: ok\n' "$kind"
 }
 
+# t-a854: no bash on the PATH means no secret scan, and then nothing is saved: the index is clean, no commit, .gitignore as it was (even after an ignore)
+check_snapshot_no_scanner() {
+  local kind="$1" home dflt proj r snap bin
+  new_dir; home="$NEW_DIR"; new_dir; dflt="$NEW_DIR"; new_dir; bin="$NEW_DIR"; ln -s "$(command -v git)" "$bin/git"
+  start_server "$kind" "$dflt" "$home" "$bin"
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$SERVER_PORT" "$proj"
+  req POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null
+  snap="$(cat "$proj/.gitignore")"
+  r="$(fsreq POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true,"ignore":["notes.md"]}')"
+  assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "needs bash"
+  assert_eq "$snap" "$(cat "$proj/.gitignore")"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
+}
+
 check_backend go
 check_first_snapshot go
+check_snapshot_no_scanner go
 check_no_git go
 # the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
 assert_eq "git_available,ok,synced,tracking|commit,ok|error,ok" "$go_KEYS"
