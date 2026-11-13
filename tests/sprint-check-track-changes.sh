@@ -45,7 +45,7 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 
 # new_dir → sets NEW_DIR. Not via $(...): DIRS must be updated in this shell (t-8765).
 new_dir() {
-  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
+  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: ${FUNCNAME[0]} called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   NEW_DIR="$(mktemp -d)"
   NEW_DIR="$(cd "$NEW_DIR" && pwd -P)"
   DIRS+=("$NEW_DIR")
@@ -56,7 +56,7 @@ new_dir() {
 # caller's own GIT_CONFIG_GLOBAL / ~/.gitconfig must neither hide it nor leak in.
 start_server() {
   local kind="$1" dflt="$2" home="$3" path_env="${4:-$PATH}" port
-  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
+  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: ${FUNCNAME[0]} called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
   PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
     GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
@@ -337,5 +337,6 @@ check_first_snapshot go
 check_snapshot_no_scanner go
 check_no_git go
 # the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
+# shellcheck disable=SC2154  # go_KEYS is assigned by check_backend through eval
 assert_eq "git_available,ok,synced,tracking|commit,ok|error,ok" "$go_KEYS"
 echo "sprint-check-track-changes: ok"
