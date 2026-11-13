@@ -22,6 +22,7 @@ _resolve_target() {
     raw="$HOME/.canon"
   fi
   # Expand tilde inline (avoids subshell so HOME overrides work in tests)
+  # shellcheck disable=SC2088  # the quoted '~' is matched literally on purpose: it is the text the user typed, not an expansion
   case "$raw" in
     '~')   raw="$HOME" ;;
     '~/'*) raw="$HOME/${raw#'~'/}" ;;
@@ -42,6 +43,7 @@ fi
 
 # t-b7df: best effort (a curl|bash run has no tools/ beside it; the canon update it calls is guarded on its own)
 _gl="$(dirname "${BASH_SOURCE[0]:-$0}")/tools/gate-scope-lib.sh"
+# shellcheck source=tools/gate-scope-lib.sh
 if [[ -f "$_gl" ]]; then source "$_gl"; gate_scope_guard "install.sh" || exit 1; fi
 
 TARGET="$(_resolve_target "${1-}")"
@@ -103,6 +105,7 @@ fi
 printf 'Wiring agent hooks...\n'
 bash "$TOOLS/skills.sh" init
 
+# shellcheck disable=SC2034  # RC_FILE is unused here (pre-existing; noticed in t-141a, not removed in this change)
 RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
