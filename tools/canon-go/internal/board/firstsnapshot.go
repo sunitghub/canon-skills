@@ -187,6 +187,10 @@ func firstSnapshot(root string, confirm any, ignore []string) map[string]any {
 	}
 	reset := func() { _, _, _ = runIn(root, 30*time.Second, "git", "reset", "-q") }
 	if len(ignore) > 0 {
+		// A .gitignore that is a symlink (or anything but a regular file) would send the appended lines to wherever it points.
+		if fi, err := os.Lstat(ignorePath); err == nil && !fi.Mode().IsRegular() {
+			return fail("This folder's .gitignore is not a regular file, so canon will not change it.")
+		}
 		files, err := untrackedFiles(root)
 		if err != nil {
 			return fail("Could not list the files: " + err.Error())

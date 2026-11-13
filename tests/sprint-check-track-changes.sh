@@ -287,9 +287,23 @@ check_first_snapshot() {
     r="$(fsreq POST "$port" "?project=$PROJ_ID" "{\"confirm\":true,\"ignore\":[$bad]}")"; assert_eq "400" "${r%% *}"
   done
   assert_eq "$snap" "$(snapshot "$proj")"
+  # a file whose name a pattern reads specially or holds a newline: `[` is escaped so only that file goes; the newline name is refused
+  echo x > "$proj/a[1].txt"; echo y > "$proj/a1.txt"
+  if printf z > "$proj/we"$'\n'"ird" 2>/dev/null; then
+    r="$(fsreq POST "$port" "?project=$PROJ_ID" "{\"confirm\":true,\"ignore\":[\"we\\nird\"]}")"; assert_eq "400" "${r%% *}"
+    rm -f "$proj/we"$'\n'"ird"
+  fi
+  # a .gitignore that is a symlink is never written through
+  new_dir; local linkdir="$NEW_DIR"; echo keep > "$linkdir/target"; cp "$proj/.gitignore" "$linkdir/gi.orig"
+  rm "$proj/.gitignore"; ln -s "$linkdir/target" "$proj/.gitignore"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt"]}')"; assert_eq "400" "${r%% *}"
+  assert_eq "keep" "$(cat "$linkdir/target")"
+  rm "$proj/.gitignore"; cp "$linkdir/gi.orig" "$proj/.gitignore"
   # ignore the finding, retry: one commit with the neutral message, creds.txt left out, the others in
-  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt"]}')"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true,"ignore":["creds.txt","a[1].txt"]}')"
   assert_eq "200" "${r%% *}"; assert_eq "true" "$(jget "${r#* }" ok)"
+  git -C "$proj" ls-files | grep -qx "a1.txt" || fail "$kind: a1.txt was not saved (an unescaped [1] pattern matched it)"
+  ! git -C "$proj" ls-files | grep -qx "a\[1\].txt" || fail "$kind: a[1].txt was saved"
   assert_eq "2" "$(git -C "$proj" rev-list --count HEAD)"
   assert_eq "chore: first snapshot of this folder" "$(git -C "$proj" log -1 --format=%s)"
   git -C "$proj" ls-files | grep -qx "my docs/b c.txt" || fail "$kind: a file with a space was not saved"
