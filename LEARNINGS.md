@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 07:25
+learnings-sweep last run: 11-13-2026 08:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-f55a](.tickets/t-f55a/learnings.md) | A CSS change to a state the board spec already asserts (`.gitstate.is-off` opacity) fails an old rendered test that `scripts/test.sh` never runs: grep the spec for the selector and run those groups before the evaluator, since the test-sh stamp is shell only. | UNPROMOTED |
 | 2026-11-13 | [t-2755](.tickets/t-2755/learnings.md) | A view fed by a list has three states, not two: loaded, empty and unreadable. The reviewer found the new card stayed on screen beside an error row; clear derived UI first in every render path, and test the error path, not only the happy one. | UNPROMOTED |
 | 2026-11-13 | [t-a854](.tickets/t-a854/learnings.md) | A guard test that asserts only the HTTP status passes a mutant when a second guard returns the same status (a refused name was hidden by the scan's own 400): assert the refusal's message or the state it must not change, and run each guard's revert. A parser for a tool's output must handle every shape the tool prints (the scanner's path findings have no line number). | UNPROMOTED |
 | 2026-11-13 | [t-7e26](.tickets/t-7e26/learnings.md) | A test that closes or records through the real board binary must pin `CANON_EVENTS_CLOCK`: the first write prunes event days older than the retention, so a fixture dated weeks ago vanishes mid-test; and stamping the full suite under `nohup` fails the HUP test in tkt-merge-pr.sh (run it in the foreground). | UNPROMOTED |
