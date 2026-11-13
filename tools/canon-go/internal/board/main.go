@@ -900,7 +900,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSONStatus(w, res, st)
 			return
 		}
-		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]), eroot)})
+		sendJSON(w, map[string]bool{"ok": writeBoolField(m[1], "demo", boolValue(payload["demo"]), eroot)})
+		return
+	}
+	if m := apiTicketManualRe.FindStringSubmatch(path); m != nil { // t-51c6: Manual is Lite's sibling, the same write path
+		if handled, st, res := writeLiveTicket(m[1], "manual", payload, eroot); handled {
+			sendJSONStatus(w, res, st)
+			return
+		}
+		sendJSON(w, map[string]bool{"ok": writeBoolField(m[1], "manual", boolValue(payload["manual"]), eroot)})
 		return
 	}
 	if m := apiDocRe.FindStringSubmatch(path); m != nil {
@@ -1160,6 +1168,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			boolValue(payload["ci"]),
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
+			boolValue(payload["manual"]),
 			stringValue(payload, "skills", ""),
 			newTags,
 			eroot,
@@ -1870,11 +1879,24 @@ func emitStatusChanged(id, from, to, root string) {
 	}
 }
 
-// writeDemo toggles the boolean `demo` frontmatter field on an existing ticket. ON ensures a
-// `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
-// (absent = false, matching `tkt demo`). Returns true if the ticket exists (idempotent).
-// t-64a0: the byte layout is pinned by tests/sprint-check-api.sh.
-func writeDemo(id string, want bool, root string) bool {
+// setBoolFrontmatter returns the frontmatter lines with the boolean `field` set: ON ensures a `field: true` line (appended as the last
+// field), OFF removes any such line (absent = false, matching `tkt demo` and `tkt manual`).
+func setBoolFrontmatter(lines []string, field string, want bool) []string {
+	var kept []string
+	for _, ln := range lines {
+		if !strings.HasPrefix(ln, field+":") {
+			kept = append(kept, ln)
+		}
+	}
+	if want {
+		kept = append(kept, field+": true")
+	}
+	return kept
+}
+
+// writeBoolField toggles a boolean frontmatter field (`demo`, or `manual` since t-51c6) on an existing ticket. Returns true if the ticket
+// exists (idempotent). t-64a0: the byte layout is pinned by tests/sprint-check-api.sh.
+func writeBoolField(id, field string, want bool, root string) bool {
 	path := findTicketPath(id, root)
 	if path == "" {
 		return false
@@ -1888,16 +1910,7 @@ func writeDemo(id string, want bool, root string) bool {
 	if m == nil {
 		return false
 	}
-	var kept []string
-	for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
-		if strings.HasPrefix(ln, "demo:") {
-			continue
-		}
-		kept = append(kept, ln)
-	}
-	if want {
-		kept = append(kept, "demo: true")
-	}
+	kept := setBoolFrontmatter(strings.Split(text[m[2]:m[3]], "\n"), field, want)
 	updated := "---\n" + strings.Join(kept, "\n") + "\n---\n" + text[m[1]:]
 	if updated != text {
 		if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
@@ -2026,7 +2039,7 @@ func ticketSkeleton(typ string) string {
 	return "## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n" + skeletonRest
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, tags []string, root string) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo, manual bool, skills string, tags []string, root string) ticket {
 	td := ticketsDirForRoot(root)
 	os.MkdirAll(td, 0755)
 	existing := map[string]bool{}
@@ -2075,6 +2088,10 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if demo {
 		demoLine = "demo: true\n"
 	}
+	manualLine := ""
+	if manual {
+		manualLine = "manual: true\n"
+	}
 	// t-354b: maintenance skills (chore multi-select) — csv, allowlisted to the
 	// three repo-hygiene skills (parity with server.py create_ticket). Order-
 	// preserving dedupe; absent line = none (same present/absent convention).
@@ -2099,7 +2116,7 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 		tagsLine = l + "\n"
 	}
 	evalLine := "eval_override: false"
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, tagsLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, manualLine, skillsLine, tagsLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	if os.WriteFile(path, []byte(text), 0644) == nil {
 		emitEvent("ticket.created", root, map[string]string{"ticket": id, "title": title, "type": typ, "priority": strconv.Itoa(priority)})
@@ -2340,6 +2357,7 @@ var (
 	apiTicketBodyRe     = regexp.MustCompile(`^/api/ticket/([^/]+)/body$`)
 	apiTicketVisualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`)
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
+	apiTicketManualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/manual$`)
 	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
 	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push|finish-push|finish-reset|finish-dismiss)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
@@ -2863,7 +2881,7 @@ var docOverlayFields = []string{"docs", "acceptance_has_items", "acceptance_unch
 	"models_used", "plan_has_approach", "plan_approved", "unchecked_count"}
 
 // t-8be2: the worktree copy also owns the ticket's own fields (title is the body's first heading).
-var ticketOverlayFields = []string{"status", "title", "body", "demo", "tags"}
+var ticketOverlayFields = []string{"status", "title", "body", "demo", "manual", "tags"}
 
 func registeredWorktrees(root string) []map[string]any {
 	out := []map[string]any{}
@@ -3156,7 +3174,7 @@ func liveSetActive(active, id, status string) error {
 	return nil
 }
 
-// writeLiveTicket handles POST /api/ticket/<id>/{status,demo,body} for a worktree-bound ticket. handled is false
+// writeLiveTicket handles POST /api/ticket/<id>/{status,demo,manual,body} for a worktree-bound ticket. handled is false
 // for an unbound one (the caller then writes main's copy as before).
 func writeLiveTicket(id, kind string, payload map[string]any, root string) (handled bool, status int, res map[string]any) {
 	dir, _, wtPath, live := liveForDocFull(id+"/ticket.md", root)
@@ -3239,17 +3257,8 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 			return fail(http.StatusBadRequest, "bad_tags", err.Error())
 		}
 		updated = text[:m[2]] + strings.Join(setTagsLine(strings.Split(text[m[2]:m[3]], "\n"), tags), "\n") + text[m[3]:]
-	default:
-		var kept []string
-		for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
-			if !strings.HasPrefix(ln, "demo:") {
-				kept = append(kept, ln)
-			}
-		}
-		if boolValue(payload["demo"]) {
-			kept = append(kept, "demo: true")
-		}
-		updated = text[:m[2]] + strings.Join(kept, "\n") + text[m[3]:]
+	default: // "demo", or "manual" (t-51c6): the same boolean line, named by kind
+		updated = text[:m[2]] + strings.Join(setBoolFrontmatter(strings.Split(text[m[2]:m[3]], "\n"), kind, boolValue(payload[kind])), "\n") + text[m[3]:]
 	}
 	data := []byte(updated)
 	if updated == text {

@@ -476,6 +476,23 @@ curl -s -X POST "$B/api/ticket/$tog/demo" -d '{"demo":false}' >/dev/null
 if grep -q '^demo:' "$WORK/.tickets/$tog/ticket.md"; then fail "sprint-check-api: demo toggle OFF did not remove the demo line ($tog)"; fi
 code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/ticket/notaticket/demo" -d '{"demo":true}')"
 [[ "$code" == 404 ]] || fail "sprint-check-api: the demo route accepted a non-t-xxxx id (status $code)"
+# ── manual (t-51c6): the same write as demo, its own field; create-with-manual; a non-t-xxxx id is not the route ─────────
+mid="$(new_ticket '{"title":"manual create","type":"task","manual":true}')"
+grep -q '^manual: true$' "$WORK/.tickets/$mid/ticket.md" || fail "sprint-check-api: create with manual:true did not write 'manual: true' ($mid)"
+if grep -q '^demo:' "$WORK/.tickets/$mid/ticket.md"; then fail "sprint-check-api: create with manual wrote a demo line ($mid)"; fi
+if grep -q '^manual:' "$WORK/.tickets/$nd/ticket.md"; then fail "sprint-check-api: create without manual wrote a manual line ($nd)"; fi
+curl -s -X POST "$B/api/ticket/$tog/manual" -d '{"manual":true}' >/dev/null
+grep -q '^manual: true$' "$WORK/.tickets/$tog/ticket.md" || fail "sprint-check-api: manual toggle ON did not write 'manual: true' ($tog)"
+again="$(curl -s -X POST "$B/api/ticket/$tog/manual" -d '{"manual":true}')"
+[[ "$(printf '%s' "$again" | json_get ok)" == True ]] || fail "sprint-check-api: idempotent manual ON did not return ok:true ($tog): $again"
+[[ "$(grep -c '^manual:' "$WORK/.tickets/$tog/ticket.md")" == 1 ]] || fail "sprint-check-api: idempotent manual ON duplicated the line ($tog)"
+curl -s -X POST "$B/api/ticket/$tog/demo" -d '{"demo":true}' >/dev/null
+curl -s -X POST "$B/api/ticket/$tog/manual" -d '{"manual":false}' >/dev/null
+if grep -q '^manual:' "$WORK/.tickets/$tog/ticket.md"; then fail "sprint-check-api: manual toggle OFF did not remove the manual line ($tog)"; fi
+grep -q '^demo: true$' "$WORK/.tickets/$tog/ticket.md" || fail "sprint-check-api: manual OFF removed the demo line ($tog)"
+curl -s -X POST "$B/api/ticket/$tog/demo" -d '{"demo":false}' >/dev/null
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/api/ticket/notaticket/manual" -d '{"manual":true}')"
+[[ "$code" == 404 ]] || fail "sprint-check-api: the manual route accepted a non-t-xxxx id (status $code)"
 
 # ── /api/ci-workflow (t-344e): writes the shipped template, then refuses on exists ─────────
 rm -rf "$WORK/.github"
