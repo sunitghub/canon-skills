@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 09:18
+learnings-sweep last run: 11-13-2026 11:07
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-b6ad](.tickets/t-b6ad/learnings.md) | A selection that skips an invalid candidate and keeps the next best turns "unknown" into a guess (the builder fell back to a runner-up and could trigger a false same-model note): pick the top by the real metric, then validate it and drop the whole answer. The reviewer found it and the sweep's survivors (a zero-token tie, a reviewer-only match, a gates-only ticket) showed which fixtures were missing. | UNPROMOTED |
 | 2026-11-13 | [t-dfa1](.tickets/t-dfa1/learnings.md) | A blanket `Sec-Fetch-Site: cross-site` refusal also hits a sandboxed iframe's own scripts and images (no same-origin, so the browser calls them cross-site): list the routes a sandboxed page loads and exempt them (the path token is their gate), and grep the shell tests for the behaviour the guard replaces (`api-v1.sh` expected 204 for a foreign-Origin preflight; only the reviewer and the full suite saw it). | UNPROMOTED |
 | 2026-11-13 | [t-f55a](.tickets/t-f55a/learnings.md) | A CSS change to a state the board spec already asserts (`.gitstate.is-off` opacity) fails an old rendered test that `scripts/test.sh` never runs: grep the spec for the selector and run those groups before the evaluator, since the test-sh stamp is shell only. | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 | 2026-11-13 | [t-2755](.tickets/t-2755/learnings.md) | A view fed by a list has three states, not two: loaded, empty and unreadable. The reviewer found the new card stayed on screen beside an error row; clear derived UI first in every render path, and test the error path, not only the happy one. | `promoted → tools/sprint-check-app/CLAUDE.md` |
