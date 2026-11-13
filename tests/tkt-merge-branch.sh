@@ -224,6 +224,63 @@ assert_grep '^status: closed$' "$f5"
 echo "merge --yes: a tracked .tickets/ ticket closed only in its worktree merges, and main's copy closes with it"
 id="$id_s"; f="$f_s"; WT="$WT_s"; cd "$P"
 
+# t-a01e: the Windows repro. .tickets/ is not gitignored, the ticket was committed when the worktree was made, and the close in the
+# worktree rewrote ticket.md and wrote eval-report.md, summary.md and evidence that nothing committed. Check & merge commits that close
+# record on the branch (only plain files under .tickets/<id>/, never a .cockpit-* marker), then merges it as late docs.
+P6="$W/half-tracked"; mkdir "$P6"; cd "$P6"; git init -q
+mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
+echo base > base.txt; git add -A; git commit -qm base
+id6="$("$TKT" create "Half-tracked" -t task)"; f6=".tickets/$id6/ticket.md"; git add "$f6"; git commit -qm "chore: add ticket"
+WT6="$W/wt6"; git worktree add -q "$WT6" -b feat/h; WT6="$(cd "$WT6" && pwd -P)"
+printf '%s\n' "$WT6" > ".tickets/$id6/.cockpit-cwd"
+(cd "$WT6" && echo h > h.txt && git add h.txt && git commit -qm "the branch")
+G6="$(git -C "$WT6" rev-parse HEAD)"
+(cd "$WT6" && TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id6" >/dev/null)
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$G6" > "$WT6/.tickets/$id6/eval-report.md"
+echo summary > "$WT6/.tickets/$id6/summary.md"; mkdir -p "$WT6/.tickets/$id6/evidence"; echo log > "$WT6/.tickets/$id6/evidence/test-sh.log"
+echo here > "$WT6/.tickets/$id6/.cockpit-handoff-at-approve"
+rm -f "$WT6/.tickets/.gitignore"   # without the .cockpit-* ignore rule (a project made before it), the marker shows as untracked: the skip is what keeps it out
+assert_grep '^status: closed$' "$WT6/$f6"; [[ -z "$(git -C "$WT6" ls-files -- ".tickets/$id6/eval-report.md")" ]] || fail "premise: the report is tracked"
+id="$id6"; f="$f6"; WT="$WT6"
+# A tracked change outside the folder, anything staged, a symlinked record file or no --yes: nothing committed, refused as before.
+# An untracked file outside the folder (stray.txt) is not part of what merges: skipped.
+echo stray > "$WT6/stray.txt"
+echo more >> "$WT6/h.txt"
+refuses "a close record next to an edited tracked file" "no passing evaluator verdict" --yes
+git -C "$WT6" checkout -q -- h.txt
+git -C "$WT6" add -- ".tickets/$id6/summary.md"
+refuses "a staged change in the worktree" "no passing evaluator verdict" --yes
+git -C "$WT6" reset -q -- ".tickets/$id6/summary.md"
+echo outside > "$W/elsewhere"; ln -s "$W/elsewhere" "$WT6/.tickets/$id6/evidence/link.log"   # a link to a real file
+refuses "a symlink in the close record" "no passing evaluator verdict" --yes
+rm "$WT6/.tickets/$id6/evidence/link.log"
+refuses "a close record without --yes" "pass --yes to commit it and merge"
+# --check: lists the record, commits nothing, and is otherwise ready.
+before="$(sig)"
+out="$("$TKT" merge "$id6" --check < /dev/null 2>&1)" || fail "merge --check refused a half-tracked close record: $out"
+assert_contains "$out" "merge: will first commit $id6's close record on feat/h: "
+assert_contains "$out" ".tickets/$id6/eval-report.md"; assert_contains "$out" ".tickets/$id6/ticket.md"
+assert_contains "$out" ".tickets/$id6/evidence/test-sh.log"; [[ "$out" != *".cockpit-handoff-at-approve"* ]] || fail "--check lists a .cockpit-* marker"
+assert_contains "$out" "merge: ready: would run scripts/test.sh on main + feat/h, then merge"
+[[ "$(sig)" == "$before" && "$(git rev-parse feat/h)" == "$G6" ]] || fail "--check changed something"
+echo "merge --check: a half-tracked close record is listed, nothing changed"
+# --yes: one record commit on the branch, then the merge of it as late docs.
+out="$("$TKT" merge "$id6" --yes < /dev/null 2>&1)" || fail "merge --yes failed for a half-tracked close record: $out"
+assert_contains "$out" "merge: committed $id6's close record on feat/h"
+assert_contains "$out" "graded-head plus late docs only"
+assert_contains "$out" "Merged feat/h into main ("
+assert_eq "chore: record $id6 close" "$(git log -1 --format=%s feat/h)"
+assert_eq "$G6" "$(git rev-parse feat/h^)"
+assert_eq "$(git rev-parse feat/h)" "$(git rev-parse main^2)"
+assert_eq "$(printf '%s\n' ".tickets/$id6/eval-report.md" ".tickets/$id6/evidence/test-sh.log" ".tickets/$id6/summary.md" ".tickets/$id6/ticket.md")" \
+  "$(git diff-tree --no-commit-id --name-only -r feat/h | sort)"
+assert_grep '^status: closed$' "$f6"; [[ -f ".tickets/$id6/eval-report.md" ]] || fail "the report did not arrive with the merge"
+[[ -e "$WT6/.tickets/$id6/.cockpit-handoff-at-approve" && -z "$(git -C "$WT6" ls-files -- ".tickets/$id6/.cockpit-handoff-at-approve")" ]] \
+  || fail "the .cockpit-* marker was committed or removed"
+[[ -z "$(git -C "$WT6" ls-files -- stray.txt)" ]] || fail "an untracked file outside the folder was committed"
+echo "merge --yes: the half-tracked close record is committed on the branch and merges as late docs"
+id="$id_s"; f="$f_s"; WT="$WT_s"; cd "$P"
+
 # runs: github goes to merge-pr, unchanged.
 id3="$("$TKT" create "Cloud" -t task)"; f3=".tickets/$id3/ticket.md"
 awk '/^---$/ && ++n == 2 { print "runs: github" } { print }' "$f3" > "$W/t" && mv "$W/t" "$f3"

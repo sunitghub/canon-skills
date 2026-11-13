@@ -2275,7 +2275,8 @@ _default_branch() {
 # _merge_core (the same checks, report, question and tests as merge-pr). Reads cmd_merge's locals. The merge commit is built
 # from objects only (merge-tree, commit-tree) and must hold exactly the tree the tests ran on; then the main checkout's branch
 # moves to it through _advance_local, so an edited file there stops it with nothing changed, as merge-pr's update does.
-# Every refusal says why and changes nothing: no ref, no file, no ticket field.
+# Every refusal says why and changes nothing: no ref, no file, no ticket field. The one exception (t-a01e): a refusal after --yes
+# committed the close record keeps that commit on the work branch; it is canon's own record and merges with the next attempt.
 _merge_branch() {
   local tdir root wt branch base cur head graded bsha dirty st src
   tdir="$(dirname "$file")"; id="$(get_field "$file" id)"
@@ -2296,9 +2297,26 @@ _merge_branch() {
   [[ "$st" == closed ]] || _mb_no "$id is ${st:-without a status}, not closed: close it with sprint complete in its worktree first"
   [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
   [[ -z "$(get_field "$src/ticket.md" merged)" ]] || _mb_no "$id is already merged ($(get_field "$src/ticket.md" merged))"
-  # The report may live only in main's copy (the evaluator ran there). The worktree's own is trusted only when the branch carries it:
-  # an untracked file there is not part of what merges.
-  if [[ "$src" != "$tdir" ]] && ! { [[ -f "$src/eval-report.md" ]] && git -C "$wt" ls-files --error-unmatch -- ".tickets/$id/eval-report.md" >/dev/null 2>&1; }; then src="$tdir"; fi
+  # t-a01e: in a project that tracks .tickets/, nothing else commits the close record (the closed ticket.md, eval-report.md, summary,
+  # evidence). When it is the worktree's only change (nothing staged, every change a plain file under .tickets/<id>/, .cockpit-* markers
+  # and files untracked elsewhere skipped), rec lists it and --yes commits it on the branch before the merge reads the head: late docs to the graded head.
+  local rec=() ln p
+  if [[ "$src" != "$tdir" ]] && git -C "$wt" diff --cached --quiet < /dev/null 2>/dev/null; then
+    while IFS= read -r -d '' ln; do
+      p="${ln:3}"
+      if [[ "$p" != ".tickets/$id/"* || "$p" == *..* ]]; then
+        [[ "${ln:0:2}" == '??' ]] && continue   # untracked elsewhere: not part of what merges, as the dirty check below ignores it
+        rec=(); break
+      fi
+      [[ "${p##*/}" == .cockpit-* ]] && continue
+      [[ -f "$wt/$p" && ! -L "$wt/$p" ]] || { rec=(); break; }
+      rec+=("$p")
+    done < <(git -C "$wt" status --porcelain=v1 -z --untracked-files=all < /dev/null 2>/dev/null || true)
+  fi
+  # The report may live only in main's copy (the evaluator ran there). The worktree's own is trusted only when the branch carries it,
+  # or will (it is in the close record): an untracked file there is otherwise not part of what merges.
+  if [[ "$src" != "$tdir" ]] && ! { [[ -f "$src/eval-report.md" ]] && { git -C "$wt" ls-files --error-unmatch -- ".tickets/$id/eval-report.md" >/dev/null 2>&1 \
+       || [[ " ${rec[*]-} " == *" .tickets/$id/eval-report.md "* ]]; }; }; then src="$tdir"; fi
   graded="$(_eval_pass_head merge "$src" "$id" "close it with sprint complete in its worktree first")" || exit 1
   [[ -f "$tdir/.cockpit-cwd" ]] || _mb_no "$id is not bound to a worktree (no .tickets/$id/.cockpit-cwd), so there is no branch to merge"
   wt="$(_ticket_cwd_binding "$file")"
@@ -2325,8 +2343,19 @@ _merge_branch() {
     && here="$(git -C "$root" rev-parse --show-toplevel)" || _mb_no "git could not list the worktrees of $root"
   [[ -z "$bwt" || "$(cd "$bwt" && pwd -P)" == "$(cd "$here" && pwd -P)" ]] \
     || _mb_no "$base is checked out in $bwt, so it cannot be moved from here; switch that worktree to another branch (or finish there), then Check & merge again"
+  if [[ ${#rec[@]} -gt 0 ]]; then
+    local shown; shown="$(printf '%s, ' "${rec[@]}" | sed 's/, $//')"
+    if $check; then echo "merge: will first commit $id's close record on $branch: $shown"
+    elif ! $yes; then _mb_no "$id's close record is not committed on $branch ($shown); pass --yes to commit it and merge, or commit it yourself"
+    else
+      git -C "$wt" add -- "${rec[@]}" < /dev/null >/dev/null 2>&1 && dirty="$(git -C "$wt" commit -q -m "chore: record $id close" < /dev/null 2>&1)" \
+        || { git -C "$wt" reset -q -- "${rec[@]}" < /dev/null >/dev/null 2>&1 || true; _mb_no "git could not commit $id's close record on $branch: ${dirty:-git add failed}"; }
+      echo "merge: committed $id's close record on $branch: $shown"
+      head="$(git -C "$root" rev-parse -q --verify "refs/heads/$branch^{commit}")" || _mb_no "git could not read $branch"
+    fi
+  fi
   dirty="$(git -C "$wt" status --porcelain --untracked-files=no 2>&1)" || _mb_no "git could not read the worktree's status: $dirty"
-  if [[ -n "$dirty" ]]; then
+  if [[ -n "$dirty" ]] && ! { [[ ${#rec[@]} -gt 0 ]] && $check; }; then
     echo "merge: the worktree $wt has uncommitted changes the evaluator did not grade; commit or discard them, then Check & merge again:" >&2
     printf '%s\n' "$dirty" | sed -n '1,10p' | sed 's/^/  /' >&2; exit 1
   fi
