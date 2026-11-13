@@ -39,17 +39,17 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # machine_line (t-c542)
 
-usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | evidence.sh check <ticket-id> [<graded-head>] | evidence.sh scope-audit" >&2; exit 2; }
+usage() { echo "usage: evidence.sh stamp <ticket-id> <name> -- <command...> | evidence.sh check <ticket-id> [<graded-head>] | evidence.sh scope-audit | evidence.sh neutral" >&2; exit 2; }
 refuse() { echo "evidence: $*" >&2; exit 125; }
 die() { echo "evidence: $*" >&2; exit 2; }
 
 id_re='^t-[a-z0-9]{4}$'
 LATE_STAMPS="mutant-sweep test-sh board-spec"   # t-c923: the costly stamps; one taken before the reviewer is stale once its fixes land (t-07b9 measured 6.2 h of 18.8 h)
 mode="${1-}"
-[[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit ]] || usage
+[[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit || "$mode" == neutral ]] || usage
 shift
 id=""
-if [[ "$mode" == scope-audit ]]; then
+if [[ "$mode" == scope-audit || "$mode" == neutral ]]; then
   [[ $# -eq 0 ]] || usage
 else
   [[ $# -ge 1 && "${1-}" =~ $id_re ]] || usage
@@ -58,7 +58,7 @@ fi
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>&1 || die "this repository has no commit yet"
-if [[ "$mode" != scope-audit ]]; then
+if [[ "$mode" != scope-audit && "$mode" != neutral ]]; then
   "$SCRIPT_DIR/work-beat" touch || true   # t-187e
   tdir="${CANON_TICKETS_DIR:-$(tickets_dir)}"   # a plain clone has its own empty .tickets/: point this at the project's, and the stamp still names the clone's HEAD
   [[ -d "$tdir/$id" && ! -L "$tdir/$id" ]] || die "no ticket folder $id under $tdir"
@@ -72,6 +72,8 @@ fi
 NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,literal)LEARNINGS-archive.md' ':(exclude,literal)DECISIONS.md'
   ':(exclude,literal)DECISIONS-archive.md' ':(exclude,literal)HANDOFF.md' ':(exclude,literal)PROMOTED.md' ':(exclude,literal).claude/subagent-runs.jsonl'
   ':(exclude,glob)skills/*/evals/history.jsonl')
+# `evidence.sh neutral` prints the pathspecs one per line: the one owner, read by `sprint check-evidence` for the manual-QA record (t-aa24).
+[[ "$mode" != neutral ]] || { printf '%s\n' "${NEUTRAL[@]}"; exit 0; }
 tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
   ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
 }

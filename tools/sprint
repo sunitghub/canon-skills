@@ -1372,7 +1372,7 @@ _manual_qa_state() {
   sha="${BASH_REMATCH[1]}"
   l="$(printf '%s\n' "$head" | sed -n '3p')"
   [[ "$l" =~ ^By:\ (.+)\ on\ (.+)$ ]] || { MQA_STATE=bad; MQA_MSG="line 3 is not 'By: <who> on <machine>'"; return 0; }
-  who="${BASH_REMATCH[1]}"
+  who="$(printf '%s' "${BASH_REMATCH[1]}" | LC_ALL=C tr -c ' -~' '?' | cut -c1-80)"   # echoed into the evaluator's prompt: printable ASCII, bounded
   while IFS= read -r l; do
     if [[ "$l" == '|---|---|' ]]; then in_t=1; continue; fi
     (( in_t )) || continue
@@ -1387,10 +1387,15 @@ _manual_qa_state() {
   # the rule evidence.sh check applies to a log: the recorded commit is the graded one or an ancestor with no tracked change since, in the working
   # tree too. "unknown" (written before the first commit) proves nothing once the project has commits; without git there is nothing to compare.
   if git -C "$root" rev-parse -q --verify HEAD >/dev/null 2>&1; then
-    if [[ "$sha" == unknown ]] || ! git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null || ! git -C "$root" merge-base --is-ancestor "$sha" HEAD 2>/dev/null ||
-       ! git -C "$root" diff --quiet "$sha" HEAD -- . ':(exclude).tickets' 2>/dev/null || ! git -C "$root" diff --quiet HEAD -- . ':(exclude).tickets' 2>/dev/null; then
-      MQA_STATE=stale; MQA_MSG="recorded at ${sha:0:7} by $who; tracked files changed since"; return 0
-    fi
+    local neutral=() p why=""   # the evidence-neutral paths (HANDOFF, LEARNINGS, .tickets...) are evidence.sh's, never a copy here
+    while IFS= read -r p; do [[ -n "$p" ]] && neutral+=("$p"); done < <("$(dirname "${BASH_SOURCE[0]}")/evidence.sh" neutral 2>/dev/null)
+    if (( ${#neutral[@]} == 0 )); then neutral=(':(exclude).tickets'); fi
+    if [[ "$sha" == unknown ]]; then why="its commit is unknown"
+    elif ! git -C "$root" cat-file -e "$sha^{commit}" 2>/dev/null; then why="its commit is not in this repository"
+    elif ! git -C "$root" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then why="its commit is not an ancestor of HEAD"
+    elif ! git -C "$root" diff --quiet "$sha" HEAD -- . "${neutral[@]}" 2>/dev/null; then why="tracked files changed since"
+    elif ! git -C "$root" diff --quiet HEAD -- . "${neutral[@]}" 2>/dev/null; then why="tracked files are modified in the working tree"; fi
+    if [[ -n "$why" ]]; then MQA_STATE=stale; MQA_MSG="recorded at ${sha:0:7} by $who; $why"; return 0; fi
   fi
   MQA_STATE=fresh; MQA_MSG="HEAD ${sha:0:7} = graded, by $who, $n steps: $pass pass"
 }
@@ -1399,9 +1404,14 @@ _manual_qa_state() {
 _manual_criteria() {
   local f; f="$(_mqa_dir "$1")/acceptance.md"
   [[ -f "$f" && ! -L "$f" ]] || return 0
+  # the same section and bullet forms `sprint complete` accepts (_acceptance_section, _gate_acceptance_sections); a fenced block is skipped
   head -c 262144 -- "$f" | LC_ALL=C tr -d '\r' | awk '
-    /^## / { inc = ($0 == "## Criteria"); next }
-    inc && /^- \[[ xX]\] / { n++; t = $0; sub(/^- \[[ xX]\] /, "", t); if (t ~ /^\[manual\]/) { sub(/^\[manual\] */, "", t); print n "\t" substr(t, 1, 100) } }'
+    /^[[:space:]]*```/ { fence = !fence; next }
+    fence { next }
+    /^##[[:space:]]/ { inc = ($0 ~ /^##[[:space:]]+Criteria[[:space:]]*$/); next }
+    inc && /^[[:space:]]*[-*] \[[ xX]\][[:space:]]+[^[:space:]]/ {
+      n++; t = $0; sub(/^[[:space:]]*[-*] \[[ xX]\][[:space:]]+/, "", t)
+      if (tolower(substr(t, 1, 8)) == "[manual]") { t = substr(t, 9); sub(/^[[:space:]]+/, "", t); print n "\t" substr(t, 1, 100) } }'
 }
 
 # cmd_check_evidence <id> — t-a3d7: the pre-flight complete.md step 3 runs before dispatching the evaluator. Reads `evidence.sh check`

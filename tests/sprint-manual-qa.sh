@@ -114,4 +114,28 @@ ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md bad:
 printf '# Manual QA: t-zzzz\nHEAD %s 2026-10-14T10:00:00Z\nBy: A on m\n\n| Step | Result |\n|---|---|\n| a | pass |\n' "$(git rev-parse HEAD)" > "$MQ"
 ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "bad: line 1 is not '# Manual QA: $ID'"; rm "$MQ"
 
+# a header-only record (no step rows) is bad, never fresh with 0 steps
+mq "$ID" --by Sunit --step "a|pass"; head -n 6 "$MQ" > "$MQ.t"; mv "$MQ.t" "$MQ"
+ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md bad: no step rows"
+# freshness is evidence.sh's rule: a notes file (HANDOFF.md) changed or committed after the record does not make it stale; a source change does
+mq "$ID" --by Sunit --step "a|pass"; echo n > HANDOFF.md; git add HANDOFF.md; git commit -qm notes
+ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "ok      manual-qa.md"
+echo m >> HANDOFF.md; ce "$ID"; assert_eq 0 "$code"; git checkout -q HANDOFF.md
+# the record's commit must be an ancestor of HEAD: a side branch's record is stale
+git checkout -q -b side "$C1"; echo s > src/side.txt; git add src/side.txt; git commit -qm side; mq "$ID" --by Sunit --step "a|pass"
+git checkout -q main; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "not an ancestor of HEAD"; git branch -q -D side; git clean -fdq src
+mq "$ID" --by Sunit --step "a|pass"
+# a hand-edited --by line is printable ASCII and bounded in the pre-flight output
+sed -i.bak "3s/.*/By: $(printf 'x%.0s' $(seq 200)) on m/" "$MQ"; rm -f "$MQ.bak"; ce "$ID"
+[[ "$out" != *"$(printf 'x%.0s' $(seq 81))"* ]] || fail "an overlong By: was echoed unbounded"
+mq "$ID" --by Sunit --step "a|pass"
+# the [manual] parser takes the forms sprint complete accepts, and ignores a fenced example
+rm -f "$MQ"
+for form in '## Criteria \n- [ ] [manual] a' '## Criteria\n* [ ] [manual] a' '## Criteria\n  - [ ] [manual] a' '## Criteria\n- [ ]  [manual] a' '## Criteria\n- [ ] [Manual] a' '## Criteria\n- [x] [manual] a'; do
+  printf '# A\n\n%b\n\n## Test Plan\n- [ ] t\n' "$form" > "$TD/acceptance.md"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "criterion 1 is tagged [manual]"
+done
+printf '# A\n\n## Criteria\n- [ ] plain\n```\n- [ ] [manual] in a fence\n```\n\n## Test Plan\n- [ ] t\n' > "$TD/acceptance.md"; ce "$ID"; assert_eq 0 "$code"
+printf '# A\r\n\r\n## Criteria\r\n- [ ] [manual] crlf\r\n' > "$TD/acceptance.md"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "criterion 1 is tagged [manual] (crlf)"
+printf '# Acceptance\n\n## Criteria\n- [ ] plain\n' > "$TD/acceptance.md"
+mq "$ID" --by Sunit --step "a|pass"
 printf 'sprint-manual-qa: ok\n'
