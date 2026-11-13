@@ -2215,7 +2215,8 @@ Usage:
                             worst tokens and minutes, % fail or budget stop (read-only)
   sprint token-spend [--last N] [--ticket <id>]  Where the last N (10) closed sprints'
                             tokens went: planning / implementation / gates, by model,
-                            from Claude Code transcripts (read-only; stores nothing)
+                            from Claude Code transcripts, or a closed ticket's sprint.cost event (read-only;
+                            sprint complete writes the event through --record)
   sprint decisions related <path|t-xxxx>... [--limit N | --all]  The DECISIONS.md rows that name
                             those files or tickets (id, date, the rule); archive <row-id> --by
                             <t-xxxx> moves one whole row to DECISIONS-archive.md; mark <row-id>
