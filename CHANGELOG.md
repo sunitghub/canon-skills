@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.16] - 2026-11-13
+
 - Fixed: Check & merge on a worktree ticket in a project that tracks `.tickets/` (does not gitignore it) no longer refuses "no passing evaluator verdict" and then the uncommitted `ticket.md`: it commits the ticket's close record (`chore: record <id> close`, only files under `.tickets/<id>/`) on the branch first, and its preview lists them (t-a01e).
 
 ## [0.55.15] - 2026-11-13
