@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-- Added: after Turn on for a project, a second dialog offers a first snapshot of its files: it shows the file count, size, top folders and any file over 5 MB before anything is staged, runs the secret scan on the staged files, and saves one commit (`chore: first snapshot of this folder`) only when it is clean. A finding saves nothing, lists `path:line (rule)` (never the value) and offers to ignore those files and save the rest. Not now is remembered for the session and nothing is pushed (the push offer is t-4d6a). New routes `GET`/`POST /api/first-snapshot`. The default `.gitignore` canon writes now also ignores `.env`, `.env.*`, `*.pem`, `id_rsa`, `id_ed25519` and `.claude/settings.local.json`. Go changed: daemon release (t-a854).
+## [0.55.9] - 2026-11-13
+
+- Added: after Turn on for a project, a second dialog offers a first snapshot of its files: it shows the file count, size, top folders and any file over 5 MB before anything is staged, runs the secret scan on the staged files, and saves one commit (`chore: first snapshot of this folder`) only when it is clean. A finding saves nothing, lists `path:line (rule)` (never the value) and offers to ignore those files and save the rest. Not now saves nothing and nothing is pushed (the push offer is t-4d6a; offering the snapshot again later is t-63bb). New routes `GET`/`POST /api/first-snapshot`. The default `.gitignore` canon writes now also ignores `.env`, `.env.*`, `*.pem`, `id_rsa`, `id_ed25519` and `.claude/settings.local.json`. Go changed: daemon release (t-a854).
 
 ## [0.55.8] - 2026-11-13
 
