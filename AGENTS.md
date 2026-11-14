@@ -46,7 +46,7 @@ The board's `Gate model:` dropdown and its Admin registry: `tools/sprint-check-a
 A dispatch can set only the model, never effort (`t-c774`).
 
 **Exception — sprint close gates** follow their own rule (may downgrade to the Admin > Model
-Tiers "Review & Eval" default, applied unconditionally to every interactive close since
+Tiers Reviewer and Evaluator defaults (per agent, t-8f6d), applied unconditionally to every interactive close since
 2026-09-23; to Haiku on a `demo: true` ticket, evaluator only; or via an explicit user
 `Gate model:` override, which always wins) — see the
 "Model tier for gates" note in `skills/sprint/reference/complete.md`, not this block.

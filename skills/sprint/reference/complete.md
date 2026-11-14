@@ -111,7 +111,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **Manual mode — the user's testing is the evidence (t-51c6).** When `ticket.md` has `manual: true` (`tkt manual <id> on`, or the board's **Manual** chip), the user tests by hand and the gates re-test nothing. It is independent of Lite and, like Lite, only skips optional gates: never `security-review`, never the binding evaluator, never a locked row of the pipeline. `sprint check-evidence` refuses it for a high-risk plan and, in canon's own checkout, for a diff that touches a gate file or gate prompt (`scripts/integrity-list.sh`'s lists), and prints why: those keep the full close (`tkt manual <id> off`).
    - **Skipped, rows read `skipped | Manual mode`:** the advisory reviewer (step 2), the mutation sweep and the clean-clone full-suite stamp (step 3). The wrapup gates (code-simplifier, code-reviewer, doc-audit, skill-eval) still run unless the ticket is also Lite.
    - **Before the evaluator,** `sprint check-evidence <id>` must be ok, and `sprint complete` itself refuses a Manual ticket the same way (a fresh record with a passing step, work Manual mode is allowed for). It refuses with "waiting for your test" until a fresh `evidence/manual-qa.md` exists: ask the user what they tested and what they saw, record it with `sprint manual-qa`, and re-run it. Logs are not required (a stale one is a note).
-   - **The evaluator is dispatched read-only.** Its prompt says it runs and creates no tests, no mutants and no command that writes, and pastes the pre-flight output; `eval.md`'s "Manual mode" is its rule. The model is the Admin Review & Eval default (Haiku when the ticket is also Lite); the stale-eval and run-id rules are unchanged.
+   - **The evaluator is dispatched read-only.** Its prompt says it runs and creates no tests, no mutants and no command that writes, and pastes the pre-flight output; `eval.md`'s "Manual mode" is its rule. The model is the Admin Evaluator default (Haiku when the ticket is also Lite); the stale-eval and run-id rules are unchanged.
    - **The close question reads the record back:** "Ready to close sprint `<id>`? You tested N steps (P pass) at `<sha7>`, by `<who>`. Your yes is the sign-off: this closes on your testing." Only the user's yes to that question closes it; a record an agent wrote never closes by itself.
    - `summary.md` says "closed on manual sign-off by `<who>`". Headless/CI ignores `manual` (as it ignores `demo`), and `tkt send-issue` refuses a Manual ticket: a person cannot test in the cloud.
 
@@ -178,10 +178,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
    | doc-audit | ran | README updated |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
-   | reviewer | ran | verdict: YES (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default) |
+   | reviewer | ran | verdict: YES (model: sonnet (claude-sonnet-5-5) — Admin Reviewer default) |
    | security-review | skipped | no security-sensitive patterns |
    | mutation-test | skipped | no logic files changed |
-   | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Review & Eval default; 12m) |
+   | eval | ran | verdict: pass — eval-report.md written (model: sonnet (claude-sonnet-5-5) — Admin Evaluator default; 12m) |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
 
@@ -198,7 +198,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
-   the Admin Review & Eval default as `<alias> (<id>)` (e.g. `sonnet (claude-sonnet-5-5)`: the alias is what the dispatch
+   the gate's Admin Reviewer or Evaluator default as `<alias> (<id>)` (e.g. `sonnet (claude-sonnet-5-5)`: the alias is what the dispatch
    passes, the id is the registry's, so a later remap of the alias stays visible), `claude-sonnet-5` (the `canon-*` definition floor) when both
    fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the fallback;
    never a paraphrase. Records which tier ran and why. On the `eval` row, also put the evaluator's elapsed minutes after the source (`; 12m`, from the dispatch
@@ -250,7 +250,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   `Gate model:` value still wins over this (checked above). This forces Haiku on *any* diff,
   distinct from the Admin default below. No CLI change — this is an agent-protocol read of the
   `demo` flag.
-- **Admin "Review & Eval" default (`t-4b5a`) — applies unconditionally, no risk exception.**
+- **Admin Reviewer and Evaluator defaults (`t-4b5a`, per role and agent since `t-8f6d`) — applies unconditionally, no risk exception.**
   Read the registry **directly from disk** (not an HTTP fetch — the board/server isn't guaranteed
   running during an interactive close): the user's edits at `$CANON_HOME/cockpit/model-tiers.json`
   (`CANON_HOME` defaults to `~/.canon`) if that file exists and parses as a JSON object, else the read-only seed
@@ -258,10 +258,14 @@ Opus` default, scoped only to the two close-gate dispatches below.
   inside canon's own repo; in a consumer project (`tools/` not symlinked in) find it via
   `command -v sprint`'s containing directory instead (`where sprint` on Windows) —
   `sprint-check-app/` sits beside `sprint` there. The registry belongs to the canon install, so
-  one Admin setting governs every project using it. Take `defaults.eval.anthropic` (a model
-  `id`, e.g. `claude-sonnet-5`) and find the matching entry in `models.anthropic` to read its
-  `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes the short alias, not the full
-  id. This applies to **every** ticket regardless of diff risk — a deliberate user choice
+  one Admin setting governs every project using it. Each gate has its own default:
+  `defaults.reviewer.<agent>` for the reviewer and `defaults.evaluator.<agent>` for the evaluator, where
+  `<agent>` is `claude` under Claude Code and `copilot` under Copilot CLI (a model `id`, e.g.
+  `claude-sonnet-5`). **A file saved before `t-8f6d`** has `defaults.eval.anthropic` instead (the board
+  reads it migrated but writes the new shape only on its next Save): when `defaults.<role>` is absent, use
+  `defaults.eval.anthropic` for both gates. Under Claude Code find the id's entry in `models.anthropic`
+  and read its `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes the short alias, not the
+  full id. Under Copilot CLI the pick may also be a `models.openai` id (see the Copilot bullet below). This applies to **every** ticket regardless of diff risk — a deliberate user choice
   (2026-09-23) that trades the former "code changes get full-strength review by default"
   posture for one admin-configurable default; the per-ticket `Gate model:` override (checked
   first, above) remains the escape hatch. **Interactive close only** — `tools/sprint-headless`/CI
@@ -269,21 +273,22 @@ Opus` default, scoped only to the two close-gate dispatches below.
   it there is a distinct, not-yet-scoped follow-up. This supersedes the former structural
   low-risk classification (git-diff-based allowlist check), now fully retired.
 - **Fail-safe for the Admin default — never a silent downgrade, never a dispatch error.** Treat
-  the Admin-default step as absent and fall through to the gate definition's model floor
+  the Admin-default step as absent **for that gate** and fall through to the gate definition's model floor
   (`claude-sonnet-5` in `agents/canon-*.md`, `t-c774`/`t-bdce`; on the fallback, the session model) if **any** of: the file
-  is missing or unreadable; `defaults.eval.anthropic` is absent; its `id` has no matching entry
-  in `models.anthropic`; or the entry's `alias` is not one the Agent tool's `model:` param
+  is missing or unreadable; the gate's default (and the old `defaults.eval.anthropic`) is absent; its `id` has no matching entry
+  in the registry; the **evaluator's** pick is a Haiku model (alias `haiku` or an id naming haiku: the binding gate is never
+  Haiku outside demo mode, and the board refuses to save one); or, under Claude Code, the entry's `alias` is not one the Agent tool's `model:` param
   accepts (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary
   aliases, and an unrecognized value would make the dispatch itself error).
 - **Apply the result.** With an explicit `Gate model:` value: `session` → pass **your own
   session model's alias** explicitly as `model` (`fable`, `opus`, `sonnet` or `haiku`). Omitting
   `model` would apply the `canon-*` definition's `claude-sonnet-5` floor, not the session model
   (`t-c774`). Any other value → pass it verbatim as `model` on both reviewer
-  and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
-  `model`; if that step also fell through (fail-safe), omit `model` so the definition's floor
-  applies (`claude-sonnet-5`; the session model only on the fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
+  and evaluator `Agent` calls. Without one: each gate's resolved Admin default → pass its alias as
+  `model` on that gate's `Agent` call (the reviewer and the evaluator may differ); if a gate's step fell through (fail-safe), omit `model` on that gate so the definition's floor
+  applies (`claude-sonnet-5`; the session model only on the fallback). A `Gate model:` value is one result both gates share; their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
-  recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
+  recorded (Wrapup Gates table, `summary.md`) — `Admin Reviewer default` / `Admin Evaluator default`, `Gate model
   override` (including `Gate model: session`, recorded as `Gate model override — session`, and
   `Gate model: openai:<id>` under Copilot, recorded as `Gate model override, OpenAI`; its fallback is
   recorded as `fallback: openai:<id> <reason>`), `demo
@@ -360,7 +365,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    expected — proceed, don't retry or treat it as fatal.
 
 4. Each subagent records its model designation in its report — the exact value applied above
-   (an explicit `Gate model:` value, the Admin Review & Eval default as `<alias> (<id>)`, or the exact
+   (an explicit `Gate model:` value, the gate's Admin Reviewer or Evaluator default as `<alias> (<id>)`, or the exact
    session model id, e.g. `claude-sonnet-5`), never a paraphrase — same value as the Wrapup
    Gates table's `(model: <model> — <source>)` suffix. **The orchestrator MUST
    state that model designation in each gate's dispatch prompt (its Inputs)**, because the
@@ -725,7 +730,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    |---|---|---|
    | <criterion verbatim> | delivered / waived / deferred / partial | reason if not delivered |
 
-   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model> — <source>)` suffix) — e.g. "reviewer and evaluator ran on sonnet (claude-sonnet-5-5) (Admin Review & Eval default).">
+   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model> — <source>)` suffix) — e.g. "reviewer and evaluator ran on sonnet (claude-sonnet-5-5) (Admin Reviewer and Evaluator defaults).">
    ```
 
    **If the advisory reviewer's verdict was NO, this paragraph must say so explicitly** — name

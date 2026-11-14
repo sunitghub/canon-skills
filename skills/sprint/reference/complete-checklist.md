@@ -58,11 +58,13 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 ## Gate dispatch inputs
 
-- **Model:** `Gate model:` in plan.md's Sign-off wins (`session` = your own alias). Else the Admin default:
+- **Model:** `Gate model:` in plan.md's Sign-off wins for both gates (`session` = your own alias). Else each gate's Admin default:
   `$CANON_HOME/cockpit/model-tiers.json` (else `tools/sprint-check-app/model-tiers.json`)
-  `defaults.eval.anthropic` → its `alias` in `models.anthropic`; pass it as `model` if it is `fable`,
-  `opus`, `sonnet` or `haiku`. Else omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`
-  (`--model <id>`). Source: `Gate model override`, `Admin Review & Eval default`, `definition floor`.
+  `defaults.reviewer.<agent>` / `defaults.evaluator.<agent>` (`claude` under Claude Code, `copilot` under Copilot CLI; a file saved
+  before t-8f6d has only `defaults.eval.anthropic`, used for both) → its `alias` in `models.anthropic`; pass it as `model` if it is
+  `fable`, `opus`, `sonnet` or `haiku` (an evaluator pick on Haiku is ignored outside demo mode). Else omit `model` (floor
+  `claude-sonnet-5`). Name it `<alias> (<id>)` (`--model <id>`). Source: `Gate model override`, `Admin Reviewer default` /
+  `Admin Evaluator default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; read `reference/review.md` (reviewer) or
   `reference/eval.md` (evaluator) and follow it; the `Model:` designation; write
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
