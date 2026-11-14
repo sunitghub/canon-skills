@@ -111,16 +111,32 @@ export async function loadAdmin(){
 
 // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
 // Board-wide registry (not per-project, not daemon state) backing this
-// panel and the board's per-ticket Gate-model dropdown. Anthropic
-// picks are dispatched by Claude Code; an OpenAI model runs close gates under
-// Copilot CLI only via a per-ticket `Gate model: openai:<id>` (t-ef27) — the
-// OpenAI defaults here stay recorded only. See #mt-openai-note.
-let mtData=null, mtProvider='anthropic';
+// panel and the board's per-ticket Gate-model dropdown. t-8f6d + t-2cc8: one
+// default per step and agent, defaults.<step>.<agent> (the Go owner is
+// tierSteps/tierAgents in internal/board/modeltiers.go; this table mirrors it).
+let mtData=null, mtProvider='anthropic', mtAgent='claude';
 const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
+const MT_AGENTS={claude:{label:'Claude Code',providers:['anthropic']},copilot:{label:'Copilot CLI',providers:['anthropic','openai']}};
+const MT_STEPS=[
+  {id:'plan',label:'Plan',used:'Research, acceptance criteria and the plan, before approval.',later:true},
+  {id:'build',label:'Build',used:'Implementation inside the approved plan.',later:true},
+  {id:'reviewer',label:'Reviewer (advisory)',used:'Used by: sprint complete step 2, the fresh reviewer.'},
+  {id:'evaluator',label:'Evaluator (binding)',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
+  {id:'light',label:'Simple / Light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}];
+const mtHaiku=m=>String(m.alias||'').toLowerCase()==='haiku'||String(m.id).toLowerCase().includes('haiku');   // mirrors haikuClass
+// The models a step's picker offers for the chosen agent: the agent's providers in order; the Evaluator never a Haiku model; Simple /
+// Light only the cheap line (Haiku, and GPT-6 Luna under Copilot). The current pick always stays in the list.
+function mtStepModels(step,agent,cur){
+  let out=[];
+  MT_AGENTS[agent].providers.forEach(prov=>mtActive(prov).forEach(m=>out.push({prov,m})));
+  if(step==='evaluator') out=out.filter(x=>!mtHaiku(x.m));
+  if(step==='light') out=out.filter(x=>mtHaiku(x.m)||/luna/i.test(x.m.id)||x.m.id===cur);
+  return out;
+}
 
 async function mtLoad(){
   try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }
-  catch(e){ mtData={defaults:{eval:{},light:{}},models:{anthropic:[],openai:[]}}; }
+  catch(e){ mtData={defaults:{plan:{},build:{},reviewer:{},evaluator:{},light:{}},models:{anthropic:[],openai:[]}}; }
   mtRender();
 }
 
@@ -146,18 +162,23 @@ const MT_ALIAS_PROVIDERS=new Set(['anthropic']);
 
 function mtRender(){
   if(!mtData) return;
-  // Defaults pickers
-  ['eval','light'].forEach(tier=>{
-    const row=document.getElementById('mt-default-'+tier);
-    if(!row) return;
-    row.innerHTML=Object.keys(MT_PROVIDER_LABEL).map(prov=>{
-      const models=mtActive(prov);
-      const cur=(mtData.defaults[tier]||{})[prov]||'';
-      const opts=models.map(m=>`<option value="${escAttr(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
-      return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · per-ticket':''}</span></div>`;
+  // Defaults: one card per step, for the agent chosen above
+  const agentSel=document.getElementById('mt-agent');
+  if(agentSel){ agentSel.value=mtAgent; agentSel.onchange=()=>{ mtAgent=agentSel.value; mtRender(); }; }
+  const box=document.getElementById('mt-defaults');
+  if(box){
+    box.innerHTML=MT_STEPS.map(st=>{
+      const cur=(mtData.defaults[st.id]||{})[mtAgent]||'';
+      const list=mtStepModels(st.id,mtAgent,cur);
+      const groups=MT_AGENTS[mtAgent].providers.map(prov=>{
+        const opts=list.filter(x=>x.prov===prov).map(x=>`<option value="${escAttr(x.m.id)}"${x.m.id===cur?' selected':''}>${esc(x.m.name)}</option>`).join('');
+        return opts?(MT_AGENTS[mtAgent].providers.length>1?`<optgroup label="${escAttr(MT_PROVIDER_LABEL[prov])}">${opts}</optgroup>`:opts):'';
+      }).join('');
+      const later=st.later?'<div class="setting-d mt-used">Recorded now; a later update starts this step on it.</div>':'';
+      return `<div class="mt-default-card${st.later?' mt-later':''}" id="mt-step-${st.id}"><div class="setting-k">${esc(st.label)}</div><div class="setting-d">${esc(st.used)}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(st.label+' model for '+MT_AGENTS[mtAgent].label)}">${groups}</select><span class="mt-prov">${esc(MT_AGENTS[mtAgent].label)}</span></div></div>${later}</div>`;
     }).join('');
-    row.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
-  });
+    box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
+  }
   // Provider tabs
   const tabs=document.getElementById('mt-tabs');
   tabs.innerHTML=Object.entries(MT_PROVIDER_LABEL).map(([prov,label])=>
@@ -167,7 +188,7 @@ function mtRender(){
   // Card grid
   const grid=document.getElementById('mt-grid');
   const models=mtActive(mtProvider);
-  const defaultIds=new Set(Object.values(mtData.defaults.eval||{}).concat(Object.values(mtData.defaults.light||{})));
+  const defaultIds=new Set(MT_STEPS.flatMap(st=>Object.values(mtData.defaults[st.id]||{})));
   const hasAlias=MT_ALIAS_PROVIDERS.has(mtProvider);
   grid.innerHTML = models.map(m=>{
     const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
@@ -247,9 +268,9 @@ async function mtSaveEdit(){
 }
 
 async function mtSetDefault(sel){
-  const tier=sel.dataset.tier, prov=sel.dataset.prov;
-  mtData.defaults[tier]=mtData.defaults[tier]||{};
-  mtData.defaults[tier][prov]=sel.value;
+  const step=sel.dataset.step, agent=sel.dataset.agent;
+  mtData.defaults[step]=mtData.defaults[step]||{};
+  mtData.defaults[step][agent]=sel.value;
   if(await mtSave()) toast('Default updated');
 }
 
@@ -279,7 +300,7 @@ const mtActive=prov=>(mtData.models[prov]||[]).filter(m=>!m.legacy);
 const mtLegacy=prov=>(mtData.models[prov]||[]).filter(m=>m.legacy);
 function mtHeld(prov,m){
   const held=[]; if(m.alias) held.push('the alias '+m.alias);
-  ['eval','light'].forEach(t=>{ if(((mtData.defaults[t]||{})[prov])===m.id) held.push('the '+(t==='eval'?'Review & Eval':'Simple / Light')+' default'); });
+  MT_STEPS.forEach(st=>Object.keys(MT_AGENTS).forEach(a=>{ if(((mtData.defaults[st.id]||{})[a])===m.id) held.push('the '+st.label.replace(/ \(.*\)$/,'')+' default for '+MT_AGENTS[a].label); }));
   return held;
 }
 // The newest active Anthropic model of an alias's line (claude-<alias>-<version>), if none holds the alias yet.
@@ -438,7 +459,7 @@ async function mtApply(){
 }
 async function mtRemoveModel(id){
   const m=(mtData.models[mtProvider]||[]).find(x=>x.id===id); if(!m) return;
-  if(!m.legacy&&(MT_ALIASES.includes(m.alias)||mtHeld(mtProvider,m).some(h=>h.endsWith('default')))){ mtMoving=id; mtRender(); const g=document.getElementById('mt-move'); if(g) g.scrollIntoView({block:'nearest'}); return; }
+  if(!m.legacy&&(MT_ALIASES.includes(m.alias)||mtHeld(mtProvider,m).some(h=>!h.startsWith('the alias ')))){ mtMoving=id; mtRender(); const g=document.getElementById('mt-move'); if(g) g.scrollIntoView({block:'nearest'}); return; }
   const ok=await cockpitConfirm({title:'Remove model?',body:'Removes "'+id+'" from the registry. Any ticket whose Gate model: still names it keeps that value as a hand-edit override.',okLabel:'Remove',danger:true});
   if(!ok) return;
   if(await mtMove('remove',{id})) mtRender();
@@ -509,7 +530,7 @@ async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
-  let dflt=''; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); const id=(m.defaults.eval||{}).anthropic; const e=(m.models.anthropic||[]).find(x=>x.id===id); dflt=e?e.name:''; }catch(e){}   // what the Admin page picks for the gates; the agent file's own model is only the floor
+  let dflt=''; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); const id=((m.defaults||{}).evaluator||{}).claude; const e=(m.models.anthropic||[]).find(x=>x.id===id); dflt=e?e.name:''; }catch(e){}   // what the Admin page picks for the gates; the agent file's own model is only the floor
   let [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
   // t-dccb: a differing file is said at the top: the strip leaves green, and the note under it names the files and whether the close is blocked
   const differ=r.state==='verified'?(r.files||[]).filter(x=>x.status!=='match'):[];

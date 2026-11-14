@@ -2,6 +2,11 @@
   .mt-wrap{margin-bottom:16px}
   .mt-openai-note{margin:2px 2px 14px;max-width:440px;color:var(--text-muted);font-size:12px;line-height:1.5}
   .mt-defaults{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .mt-agent-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 2px 12px}
+  .mt-agent-row select{border:1px solid var(--border-muted);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600}
+  .mt-agent-row .setting-d{margin:0;flex:1;min-width:200px}
+  .mt-default-card .mt-used{margin:8px 0 0;color:var(--text-muted);font-size:12px}
+  .mt-default-card.mt-later .setting-k::after{content:"Not used yet";margin-left:8px;font-size:11px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-muted);border-radius:6px;padding:1px 6px}
   @media (max-width:680px){.mt-defaults{grid-template-columns:1fr}}
   .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
   .mt-default-card .setting-k{margin-bottom:1px}
