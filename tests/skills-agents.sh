@@ -18,14 +18,16 @@ lib() { SKILLS_ROOT="$2" bash -c 'source "$1/tools/skills/project.sh"; source "$
 
 # --- 1. definitions ---------------------------------------------------------------------------
 registry="$ROOT/tools/sprint-check-app/model-tiers.json"
-anth_id="$(python3 -c "import json;print(json.load(open('$registry'))['defaults']['eval']['anthropic'])")"
-openai_id="$(python3 -c "import json;print(json.load(open('$registry'))['defaults']['eval']['openai'])")"
+# t-8f6d: each gate's floor is its own step's Claude Code default in the seed; the Codex mirror names an active OpenAI model of the
+# registry (no OpenAI default drives a gate since the per-agent reshape: Codex reads its own toml)
+openai_ids="$(python3 -c "import json;print(' '.join(m['id'] for m in json.load(open('$registry'))['models']['openai'] if not m.get('legacy')))")"
 for g in reviewer evaluator; do
+  anth_id="$(python3 -c "import json,sys;print(json.load(open('$registry'))['defaults'][sys.argv[1]]['claude'])" "$g")"
   md="$ROOT/agents/canon-$g.md"; toml="$ROOT/agents/codex/canon-$g.toml"
   assert_file_exists "$md"; assert_file_exists "$toml"
   assert_eq "---" "$(head -1 "$md")"                       # byte 0 is '-' (no BOM, no '\---')
   assert_eq "canon-$g" "$(fm "$md" name)"
-  assert_eq "$anth_id" "$(fm "$md" model)"                  # model floor = registry's eval default, full id (Copilot rejects aliases, t-bdce)
+  assert_eq "$anth_id" "$(fm "$md" model)"                  # model floor = the registry's default for this gate, full id (Copilot rejects aliases, t-bdce)
   assert_eq "high" "$(fm "$md" effort)"
   tools="$(fm "$md" tools)"
   assert_eq "Read, Grep, Glob, Bash, execute" "$tools"      # Bash: Claude Code's shell; execute: Copilot's (t-bdce)
@@ -34,7 +36,7 @@ for g in reviewer evaluator; do
   # Codex parity: same name, effort, registry-owned model, and no write access.
   tv() { sed -n "s/^$1 = \"\\(.*\\)\"$/\\1/p" "$toml"; }
   assert_eq "canon-$g" "$(tv name)"
-  assert_eq "$openai_id" "$(tv model)"
+  [[ " $openai_ids " == *" $(tv model) "* ]] || fail "$toml model $(tv model) is not an active OpenAI model in the registry"
   assert_eq "$(fm "$md" effort)" "$(tv model_reasoning_effort)"
   assert_eq "read-only" "$(tv sandbox_mode)"
 done

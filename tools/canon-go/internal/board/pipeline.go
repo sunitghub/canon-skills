@@ -38,9 +38,16 @@ var (
 )
 
 type pipelineModel struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Source string `json:"source"`
+	ID     string               `json:"id"`
+	Name   string               `json:"name"`
+	Source string               `json:"source"`
+	Agents []pipelineAgentModel `json:"agents,omitempty"` // t-8f6d: the pick for each agent, Claude Code first
+}
+
+type pipelineAgentModel struct {
+	Agent string `json:"agent"` // a label: Claude Code, Copilot CLI
+	ID    string `json:"id"`
+	Name  string `json:"name"`
 }
 
 type pipelineNode struct {
@@ -204,26 +211,37 @@ func pipelineFileState(root string) (exists bool, text string, problem string) {
 	return true, strings.ReplaceAll(string(data), "\r", ""), ""
 }
 
-// pipelineModelFor is the display-only model of an agent row: the Admin Review & Eval default (Admin stays its one owner).
+// pipelineModelFor is the display-only model of an agent row: the Admin Reviewer or Evaluator default for each agent (Admin stays the one
+// owner, t-8f6d). ID and Name are the Claude Code pick; Agents lists every agent's.
 func pipelineModelFor(id string) *pipelineModel {
-	if id != "reviewer" && id != "eval" {
+	step := map[string]string{"reviewer": "reviewer", "eval": "evaluator"}[id]
+	if step == "" {
 		return nil
 	}
 	doc := loadModelTiers()
-	want := evalDefault(doc)
-	if want == "" {
-		return nil
-	}
-	m := &pipelineModel{ID: want, Name: want, Source: "Admin > Model tiers > Review & Eval default"}
-	models, _ := doc["models"].(map[string]any)
-	list, _ := models["anthropic"].([]any)
-	for _, e := range list {
-		em, _ := e.(map[string]any)
-		if em != nil && em["id"] == want {
+	defaults, _ := doc["defaults"].(map[string]any)
+	per, _ := defaults[step].(map[string]any)
+	name := func(want string) string {
+		if _, em := registryModel(doc, want); em != nil {
 			if n, _ := em["name"].(string); n != "" {
-				m.Name = pipelineClean(n)
+				return pipelineClean(n)
 			}
 		}
+		return want
+	}
+	m := &pipelineModel{Source: "Admin > Model tiers > " + tierStepLabel[step] + " default"}
+	for _, agent := range tierAgents {
+		want, _ := per[agent].(string)
+		if want == "" {
+			continue
+		}
+		m.Agents = append(m.Agents, pipelineAgentModel{Agent: tierAgentLabel[agent], ID: want, Name: name(want)})
+		if agent == "claude" {
+			m.ID, m.Name = want, name(want)
+		}
+	}
+	if len(m.Agents) == 0 {
+		return nil
 	}
 	return m
 }

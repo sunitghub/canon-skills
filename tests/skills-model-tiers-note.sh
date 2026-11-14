@@ -189,9 +189,16 @@ grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complet
 north="$(awk '/^\*\*North-star \(gate floor\)\.\*\*/{print; exit}' "$old_block")"
 [[ -n "$north" ]] || fail "could not find the old North-star paragraph in $old_block"
 grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator\.' <<< "$after_end" || fail "AGENTS.md lost its North-star paragraph after END (t-51c6)"
+# The old "OpenAI defaults stay recorded only" line is superseded (t-8f6d: a Copilot CLI pick runs that agent's gates): it counts as covered
+# while the board's CLAUDE.md names the per-step, per-agent defaults that replaced it. The old text stays in the fixture: installs carry it.
+openai_old="$(grep -F 'the Admin OpenAI defaults stay recorded only.' "$old_block")"
+[[ -n "$openai_old" ]] || fail "could not find the old OpenAI line in $old_block"
+grep -qF 'defaults.{plan,build,reviewer,evaluator,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults that replace the old OpenAI line (t-8f6d)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
   [[ "$l" == "$north" ]] && continue   # covered by the North-star check above
+  [[ "$l" == "$openai_old" ]] && continue   # superseded by t-8f6d, checked above
+  [[ "$l" == *'"Review & Eval" default'* && "$after_end" == *'Reviewer and Evaluator defaults (per agent, t-8f6d)'* ]] && continue   # t-8f6d split it
   printf '%s\n' "$block" | grep -xF -- "$l" >/dev/null && continue
   printf '%s\n' "$after_end" | grep -xF -- "$l" >/dev/null && continue
   printf '%s\n' "$codex" | grep -xF -- "$l" >/dev/null && continue   # covered by the pointer + caveat checked above

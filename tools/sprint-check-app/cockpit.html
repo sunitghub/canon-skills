@@ -111,20 +111,11 @@
             <div id="ad-panel-tiers" role="tabpanel" aria-labelledby="ad-tab-tiers">
             <div class="mt-wrap">
               <div class="slabel">Model Tiers</div>
-              <div class="mt-defaults">
-                <div class="mt-default-card">
-                  <div class="setting-k">Review &amp; Eval gates</div>
-                  <div class="setting-d">Sprint-close reviewer / evaluator dispatch. A ticket's own <code>Gate model:</code> override still wins.</div>
-                  <div class="mt-picker-row" id="mt-default-eval"></div>
-                  <div class="setting-d mt-effort-note" id="mt-effort-note">Effort: <b>high</b>, set in canon's gate definitions (<code>agents/canon-reviewer.md</code>, <code>canon-evaluator.md</code>), not here &mdash; a dispatch can pick the model but not the effort.</div>
-                </div>
-                <div class="mt-default-card">
-                  <div class="setting-k">Simple / Light work</div>
-                  <div class="setting-d">Explore, orient, light implement steps &mdash; cheap, high-volume calls.</div>
-                  <div class="mt-picker-row" id="mt-default-light"></div>
-                </div>
-              </div>
-              <div class="mt-openai-note" id="mt-openai-note">OpenAI picks are recorded only. A ticket can run its close gates on an OpenAI model under Copilot CLI with <code>Gate model: openai:&lt;id&gt;</code> (Plan tab).</div>
+              <div class="mt-agent-row"><label class="setting-k" for="mt-agent">Agent</label>
+                <select id="mt-agent" aria-describedby="mt-agent-d"><option value="claude">Claude Code</option><option value="copilot">Copilot CLI</option></select>
+                <span class="setting-d" id="mt-agent-d">Each agent keeps its own model for every step. A ticket's own <code>Gate model:</code> (Plan tab) still wins for both gates.</span></div>
+              <div class="mt-defaults" id="mt-defaults"></div>
+              <div class="mt-openai-note" id="mt-codex-note">Codex takes its model from <code>.codex/agents/*.toml</code>, not from here. Gate effort is <b>high</b>, set in canon's gate definitions (<code>agents/canon-reviewer.md</code>, <code>canon-evaluator.md</code>): a dispatch can pick the model but not the effort.</div>
               <div id="mt-sources"></div>
               <div id="mt-proposal"></div>
               <div id="mt-alias-alert"></div>

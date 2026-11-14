@@ -575,11 +575,17 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 	if by["doc-audit"]["group"] != "wrapup" {
 		t.Errorf("doc-audit group = %v", by["doc-audit"]["group"])
 	}
-	// the Admin default model is shown on reviewer and eval only, with its registry name and source
-	for _, nid := range []string{"reviewer", "eval"} {
+	// the Admin default model is shown on reviewer and eval only, with its registry name and source; t-8f6d: each row names its own
+	// step's default and lists every agent's pick (this registry is in the old shape, so it is read migrated: both agents get the old pick)
+	for nid, src := range map[string]string{"reviewer": "Admin > Model tiers > Reviewer default", "eval": "Admin > Model tiers > Evaluator default"} {
 		m, _ := by[nid]["model"].(map[string]any)
-		if m == nil || m["id"] != "claude-sonnet-5" || m["name"] != "Claude Sonnet 5" || m["source"] != "Admin > Model tiers > Review & Eval default" {
+		if m == nil || m["id"] != "claude-sonnet-5" || m["name"] != "Claude Sonnet 5" || m["source"] != src {
 			t.Errorf("%s model = %v", nid, by[nid]["model"])
+			continue
+		}
+		ag, _ := m["agents"].([]any)
+		if len(ag) != 2 || ag[0].(map[string]any)["agent"] != "Claude Code" || ag[1].(map[string]any)["agent"] != "Copilot CLI" || ag[1].(map[string]any)["name"] != "Claude Sonnet 5" {
+			t.Errorf("%s agents = %v", nid, m["agents"])
 		}
 	}
 	for _, nid := range []string{"break-it", "start", "code-reviewer", "security-review", "mutation-test"} {
@@ -588,7 +594,7 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 		}
 	}
 	// no Admin default: no model at all
-	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{}},"models":{"anthropic":[]}}`), 0o644)
+	os.WriteFile(tiers, []byte(`{"defaults":{"reviewer":{},"evaluator":{}},"models":{"anthropic":[]}}`), 0o644)
 	_, g = pipelineGetReq(id)
 	for _, n := range g["nodes"].([]any) {
 		if _, has := n.(map[string]any)["model"]; has {
@@ -596,7 +602,7 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 		}
 	}
 	// a default whose id is not in the registry shows the id as its name
-	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-x"}},"models":{"anthropic":[]}}`), 0o644)
+	os.WriteFile(tiers, []byte(`{"defaults":{"reviewer":{"claude":"claude-x"}},"models":{"anthropic":[]}}`), 0o644)
 	_, g = pipelineGetReq(id)
 	for _, n := range g["nodes"].([]any) {
 		m := n.(map[string]any)

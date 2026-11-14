@@ -2489,7 +2489,7 @@ test.describe('board modal', () => {
       await page.route('**/api/admin/model-tiers', route => route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({
-          defaults: { eval: { anthropic: 'claude-sonnet-5', openai: 'gpt-6-luna' }, light: {} },
+          defaults: { evaluator: { claude: 'claude-sonnet-5', copilot: 'gpt-6-luna' }, light: {} },
           models: {
             anthropic: [{ id: 'claude-haiku-4-5-20251001', alias: 'haiku', name: 'Claude Haiku 4.5' }, { id: 'claude-sonnet-5', alias: 'sonnet', name: 'Claude Sonnet 5' }],
             openai: [{ id: 'gpt-6-luna', name: 'GPT-6 Luna' }, { id: '--evil', name: 'Hostile' }],
@@ -14276,7 +14276,8 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
 // stubbed so these tests never write the real (possibly user-local) model-tiers.json.
 test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
-    defaults: { eval: { anthropic: 'm-sonnet', openai: 'o-luna' }, light: { anthropic: 'm-haiku', openai: 'o-luna' } },
+    defaults: { plan: { claude: 'm-sonnet', copilot: 'm-sonnet' }, build: { claude: 'm-sonnet', copilot: 'o-luna' },
+      reviewer: { claude: 'm-sonnet', copilot: 'o-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'm-sonnet' }, light: { claude: 'm-haiku', copilot: 'o-luna' } },
     models: {
       anthropic: [
         { id: 'm-sonnet', name: 'Sonnet Test', alias: 'sonnet', desc: 'Balanced.', reasoning: [], input_price: 3, output_price: 15 },
@@ -14306,10 +14307,37 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
 
   test('picking a default model saves it at once (t-783a)', async ({ page }) => {
     const posts = await openModelTiers(page);
-    await page.locator('#mt-default-light select[data-prov="anthropic"]').selectOption('m-sonnet');
+    await page.locator('#mt-step-reviewer select').selectOption('m-haiku');
     await expect.poll(() => posts.length).toBe(1);
-    expect(posts[0].defaults).toEqual({ eval: { anthropic: 'm-sonnet', openai: 'o-luna' }, light: { anthropic: 'm-sonnet', openai: 'o-luna' } });
-    await expect(page.locator('#mt-default-light select[data-prov="anthropic"]')).toHaveValue('m-sonnet');
+    expect(posts[0].defaults).toEqual({ ...FIXTURE.defaults, reviewer: { claude: 'm-haiku', copilot: 'o-luna' } });
+    await expect(page.locator('#mt-step-reviewer select')).toHaveValue('m-haiku');
+  });
+
+  // t-8f6d + t-2cc8: one card per step for the chosen agent; Claude Code lists Anthropic models only, Copilot CLI Anthropic then OpenAI;
+  // the binding Evaluator never offers a Haiku model; Simple / Light offers the cheap line; Plan and Build say they are not used yet; a
+  // pick saves defaults.<step>.<agent>. Prod path: Admin > Model tiers, and every close reads what it saves.
+  test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
+    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(5);
+    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['Plan', 'Build', 'Reviewer (advisory)', 'Evaluator (binding)', 'Simple / Light work']);
+    await expect(page.locator('#mt-agent')).toHaveValue('claude');
+    expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
+    expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
+    expect(await opts('light')).toEqual(['m-haiku']);                  // the cheap line
+    await expect(page.locator('#mt-step-plan.mt-later')).toHaveCount(1);
+    await expect(page.locator('#mt-step-build.mt-later')).toHaveCount(1);
+    await expect(page.locator('#mt-step-reviewer.mt-later')).toHaveCount(0);
+    await expect(page.locator('#mt-step-plan .mt-used')).toHaveText('Recorded now; a later update starts this step on it.');
+    await page.locator('#mt-agent').selectOption('copilot');
+    expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku', 'o-luna']);   // Copilot CLI: Anthropic then OpenAI
+    expect(await opts('evaluator')).toEqual(['m-sonnet', 'o-luna']);
+    await expect(page.locator('#mt-step-reviewer select')).toHaveValue('o-luna');
+    await expect(page.locator('#mt-step-reviewer optgroup')).toHaveCount(2);
+    await page.locator('#mt-step-evaluator select').selectOption('o-luna');
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].defaults.evaluator).toEqual({ claude: 'm-sonnet', copilot: 'o-luna' });
+    await expect(page.locator('#mt-codex-note')).toContainText('.codex/agents/*.toml');
   });
 
   test('cards are read-only: nothing is editable and clicking/typing saves nothing (t-294b)', async ({ page }) => {
@@ -14437,7 +14465,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await openModelTiers(page);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      const [sel, box] = await page.locator('#mt-default-eval .mt-picker').first().evaluate(p =>
+      const [sel, box] = await page.locator('#mt-step-evaluator .mt-picker').first().evaluate(p =>
         [getComputedStyle(p.querySelector('select')).backgroundColor, getComputedStyle(p).backgroundColor]);
       expect(sel).toBe(box);
       expect(sel).not.toBe('rgba(0, 0, 0, 0)');
@@ -14521,38 +14549,40 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(contrastOf(got.line, got.behind), JSON.stringify(got)).toBeGreaterThanOrEqual(1.05);   // without the light .mt-tabs rule: 1.001
   });
 
-  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the one-line OpenAI note (t-9e5c) @webkit', async ({ page }) => {
+  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the Codex note (t-9e5c, t-8f6d) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     await expect(page.locator('#view-admin')).toHaveClass(/active/);
-    // t-9e5c: the amber banner is gone; one muted note under the default cards explains the OpenAI picker.
+    // t-9e5c: the amber banner is gone; t-8f6d: one muted note under the default cards says where Codex and the gate effort come from
+    // (the OpenAI picks are no longer "recorded only": a Copilot CLI pick runs that agent's gates).
     await expect(page.locator('.mt-banner')).toHaveCount(0);
-    const note = page.locator('#mt-openai-note');
+    await expect(page.locator('#mt-openai-note')).toHaveCount(0);
+    const note = page.locator('#mt-codex-note');
     await expect(note).toBeVisible();
-    await expect(note).toContainText('recorded only');
-    await expect(note).toContainText('Gate model: openai:<id>');
-    expect(await note.innerText()).not.toMatch(/\u26A0|t-ef27/);
+    await expect(note).toContainText('.codex/agents/*.toml');
+    await expect(note).toContainText('Gate effort is high');
+    expect(await note.innerText()).not.toMatch(/\u26A0|t-ef27|recorded only/);
     const [defBox, noteBox, tabsBox] = [await page.locator('.mt-defaults').boundingBox(), await note.boundingBox(), await page.locator('#mt-tabs').boundingBox()];
     expect(noteBox.y).toBeGreaterThanOrEqual(defBox.y + defBox.height);      // under the default cards
     expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(tabsBox.y);        // above the provider tabs
-    expect(noteBox.height).toBeLessThan(40);                                  // two lines at most
+    expect(noteBox.height).toBeLessThan(60);                                  // three lines at most
     // Muted in BOTH themes: the note's colour equals --text-muted, and the two themes differ (so the check can't pass by accident).
-    const mutedIn = theme => page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); const n = document.getElementById('mt-openai-note'); const probe = document.createElement('i'); probe.style.color = 'var(--text-muted)'; document.body.appendChild(probe); const r = [getComputedStyle(n).color, getComputedStyle(probe).color]; probe.remove(); return r; }, theme);
+    const mutedIn = theme => page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); const n = document.getElementById('mt-codex-note'); const probe = document.createElement('i'); probe.style.color = 'var(--text-muted)'; document.body.appendChild(probe); const r = [getComputedStyle(n).color, getComputedStyle(probe).color]; probe.remove(); return r; }, theme);
     const [dark, light] = [await mutedIn('dark'), await mutedIn('light')];
     expect(dark[0]).toBe(dark[1]);
     expect(light[0]).toBe(light[1]);
     expect(dark[0]).not.toBe(light[0]);
-    // default pickers: one row per tier, each offering both providers
-    await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);
-    await expect(page.locator('#mt-default-light .mt-picker')).toHaveCount(2);
+    // t-8f6d: one default card per step, each with one picker for the chosen agent (Claude Code first)
+    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(5);
+    await expect(page.locator('#mt-agent option')).toHaveText(['Claude Code', 'Copilot CLI']);
     // Anthropic tab active by default with the 6 seeded models (t-99b2: the 5.5 models sit before their predecessors)
     await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
     await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toHaveText(['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Sonnet 5', 'Claude Haiku 5.5', 'Claude Haiku 4.5']);
     const haiku55 = page.locator('.mt-card[data-id="claude-haiku-5-5"]');
     await expect(haiku55.locator('.mt-card-price')).toHaveText([/\$0\.1$/, /\$0\.5$/]);
     // t-99b2: Light defaults to Haiku 5.5; the Default badge moves with it, and Haiku 4.5 keeps none.
-    await expect(page.locator('#mt-default-light select[data-prov="anthropic"] option:checked')).toHaveText('Claude Haiku 5.5');
+    await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.5');
     await expect(haiku55.locator('.mt-badge')).toHaveText('Default');
     await expect(page.locator('.mt-card[data-id="claude-haiku-4-5-20251001"] .mt-badge')).toHaveCount(0);
     // t-99b2: the new entries carry no alias, so they never reach the per-ticket Gate-model dropdown.
@@ -14578,19 +14608,17 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     ]);
   });
 
-  test('Review & Eval card states that gate effort comes from the agent definitions (t-c774) @webkit', async ({ page }) => {
+  test('Model tiers states that gate effort comes from the agent definitions (t-c774, t-8f6d) @webkit', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
-    const card = page.locator('.mt-default-card', { has: page.locator('#mt-default-eval') });
-    const note = card.locator('#mt-effort-note');
-    await expect(note).toBeVisible();
-    await expect(note).toContainText('Effort: high');
-    await expect(note).toContainText('agents/canon-reviewer.md');
-    // Rendered under the model pickers, inside the Review & Eval card only.
-    const [pickBox, noteBox] = [await card.locator('#mt-default-eval').boundingBox(), await note.boundingBox()];
-    expect(noteBox.y).toBeGreaterThanOrEqual(pickBox.y + pickBox.height);
-    await expect(page.locator('.mt-default-card', { has: page.locator('#mt-default-light') }).locator('#mt-effort-note')).toHaveCount(0);
+    const card = page.locator('#mt-codex-note');
+    await expect(card).toContainText('Gate effort is high');
+    await expect(card).toContainText('agents/canon-reviewer.md');
+    // under the step cards, once (not repeated on each card)
+    const [cardsBox, noteBox] = [await page.locator('#mt-defaults').boundingBox(), await card.boundingBox()];
+    expect(noteBox.y).toBeGreaterThanOrEqual(cardsBox.y + cardsBox.height);
+    await expect(page.locator('#mt-defaults').getByText('Gate effort')).toHaveCount(0);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       await card.screenshot({ path: test.info().outputPath(`review-eval-card-${theme}.png`) });
@@ -14649,7 +14677,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       { path: 'tools/sprint.cmd', group: 'scripts', gate: false, status: 'changed', restore: "canon update --reinstall" },
       { path: 'tools/tkt.cmd', group: 'scripts', gate: false, status: 'match' },
       { path: 'tools/skills/lib.sh', group: 'scripts', gate: false, status: 'match' }] };
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: {} }, models: { anthropic: [] } } }));
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { evaluator: {} }, models: { anthropic: [] } } }));
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -14679,7 +14707,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     const F = (path, group, gate, status) => ({ path, group, gate, status, restore: status === 'match' ? undefined : 'canon update --reinstall' });
     const clean = [F('tools/sprint', 'tools', true, 'match'), F('tools/sprint.cmd', 'scripts', false, 'match')];
     let body = { state: 'verified', tag: 'v1.2.3', source: 'online', match: 2, total: 2, blocking: false, flagged: false, scripts_listed: true, files: clean };
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: {} }, models: { anthropic: [] } } }));
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { evaluator: {} }, models: { anthropic: [] } } }));
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -14748,7 +14776,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', match: 0, total: 0, blocking: false,
       files: [{ path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'unchecked' }, { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'unchecked' }],
       agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', read_only: true }] };
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { eval: { anthropic: 'claude-sonnet-5-5' } }, models: { anthropic: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }] } } }));
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { reviewer: { claude: 'claude-sonnet-5-5' }, evaluator: { claude: 'claude-opus-5-5' } }, models: { anthropic: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }, { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' }] } } }));
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -14781,7 +14809,8 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-agent')).toContainText('canon-reviewer');
     await expect(page.locator('.ig-agent .ig-badge')).toHaveText(['advisory', 'read-only']);
     await expect(page.locator('.ig-agent')).toContainText('claude-sonnet-5');
-    await expect(page.locator('.ig-agent')).toContainText('Admin default: Claude Sonnet 5.5');   // read from the Model Tiers registry, not from the agent file
+    await expect(page.locator('.ig-agent')).toContainText('Admin default: Claude Sonnet 5.5 (Reviewer, Claude Code)');   // read from the Model Tiers registry, not from the agent file
+    await expect(page.locator('.ig-agent')).not.toContainText('Claude Opus 5.5');   // t-8f6d: the reviewer's card shows the reviewer's pick, never the evaluator's
     await expect(page.locator('.ig-agent')).toContainText('review-notes.md');
     await expect(page.locator('.ig-agent .ig-pill-ok')).toHaveText('Matches v1.2.3');
     await page.locator('.ig-prompt summary').click();
@@ -14948,7 +14977,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
       await page.locator('#nav-admin').click();
-      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5');   // the seed starts on Sonnet 5
+      await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5');   // the seed starts on Sonnet 5
       await page.locator('#mt-sources .mt-rf-all').click();
       const prop = page.locator('#mt-proposal .mt-prop');
       await expect(prop.locator('header b')).toHaveText('2 to retire');
@@ -14961,7 +14990,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await prop.locator('.mt-prop-apply').click();
       await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
       expect(applied).toEqual({ add: [], retire: [{ old: 'claude-sonnet-5', new: 'claude-sonnet-5-5' }] });
-      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5.5');
+      await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5.5');
       await expect(page.locator('.mt-card[data-id="claude-sonnet-5-5"] .mt-card-id').nth(1)).toContainText('sonnet');
       await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
       await expect(page.locator('.mt-legacy summary')).toHaveText('Legacy \u00b7 1');
@@ -15018,7 +15047,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.locator('#nav-admin').click();
       await page.locator('.mt-card[data-id="claude-sonnet-5"] .b-danger').click();
       const move = page.locator('#mt-move .mt-move');
-      await expect(move).toContainText('Claude Sonnet 5 holds the alias sonnet and the Review & Eval default');
+      await expect(move).toContainText('Claude Sonnet 5 holds the alias sonnet and the Reviewer default for Claude Code');
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);          // no plain confirm: it must not just delete
       // an alias holder may only move to a model with no alias of its own
       await expect(move.locator('select option')).toHaveText(['Claude Sonnet 5.5', 'Claude Haiku 5.5']);
@@ -15026,7 +15055,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await move.locator('.mt-move-retire').click();
       await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
       await expect(page.locator('.mt-legacy summary')).toHaveText('Legacy \u00b7 1');
-      await expect(page.locator('#mt-default-eval select[data-prov="anthropic"] option:checked')).toHaveText('Claude Sonnet 5.5');
+      await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5.5');
       await expect(page.locator('.mt-card[data-id="claude-sonnet-5-5"] .mt-card-id').nth(1)).toContainText('sonnet');
       await expect(page.locator('#mt-alias-alert .mt-alert')).toHaveCount(0);
       const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
@@ -15055,7 +15084,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       // the registry as one user's machine ended up: Sonnet 5 and Haiku 4.5 removed, taking the sonnet and haiku aliases with them
       const reg = JSON.parse(canonical);
       reg.models.anthropic = reg.models.anthropic.filter(m => !['claude-sonnet-5', 'claude-haiku-4-5-20251001'].includes(m.id));
-      reg.defaults.eval.anthropic = 'claude-sonnet-5-5';
+      for (const step of ['reviewer', 'evaluator']) reg.defaults[step] = { claude: 'claude-sonnet-5-5', copilot: 'claude-sonnet-5-5' };
       expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).ok()).toBe(true);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
@@ -21348,7 +21377,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
         if (nid === 'your-test') { n.only = 'manual'; n.when = 'Manual tickets only'; }
         if (nid === 'skill-eval') n.when = 'a skill or gate agent changed (tools/skill-eval-scope.sh)';
         if (nid === 'mutation-test') n.when = 'shell, JS, Python or Go logic files changed; needs python3 (skipped with a reason when it is missing)';
-        if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: (per.model && per.model.name) || 'Claude Sonnet 5', source: 'Admin > Model tiers > Review & Eval default' };
+        if (nid === 'reviewer' || nid === 'eval') n.model = { id: 'claude-sonnet-5', name: (per.model && per.model.name) || 'Claude Sonnet 5', source: nid === 'eval' ? 'Admin > Model tiers > Evaluator default' : 'Admin > Model tiers > Reviewer default' };
+        if ((nid === 'reviewer' || nid === 'eval') && per.agents) n.model.agents = per.agents[nid];
         return n;
       });
       const changed = s.off.size > 0 || s.wrapup.join() !== wrapupIds.join();
@@ -21394,6 +21424,20 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     per.model.name = 'Claude Sonnet 6';
     await page.locator('#fac-tab-pipe').click();
     await expect(reviewerModel).toHaveText('model \u00b7 Claude Sonnet 6');
+  });
+
+  // t-8f6d + t-2cc8: each gate row shows every agent's pick, Claude Code first. Protects the Pipeline tab reading GET /api/pipeline's
+  // per-agent models (Admin > Model tiers stays the one place to change them).
+  test('the Reviewer and Evaluator rows show each agent\'s model (t-8f6d)', async ({ page }) => {
+    const per = { agents: {
+      reviewer: [{ agent: 'Claude Code', id: 'claude-opus-5-5', name: 'Claude Opus 5.5' }, { agent: 'Copilot CLI', id: 'gpt-6-luna', name: 'GPT-6 Luna' }],
+      eval: [{ agent: 'Claude Code', id: 'claude-sonnet-5', name: 'Claude Sonnet 5' }, { agent: 'Copilot CLI', id: 'claude-sonnet-5', name: 'Claude Sonnet 5' }] } };
+    await board(page, per);
+    await open(page);
+    await expect(page.locator('[data-pl-row="reviewer"] .pl-md')).toHaveText('model \u00b7 Claude Code \u00b7 Claude Opus 5.5\u2002Copilot CLI \u00b7 GPT-6 Luna');
+    await expect(page.locator('[data-pl-row="eval"] .pl-md')).toHaveText('model \u00b7 Claude Code \u00b7 Claude Sonnet 5\u2002Copilot CLI \u00b7 Claude Sonnet 5');
+    await expect(page.locator('[data-pl-row="reviewer"] .pl-md')).toHaveAttribute('title', 'Admin > Model tiers > Reviewer default');
+    await expect(page.locator('[data-pl-row="eval"] .pl-w').last()).toContainText('Lite ticket runs it on Haiku');
   });
 
   // t-51c6: the "Preview a ticket" bar. Prod path: a person opens Factory > Pipeline and sees what Lite and Manual skip for a ticket; the page

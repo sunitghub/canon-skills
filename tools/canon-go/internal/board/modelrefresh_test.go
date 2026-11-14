@@ -76,7 +76,7 @@ func TestLineAndVersion(t *testing.T) {
 func proposalDoc() map[string]any {
 	var doc map[string]any
 	_ = json.Unmarshal([]byte(`{
-	 "defaults": {"eval": {"anthropic": "claude-sonnet-5", "openai": "gpt-6-luna"}, "light": {"anthropic": "claude-haiku-4-5-20251001", "openai": "gpt-6-luna"}},
+	 "defaults": {"reviewer": {"claude": "claude-sonnet-5", "copilot": "gpt-6-luna"}, "evaluator": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "light": {"claude": "claude-haiku-4-5-20251001", "copilot": "gpt-6-luna"}},
 	 "models": {
 	  "anthropic": [
 	   {"id": "claude-opus-5-5", "name": "Claude Opus 5.5", "alias": "opus"},
@@ -134,7 +134,7 @@ func TestApplyProposalAddsBeforeItRetires(t *testing.T) {
 	if err := applyProposal(doc, []map[string]any{add}, [][2]string{{"claude-sonnet-5", "claude-sonnet-5-6"}}); err != nil {
 		t.Fatal(err)
 	}
-	if entry(t, doc, "claude-sonnet-5-6")["alias"] != "sonnet" || defaultOf(doc, "eval", "anthropic") != "claude-sonnet-5-6" || entry(t, doc, "claude-sonnet-5")["legacy"] != true {
+	if entry(t, doc, "claude-sonnet-5-6")["alias"] != "sonnet" || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5-6" || entry(t, doc, "claude-sonnet-5")["legacy"] != true {
 		t.Errorf("alias, default and legacy flag: %v", doc)
 	}
 	if !modelTiersValid(doc) {

@@ -2,7 +2,9 @@ package board
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -12,7 +14,9 @@ import (
 func regDoc() map[string]any {
 	var doc map[string]any
 	_ = json.Unmarshal([]byte(`{
-	 "defaults": {"eval": {"anthropic": "claude-sonnet-5", "openai": "gpt-6-luna"}, "light": {"anthropic": "claude-haiku-4-5", "openai": "gpt-6-luna"}},
+	 "defaults": {"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
+	  "reviewer": {"claude": "claude-sonnet-5", "copilot": "gpt-6-luna"}, "evaluator": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"},
+	  "light": {"claude": "claude-haiku-4-5", "copilot": "claude-haiku-4-5"}},
 	 "models": {
 	  "anthropic": [
 	   {"id": "claude-opus-5-5", "alias": "opus"},
@@ -49,13 +53,15 @@ func TestRetireModelMovesAliasAndDefaults(t *testing.T) {
 	if old["alias"] != "" || old["legacy"] != true {
 		t.Errorf("old entry should be legacy with no alias: %v", old)
 	}
-	if got := defaultOf(doc, "eval", "anthropic"); got != "claude-sonnet-5-5" {
-		t.Errorf("eval default = %s", got)
+	for _, slot := range [][2]string{{"evaluator", "claude"}, {"evaluator", "copilot"}, {"reviewer", "claude"}} { // t-8f6d: every slot that named it
+		if got := defaultOf(doc, slot[0], slot[1]); got != "claude-sonnet-5-5" {
+			t.Errorf("%s.%s default = %s", slot[0], slot[1], got)
+		}
 	}
-	if got := defaultOf(doc, "eval", "openai"); got != "gpt-6-luna" {
+	if got := defaultOf(doc, "reviewer", "copilot"); got != "gpt-6-luna" {
 		t.Errorf("an OpenAI default must not move: %s", got)
 	}
-	if got := defaultOf(doc, "light", "anthropic"); got != "claude-haiku-4-5" {
+	if got := defaultOf(doc, "light", "claude"); got != "claude-haiku-4-5" {
 		t.Errorf("an unrelated default must not move: %s", got)
 	}
 	if !modelTiersValid(doc) {
@@ -107,7 +113,7 @@ func TestRemoveModel(t *testing.T) {
 	doc = regDoc()
 	before, _ := json.Marshal(doc)
 	err := removeModel(doc, "claude-sonnet-5", "")
-	if err == nil || !strings.Contains(err.Error(), "the alias sonnet and the eval default") {
+	if err == nil || !strings.Contains(err.Error(), "the alias sonnet and the Reviewer default for Claude Code and the Evaluator default for Claude Code") {
 		t.Fatalf("err = %v", err)
 	}
 	if after, _ := json.Marshal(doc); string(before) != string(after) {
@@ -120,7 +126,7 @@ func TestRemoveModel(t *testing.T) {
 	if _, m := registryModel(doc, "claude-sonnet-5"); m != nil {
 		t.Error("the removed entry is still there")
 	}
-	if entry(t, doc, "claude-sonnet-5-5")["alias"] != "sonnet" || defaultOf(doc, "eval", "anthropic") != "claude-sonnet-5-5" {
+	if entry(t, doc, "claude-sonnet-5-5")["alias"] != "sonnet" || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5-5" {
 		t.Errorf("alias and default should have moved: %v", doc)
 	}
 
@@ -130,7 +136,7 @@ func TestRemoveModel(t *testing.T) {
 		t.Errorf("alias holder onto an aliased model: %v", err)
 	}
 	doc = regDoc()
-	if err := removeModel(doc, "gpt-6-luna", "gpt-6-sol"); err != nil || defaultOf(doc, "eval", "openai") != "gpt-6-sol" || defaultOf(doc, "light", "openai") != "gpt-6-sol" {
+	if err := removeModel(doc, "gpt-6-luna", "gpt-6-sol"); err != nil || defaultOf(doc, "reviewer", "copilot") != "gpt-6-sol" {
 		t.Errorf("OpenAI default holder: %v %v", err, doc["defaults"])
 	}
 
@@ -166,7 +172,7 @@ func TestModelTiersConsistency(t *testing.T) {
 	}
 	ok := mut(func(d map[string]any) {
 		anth(d)[3].(map[string]any)["legacy"] = true
-		d["defaults"].(map[string]any)["light"].(map[string]any)["anthropic"] = "claude-haiku-5-5"
+		d["defaults"].(map[string]any)["light"] = map[string]any{"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5-5"}
 	})
 	if !modelTiersValid(ok) {
 		t.Error("a legacy entry that no default names, and a duplicate alias on a legacy entry, are fine")
@@ -175,7 +181,13 @@ func TestModelTiersConsistency(t *testing.T) {
 	dup := mut(func(d map[string]any) {
 		anth(d)[2].(map[string]any)["alias"] = "sonnet"
 		anth(d)[1].(map[string]any)["legacy"] = true
-		d["defaults"].(map[string]any)["eval"].(map[string]any)["anthropic"] = "claude-sonnet-5-5"
+		for _, step := range []string{"reviewer", "evaluator"} {
+			for _, agent := range tierAgents {
+				if d["defaults"].(map[string]any)[step].(map[string]any)[agent] == "claude-sonnet-5" {
+					d["defaults"].(map[string]any)[step].(map[string]any)[agent] = "claude-sonnet-5-5"
+				}
+			}
+		}
 	})
 	if !modelTiersValid(dup) {
 		t.Error("a legacy duplicate alias should be accepted")
@@ -194,5 +206,190 @@ func TestSeedModelTiersStaysValid(t *testing.T) {
 	}
 	if !modelTiersValid(seed) {
 		t.Error("the tracked seed fails modelTiersValid")
+	}
+}
+
+// t-8f6d + t-2cc8: a registry saved before the per-step, per-agent defaults is read in the new shape. Protects every close's gate models
+// (complete.md reads defaults.<role>.<agent>) and Admin > Model tiers after an update: the old Review & Eval pick becomes the reviewer
+// and the evaluator for both agents, the old light pick the light, plan and build come from the seed, and nothing else changes.
+func TestMigrateTierDefaults(t *testing.T) {
+	seed := regDoc()
+	old := regDoc()
+	old["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna"}, "light": map[string]any{"anthropic": "claude-haiku-5-5", "openai": "gpt-6-luna"}}
+	models, _ := json.Marshal(old["models"])
+	if !migrateTierDefaults(old, seed) {
+		t.Fatal("an old-shape registry was not migrated")
+	}
+	want := map[string]map[string]string{
+		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
+		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"},
+		"light": {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5-5"},
+	}
+	got, _ := json.Marshal(old["defaults"])
+	wantRaw, _ := json.Marshal(want)
+	if string(got) != string(wantRaw) {
+		t.Fatalf("migrated defaults = %s, want %s", got, wantRaw)
+	}
+	if after, _ := json.Marshal(old["models"]); string(after) != string(models) {
+		t.Errorf("the migration changed the models: %s", after)
+	}
+	if !modelTiersValid(old) {
+		t.Error("a migrated registry must pass validation")
+	}
+	again, _ := json.Marshal(old)
+	if migrateTierDefaults(old, seed) {
+		t.Error("a new-shape registry was migrated again")
+	}
+	if now, _ := json.Marshal(old); string(now) != string(again) {
+		t.Errorf("a second migration changed the document: %s", now)
+	}
+	// an old file with no light pick takes the seed's light; an empty eval keeps the seed's gates
+	part := regDoc()
+	part["defaults"] = map[string]any{"eval": map[string]any{}}
+	migrateTierDefaults(part, seed)
+	if defaultOf(part, "light", "claude") != "claude-haiku-4-5" || defaultOf(part, "evaluator", "copilot") != "claude-sonnet-5" {
+		t.Errorf("missing old picks should come from the seed: %v", part["defaults"])
+	}
+}
+
+// t-8f6d: what a Model tiers save may hold. Protects POST /api/admin/model-tiers and the binding gate: the evaluator is never a Haiku
+// model under any agent (user, 2026-11-14), and a pick is a model the agent can run.
+func TestTierDefaultsValidation(t *testing.T) {
+	set := func(step, agent, id string) map[string]any {
+		d := regDoc()
+		per, _ := d["defaults"].(map[string]any)[step].(map[string]any)
+		if per == nil {
+			per = map[string]any{}
+			d["defaults"].(map[string]any)[step] = per
+		}
+		per[agent] = id
+		return d
+	}
+	if !modelTiersValid(regDoc()) {
+		t.Fatal("the fixture must be valid")
+	}
+	for name, d := range map[string]map[string]any{
+		"an unknown step":                     set("deploy", "claude", "claude-sonnet-5"),
+		"an unknown agent":                    set("reviewer", "codex", "claude-sonnet-5"),
+		"the old shape":                       set("eval", "anthropic", "claude-sonnet-5"),
+		"an OpenAI model for Claude Code":     set("reviewer", "claude", "gpt-6-luna"),
+		"a model not in the registry":         set("build", "copilot", "gpt-9"),
+		"a Haiku evaluator under Claude Code": set("evaluator", "claude", "claude-haiku-4-5"),
+		"a Haiku evaluator under Copilot":     set("evaluator", "copilot", "claude-haiku-5-5"),
+	} {
+		if modelTiersValid(d) {
+			t.Errorf("%s should be refused", name)
+		}
+	}
+	for name, d := range map[string]map[string]any{
+		"an OpenAI evaluator under Copilot": set("evaluator", "copilot", "gpt-6-sol"),
+		"a Haiku reviewer":                  set("reviewer", "claude", "claude-haiku-5-5"),
+		"an Opus evaluator":                 set("evaluator", "claude", "claude-opus-5-5"),
+	} {
+		if !modelTiersValid(d) {
+			t.Errorf("%s should be accepted", name)
+		}
+	}
+}
+
+// t-8f6d: the read path migrates. Protects GET /api/admin/model-tiers and every reader after an update: a user file saved in the old shape
+// is answered in the new one (plan and build from the seed), and the file on disk is left until a save.
+func TestLoadModelTiersMigratesAnOldUserFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := regDoc()
+	user["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-opus-5-5"}, "light": map[string]any{"anthropic": "claude-haiku-5-5"}}
+	ub, _ := json.Marshal(user)
+	if err := os.MkdirAll(filepath.Dir(modelTiersUserFile()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(modelTiersUserFile(), ub, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := loadModelTiers()
+	if defaultOf(got, "evaluator", "copilot") != "claude-opus-5-5" || defaultOf(got, "light", "claude") != "claude-haiku-5-5" || defaultOf(got, "plan", "claude") != "claude-opus-5-5" || defaultOf(got, "build", "copilot") != "gpt-6-sol" {
+		t.Fatalf("an old user file was not read migrated: %v", got["defaults"])
+	}
+	if after, _ := os.ReadFile(modelTiersUserFile()); string(after) != string(ub) {
+		t.Errorf("a read rewrote the user file")
+	}
+}
+
+// t-8f6d reviewer: a carried pick that today's rules refuse (a Haiku Review & Eval pick, an id no longer in the registry) takes the seed's
+// pick, so a migrated file always validates and Admin is never locked behind a refused save; a mixed file (an old board saved over a new
+// one) keeps its new-shape picks. Protects GET and every Admin write after an update.
+func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
+	seed := regDoc()
+	for name, eval := range map[string]string{"a Haiku pick": "claude-haiku-4-5", "an id not in the registry": "claude-gone-9"} {
+		doc := regDoc()
+		doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": eval}}
+		migrateTierDefaults(doc, seed)
+		if !modelTiersValid(doc) {
+			t.Errorf("%s: the migrated registry fails validation: %v", name, doc["defaults"])
+		}
+		if got := defaultOf(doc, "evaluator", "claude"); got != "claude-sonnet-5" {
+			t.Errorf("%s: evaluator = %s, want the seed's claude-sonnet-5", name, got)
+		}
+	}
+	// a Haiku Review & Eval pick is still a fine reviewer: only the evaluator is clamped
+	doc := regDoc()
+	doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-haiku-4-5"}}
+	migrateTierDefaults(doc, seed)
+	if got := defaultOf(doc, "reviewer", "claude"); got != "claude-haiku-4-5" {
+		t.Errorf("the reviewer lost the user's pick: %s", got)
+	}
+	mixed := regDoc()
+	mixed["defaults"].(map[string]any)["eval"] = map[string]any{"anthropic": "claude-opus-5-5"}
+	if !migrateTierDefaults(mixed, seed) {
+		t.Fatal("a mixed file keeps its old key")
+	}
+	if _, has := mixed["defaults"].(map[string]any)["eval"]; has {
+		t.Error("the old key survived the migration")
+	}
+	if defaultOf(mixed, "reviewer", "copilot") != "gpt-6-luna" || defaultOf(mixed, "evaluator", "claude") != "claude-sonnet-5" {
+		t.Errorf("a mixed file lost its new-shape picks: %v", mixed["defaults"])
+	}
+}
+
+// t-8f6d reviewer: a refused save names the default to change, so a person can fix it in Admin.
+func TestTierDefaultsProblemNamesTheDefault(t *testing.T) {
+	d := regDoc()
+	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["copilot"] = "claude-haiku-5-5"
+	if got := tierDefaultsProblem(d); got != "the Evaluator default for Copilot CLI: the binding evaluator is never a Haiku model" {
+		t.Errorf("problem = %q", got)
+	}
+	d = regDoc()
+	d["defaults"].(map[string]any)["reviewer"].(map[string]any)["claude"] = "gpt-6-luna"
+	if got := tierDefaultsProblem(d); got != "the Reviewer default for Claude Code: gpt-6-luna is an OpenAI model, which Claude Code cannot run" {
+		t.Errorf("problem = %q", got)
+	}
+	if res := saveModelTiers(d); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "the Reviewer default for Claude Code") {
+		t.Errorf("save refusal = %v", res)
+	}
+}
+
+// t-8f6d: an old file with only a light pick by provider (no eval) is still the old shape: it is migrated, the light pick kept.
+func TestMigrateTierDefaultsLightOnly(t *testing.T) {
+	for _, prov := range []string{"anthropic", "openai"} {
+		doc := regDoc()
+		doc["defaults"] = map[string]any{"light": map[string]any{prov: "claude-haiku-5-5"}}
+		if !migrateTierDefaults(doc, regDoc()) {
+			t.Fatalf("a light-only (%s) old file was not migrated", prov)
+		}
+		want := "claude-haiku-4-5" // the seed's, unless the anthropic pick carried over
+		if prov == "anthropic" {
+			want = "claude-haiku-5-5"
+		}
+		if got := defaultOf(doc, "light", "claude"); got != want || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5" {
+			t.Errorf("light-only (%s): light %s (want %s), defaults %v", prov, got, want, doc["defaults"])
+		}
 	}
 }

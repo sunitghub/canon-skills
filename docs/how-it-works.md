@@ -70,7 +70,7 @@ Rule of thumb: **tests keep the code honest; evals keep the agent honest.**
 ```
 sprint complete
   └── Wrapup: simplify → code-review → security → doc-audit
-  └── Reviewer (fresh subagent, normal+ tier — runs on the Admin > Model Tiers "Review & Eval" default, or any model the user names via plan.md's Gate model: field)
+  └── Reviewer (fresh subagent, normal+ tier — runs on the Admin > Model Tiers Reviewer default, or any model the user names via plan.md's Gate model: field)
   └── Evaluator (fresh subagent, non-trivial tiers — bugfix/normal/high-risk) — adversarial, blocks on fail (same model rule)
   └── Acceptance check — CLI blocks on unchecked items
   └── summary.md — plan-vs-actual table, one row per criterion
@@ -186,7 +186,7 @@ reviewer and the binding evaluator. First match wins:
 | 1 | `Gate model:` is a model id (`haiku`/`sonnet`/`opus`) | User only — live instruction or manual edit in `plan.md` | that model | Both gates; overrides everything below, any risk tier |
 | 2 | `Gate model: session` | User only | current session model | Forces full session-model review; skips the rows below |
 | 3 | `demo: true` on the ticket (and no `Gate model:`) | User, via the demo flag | Haiku, on any diff | Evaluator only — `security-review` runs inline on the session model |
-| 4 | Admin "Review & Eval" default (`defaults.eval.anthropic` in `$CANON_HOME/cockpit/model-tiers.json`, else the seed `tools/sprint-check-app/model-tiers.json`) | Admin > Model Tiers, applied to **every** interactive close regardless of diff risk | the registry model's alias (e.g. `sonnet`) | Read directly from disk; interactive `sprint complete` only — headless is unchanged |
+| 4 | Admin Reviewer and Evaluator defaults (`defaults.reviewer.<agent>` and `defaults.evaluator.<agent>`, `<agent>` = `claude` or `copilot`, in `$CANON_HOME/cockpit/model-tiers.json`, else the seed `tools/sprint-check-app/model-tiers.json`; a file saved before t-8f6d has one `defaults.eval.anthropic` for both) | Admin > Model Tiers, applied to **every** interactive close regardless of diff risk; each gate its own; the evaluator is never a Haiku model | the registry model's alias (e.g. `sonnet`) | Read directly from disk; interactive `sprint complete` only — headless is unchanged |
 | 5 | Fallback — registry missing/unreadable, or the default has no matching alias | Automatic | the gate definition's floor, `claude-sonnet-5` (`agents/canon-*.md`); the session model only if the gate fell back to `Plan` | Never silently inherits an expensive session model |
 
 **Agent template (t-1583).** Every `agents/*.md` (the Codex `agents/codex/*.toml` mirrors have their own parity test) declares the same frontmatter fields: `purpose`, `model`, `effort`, `tools`, `writes` (the files it may write), `shell` (`none`, `read-only` or `pinned-env`) and `graded-by` (the reference doc or acceptance source). The fields are declared, not enforced: `shell` and `writes` document what the prompt allows, and the `tools` list is what limits the agent. Prompt text stays in the body. A new agent adds all of them; `tests/agent-template.sh` fails on a missing field or an unknown `shell`.

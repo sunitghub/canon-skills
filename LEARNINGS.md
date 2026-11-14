@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-14-2026 07:14
+learnings-sweep last run: 11-14-2026 08:39
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-14 | [t-8f6d](.tickets/t-8f6d/learnings.md) | A migration that carries a user's pick across a new rule must apply that rule to the pick, or validation refuses every later save behind an error that names nothing | UNPROMOTED |
 | 2026-11-14 | [t-9d04](.tickets/t-9d04/learnings.md) | Moving a check to file identity widens what it accepts on a case-insensitive volume: return the folder's own spelling, or every map keyed by a string spelling (holds) misses the new variant | UNPROMOTED |
 | 2026-11-14 | [t-c8c6](.tickets/t-c8c6/learnings.md) | An identity-then-key helper is safe only if the key runs when identity cannot apply; falling back when `-ef` says no merges two real folders that differ only by a backslash (kept on purpose until `-ef` is verified on Git Bash, t-e88d) | UNPROMOTED |
 | 2026-11-13 | [t-e790](.tickets/t-e790/learnings.md) | A test that checks a restored line is "somewhere under some heading" passes a restore that lands in the wrong place: assert the exact position, and map every suite that exercises the changed lines into the mutation sweep (tkt-finish.sh was missing, inflating survivors) | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-14-2026 07:14
 | 2026-11-06 | [t-e566](.tickets/t-e566/learnings.md) | A criterion that needs a machine you cannot reach (the Windows VM) fails the evaluator as not-run: plan it as another ticket's checklist item; xterm.js cancels Ctrl+V so the browser never pastes | `promoted → skills/sprint/reference/start-checklist.md` |
 | 2026-11-06 | [t-d287](.tickets/t-d287/learnings.md) | A command shown with a Copy button must be pasteable as shown: a placeholder like `<repo>` is a redirection in bash and a parse error in PowerShell, and `&&` does not exist in Windows PowerShell 5.1 (found only because the user pasted it on a Windows VM); and writing to `.tickets/` while a board-spec run is going makes it exit 2 (the run compares the tree before and after): hold ideas in chat until the run ends | `promoted → standards/efficiency-notes.md` |
 | 2026-11-06 | [t-353a](.tickets/t-353a/learnings.md) | A gate that leans on an OS prompt must ask whether the OS will show it: Windows sudo shows no UAC prompt to an elevated caller, so an elevated Console would have opened a shell with no check (found from a screenshot of an Administrator window, not from the code); `where` looks in the current folder first, so a finder run from a project folder can be made to run a planted binary; and a failed step in a job-object setup must kill the child, not ignore the error, or the time limit never fires | `promoted → standards/efficiency-notes.md, skills/sprint/reference/start-checklist.md` |
-| 2026-11-06 | [t-761b](.tickets/t-761b/learnings.md) | A fixture with times built when the spec file loads ages during a 17-minute run (2m read 6m): compute relative times when each test runs; and a sidebar poll that waited on `gh` took 11 s, so serve the cache and refresh in the background; an age that changes every second defeats the ETag, so send a time. Still open: the stage mapping has three copies (card, route, shell), the full REMOTE state machine is unbuilt, and a slow poll can overwrite a newer one | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->

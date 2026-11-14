@@ -851,13 +851,40 @@ done
 [[ "$(tiers_post '{"reset":true}')" == 200 ]] || fail "sprint-check-api: reset is not idempotent when no copy exists"
 [[ "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: GET after reset is not the seed"
 
+# t-8f6d: a data-dir copy saved before the per-step, per-agent defaults is answered in the new shape (the old Review & Eval pick for both
+# gates and both agents, plan and build from the seed) and left on disk until a save, which writes the new shape. Prod path: Admin after
+# an update, and the close (complete.md reads the same file).
+python3 -c 'import sys,json
+d=json.load(open(sys.argv[1])); d["defaults"]={"eval":{"anthropic":"claude-opus-5-5","openai":"gpt-6-luna"},"light":{"anthropic":"claude-haiku-5-5","openai":"gpt-6-luna"}}
+json.dump(d,open(sys.argv[2],"w"))' "$SEED_TIERS" "$user_file"
+old_sha="$(shasum "$user_file" | cut -d' ' -f1)"
+tiers_json | python3 -c 'import sys,json
+d=json.load(sys.stdin)["defaults"]; s=json.load(open(sys.argv[1]))["defaults"]
+assert all(d[r][a]=="claude-opus-5-5" for r in ("reviewer","evaluator") for a in ("claude","copilot")), d
+assert d["light"]=={"claude":"claude-haiku-5-5","copilot":"claude-haiku-5-5"} and d["plan"]==s["plan"] and d["build"]==s["build"] and "eval" not in d, d' "$SEED_TIERS" \
+  || fail "sprint-check-api: an old-shape data-dir copy was not answered migrated"
+[[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$old_sha" ]] || fail "sprint-check-api: a GET rewrote the data-dir copy"
+[[ "$(tiers_post "$(curl -s "$B/api/admin/model-tiers")")" == 200 ]] || fail "sprint-check-api: saving the migrated registry was rejected"
+python3 -c 'import sys,json; d=json.load(open(sys.argv[1]))["defaults"]; assert "eval" not in d and d["evaluator"]["copilot"]=="claude-opus-5-5", d' "$user_file" \
+  || fail "sprint-check-api: a save after the migration did not write the new shape"
+# each bad shape is refused and changes nothing on disk
+mig_sha="$(shasum "$user_file" | cut -d' ' -f1)"
+for bad in 'd["defaults"]["evaluator"]["claude"]="claude-haiku-5-5"' 'd["defaults"]["evaluator"]["copilot"]="claude-haiku-4-5-20251001"' \
+           'd["defaults"]["deploy"]={"claude":"claude-sonnet-5"}' 'd["defaults"]["reviewer"]["codex"]="claude-sonnet-5"' \
+           'd["defaults"]["reviewer"]["claude"]="gpt-6-luna"' 'd["defaults"]["eval"]={"anthropic":"claude-sonnet-5"}'; do
+  body="$(curl -s "$B/api/admin/model-tiers" | python3 -c "import sys,json; d=json.load(sys.stdin); $bad; print(json.dumps(d))")"
+  [[ "$(tiers_post "$body")" == 400 ]] || fail "sprint-check-api: the model-tiers save with $bad should 400"
+  [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$mig_sha" ]] || fail "sprint-check-api: a refused save ($bad) changed the data-dir copy"
+done
+[[ "$(tiers_post '{"reset":true}')" == 200 && "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: reset after the migration case is not the seed"
+
 # t-d40b: retire and Remove-with-a-move go through the same validation and land in the data dir, never the seed.
 tiers_act() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$2" "$B/api/admin/model-tiers/$1"; }
 [[ "$(tiers_act retire '{"old":"claude-sonnet-5","new":"claude-sonnet-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: retire sonnet 5 -> 5.5 was rejected"
 tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}
 assert m["claude-sonnet-5-5"].get("alias")=="sonnet" and m["claude-sonnet-5"].get("legacy") is True and not m["claude-sonnet-5"].get("alias"), m
-assert d["defaults"]["eval"]["anthropic"]=="claude-sonnet-5-5", d["defaults"]' || fail "sprint-check-api: retire did not move the alias and the eval default and mark the old entry legacy"
+assert d["defaults"]["evaluator"]["claude"]=="claude-sonnet-5-5" and d["defaults"]["reviewer"]["copilot"]=="claude-sonnet-5-5", d["defaults"]' || fail "sprint-check-api: retire did not move the alias and every default and mark the old entry legacy"
 [[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api: retire changed the tracked seed"
 retired_sha="$(shasum "$user_file" | cut -d' ' -f1)"
 for bad in retire:'{"old":"claude-sonnet-5","new":"claude-sonnet-5"}' retire:'{"old":"nope","new":"claude-sonnet-5-5"}' retire:'{"old":"claude-haiku-4-5-20251001","new":"gpt-6-sol"}' \
@@ -876,7 +903,7 @@ dup="$(tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}; m["claude-opus-5-5"]["alias"]="haiku"; print(json.dumps(d))')"
 [[ "$(tiers_post "$dup")" == 400 ]] || fail "sprint-check-api: a duplicate active alias was accepted"
 legdef="$(tiers_json | python3 -c 'import sys,json
-d=json.load(sys.stdin); d["defaults"]["eval"]["anthropic"]="claude-sonnet-5"; print(json.dumps(d))')"
+d=json.load(sys.stdin); d["defaults"]["evaluator"]["claude"]="claude-sonnet-5"; print(json.dumps(d))')"
 [[ "$(tiers_post "$legdef")" == 400 ]] || fail "sprint-check-api: a default on a legacy entry was accepted"
 # t-d40b: Refresh answers from the SAVED sources only (a url in the request is ignored and nothing is fetched for it), reports a source
 # that is refused as one line, and never reads the network for a loopback or private address; Apply adds first, then retires.

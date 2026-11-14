@@ -42,7 +42,7 @@ func settingEvents(t *testing.T, home string) []map[string]any {
 }
 
 // t-4c09. Protects the Admin Model tiers page's audit line: every successful write route leaves one setting.changed event with the
-// Review & Eval default before and after and actor `user` (a person's click); a refused or invalid write leaves none; and no registry text
+// evaluator default (Claude Code) before and after and actor `user` (a person's click); a refused or invalid write leaves none; and no registry text
 // (a source URL, a model description) ever reaches the log.
 func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	dir := t.TempDir()
@@ -96,9 +96,17 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	if res := auditTiers(clickReq(), "reset", func() map[string]any { return saveModelTiers(map[string]any{"reset": true}) }); res["ok"] != true {
 		t.Fatalf("reset: %v", res)
 	}
+	// t-8f6d: a reset logs one line per default it changed back: the retire moved sonnet out of three slots (the reviewer under Copilot CLI
+	// is an OpenAI model in this registry)
 	got = settingEvents(t, dir)
-	if len(got) != 2 || got[1]["data"].(map[string]any)["name"] != "model-tiers.reset" {
-		t.Fatalf("a reset should add one model-tiers.reset line: %v", got)
+	want := []string{"model-tiers.reset.evaluator.claude", "model-tiers.reset.evaluator.copilot", "model-tiers.reset.reviewer.claude"}
+	if len(got) != 1+len(want) {
+		t.Fatalf("a reset should add one line per changed default: %v", got)
+	}
+	for i, name := range want {
+		if d := got[1+i]["data"].(map[string]any); d["name"] != name || d["old"] != "claude-sonnet-5-5" || d["new"] != "claude-sonnet-5" {
+			t.Errorf("reset line %d: %v, want %s", i, d, name)
+		}
 	}
 	files, _ := filepath.Glob(filepath.Join(dir, "events", "*.jsonl"))
 	for _, f := range files {
@@ -145,7 +153,7 @@ func TestModelTiersWriteSucceedsWhenEventsCannotBeWritten(t *testing.T) {
 }
 
 // t-4c09. Protects the Admin Model tiers routes themselves (the action name each one records and the payload each reads): a request to
-// each write route leaves exactly one setting.changed line named for it, carrying the Review & Eval default before and after.
+// each write route leaves exactly one setting.changed line named for it, carrying the evaluator default (Claude Code) before and after.
 func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CANON_HOME", dir)
@@ -208,10 +216,11 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	if c := post("/api/admin/model-tiers", `{"reset":true}`); c != http.StatusOK {
 		t.Fatalf("reset = %d", c)
 	}
-	if d := last(); count() != 4 || d["name"] != "model-tiers.reset" {
+	resetLines := count() // t-8f6d: one per default the reset changed back (the retire above moved sonnet out of three slots)
+	if d := last(); resetLines < 4 || !strings.HasPrefix(d["name"].(string), "model-tiers.reset.") {
 		t.Fatalf("reset route: %d line(s), last %v", count(), d)
 	}
-	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != 4 {
+	if c := post("/api/admin/model-tiers", `{"models":"nope"}`); c == http.StatusOK || count() != resetLines {
 		t.Fatalf("an invalid save: status %d, %d line(s)", c, count())
 	}
 	// no Origin (a script or an agent's shell): the write goes through as today, and the line claims no actor
@@ -219,10 +228,10 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handlePost(w, req)
-	if w.Code != http.StatusOK || count() != 5 {
+	if w.Code != http.StatusOK || count() != resetLines+1 {
 		t.Fatalf("an apply without an Origin: status %d, %d line(s)", w.Code, count())
 	}
-	if got := settingEvents(t, dir); got[4]["actor"] != nil {
+	if got := settingEvents(t, dir); got[resetLines]["actor"] != nil {
 		t.Fatalf("a request without an Origin was logged as %v", got[4]["actor"])
 	}
 	for i := 0; i < 4; i++ {
@@ -232,7 +241,7 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	}
 }
 
-// t-71c8. Protects the Admin Model tiers page's Save and Reset buttons: one that leaves the Review & Eval default as it was (a save of the
+// t-71c8. Protects the Admin Model tiers page's Save and Reset buttons: one that leaves the evaluator default (Claude Code) as it was (a save of the
 // registry unchanged, a reset with no override) writes no setting.changed line, and one that changes it still writes exactly one.
 func TestModelTiersSaveOrResetThatChangesNothingLogsNothing(t *testing.T) {
 	dir := t.TempDir()
@@ -263,7 +272,7 @@ func TestModelTiersSaveOrResetThatChangesNothingLogsNothing(t *testing.T) {
 		t.Fatalf("a reset and a save that changed nothing logged %d event(s)", n)
 	}
 	changed := regDoc()
-	changed["defaults"].(map[string]any)["eval"].(map[string]any)["anthropic"] = "claude-sonnet-5-5"
+	changed["defaults"].(map[string]any)["evaluator"].(map[string]any)["claude"] = "claude-sonnet-5-5"
 	save(changed)
 	got := settingEvents(t, dir)
 	if len(got) != 1 || got[0]["data"].(map[string]any)["old"] != "claude-sonnet-5" || got[0]["data"].(map[string]any)["new"] != "claude-sonnet-5-5" {
@@ -300,18 +309,18 @@ func TestModelTiersSaveLogsEveryChangedValue(t *testing.T) {
 		}
 	}
 	light := regDoc()
-	light["defaults"].(map[string]any)["light"].(map[string]any)["anthropic"] = "claude-haiku-5-5"
+	light["defaults"].(map[string]any)["light"].(map[string]any)["claude"] = "claude-haiku-5-5"
 	save(light)
 	got := settingEvents(t, dir)
 	if len(got) != 1 {
 		t.Fatalf("a save that changed the light default should log one line, got %d: %v", len(got), got)
 	}
 	d := got[0]["data"].(map[string]any)
-	if d["name"] != "model-tiers.save.light.anthropic" || d["old"] != "claude-haiku-4-5" || d["new"] != "claude-haiku-5-5" {
+	if d["name"] != "model-tiers.save.light.claude" || d["old"] != "claude-haiku-4-5" || d["new"] != "claude-haiku-5-5" {
 		t.Fatalf("wrong line for the light default: %v", d)
 	}
 	card := regDoc()
-	card["defaults"].(map[string]any)["light"].(map[string]any)["anthropic"] = "claude-haiku-5-5"
+	card["defaults"].(map[string]any)["light"].(map[string]any)["claude"] = "claude-haiku-5-5"
 	ms := card["models"].(map[string]any)["anthropic"].([]any)
 	ms[0].(map[string]any)["name"] = "Claude Opus 5.5 (renamed)"
 	save(card)
@@ -321,7 +330,7 @@ func TestModelTiersSaveLogsEveryChangedValue(t *testing.T) {
 	}
 	d = got[1]["data"].(map[string]any)
 	if d["name"] != "model-tiers.save" || d["old"] != d["new"] {
-		t.Fatalf("a card-only change should log model-tiers.save with the Review & Eval default as old and new: %v", d)
+		t.Fatalf("a card-only change should log model-tiers.save with the evaluator default as old and new: %v", d)
 	}
 	save(card)
 	if n := len(settingEvents(t, dir)); n != 2 {

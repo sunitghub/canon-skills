@@ -211,10 +211,17 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		}
 		return b
 	}
-	evalDefault := func(prov, id string) bool {
+	gateDefault := func(id string) bool { // t-8f6d: a reviewer or evaluator default of any agent: the close gates' models
 		defaults, _ := doc["defaults"].(map[string]any)
-		per, _ := defaults["eval"].(map[string]any)
-		return per != nil && fmt.Sprint(per[prov]) == id
+		for _, step := range []string{"reviewer", "evaluator"} {
+			per, _ := defaults[step].(map[string]any)
+			for _, agent := range tierAgents {
+				if per != nil && fmt.Sprint(per[agent]) == id {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	p := proposal{Add: []proposalEntry{}, Retire: []retireEntry{}, Current: []string{}}
 	for _, f := range finds {
@@ -224,7 +231,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		e := proposalEntry{found: f}
 		if line, ver, ok := lineAndVersion(f.ID); ok {
 			if old := best(f.Provider, line, ver); old != nil {
-				e.Replaces, e.ReplacesAll, e.Gate = old.id, old.name, evalDefault(f.Provider, old.id)
+				e.Replaces, e.ReplacesAll, e.Gate = old.id, old.name, gateDefault(old.id)
 			}
 		}
 		p.Add = append(p.Add, e)
@@ -236,7 +243,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		}
 		newest := best(r.prov, r.line, nil) // never nil: r itself is an active entry of this line
 		if versionLess(r.ver, newest.ver) {
-			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newest.id, newest.name, evalDefault(r.prov, r.id)})
+			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newest.id, newest.name, gateDefault(r.id)})
 		} else {
 			p.Current = append(p.Current, r.name)
 		}

@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Changed: Admin > Model tiers keeps one model per step and per agent: Plan, Build, Reviewer (advisory), Evaluator (binding) and Simple / Light work, each for Claude Code and for Copilot CLI (an Agent dropdown picks which). The reviewer and the evaluator can now run on different models, e.g. an Opus reviewer and a Sonnet evaluator; a Copilot CLI pick may be an OpenAI model. The binding evaluator is never a Haiku model (a Lite ticket still runs it on Haiku). Plan and Build are recorded now and used from a later release. Your saved settings carry over: your Review & Eval pick becomes both gates for both agents, your Simple / Light pick stays. Update canon and restart the daemon together (Admin › Restart Daemon): an older board reading the new settings falls back to the default gate model (t-8f6d, t-2cc8).
+- Changed (events API): the Model tiers audit lines are named `model-tiers.save.<step>.<agent>` (e.g. `model-tiers.save.evaluator.claude`); the bare `model-tiers.save` now marks only a save that changed no default (t-8f6d).
+
 ## [0.55.20] - 2026-11-14
 
 - Changed: the board and the Cockpit daemon compare two folders one way, `common.PathKey` / `SamePath` (the same rule as the shell's `canon_same_folder`: the same file, else the same key; `C:\x`, `C:/x` and `/c/x` are one folder). No whole path is lower-cased any more, so two folders that differ only in case on Linux are no longer merged. A session start returns the folder's own spelling, so a worktree in use stays held on a case-insensitive volume. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-9d04).
