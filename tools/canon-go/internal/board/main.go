@@ -1837,16 +1837,16 @@ func emitSetting(r *http.Request, name, old, new string) {
 	events.EmitActor(events.Home(), "setting.changed", "board", actor, "", map[string]string{"name": name, "old": old, "new": new})
 }
 
-// evalDefault is the Review & Eval default model of the effective Model tiers registry: the one value there that changes what the
-// close gates run on, so it is what the audit line records (never a source URL or any other registry text).
+// evalDefault is the binding evaluator's default under Claude Code (defaults.evaluator.claude, t-8f6d): what a retire, remove, apply
+// or card-only save records as old and new (never a source URL or any other registry text).
 func evalDefault(doc map[string]any) string {
 	d, _ := doc["defaults"].(map[string]any)
-	e, _ := d["eval"].(map[string]any)
-	s, _ := e["anthropic"].(string)
+	e, _ := d["evaluator"].(map[string]any)
+	s, _ := e["claude"].(string)
 	return s
 }
 
-// tierDefaults flattens the registry's defaults to "<tier>.<provider>" -> model id, the values a Model tiers save can change.
+// tierDefaults flattens the registry's defaults to "<step>.<agent>" -> model id, the values a Model tiers save can change.
 func tierDefaults(doc map[string]any) map[string]string {
 	out := map[string]string{}
 	d, _ := doc["defaults"].(map[string]any)
@@ -1863,9 +1863,10 @@ func tierDefaults(doc map[string]any) map[string]string {
 }
 
 // auditTiers runs one Model tiers write and, when it succeeded, records what it changed (t-71c8): one setting.changed line per changed
-// default (the Review & Eval default keeps the name model-tiers.<action>; any other is model-tiers.<action>.<tier>.<provider>), one
-// line with the Review & Eval default as old and new when only other registry text changed (a model card, a price), and none when a
-// save or reset changed nothing. Retire, remove and apply always write one line.
+// default, named model-tiers.<action>.<step>.<agent> (t-8f6d), one line model-tiers.<action> with the evaluator default (Claude Code)
+// as old and new when only other registry text changed (a model card, a price), and none when a save or reset changed nothing. Retire,
+// remove and apply always write one line. `before` is read through loadModelTiers, so a file in the old shape is compared migrated:
+// the first save after an update logs only what the person changed.
 func auditTiers(r *http.Request, action string, run func() map[string]any) map[string]any {
 	before := loadModelTiers()
 	beforeRaw, _ := json.Marshal(before)
@@ -1899,11 +1900,7 @@ func auditTiers(r *http.Request, action string, run func() map[string]any) map[s
 		if od[k] == nd[k] {
 			continue
 		}
-		name := "model-tiers." + action
-		if k != "eval.anthropic" {
-			name += "." + k
-		}
-		emitSetting(r, name, od[k], nd[k])
+		emitSetting(r, "model-tiers."+action+"."+k, od[k], nd[k])
 		wrote = true
 	}
 	if !wrote && string(beforeRaw) != string(afterRaw) {
@@ -5562,7 +5559,7 @@ func registrySave(entries []registryProject) error {
 // ~/.codex/agents/<id>.toml filename in the follow-up ticket (t-ef27).
 func loadModelTiers() map[string]any {
 	empty := map[string]any{
-		"defaults": map[string]any{"eval": map[string]any{}, "light": map[string]any{}},
+		"defaults": map[string]any{"plan": map[string]any{}, "build": map[string]any{}, "reviewer": map[string]any{}, "evaluator": map[string]any{}, "light": map[string]any{}},
 		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
 	}
 	var found []map[string]any
@@ -5585,6 +5582,8 @@ func loadModelTiers() map[string]any {
 			found[0]["sources"] = u
 		}
 	}
+	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save).
+	migrateTierDefaults(found[0], found[len(found)-1])
 	return found[0]
 }
 

@@ -1300,7 +1300,7 @@ func TestModelTiersSavesToDataDirNotSeed(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CANON_HOME", filepath.Join(dir, "home"))
 	seed := filepath.Join(dir, "model-tiers.json")
-	seedBody := `{"defaults":{"eval":{"anthropic":"seed-model"}},"models":{"anthropic":[{"id":"seed-model"}]}}`
+	seedBody := `{"defaults":{"evaluator":{"claude":"seed-model"}},"models":{"anthropic":[{"id":"seed-model"}]}}`
 	if err := os.WriteFile(seed, []byte(seedBody), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1308,14 +1308,14 @@ func TestModelTiersSavesToDataDirNotSeed(t *testing.T) {
 	modelTiersPath = seed
 	defer func() { modelTiersPath = old }()
 	defaultOf := func() any {
-		return loadModelTiers()["defaults"].(map[string]any)["eval"].(map[string]any)["anthropic"]
+		return loadModelTiers()["defaults"].(map[string]any)["evaluator"].(map[string]any)["claude"]
 	}
 
 	if got := defaultOf(); got != "seed-model" {
 		t.Fatalf("with no data-dir copy want the seed, got %v", got)
 	}
 	edited := map[string]any{
-		"defaults": map[string]any{"eval": map[string]any{"anthropic": "edited-model"}},
+		"defaults": map[string]any{"evaluator": map[string]any{"claude": "edited-model"}},
 		"models":   map[string]any{"anthropic": []any{map[string]any{"id": "edited-model"}}},
 	}
 	if res := saveModelTiers(edited); res["ok"] != true {

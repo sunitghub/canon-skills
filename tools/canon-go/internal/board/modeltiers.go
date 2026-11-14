@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -32,14 +33,91 @@ func registryModel(doc map[string]any, id string) (prov string, entry map[string
 	return "", nil
 }
 
-// heldBy lists what the entry holds: its alias and the tiers whose default for the provider names it.
+// t-8f6d + t-2cc8: the registry's defaults are one model id per step and agent: defaults.<step>.<agent>. This table is their one owner
+// (validation, the migration, retire/remove, the Refresh flag, the audit names and the Pipeline rows read it; static/cockpit-admin.js
+// mirrors it for the cards). A claude pick is an Anthropic model; a copilot pick is an Anthropic or an OpenAI model (Copilot CLI runs both).
+var (
+	tierSteps          = []string{"plan", "build", "reviewer", "evaluator", "light"}
+	tierAgents         = []string{"claude", "copilot"}
+	tierAgentProviders = map[string][]string{"claude": {"anthropic"}, "copilot": {"anthropic", "openai"}}
+	tierStepLabel      = map[string]string{"plan": "Plan", "build": "Build", "reviewer": "Reviewer", "evaluator": "Evaluator", "light": "Simple / Light work"}
+	tierAgentLabel     = map[string]string{"claude": "Claude Code", "copilot": "Copilot CLI"}
+)
+
+// haikuClass: a Haiku model (its alias is haiku, or its id names haiku). The binding evaluator is never one, under any agent (user,
+// 2026-11-14); a Lite ticket's forced Haiku evaluator is a per-ticket rule at close, not a default.
+func haikuClass(id string, m map[string]any) bool {
+	return strings.EqualFold(aliasOf(m), "haiku") || strings.Contains(strings.ToLower(id), "haiku")
+}
+
+// migrateTierDefaults rewrites a registry saved before the reshape (defaults.eval and defaults.light by provider) in memory: the old
+// Review & Eval pick becomes the reviewer and the evaluator for both agents, the old light pick the light for both, plan and build come
+// from the seed's defaults. The OpenAI picks drove nothing and are dropped (the models stay in models.openai). A document already in
+// the new shape is left as it is. Returns whether it changed anything; the file on disk changes only on the next save.
+func migrateTierDefaults(doc, seed map[string]any) bool {
+	d, _ := doc["defaults"].(map[string]any)
+	if d == nil {
+		return false
+	}
+	_, hasEval := d["eval"]
+	light, _ := d["light"].(map[string]any)
+	_, lightOld := light["anthropic"]
+	_, lightOldO := light["openai"]
+	if !hasEval && !lightOld && !lightOldO {
+		return false
+	}
+	pick := func(tier string) string {
+		per, _ := d[tier].(map[string]any)
+		id, _ := per["anthropic"].(string)
+		return id
+	}
+	sd, _ := seed["defaults"].(map[string]any)
+	seedPick := func(step, agent string) string {
+		per, _ := sd[step].(map[string]any)
+		id, _ := per[agent].(string)
+		return id
+	}
+	out := map[string]any{}
+	for _, step := range tierSteps {
+		per := map[string]any{}
+		for _, agent := range tierAgents {
+			id := seedPick(step, agent)
+			switch step {
+			case "reviewer", "evaluator":
+				if v := pick("eval"); v != "" {
+					id = v
+				}
+			case "light":
+				if v := pick("light"); v != "" {
+					id = v
+				}
+			}
+			if id != "" {
+				per[agent] = id
+			}
+		}
+		out[step] = per
+	}
+	doc["defaults"] = out
+	return true
+}
+
+// tierSlot names one default for a person: "the Evaluator default for Claude Code".
+func tierSlot(slot string) string {
+	step, agent, _ := strings.Cut(slot, ".")
+	return "the " + tierStepLabel[step] + " default for " + tierAgentLabel[agent]
+}
+
+// heldBy lists what the entry holds: its alias and the <step>.<agent> defaults that name it.
 func heldBy(doc map[string]any, prov string, m map[string]any) (alias string, tiers []string) {
 	alias = aliasOf(m)
 	defaults, _ := doc["defaults"].(map[string]any)
-	for _, tier := range []string{"eval", "light"} {
-		per, _ := defaults[tier].(map[string]any)
-		if per != nil && fmt.Sprint(per[prov]) == fmt.Sprint(m["id"]) {
-			tiers = append(tiers, tier)
+	for _, step := range tierSteps {
+		per, _ := defaults[step].(map[string]any)
+		for _, agent := range tierAgents {
+			if per != nil && fmt.Sprint(per[agent]) == fmt.Sprint(m["id"]) {
+				tiers = append(tiers, step+"."+agent)
+			}
 		}
 	}
 	return alias, tiers
@@ -59,9 +137,10 @@ func transfer(doc map[string]any, prov string, from, to map[string]any) error {
 		from["alias"] = ""
 	}
 	defaults, _ := doc["defaults"].(map[string]any)
-	for _, tier := range tiers {
-		per, _ := defaults[tier].(map[string]any)
-		per[prov] = to["id"]
+	for _, slot := range tiers {
+		step, agent, _ := strings.Cut(slot, ".")
+		per, _ := defaults[step].(map[string]any)
+		per[agent] = to["id"]
 	}
 	return nil
 }
@@ -117,7 +196,7 @@ func removeModel(doc map[string]any, id, moveTo string) error {
 				held = append(held, "the alias "+alias)
 			}
 			for _, t := range tiers {
-				held = append(held, "the "+t+" default")
+				held = append(held, tierSlot(t))
 			}
 			return fmt.Errorf("%s holds %s: choose the model that takes it over", id, strings.Join(held, " and "))
 		}
@@ -186,11 +265,23 @@ func modelTiersConsistent(data map[string]any) bool {
 			}
 		}
 	}
+	// t-8f6d: every default is a known step and agent, names an active model the agent can run, and the binding evaluator is never Haiku.
 	defaults, _ := data["defaults"].(map[string]any)
-	for _, perRaw := range defaults {
+	for step, perRaw := range defaults {
+		if tierStepLabel[step] == "" {
+			return false
+		}
 		per, _ := perRaw.(map[string]any)
-		for _, id := range per {
-			if legacyIDs[fmt.Sprint(id)] {
+		for agent, idRaw := range per {
+			id := fmt.Sprint(idRaw)
+			if tierAgentLabel[agent] == "" || legacyIDs[id] {
+				return false
+			}
+			prov, m := registryModel(data, id)
+			if m == nil || !slices.Contains(tierAgentProviders[agent], prov) {
+				return false
+			}
+			if step == "evaluator" && haikuClass(id, m) {
 				return false
 			}
 		}

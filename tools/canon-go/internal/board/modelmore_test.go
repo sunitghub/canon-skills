@@ -178,10 +178,10 @@ func TestRegistryMoveSavesOnlyAGoodChange(t *testing.T) {
 	}
 	var saved map[string]any
 	b, _ := os.ReadFile(user)
-	if err := json.Unmarshal(b, &saved); err != nil || defaultOf(saved, "eval", "anthropic") != "claude-sonnet-5-5" {
+	if err := json.Unmarshal(b, &saved); err != nil || defaultOf(saved, "evaluator", "claude") != "claude-sonnet-5-5" {
 		t.Errorf("the change should be saved: %v %v", err, saved["defaults"])
 	}
-	if defaultOf(res["data"].(map[string]any), "eval", "anthropic") != "claude-sonnet-5-5" {
+	if defaultOf(res["data"].(map[string]any), "evaluator", "claude") != "claude-sonnet-5-5" {
 		t.Error("the response carries the new registry")
 	}
 	// a change that makes the registry invalid is refused by the shared validation and saves nothing more

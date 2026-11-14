@@ -211,10 +211,17 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		}
 		return b
 	}
-	evalDefault := func(prov, id string) bool {
+	evalDefault := func(_, id string) bool { // t-8f6d: a reviewer or evaluator default of any agent: the close gates' models
 		defaults, _ := doc["defaults"].(map[string]any)
-		per, _ := defaults["eval"].(map[string]any)
-		return per != nil && fmt.Sprint(per[prov]) == id
+		for _, step := range []string{"reviewer", "evaluator"} {
+			per, _ := defaults[step].(map[string]any)
+			for _, agent := range tierAgents {
+				if per != nil && fmt.Sprint(per[agent]) == id {
+					return true
+				}
+			}
+		}
+		return false
 	}
 	p := proposal{Add: []proposalEntry{}, Retire: []retireEntry{}, Current: []string{}}
 	for _, f := range finds {
