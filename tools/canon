@@ -140,7 +140,8 @@ update_without_git() {
   local repo="$1" to="${2:-}" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1" setref=""
   # t-30fc: `to` was validated (latest, main or vN.N.N) by update_cmd; the installer reads it from CANON_REF and fetches that tag's zip.
   [ -z "$to" ] || setref="\$env:CANON_REF='$to'; "
-  if _is_windows && [ "$repo" = "$(cygpath -u "$USERPROFILE\\.canon" 2>/dev/null)" ]; then
+  # t-c8c6: one folder, any spelling (C:\Users\x\.canon, /c/Users/x/.canon, a symlink): canon_same_folder, never a string compare
+  if _is_windows && [ -n "${USERPROFILE:-}" ] && canon_same_folder "$repo" "$USERPROFILE\\.canon"; then
     echo "Updating canon by re-running the installer..."
     # </dev/null: with the console's stdin inherited, the nested canon.cmd -> bash refresh hung (live-reproduced).
     exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \

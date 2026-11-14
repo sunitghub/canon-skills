@@ -309,5 +309,32 @@ set +e; out="$(cd "$R" && PRE_GATE_BASE="$BASE" PRE_GATE_ID="$ID" bash "$S/pre-g
 assert_contains "$out" "agent files: skipped | no agent-file rows in size-caps.tsv" "pre-gate-check: a table with no agent-file row is skipped"
 rm -f "$S/size-caps.tsv"; reset
 
+# --- t-c8c6: the advisory path-forms field. Protects the pre-gate line every close prints: a new shell line that writes the drive-letter rule or
+# compares a cygpath result outside its owners (platform-lib.sh, ticket-root.sh) is named, never blocking; a conversion, a comment, an owner,
+# a test file and a non-shell file are not.
+reset
+mkdir -p tools/bin docs tests
+cat > tools/a.sh <<'SH'
+#!/usr/bin/env bash
+p="$1"
+case "$p" in [A-Za-z]:*) echo drive ;; esac
+# [A-Za-z]: in a comment
+echo "$(cygpath -w "$p")"
+u="$(cygpath -u "$p")"; echo "$u"
+SH
+cat > tools/bin/tool <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "$(cygpath -u "$2")" ] && echo same
+SH
+# no extension above: a shell file by its shebang; below, an owner, a test file and a doc write the pattern too
+for f in tools/platform-lib.sh tests/t.sh docs/x.md; do printf '#!/usr/bin/env bash\ncase "$1" in [A-Za-z]:*) echo drive ;; esac\n' > "$f"; done
+commit
+run "$ID"; [[ "$code" == 0 ]] || fail "pre-gate-check: path forms changed the exit code ($code): $out"
+assert_contains "$out" "| path forms (advisory): tools/a.sh:3 tools/bin/tool:2" "pre-gate-check: a drive pattern and a cygpath compare are named by file:line"
+[[ "$out" != *"tools/a.sh:4"* && "$out" != *"tools/a.sh:5"* && "$out" != *"tools/a.sh:6"* && "$out" != *"platform-lib.sh:"* && "$out" != *"tests/t.sh:"* && "$out" != *"docs/x.md:"* ]] || fail "pre-gate-check: a comment, a conversion (cygpath -w, an assignment from cygpath -u), an owner, a test or a doc was named: $out"
+reset; printf '#!/usr/bin/env bash\ntrue\n' > tools/x.sh; commit
+run "$ID"; assert_contains "$out" "| path forms (advisory): none" "pre-gate-check: no path rule written reads none"
+reset
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

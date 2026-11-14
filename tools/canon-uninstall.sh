@@ -177,7 +177,7 @@ install_verdict() {
 
 # ── what is registered, running, stored ─────────────────────────────────────────────────────────────────────────────────────────────────────
 # Both registries: skills.sh's ~/.config/canon/projects (Git Bash paths such as /c/Users/x) and the Cockpit's projects.json (JSON-escaped, and on Windows
-# C:\Users\x): the same project can appear in both spellings, so every path is brought to the Git Bash form first, and the dedupe ignores case on Windows.
+# C:\Users\x): the same project can appear in both spellings, so every path is brought to the Git Bash form first (cygpath, when present), and the dedupe compares canon's key, ignoring case on Windows.
 normalize_path() {
   local p="$1" q
   if _is_windows && command -v cygpath >/dev/null 2>&1; then
@@ -196,7 +196,11 @@ projects_union() {
       done || true
     fi; } | sed '/^[[:space:]]*$/d' | sed 's/\r$//')"
   [ -n "$raw" ] || return 0
-  printf '%s\n' "$raw" | while IFS= read -r p; do normalize_path "$p"; done | if _is_windows; then awk '!seen[tolower($0)]++' | sort; else sort -u; fi
+  # t-c8c6: one project, one entry, by canon's key (C:\x\p, C:/x/p and /c/x/p are one folder even without cygpath), case folded on Windows only
+  local win=0; _is_windows && win=1
+  # shellcheck disable=SC2154  # canon_awk_pkey comes from platform-lib.sh, sourced at the top
+  printf '%s\n' "$raw" | while IFS= read -r p; do normalize_path "$p"; done \
+    | LC_ALL=C awk -v win="$win" "$canon_awk_pkey"'{ k = pkey($0); if (win) k = tolower(k); if (!seen[k]++) print }' | sort
 }
 
 # Processes whose command line mentions the install folder, excluding this script and its ancestors. Printed as "pid command".

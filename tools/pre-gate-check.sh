@@ -10,6 +10,8 @@
 #   t-835f: also advisory, a `size` field: `planned N files, changed M, +A/-D` from the same diff, with `unplanned:` (a changed file plan.md's
 #   `## Files` does not name; a `dir/` entry names all under it), `large:` / `total` (net lines over tools/size-caps.tsv) and `no test:` (a new
 #   non-doc file when the diff holds no test file). Line count is not quality, so it never changes the exit code.
+#   t-c8c6: also advisory, a `path forms` field: added shell lines outside platform-lib.sh/ticket-root.sh that write a drive-letter pattern or compare a
+#   cygpath -u result inside [ ] / [[ ]] (a second copy of the path rule; compare with canon_same_folder or canon_path_key).
 #   t-dc18: also advisory, an `agent files` field naming each changed always-on agent file (rows `agent-file` in size-caps.tsv: CLAUDE.md, AGENTS.md, PROMOTED.md, standards/efficiency.md) with its first added lines, so a deployment note
 #   written into an agent-private file is seen at the close instead of after the word cap trips.
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
@@ -88,6 +90,29 @@ agent_file_report() {
   echo "agent files (advisory): $([[ -n "$out" ]] && echo "${out#; }" || echo none)"
 }
 
+# t-c8c6: path_forms_report <base> prints the `path forms (advisory)` text: each added shell line (a .sh/.bash file, or a file with no extension whose first
+# line is a sh shebang) outside the owners of the path rule (tools/platform-lib.sh: canon_path_key, canon_same_folder; tools/ticket-root.sh) that writes a
+# drive-letter pattern ([A-Za-z]:) or compares a `cygpath -u` result inside a test bracket (an assignment is a conversion, not named). Such a line is usually a second copy of the rule: compare through
+# canon_same_folder or canon_path_key instead. A conversion for a native program is fine; the reviewer judges, so it never changes the exit code.
+PATH_FORM_OWNERS="tools/platform-lib.sh tools/ticket-root.sh"
+path_forms_report() {
+  local base="$1" f hits="" n=0 h
+  while IFS= read -r f; do
+    [[ -n "$f" && " $PATH_FORM_OWNERS " != *" $f "* ]] || continue
+    is_test_path "$f" && continue; case "$f" in .tickets/*) continue ;; *.sh|*.bash) ;; *) [[ "${f##*/}" != *.* && -n "$(git show "HEAD:$f" 2>/dev/null | sed -n '1{/^#!.*sh/p;}')" ]] || continue ;; esac
+    while IFS= read -r h; do
+      n=$((n + 1)); ((n <= 8)) && hits+=" $f:$h"
+    done < <(git --literal-pathspecs -c core.quotePath=false diff -U0 --no-renames "$base" HEAD -- "$f" | awk '
+      /^@@/ { split($3, a, ","); ln = substr(a[1], 2) + 0; next }
+      /^\+\+\+/ { next }
+      /^\+/ { l = substr($0, 2); t = l; sub(/^[[:space:]]+/, "", t)
+              if (t !~ /^#/ && (l ~ /\[[A-Za-z]-[A-Za-z]([A-Za-z]-[A-Za-z])?\]:/ || l ~ /\[[^]]*(==?|!=)[^]]*cygpath -u|\[[^]]*cygpath -u[^]]*(==?|!=)/)) print ln
+              ln++; next }')
+  done < <(git -c core.quotePath=false diff --name-only --diff-filter=d --no-renames "$base" HEAD)
+  ((n > 8)) && hits+=" +$((n - 8)) more"
+  echo "path forms (advisory):${hits:- none}"
+}
+
 run_checks() {
   local base files f line="pre-gate" fails="" out rc=0 sc=() nd=() gd=() d
   if [[ -n "${PRE_GATE_BASE-}" ]]; then base="$PRE_GATE_BASE"
@@ -151,6 +176,7 @@ run_checks() {
   line+=" | dead code (advisory): ${dead:-none} | not scanned: ${ns:-none}"
   line+=" | $(size_report "$base")"
   line+=" | $(agent_file_report "$base")"
+  line+=" | $(path_forms_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
   return "$rc"
