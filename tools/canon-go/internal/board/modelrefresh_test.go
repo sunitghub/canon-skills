@@ -76,6 +76,7 @@ func TestLineAndVersion(t *testing.T) {
 func proposalDoc() map[string]any {
 	var doc map[string]any
 	_ = json.Unmarshal([]byte(`{
+	 "copilot_models": [{"id": "gpt-6-luna"}, {"id": "claude-sonnet-5"}],
 	 "defaults": {"reviewer": {"claude": "claude-sonnet-5", "copilot": "gpt-6-luna"}, "evaluator": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "light": {"claude": "claude-haiku-4-5-20251001", "copilot": "gpt-6-luna"}},
 	 "models": {
 	  "anthropic": [

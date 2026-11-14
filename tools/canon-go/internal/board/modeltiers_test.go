@@ -14,9 +14,11 @@ import (
 func regDoc() map[string]any {
 	var doc map[string]any
 	_ = json.Unmarshal([]byte(`{
-	 "defaults": {"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
+	 "defaults": {"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
 	  "reviewer": {"claude": "claude-sonnet-5", "copilot": "gpt-6-luna"}, "evaluator": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"},
-	  "light": {"claude": "claude-haiku-4-5", "copilot": "claude-haiku-4-5"}},
+	  "light": {"claude": "claude-haiku-4-5", "copilot": "claude-haiku-4.5"}},
+	 "copilot_models": [{"id": "claude-opus-5.5"}, {"id": "claude-sonnet-5.5"}, {"id": "claude-sonnet-5"}, {"id": "claude-haiku-5.5"}, {"id": "claude-haiku-4.5"},
+	  {"id": "gpt-6-sol"}, {"id": "gpt-6.1-sol"}, {"id": "gpt-6-luna"}],
 	 "models": {
 	  "anthropic": [
 	   {"id": "claude-opus-5-5", "alias": "opus"},
@@ -53,13 +55,16 @@ func TestRetireModelMovesAliasAndDefaults(t *testing.T) {
 	if old["alias"] != "" || old["legacy"] != true {
 		t.Errorf("old entry should be legacy with no alias: %v", old)
 	}
-	for _, slot := range [][2]string{{"evaluator", "claude"}, {"evaluator", "copilot"}, {"reviewer", "claude"}} { // t-8f6d: every slot that named it
+	for _, slot := range [][2]string{{"evaluator", "claude"}, {"reviewer", "claude"}} { // t-8f6d: every Claude Code slot that named it
 		if got := defaultOf(doc, slot[0], slot[1]); got != "claude-sonnet-5-5" {
 			t.Errorf("%s.%s default = %s", slot[0], slot[1], got)
 		}
 	}
 	if got := defaultOf(doc, "reviewer", "copilot"); got != "gpt-6-luna" {
 		t.Errorf("an OpenAI default must not move: %s", got)
+	}
+	if got := defaultOf(doc, "evaluator", "copilot"); got != "claude-sonnet-5" { // t-aba6: Copilot's own id, another id space
+		t.Errorf("a registry retire moved a Copilot CLI pick: %s", got)
 	}
 	if got := defaultOf(doc, "light", "claude"); got != "claude-haiku-4-5" {
 		t.Errorf("an unrelated default must not move: %s", got)
@@ -136,7 +141,7 @@ func TestRemoveModel(t *testing.T) {
 		t.Errorf("alias holder onto an aliased model: %v", err)
 	}
 	doc = regDoc()
-	if err := removeModel(doc, "gpt-6-luna", "gpt-6-sol"); err != nil || defaultOf(doc, "reviewer", "copilot") != "gpt-6-sol" {
+	if err := removeModel(doc, "gpt-6-luna", "gpt-6-sol"); err != nil || defaultOf(doc, "reviewer", "copilot") != "gpt-6-luna" { // t-aba6: a Copilot pick is never moved by a registry remove
 		t.Errorf("OpenAI default holder: %v %v", err, doc["defaults"])
 	}
 
@@ -172,7 +177,7 @@ func TestModelTiersConsistency(t *testing.T) {
 	}
 	ok := mut(func(d map[string]any) {
 		anth(d)[3].(map[string]any)["legacy"] = true
-		d["defaults"].(map[string]any)["light"] = map[string]any{"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5-5"}
+		d["defaults"].(map[string]any)["light"] = map[string]any{"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"}
 	})
 	if !modelTiersValid(ok) {
 		t.Error("a legacy entry that no default names, and a duplicate alias on a legacy entry, are fine")
@@ -181,11 +186,9 @@ func TestModelTiersConsistency(t *testing.T) {
 	dup := mut(func(d map[string]any) {
 		anth(d)[2].(map[string]any)["alias"] = "sonnet"
 		anth(d)[1].(map[string]any)["legacy"] = true
-		for _, step := range []string{"reviewer", "evaluator"} {
-			for _, agent := range tierAgents {
-				if d["defaults"].(map[string]any)[step].(map[string]any)[agent] == "claude-sonnet-5" {
-					d["defaults"].(map[string]any)[step].(map[string]any)[agent] = "claude-sonnet-5-5"
-				}
+		for _, step := range []string{"reviewer", "evaluator"} { // a registry default; Copilot picks are Copilot ids (t-aba6), not registry entries
+			if d["defaults"].(map[string]any)[step].(map[string]any)["claude"] == "claude-sonnet-5" {
+				d["defaults"].(map[string]any)[step].(map[string]any)["claude"] = "claude-sonnet-5-5"
 			}
 		}
 	})
@@ -221,9 +224,9 @@ func TestMigrateTierDefaults(t *testing.T) {
 		t.Fatal("an old-shape registry was not migrated")
 	}
 	want := map[string]map[string]string{
-		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
-		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5-5"},
-		"light": {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5-5"},
+		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
+		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"},
+		"light": {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -269,13 +272,14 @@ func TestTierDefaultsValidation(t *testing.T) {
 		t.Fatal("the fixture must be valid")
 	}
 	for name, d := range map[string]map[string]any{
-		"an unknown step":                     set("deploy", "claude", "claude-sonnet-5"),
-		"an unknown agent":                    set("reviewer", "codex", "claude-sonnet-5"),
-		"the old shape":                       set("eval", "anthropic", "claude-sonnet-5"),
-		"an OpenAI model for Claude Code":     set("reviewer", "claude", "gpt-6-luna"),
-		"a model not in the registry":         set("build", "copilot", "gpt-9"),
-		"a Haiku evaluator under Claude Code": set("evaluator", "claude", "claude-haiku-4-5"),
-		"a Haiku evaluator under Copilot":     set("evaluator", "copilot", "claude-haiku-5-5"),
+		"an unknown step":                        set("deploy", "claude", "claude-sonnet-5"),
+		"an unknown agent":                       set("reviewer", "codex", "claude-sonnet-5"),
+		"the old shape":                          set("eval", "anthropic", "claude-sonnet-5"),
+		"an OpenAI model for Claude Code":        set("reviewer", "claude", "gpt-6-luna"),
+		"a Copilot pick outside Claude and GPT":  set("build", "copilot", "gemini-3.8-flash"),
+		"a Claude Code pick not in the registry": set("build", "claude", "claude-gone-9"),
+		"a Haiku evaluator under Claude Code":    set("evaluator", "claude", "claude-haiku-4-5"),
+		"a Haiku evaluator under Copilot":        set("evaluator", "copilot", "claude-haiku-5-5"),
 	} {
 		if modelTiersValid(d) {
 			t.Errorf("%s should be refused", name)
@@ -315,7 +319,7 @@ func TestLoadModelTiersMigratesAnOldUserFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := loadModelTiers()
-	if defaultOf(got, "evaluator", "copilot") != "claude-opus-5-5" || defaultOf(got, "light", "claude") != "claude-haiku-5-5" || defaultOf(got, "plan", "claude") != "claude-opus-5-5" || defaultOf(got, "build", "copilot") != "gpt-6-sol" {
+	if defaultOf(got, "evaluator", "copilot") != "claude-opus-5.5" || defaultOf(got, "light", "claude") != "claude-haiku-5-5" || defaultOf(got, "plan", "claude") != "claude-opus-5-5" || defaultOf(got, "build", "copilot") != "gpt-6-sol" {
 		t.Fatalf("an old user file was not read migrated: %v", got["defaults"])
 	}
 	if after, _ := os.ReadFile(modelTiersUserFile()); string(after) != string(ub) {
@@ -362,7 +366,7 @@ func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
 // t-8f6d reviewer: a refused save names the default to change, so a person can fix it in Admin.
 func TestTierDefaultsProblemNamesTheDefault(t *testing.T) {
 	d := regDoc()
-	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["copilot"] = "claude-haiku-5-5"
+	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["copilot"] = "claude-haiku-5.5"
 	if got := tierDefaultsProblem(d); got != "the Evaluator default for Copilot CLI: the binding evaluator is never a Haiku model" {
 		t.Errorf("problem = %q", got)
 	}
@@ -391,5 +395,71 @@ func TestMigrateTierDefaultsLightOnly(t *testing.T) {
 		if got := defaultOf(doc, "light", "claude"); got != want || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5" {
 			t.Errorf("light-only (%s): light %s (want %s), defaults %v", prov, got, want, doc["defaults"])
 		}
+	}
+}
+
+// t-aba6 (DRY with validation): what Admin's pickers offer comes from tierPickProblem, so a picker can never offer a model a save would
+// refuse. Protects GET /api/admin/model-tiers/options, the one owner static/cockpit-admin.js renders.
+func TestTierOptions(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	doc := regDoc()
+	opts := tierOptions(doc)
+	ids := func(step, agent string) []string {
+		out := []string{}
+		for _, o := range opts[step][agent] {
+			out = append(out, o.ID)
+		}
+		return out
+	}
+	for step, per := range opts {
+		for agent, list := range per {
+			for _, o := range list {
+				if why := tierPickProblem(doc, step, agent, o.ID); why != "" && !o.Saved {
+					t.Errorf("%s.%s offers %s, which a save refuses: %s", step, agent, o.ID, why)
+				}
+			}
+		}
+	}
+	if got := strings.Join(ids("evaluator", "claude"), " "); got != "claude-opus-5-5 claude-sonnet-5 claude-sonnet-5-5" {
+		t.Errorf("Claude Code evaluator options = %s (no Haiku, Anthropic only)", got)
+	}
+	if got := strings.Join(ids("reviewer", "copilot"), " "); got != "claude-opus-5.5 claude-sonnet-5.5 claude-sonnet-5 claude-haiku-5.5 claude-haiku-4.5 gpt-6-sol gpt-6.1-sol gpt-6-luna" {
+		t.Errorf("Copilot CLI reviewer options = %s (Copilot's own ids)", got)
+	}
+	if got := strings.Join(ids("light", "copilot"), " "); got != "claude-haiku-5.5 claude-haiku-4.5 gpt-6-luna" {
+		t.Errorf("Copilot CLI light options = %s (the cheap line)", got)
+	}
+	if g := opts["reviewer"]["copilot"][5].Group; g != "OpenAI" {
+		t.Errorf("a GPT model is grouped %q", g)
+	}
+	// a saved pick no rule offers (a hand-edited file) is still listed, marked, so the select shows what is saved
+	doc["defaults"].(map[string]any)["light"].(map[string]any)["claude"] = "claude-opus-5-5"
+	found := false
+	for _, o := range tierOptions(doc)["light"]["claude"] {
+		found = found || (o.ID == "claude-opus-5-5" && !o.Saved)
+	}
+	if !found {
+		t.Errorf("a saved light pick outside the cheap line (valid, just not offered) should stay listed: %v", tierOptions(doc)["light"]["claude"])
+	}
+	doc["defaults"].(map[string]any)["evaluator"].(map[string]any)["claude"] = "claude-haiku-4-5"
+	ev := tierOptions(doc)["evaluator"]["claude"]
+	if l := ev[len(ev)-1]; l.ID != "claude-haiku-4-5" || !l.Saved {
+		t.Errorf("a saved Haiku evaluator (refused by validation) must be listed as saved_only: %+v", l)
+	}
+}
+
+// t-aba6 (evaluator, criterion 3): the Copilot CLI pickers list Claude, then GPT, whatever order Copilot answered in; each family keeps
+// Copilot's own order. Protects the options route and Admin's grouped pickers.
+func TestTierOptionsGroupsClaudeThenGPT(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	doc := regDoc()
+	doc["copilot_models"] = []any{map[string]any{"id": "gpt-6-luna"}, map[string]any{"id": "claude-sonnet-5.5"}, map[string]any{"id": "gpt-6-sol"}, map[string]any{"id": "claude-sonnet-5"}}
+	doc["defaults"].(map[string]any)["reviewer"].(map[string]any)["copilot"] = "claude-sonnet-5"
+	got := []string{}
+	for _, o := range tierOptions(doc)["reviewer"]["copilot"] {
+		got = append(got, o.Group+":"+o.ID)
+	}
+	if want := "Anthropic:claude-sonnet-5.5 Anthropic:claude-sonnet-5 OpenAI:gpt-6-luna OpenAI:gpt-6-sol"; strings.Join(got, " ") != want {
+		t.Errorf("order = %v, want %s", got, want)
 	}
 }

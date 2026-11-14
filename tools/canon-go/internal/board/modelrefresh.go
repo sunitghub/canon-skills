@@ -215,7 +215,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		defaults, _ := doc["defaults"].(map[string]any)
 		for _, step := range []string{"reviewer", "evaluator"} {
 			per, _ := defaults[step].(map[string]any)
-			for _, agent := range tierAgents {
+			for _, agent := range []string{registryAgent} { // t-aba6: a Copilot pick is Copilot's id, not a registry entry Refresh retires
 				if per != nil && fmt.Sprint(per[agent]) == id {
 					return true
 				}

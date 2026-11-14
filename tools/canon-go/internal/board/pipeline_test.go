@@ -541,7 +541,7 @@ func TestPipelineRefusesARegisteredPathThatIsNotAbsolute(t *testing.T) {
 func TestPipelineReplyCarriesEveryField(t *testing.T) {
 	id, root := pipelineEnv(t)
 	tiers := filepath.Join(t.TempDir(), "model-tiers.json")
-	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"other","name":"Other"},{"id":"claude-sonnet-5","name":"Claude Sonnet 5"}]}}`), 0o644)
+	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-sonnet-5"}},"copilot_models":[{"id":"claude-sonnet-5","name":"Claude Sonnet 5"}],"models":{"anthropic":[{"id":"other","name":"Other"},{"id":"claude-sonnet-5","name":"Claude Sonnet 5"}]}}`), 0o644)
 	old := modelTiersPath
 	modelTiersPath = tiers
 	defer func() { modelTiersPath = old }()

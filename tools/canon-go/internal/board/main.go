@@ -331,6 +331,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, projectsView())
 	case "/api/admin/model-tiers":
 		sendJSON(w, loadModelTiers())
+	case "/api/admin/copilot-models": // t-aba6: Copilot CLI's models (the last read, else the seed's fallback list)
+		sendJSON(w, copilotModelsView())
+	case "/api/admin/model-tiers/options": // t-aba6: each step picker's options per agent, from the validation rule (one owner)
+		sendJSON(w, tierOptionsView())
 	case "/api/settings": // t-dba0: the project's merged settings with the source of each
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -813,6 +817,27 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	// t-d40b: retire (the alias and defaults move to the replacement, the old entry goes legacy) and Remove with a move.
 	// t-d40b: Refresh fetches the saved sources and answers with a proposal (nothing is written); Apply writes the chosen part of it.
 	// The request never carries a URL: sources come from the saved registry.
+	// t-aba6: Read Copilot's models (a click): runs `copilot --acp` with fixed arguments and saves the list; the request carries nothing.
+	if path == "/api/admin/copilot-models/read" {
+		if !agentOriginOK(r) { // it starts a program: a loopback Origin is required, as for every route that does (t-d42a)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, _ := savedCopilotModels(loadModelTiers())
+		res := readAndSaveCopilotModels(r.Context())
+		status := http.StatusOK
+		switch ok, _ := res["ok"].(bool); {
+		case res["busy"] == true:
+			status = http.StatusConflict
+		case !ok:
+			status = http.StatusBadGateway
+		default:
+			ms, _ := res["models"].([]copilotModel)
+			emitSetting(r, "copilot-models.read", fmt.Sprint(len(list.Models)), fmt.Sprint(len(ms)))
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	if path == "/api/admin/model-tiers/refresh" {
 		only := -1
 		if f, ok := payload["index"].(float64); ok {
@@ -5582,8 +5607,16 @@ func loadModelTiers() map[string]any {
 			found[0]["sources"] = u
 		}
 	}
-	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save).
+	// t-aba6: the Copilot fallback list too (a user file saved before it existed gets the seed's).
+	if _, ok := found[0]["copilot_models"]; !ok && len(found) > 1 {
+		if u, ok := found[len(found)-1]["copilot_models"]; ok {
+			found[0]["copilot_models"] = u
+		}
+	}
+	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save);
+	// t-aba6: and its Copilot picks in Copilot's own ids.
 	migrateTierDefaults(found[0], found[len(found)-1])
+	migrateCopilotPicks(found[0])
 	return found[0]
 }
 

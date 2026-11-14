@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added: Admin > Model tiers > Agent: Copilot CLI reads Copilot's own model list on a click (**Read Copilot's models**; no model is called, and each read leaves one empty session in Copilot's history), keeps its Claude and GPT models with their premium-request multiplier, and lists them in every step's picker; a failed read says why and keeps the last list. A Copilot CLI pick is now Copilot's own id (e.g. `claude-sonnet-5.5`) and the close passes it as is; your saved Copilot picks are converted once. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-aba6).
+- Changed (events API): a successful read writes one `setting.changed` line, `copilot-models.read` (t-aba6).
+
 ## [0.55.21] - 2026-11-14
 
 - Changed: Admin > Model tiers keeps one model per step and per agent: Plan, Build, Reviewer (advisory), Evaluator (binding) and Simple / Light work, each for Claude Code and for Copilot CLI (an Agent dropdown picks which). The reviewer and the evaluator can now run on different models, e.g. an Opus reviewer and a Sonnet evaluator; a Copilot CLI pick may be an OpenAI model. The binding evaluator is never a Haiku model (a Lite ticket still runs it on Haiku). Plan and Build are recorded now and used from a later release. Your saved settings carry over: your Review & Eval pick becomes both gates for both agents, your Simple / Light pick stays. Update canon and restart the daemon together (Admin › Restart Daemon): an older board reading the new settings falls back to the default gate model (t-8f6d, t-2cc8).

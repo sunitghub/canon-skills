@@ -24,7 +24,7 @@ go_routes() {
 }
 # The pinned set: a route that disappears (or appears) changes what the board and the Cockpit can call, so it must
 # be an edit here too, never a silent change.
-want_routes="/api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
+want_routes="/api/admin/copilot-models /api/admin/copilot-models/read /api/admin/model-tiers /api/admin/model-tiers/apply /api/admin/model-tiers/options /api/admin/model-tiers/refresh /api/admin/model-tiers/remove /api/admin/model-tiers/retire /api/browse-dirs /api/ci-workflow /api/cockpit /api/cockpit-changes /api/cockpit-debug
 /api/cockpit-docs /api/cockpit-interrupted /api/cockpit-interrupted-dismiss /api/cockpit-restart
 /api/cockpit-status /api/cockpit-stop /api/commit /api/doc /api/first-snapshot /api/git /api/github/doctor /api/github/intake /api/github/push-main /api/github/sync
 /api/handoff /api/integrity /api/logbook /api/pipeline /api/project-stats /api/projects /api/register-skill /api/remote-agents /api/settings /api/skill-eval/check
@@ -860,16 +860,16 @@ json.dump(d,open(sys.argv[2],"w"))' "$SEED_TIERS" "$user_file"
 old_sha="$(shasum "$user_file" | cut -d' ' -f1)"
 tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin)["defaults"]; s=json.load(open(sys.argv[1]))["defaults"]
-assert all(d[r][a]=="claude-opus-5-5" for r in ("reviewer","evaluator") for a in ("claude","copilot")), d
-assert d["light"]=={"claude":"claude-haiku-5-5","copilot":"claude-haiku-5-5"} and d["plan"]==s["plan"] and d["build"]==s["build"] and "eval" not in d, d' "$SEED_TIERS" \
+assert all(d[r]["claude"]=="claude-opus-5-5" and d[r]["copilot"]=="claude-opus-5.5" for r in ("reviewer","evaluator")), d   # t-aba6: Copilot spells it with a dot
+assert d["light"]=={"claude":"claude-haiku-5-5","copilot":"claude-haiku-5.5"} and d["plan"]==s["plan"] and d["build"]==s["build"] and "eval" not in d, d' "$SEED_TIERS" \
   || fail "sprint-check-api: an old-shape data-dir copy was not answered migrated"
 [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$old_sha" ]] || fail "sprint-check-api: a GET rewrote the data-dir copy"
 [[ "$(tiers_post "$(curl -s "$B/api/admin/model-tiers")")" == 200 ]] || fail "sprint-check-api: saving the migrated registry was rejected"
-python3 -c 'import sys,json; d=json.load(open(sys.argv[1]))["defaults"]; assert "eval" not in d and d["evaluator"]["copilot"]=="claude-opus-5-5", d' "$user_file" \
+python3 -c 'import sys,json; d=json.load(open(sys.argv[1]))["defaults"]; assert "eval" not in d and d["evaluator"]["copilot"]=="claude-opus-5.5", d' "$user_file" \
   || fail "sprint-check-api: a save after the migration did not write the new shape"
 # each bad shape is refused and changes nothing on disk
 mig_sha="$(shasum "$user_file" | cut -d' ' -f1)"
-for bad in 'd["defaults"]["evaluator"]["claude"]="claude-haiku-5-5"' 'd["defaults"]["evaluator"]["copilot"]="claude-haiku-4-5-20251001"' \
+for bad in 'd["defaults"]["evaluator"]["claude"]="claude-haiku-5-5"' 'd["defaults"]["evaluator"]["copilot"]="claude-haiku-4.5"' \
            'd["defaults"]["deploy"]={"claude":"claude-sonnet-5"}' 'd["defaults"]["reviewer"]["codex"]="claude-sonnet-5"' \
            'd["defaults"]["reviewer"]["claude"]="gpt-6-luna"' 'd["defaults"]["eval"]={"anthropic":"claude-sonnet-5"}'; do
   body="$(curl -s "$B/api/admin/model-tiers" | python3 -c "import sys,json; d=json.load(sys.stdin); $bad; print(json.dumps(d))")"
@@ -878,13 +878,33 @@ for bad in 'd["defaults"]["evaluator"]["claude"]="claude-haiku-5-5"' 'd["default
 done
 [[ "$(tiers_post '{"reset":true}')" == 200 && "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: reset after the migration case is not the seed"
 
+# t-aba6: Copilot CLI's models. With no read saved the list is the seed's fallback; the options route offers each picker's models from
+# the validation rule; the read route needs a loopback Origin; a Copilot pick outside Claude and GPT is refused. (The read itself, with a
+# stub copilot, is TestCopilotReadRoute in internal/board: this board was started before a stub could be put on its PATH.)
+cp_json() { curl -s "$B/api/admin/copilot-models"; }
+cp_json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["source"]=="fallback" and any(m["id"]=="claude-sonnet-5.5" for m in d["models"]), d' \
+  || fail "sprint-check-api: GET copilot-models without a read is not the seed fallback"
+curl -s "$B/api/admin/model-tiers/options" | python3 -c 'import sys,json
+d=json.load(sys.stdin); o=d["options"]
+assert [s["id"] for s in d["steps"]]==["plan","build","reviewer","evaluator","light"] and [a["id"] for a in d["agents"]]==["claude","copilot"], d
+assert not any("haiku" in x["id"] for x in o["evaluator"]["claude"]+o["evaluator"]["copilot"]), o["evaluator"]
+assert all(x["id"].startswith(("claude-","gpt-")) for x in o["reviewer"]["copilot"]) and all("." not in x["id"] or x["group"] for x in o["reviewer"]["copilot"]), o' \
+  || fail "sprint-check-api: the options route does not follow the pick rules"
+# the read starts a program: like every such route it needs a loopback Origin (agentOriginOK, t-d42a): a foreign one and none are refused
+for org in 'Origin: http://evil.example' 'X-No-Origin: 1'; do
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$org" -H 'Content-Type: application/json' -d '{}' "$B/api/admin/copilot-models/read")" == 403 ]] \
+    || fail "sprint-check-api: Read Copilot's models with '$org' was not refused"
+done
+copilot_bad="$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; d=json.load(sys.stdin); d["defaults"]["reviewer"]["copilot"]="gemini-3.8-flash"; print(json.dumps(d))')"
+[[ "$(tiers_post "$copilot_bad")" == 400 ]] || fail "sprint-check-api: a Copilot pick outside Claude and GPT was accepted"
+
 # t-d40b: retire and Remove-with-a-move go through the same validation and land in the data dir, never the seed.
 tiers_act() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$2" "$B/api/admin/model-tiers/$1"; }
 [[ "$(tiers_act retire '{"old":"claude-sonnet-5","new":"claude-sonnet-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: retire sonnet 5 -> 5.5 was rejected"
 tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}
 assert m["claude-sonnet-5-5"].get("alias")=="sonnet" and m["claude-sonnet-5"].get("legacy") is True and not m["claude-sonnet-5"].get("alias"), m
-assert d["defaults"]["evaluator"]["claude"]=="claude-sonnet-5-5" and d["defaults"]["reviewer"]["copilot"]=="claude-sonnet-5-5", d["defaults"]' || fail "sprint-check-api: retire did not move the alias and every default and mark the old entry legacy"
+assert d["defaults"]["evaluator"]["claude"]=="claude-sonnet-5-5" and d["defaults"]["reviewer"]["copilot"]=="claude-sonnet-5", d["defaults"]' || fail "sprint-check-api: retire did not move the Claude Code defaults (and left the Copilot ids alone) and mark the old entry legacy"
 [[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api: retire changed the tracked seed"
 retired_sha="$(shasum "$user_file" | cut -d' ' -f1)"
 for bad in retire:'{"old":"claude-sonnet-5","new":"claude-sonnet-5"}' retire:'{"old":"nope","new":"claude-sonnet-5-5"}' retire:'{"old":"claude-haiku-4-5-20251001","new":"gpt-6-sol"}' \

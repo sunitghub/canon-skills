@@ -265,10 +265,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
   reads it migrated but writes the new shape only on its next Save): when `defaults.<role>` is absent, use
   `defaults.eval.anthropic` for both gates. Under Claude Code find the id's entry in `models.anthropic`
   and read its `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes the short alias, not the
-  full id. Under Copilot CLI the pick may also be a `models.openai` id: pass it as is, exactly as a per-ticket
-  `Gate model: openai:<id>` is passed (the `openai:` bullet above: Copilot's own model list, and its loud fallback when the id is
-  unavailable), and record `Admin Reviewer default, OpenAI` / `Admin Evaluator default, OpenAI`. Under Claude Code or pi a
-  `copilot` pick is never read. This applies to **every** ticket regardless of diff risk — a deliberate user choice
+  full id. Under Copilot CLI the pick is **Copilot's own model id** (`t-aba6`: e.g. `claude-sonnet-5.5`, `gpt-6-luna`, read
+  from Copilot in Admin): pass it as `model` as is (no alias, no mapping); if Copilot rejects it, treat it as unavailable with the
+  `openai:` bullet's loud fallback, and record `Admin Reviewer default (Copilot)` / `Admin Evaluator default (Copilot)`. Under
+  Claude Code or pi a `copilot` pick is never read. This applies to **every** ticket regardless of diff risk — a deliberate user choice
   (2026-09-23) that trades the former "code changes get full-strength review by default"
   posture for one admin-configurable default; the per-ticket `Gate model:` override (checked
   first, above) remains the escape hatch. **Interactive close only** — `tools/sprint-headless`/CI
@@ -310,7 +310,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
 - **Copilot CLI dispatch (harness-scoped, `t-bdce`).** Copilot CLI loads canon's `.claude/agents` gate
   definitions, but it **rejects Claude Code's model aliases** (`sonnet`, `haiku`, …). Pass **Copilot's
   model id** for the resolved tier instead: `sonnet` → `claude-sonnet-5`, `haiku` (demo mode) →
-  `claude-haiku-4.5`. Copilot's ids can differ from the Admin registry's Anthropic ids, so don't copy the
+  `claude-haiku-4.5`. This mapping is for a `Gate model:` alias and demo mode only: an Admin Copilot CLI default is already
+  Copilot's id (`t-aba6`) and is passed as is. Copilot's ids can differ from the Admin registry's Anthropic ids, so don't copy the
   registry id blindly. If Copilot still rejects the id, its error lists the available ids: pick the
   **same family and version**, never silently switch families (the one exception is a per-ticket
   `openai:<id>` pick, an explicit and recorded family switch — see above), and record the id actually used on the
