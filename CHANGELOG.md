@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-11-14
+
+- Added: a Cockpit session runs on the Plan model until its plan is approved, then on the Build model (Admin > Model tiers, or the ticket's own `| Plan model:` / `| Build model:` on the Sign-off line). When the turn that ran `sprint approve` ends, the Cockpit types `/model <build>` once and a line that continues the build, only once the session is quiet at the prompt; `sprint approve` says so, or prints the `/model` line outside the Cockpit. Pi has no `/model` and keeps its model. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-3425).
+- Changed: `Gate model:` now sets only the close gates, no longer the session's model (t-3425).
+- Changed: Admin > Model tiers drops the "Not used yet" badges on Plan and Build, and notes when a Reviewer or Evaluator pick is the same as Build (never blocks) (t-3425).
+- Added (events API): `implement.started` {ticket, session, agent, model, tier, source} when a session moves to or starts on the Build model (t-3425).
+
 ## [0.55.22] - 2026-11-14
 
 - Added: Admin > Model tiers > Agent: Copilot CLI reads Copilot's own model list on a click (**Read Copilot's models**; no model is called, and each read leaves one empty session in Copilot's history), keeps its Claude and GPT models with their premium-request multiplier, and lists them in every step's picker; a failed read says why and keeps the last list. A Copilot CLI pick is now Copilot's own id (e.g. `claude-sonnet-5.5`) and the close passes it as is; your saved Copilot picks are converted once. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-aba6).
