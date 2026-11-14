@@ -2631,10 +2631,15 @@ cmd_finish() {
         if git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}" >/dev/null 2>&1 \
            && ! git -C "$root" merge-base --is-ancestor "refs/remotes/origin/$into" "refs/heads/$into" 2>/dev/null \
            && ! git -C "$root" merge-base --is-ancestor "refs/heads/$into" "refs/remotes/origin/$into" 2>/dev/null; then
-          ahead="$(git -C "$root" log --format='  %h %s' "refs/heads/$into..refs/remotes/origin/$into" 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177')" \
-            || _fin_no "git could not list origin's new commits"
-          echo "finish: push: origin/$into has $(printf '%s\n' "$ahead" | grep -c .) commit(s) $into lacks: Push first merges origin/$into into $into here (a merge commit, never a rebase or force):"
-          printf '%s\n' "$ahead" | sed -n '1,20p'
+          # t-67f5: a force-pushed origin is never merged into (--push refuses), so say so here rather than promise the merge
+          if _origin_rewritten "$root" "$into"; then
+            echo "finish: push: origin/$into was rewritten (force-pushed: commits it had are gone): Push will refuse; nothing is merged or pushed. Look at origin/$into first"
+          else
+            ahead="$(git -C "$root" log --format='  %h %s' "refs/heads/$into..refs/remotes/origin/$into" 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177')" \
+              || _fin_no "git could not list origin's new commits"
+            echo "finish: push: origin/$into has $(printf '%s\n' "$ahead" | grep -c .) commit(s) $into lacks: Push first merges origin/$into into $into here (a merge commit, never a rebase or force):"
+            printf '%s\n' "$ahead" | sed -n '1,20p'
+          fi
         fi
         rp="$(_merge_record_paths "$root" "$tdir" "$into" | paste -sd, - | sed 's/,/, /g')"
         [[ -z "$rp" ]] || echo "finish: push: also commits canon's merge record first: $rp"
