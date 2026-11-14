@@ -71,8 +71,8 @@ func TestNotAProject(t *testing.T) {
 		cases = append(cases, struct{ name, dir, want string }{f[2], f[0], want})
 		rows++
 	}
-	if rows < 15 {
-		t.Fatalf("only %d table rows ran", rows)
+	if rows < 20 {
+		t.Fatalf("only %d table rows ran (the table has 20)", rows)
 	}
 	for _, c := range cases {
 		if got := NotAProject(c.dir); got != c.want {

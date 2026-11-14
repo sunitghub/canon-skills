@@ -30,7 +30,7 @@ while IFS=$'\t' read -r d want note; do
   [[ "$(why "$d" "$HOME_DIR")" == "$want" ]] || fail "folder-guard: '$d' ($note): got '$(why "$d" "$HOME_DIR")', want '$want'"
   rows=$((rows + 1))
 done < "$ROOT/tests/fixtures/folder-guard.tsv"
-[[ "$rows" -ge 15 ]] || fail "folder-guard: only $rows table rows ran"
+[[ "$rows" -ge 20 ]] || fail "folder-guard: only $rows table rows ran (the table has 20)"
 check_dir /usr                          "$HOME_DIR" "a system folder"
 check_dir /etc                          "$HOME_DIR" "a system folder"
 check_dir /var                          "$HOME_DIR" "a system folder"

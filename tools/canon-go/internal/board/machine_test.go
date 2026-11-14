@@ -204,7 +204,7 @@ func gzipCopy(src, dst string) error {
 // Prod path: the Machines node and the HANDOFF.md Recent activity block (both match events with belongsTo).
 func TestBelongsToWindowsPathForms(t *testing.T) {
 	root := `C:\Users\agentops\Documents\ToDo-App`
-	for _, p := range []string{`C:\Users\agentops\Documents\ToDo-App`, `C:/Users/agentops/Documents/ToDo-App`, `/c/Users/agentops/Documents/ToDo-App`, `c:/users/agentops/documents/todo-app/`, `C:/Users/agentops/Documents/ToDo-App-worktrees/feat-x`, `/c/Users/agentops/Documents/ToDo-App-worktrees/feat-x`} {
+	for _, p := range []string{`C:\Users\agentops\Documents\ToDo-App`, `C:/Users/agentops/Documents/ToDo-App`, `/c/Users/agentops/Documents/ToDo-App`, `c:/users/agentops/documents/todo-app/`, `/C/Users/agentops/Documents/ToDo-App`, `C:/Users/agentops/Documents/ToDo-App-worktrees/feat-x`, `/c/Users/agentops/Documents/ToDo-App-worktrees/feat-x`} {
 		if !belongsTo(p, root, nil) {
 			t.Errorf("%q should belong to %q", p, root)
 		}

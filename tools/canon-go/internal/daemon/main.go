@@ -4139,8 +4139,10 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 	if err != nil {
 		resolvedRoot = projectRoot
 	}
+	// t-9d04: SamePath is file identity, so on a case-insensitive volume a differently-cased spelling of the same folder matches. Return the
+	// root's (or below, git's) own spelling, never the client's: .cockpit-cwd and the board's holds (keyed by common.ResolvedKey) must see one.
 	if common.SamePath(resolvedCwd, resolvedRoot) {
-		return resolvedCwd, true
+		return resolvedRoot, true
 	}
 	worktrees, err := s.listWorktreesIn(projectRoot)
 	if err != nil {
@@ -4152,7 +4154,7 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 			continue
 		}
 		if common.SamePath(resolvedWt, resolvedCwd) {
-			return resolvedCwd, true
+			return resolvedWt, true
 		}
 	}
 	return "", false

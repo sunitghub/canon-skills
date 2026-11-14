@@ -4873,6 +4873,28 @@ func TestAppendDebugLogLineTruncatesToTail(t *testing.T) {
 
 // t-6a45: an in_progress ticket's persisted .cockpit-cwd lives in agent-writable .tickets/, so spawn must
 // re-validate it (project root / live `git worktree list`) rather than trust it after a stat.
+// t-9d04: on a case-insensitive volume (macOS APFS, Windows) a differently-cased spelling of the worktree or the root is the same folder
+// (common.SamePath is file identity), and resolveSpawnCwd returns the folder's own spelling, never the client's: .cockpit-cwd and the board's
+// worktree holds (keyed by common.ResolvedKey) then see one spelling, so a worktree in use stays held. Prod path: every session start.
+func TestResolveSpawnCwdReturnsTheFoldersOwnSpelling(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	realRoot, _ := filepath.EvalSymlinks(root)
+	realWt, _ := filepath.EvalSymlinks(wt)
+	upper := strings.ToUpper // the whole path: a temp folder's own name is digits
+	if _, err := os.Stat(upper(realWt)); err != nil || upper(realWt) == realWt {
+		t.Skip("this volume is case-sensitive: a differently-cased spelling is another folder")
+	}
+	for _, c := range []struct{ in, want string }{{upper(realWt), realWt}, {upper(realRoot), realRoot}, {realWt, realWt}} {
+		got, ok := s.resolveSpawnCwd(c.in, root)
+		if !ok || got != c.want {
+			t.Errorf("resolveSpawnCwd(%q) = %q, %v; want %q, true", c.in, got, ok, c.want)
+		}
+	}
+}
+
 func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()

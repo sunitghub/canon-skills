@@ -156,7 +156,7 @@ func belongsTo(project, root string, live map[string]bool) bool {
 	return pathDir(p) == r+"-worktrees"
 }
 
-var eventDriveRe = regexp.MustCompile(`^/[a-z](/|$)`)
+var eventDriveRe = regexp.MustCompile(`^/[a-zA-Z](/|$)`) // Git Bash takes /C/... too
 
 // eventKey is canon's key (common.PathKey) of an event's project, wholly lower-cased when it names a drive (/c/...): Windows folders ignore
 // case, and the board, tkt and Git Bash may spell one differently. This is belongsTo's own rule, kept from normPath (t-2db7): an event is
