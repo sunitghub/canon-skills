@@ -209,6 +209,12 @@ and every close uses it unless overridden. The chosen model and its source are r
 row as `(model: <id> — <source>)` for audit. (Applying the Admin default is confirmed only under Claude Code.) Full logic:
 [`skills/sprint/reference/complete.md`](../skills/sprint/reference/complete.md) → "Model tier for gates."
 
+**Plan and Build (t-3425).** A Cockpit session runs on Admin's Plan pick until the plan is approved, then on its Build pick: when the
+turn that ran `sprint approve` ends, the Cockpit types `/model <build>` and a line that continues the build. A ticket's own
+`| Plan model:` or `| Build model:` on the Sign-off line wins over Admin; `Gate model:` sets only the gates. Admin notes a Reviewer or
+Evaluator picked the same as Build (the check would run on the builder's model) and never blocks it. Outside the Cockpit, `sprint approve`
+prints the `/model` line to type. Pi has no `/model`, so a Pi session keeps its model.
+
 ## What It Actually Caught
 
 Claims about process are cheap. Here is what the gates found across two sprints on a real project —

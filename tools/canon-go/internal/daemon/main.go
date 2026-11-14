@@ -141,6 +141,8 @@ type session struct {
 	ticketsDir   string    // t-ffb9: parent of the session's state dir, resolved once at spawn() — .tickets/ for a ticket, the daemon's scratch dir for a scratch session (t-47f1) — lets debugf (no *server access) find it without re-walking
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	convID       string    // t-b1c8: the conversation id given to claude (--session-id or --resume), which names its transcript; empty for other agents
+	stage        string    // t-3425: "plan" or "build", the stage the session's model is for ("" for pi and term)
+	model        string    // t-3425: the model it runs on (passed as --model, or typed with /model at the switch)
 	started      time.Time // t-391a: spawn time for the /sessions listing
 	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
 	// (t-6ce0) — read-only after spawn(), same convention as agent/cwd above.
@@ -387,9 +389,11 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 				case "pi":
 					agentHint = "Last used: Pi \u00b7 model: pi default"
 				case "copilot":
-					agentHint = "Last used: Copilot CLI \u00b7 model: " + agentDisplayModel(s.gateModel(ticket))
+					m, _, _ := s.sessionModel(s.cfg.projectRoot, ticket, "copilot")
+					agentHint = "Last used: Copilot CLI \u00b7 model: " + agentDisplayModel(m)
 				default:
-					agentHint = "Last used: Claude Code \u00b7 model: " + agentDisplayModel(s.gateModel(ticket))
+					m, _, _ := s.sessionModel(s.cfg.projectRoot, ticket, common.RegistryAgent)
+					agentHint = "Last used: Claude Code \u00b7 model: " + agentDisplayModel(m)
 				}
 			}
 		}
@@ -845,20 +849,25 @@ var termProgram = os.Executable
 const promptSuggestionEnv = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
 
 // sessionEnv is the environment a session's process starts with: the restricted Terminal's own (termEnv); every agent
-// gets COCKPIT_TICKET; a claude session also gets prompt suggestions off, replacing any inherited value.
+// gets COCKPIT_TICKET and COCKPIT_AGENT; a claude session also gets prompt suggestions off, replacing any inherited value.
 func sessionEnv(kind, ticket string, environ []string) []string {
 	if kind == "term" {
 		return termEnv(environ)
 	}
 	claude := kind != "pi" && kind != "copilot"
-	env := make([]string, 0, len(environ)+2)
+	env := make([]string, 0, len(environ)+3)
 	for _, kv := range environ {
 		if claude && strings.HasPrefix(kv, promptSuggestionEnv+"=") {
 			continue
 		}
 		env = append(env, kv)
 	}
-	env = append(env, "COCKPIT_TICKET="+ticket)
+	agent := kind
+	if claude {
+		agent = common.RegistryAgent
+	}
+	// t-3425: COCKPIT_AGENT names the agent, so sprint approve can name the Build model the switch will type (or that pi has none)
+	env = append(env, "COCKPIT_TICKET="+ticket, "COCKPIT_AGENT="+agent)
 	if claude {
 		env = append(env, promptSuggestionEnv+"=false")
 	}
@@ -1029,9 +1038,10 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// flags only and no shell hooks. copilot (t-66b2) mirrors claude's argv shape
 	// but has no --settings equivalent (no Notification-hook-equivalent event
 	// exists to wire up regardless — see resolveCopilotSessionIDIn/agentSpawnArgs).
-	program := s.cfg.sprintBin // claude default / COCKPIT_SPRINT_BIN override
-	copilotResuming := false   // t-6ce0: surfaced onto the session below
-	copilotGate := ""          // t-d8b0: logged below when copilot can't take it
+	program := s.cfg.sprintBin   // claude default / COCKPIT_SPRINT_BIN override
+	copilotResuming := false     // t-6ce0: surfaced onto the session below
+	copilotPick := ""            // t-d8b0: logged below when copilot can't take it
+	claudeModel, stage := "", "" // t-3425: the session's model and the stage it is for
 	inProgress := s.ticketStatusIn(projectRoot, ticket) == "in_progress"
 	switch kind {
 	case "term":
@@ -1051,8 +1061,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		program = common.EnvOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
 		copilotResuming = resuming
-		copilotGate = s.gateModelIn(projectRoot, ticket)
-		args = agentSpawnArgs("copilot", ticket, resuming, !resuming && inProgress, copilotSessionID, copilotGate, "")
+		copilotPick, stage, _ = s.sessionModel(projectRoot, ticket, "copilot") // t-3425: the stage's model, never Gate model's
+		args = agentSpawnArgs("copilot", ticket, resuming, !resuming && inProgress, copilotSessionID, copilotPick, "")
 	default:
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
@@ -1072,7 +1082,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		// conversation, defeating the whole point.
 		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
 		convID = claudeSessionID
-		args = agentSpawnArgs("claude", ticket, resuming, !resuming && inProgress, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
+		claudeModel, stage, _ = s.sessionModel(projectRoot, ticket, common.RegistryAgent) // t-3425: the stage's model, never Gate model's
+		args = agentSpawnArgs("claude", ticket, resuming, !resuming && inProgress, claudeSessionID, claudeModel, settingsPath)
 		if resuming && s.adoptedTicket(projectRoot, ticket) && s.ticketStatusIn(projectRoot, ticket) == "open" {
 			// t-f553: the scratch conversation continues — as this ticket's sprint.
 			args = append(args, "sprint start "+ticket)
@@ -1093,7 +1104,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
-		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming,
+		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming, stage: stage, model: claudeModel + copilotPick,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
@@ -1102,8 +1113,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// never a token: the status token rides in the settings FILE) so a wrong flag is
 	// visible at once (t-d8b0's `copilot --model haiku` would have been).
 	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v bin=%q argv=%q", kind, ticket, cwd, copilotResuming, bin, args)
-	if copilotGate != "" && copilotModel(copilotGate) == "" {
-		se.debugf("spawn model=%s omitted for copilot (no verified Copilot id)", copilotGate)
+	if copilotPick != "" && copilotModel(copilotPick) == "" {
+		se.debugf("spawn model=%s omitted for copilot (no verified Copilot id)", copilotPick)
 	}
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
@@ -2933,13 +2944,8 @@ func (s *server) saveAndEnd(se *session) {
 	// an embedded \r), requiring a human to press Enter manually to unstick
 	// it. cockpit.html's own client-triggered sendPrompt already does this
 	// correctly (text, then a separate \r ~300ms later); this mirrors it.
-	if _, err := se.pty.Write([]byte(prompt)); err != nil {
+	if err := typeLine(se, prompt); err != nil {
 		s.killSession(se) // can't even write to it — nothing more to wait for
-		return
-	}
-	time.Sleep(300 * time.Millisecond)
-	if _, err := se.pty.Write([]byte("\r")); err != nil {
-		s.killSession(se)
 		return
 	}
 	// t-6291: verbose lifecycle log of how Save & End ended (metadata only).
@@ -4569,7 +4575,67 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *sessio
 		return
 	}
 	se.setStatus(status)
+	if status == "awaiting-input" { // t-3425: the turn ended: a plan approved in it moves the session to the Build model
+		go s.switchToBuild(se)
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// typeLine writes one line into a session as a person would: the text, then Enter as a SEPARATE write 300 ms later (t-cd06: one write
+// with a trailing \r lands as an unsubmitted draft). The one way the daemon types into a session (Save & End, the Build switch).
+func typeLine(se *session, text string) error {
+	if _, err := se.pty.Write([]byte(text)); err != nil {
+		return err
+	}
+	time.Sleep(300 * time.Millisecond)
+	_, err := se.pty.Write([]byte("\r"))
+	return err
+}
+
+// switchToBuild (t-3425, user 2026-11-14: switch at approval): when a claude or copilot session that started on the Plan model reaches
+// the prompt (awaiting-input) and its plan now carries sprint approve's record, it types `/model <build>` once, then one line that
+// continues the build, and records implement.started. Never while the agent works, waits on the person (needs-you) or shows a menu;
+// never twice (the session's stage becomes build); pi has no /model and is never switched.
+func (s *server) switchToBuild(se *session) {
+	se.mu.Lock()
+	candidate := se.stage == "plan" && (se.agent == "claude" || se.agent == "copilot" || se.agent == "")
+	se.mu.Unlock()
+	if !candidate || !s.planApprovedIn(se.projectRoot, se.ticket) {
+		return
+	}
+	agent := common.RegistryAgent
+	if se.agent == "copilot" {
+		agent = "copilot"
+	}
+	model, stage, source := s.sessionModel(se.projectRoot, se.ticket, agent)
+	if agent == "copilot" {
+		model = copilotModel(model)
+	}
+	se.mu.Lock()
+	// the one readiness check, under the lock right before typing: at the prompt, no menu, not exiting or being saved
+	if se.stage != "plan" || se.status != "awaiting-input" || se.menuPendingLocked() || se.exited || se.reaping {
+		se.mu.Unlock()
+		return
+	}
+	se.stage = "build"
+	from := se.model
+	se.mu.Unlock()
+	if model == "" || model == from {
+		se.debugf("build switch: no model change (%q)", model)
+		return
+	}
+	if typeLine(se, "/model "+model) != nil {
+		return
+	}
+	time.Sleep(time.Second) // let the CLI take the model before the next line
+	if typeLine(se, "Plan approved: continue the build ("+se.ticket+") on "+model+".") != nil {
+		return
+	}
+	se.mu.Lock()
+	se.model = model
+	se.mu.Unlock()
+	se.debugf("build switch: %s -> %s (%s)", from, model, source)
+	se.emit("implement.started", map[string]string{"model": model, "tier": stage, "source": source})
 }
 
 // setStatus records the new status and tells every attached browser. A no-op
@@ -4621,7 +4687,12 @@ var (
 	signoffHeadingRe = regexp.MustCompile(`(?m)^##[ \t]+Sign-off[ \t\r]*$`)
 	nextHeadingRe    = regexp.MustCompile(`(?m)^##[ \t]`)
 	tierLineRe       = regexp.MustCompile(`(?m)^[ \t]*[Tt]ier[ \t]*:.*$`)
-	gateModelLabelRe = regexp.MustCompile(`[Gg]ate[ \t]+model[ \t]*:[ \t]*`)
+	// t-3425: one label rule for every Sign-off model field (gate, plan, build); the first letter may be either case.
+	signoffModelLabelRe = map[string]*regexp.Regexp{
+		"gate":  regexp.MustCompile(`[Gg]ate[ \t]+model[ \t]*:[ \t]*`),
+		"plan":  regexp.MustCompile(`[Pp]lan[ \t]+model[ \t]*:[ \t]*`),
+		"build": regexp.MustCompile(`[Bb]uild[ \t]+model[ \t]*:[ \t]*`),
+	}
 	// Mirrors gate_model_resolve's charset guard. A shell is never involved (the
 	// command is an argv slice), but the value still becomes an argv element, and
 	// plan.md is writable by the very agent this value configures — so the guard
@@ -4630,12 +4701,12 @@ var (
 	// `--model <value>` into a second option, e.g.
 	// `--model --dangerously-skip-permissions`, escalating the next session past
 	// the inherited-permissions guarantee this daemon rests on.
-	modelValueRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	modelValueRe = common.ModelValueRe // t-3425: one owner, shared with common.AdminStageModel
 )
 
-// parseGateModel returns the raw lowercased `Gate model:` value from the
-// Sign-off section's Tier line, or "" — gate_model_parse's contract.
-func parseGateModel(content string) string {
+// parseSignoffModel returns the raw lowercased value of one Sign-off model field (gate, plan, build; t-3425) from the Sign-off section's
+// Tier line, or "" — signoff_model_parse's contract.
+func parseSignoffModel(content, label string) string {
 	h := signoffHeadingRe.FindStringIndex(content)
 	if h == nil {
 		return ""
@@ -4648,7 +4719,7 @@ func parseGateModel(content string) string {
 	if line == "" {
 		return ""
 	}
-	m := gateModelLabelRe.FindStringIndex(line)
+	m := signoffModelLabelRe[label].FindStringIndex(line)
 	if m == nil {
 		return ""
 	}
@@ -4672,26 +4743,52 @@ func parseGateModel(content string) string {
 	}, v)
 }
 
-// gateModel returns the model to pass as `--model` for this ticket, or "" when
-// no override applies. `session` and an absent field both mean "the CLI's own
-// default", matching gate_model_resolve. A present-but-invalid value is dropped
-// with a stderr warning rather than aborting the spawn: headless CI can fail the
-// whole run on a typo, but here a human is watching a terminal they just asked
-// for, and killing the session would be a worse answer than starting it on the
-// default model and saying so. ticket has already passed ticketRe, so it cannot
-// traverse out of .tickets/.
-func (s *server) gateModel(ticket string) string {
-	return s.gateModelIn(s.cfg.projectRoot, ticket)
+// approvedLineRe is the record `sprint approve` writes under the ticked box: the one sign of an approved plan (t-3425).
+var approvedLineRe = regexp.MustCompile(`(?m)^Approved: sha256:`)
+
+// planApprovedIn: the ticket's plan carries sprint approve's record.
+func (s *server) planApprovedIn(root, ticket string) bool {
+	b, err := os.ReadFile(filepath.Join(s.sessionStateDir(root, ticket), "plan.md"))
+	return err == nil && approvedLineRe.Match(b)
 }
 
-// gateModelIn is gateModel scoped to an arbitrary project root (t-391a).
-func (s *server) gateModelIn(root, ticket string) string {
+// seedModelTiers is the install's seed registry, or "" when this binary is not inside an install.
+func seedModelTiers() string {
+	if root := canonRoot(); root != "" {
+		return filepath.Join(root, "tools", "sprint-check-app", "model-tiers.json")
+	}
+	return ""
+}
+
+// sessionModel (t-3425) is the model a claude or copilot session of ticket runs on, the stage it is for and where it came from:
+// "plan" until sprint approve's record is in plan.md, then "build". The ticket's own `Plan model:` / `Build model:` wins, else
+// Admin's pick for that stage and agent (common.AdminStageModel over common.LoadModelTiers, the registry's one owner). `Gate model:` no longer sets the session (user, 2026-11-14): it is the gates'. Every value passes modelValueRe.
+func (s *server) sessionModel(root, ticket, agent string) (model, stage, source string) {
+	stage = "plan"
+	if s.planApprovedIn(root, ticket) {
+		stage = "build"
+	}
+	label := common.TierStepLabel[stage]
+	if v := s.signoffModelIn(root, ticket, stage); v != "" {
+		return v, stage, "ticket " + label + " model"
+	}
+	if id := common.AdminStageModel(common.LoadModelTiers(common.ModelTiersUserFile(), seedModelTiers()), stage, agent); id != "" {
+		return id, stage, "Admin " + label + " default"
+	}
+	return "", stage, ""
+}
+
+// signoffModelIn resolves any Sign-off model field (t-3425: gate, plan, build) for a ticket — signoff_model_resolve's contract, or "" when
+// no override applies. A present-but-invalid value is dropped with a stderr warning rather than aborting the spawn: headless CI can fail
+// the whole run on a typo, but here a human is watching the terminal they just asked for. ticket has passed ticketRe, so it cannot
+// traverse out of .tickets/.
+func (s *server) signoffModelIn(root, ticket, label string) string {
 	plan := filepath.Join(s.sessionStateDir(root, ticket), "plan.md")
 	b, err := os.ReadFile(plan)
 	if err != nil {
 		return ""
 	}
-	v := parseGateModel(string(b))
+	v := parseSignoffModel(string(b), label)
 	// Absent, `session`, and `default` all mean "no override" — `default` is the
 	// board dropdown's own label, so a hand-written one would otherwise be
 	// forwarded as an invalid model id.
@@ -4703,12 +4800,12 @@ func (s *server) gateModelIn(root, ticket string) string {
 	// mirrors gate_model_resolve.
 	if id := strings.TrimPrefix(v, "openai:"); id != v {
 		if !modelValueRe.MatchString(id) {
-			fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid Gate model %q in %s (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)\n", v, plan)
+			fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid %s model %q in %s (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)\n", strings.ToUpper(label[:1])+label[1:], v, plan)
 		}
 		return ""
 	}
 	if !modelValueRe.MatchString(v) {
-		fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid Gate model %q in %s (alias or model id — letters, digits, '.', '_', '-' only)\n", v, plan)
+		fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid %s model %q in %s (alias or model id — letters, digits, '.', '_', '-' only)\n", strings.ToUpper(label[:1])+label[1:], v, plan)
 		return ""
 	}
 	return v

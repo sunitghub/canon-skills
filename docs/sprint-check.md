@@ -186,13 +186,20 @@ sprint agent without leaving the browser — no second terminal.
   commands, and it prompts you in the embedded terminal exactly as it would in a
   real one. The daemon **never** overrides permission behavior: no
   `--permission-mode`, no bypass flag. Whatever that project is already
-  configured to auto-approve, it auto-approves here too. If the ticket's
-  `plan.md` carries a `Gate model:` value, the daemon passes it as `--model`;
-  the *parse* is shared with `sprint-headless` (`tools/gate-model.sh`, pinned
-  across the two runtimes by `tests/gate-model-parity.sh`), but the disposition on
-  a malformed value differs on purpose: the daemon warns on stderr and starts on
-  the default model, because a human is sitting in front of the terminal, whereas
-  headless CI hard-fails the run. `session` and `default` both mean "no override".
+  configured to auto-approve, it auto-approves here too. The session starts on
+  its stage's model (t-3425): the Plan model until `sprint approve` writes its
+  `Approved:` line, then the Build model. Each is the ticket's own `Plan model:` /
+  `Build model:` on the Sign-off line, else Admin > Model tiers' pick for that
+  step and agent, passed as `--model` (Claude Code gets the registry alias; Pi gets
+  none). When a session that started on the Plan model reaches the prompt after
+  approval (no menu open, not waiting on you), the daemon types `/model <build>`
+  once, then a line that continues the build, and records `implement.started`.
+  `Gate model:` sets only the close gates. The *parse* is shared with
+  `sprint-headless` (`tools/gate-model.sh`, pinned across the two runtimes by
+  `tests/gate-model-parity.sh`), but the disposition on a malformed value differs
+  on purpose: the daemon warns on stderr and starts on the default model, because
+  a human is sitting in front of the terminal, whereas headless CI hard-fails the
+  run. `session` and `default` both mean "no override".
 - **"Needs you" status.** Because the agent inherits the project's permissions,
   it can end up blocked on a prompt while you're looking at another tab. The
   status dot turns red and pulses (**needs you**) as soon as that happens, and a

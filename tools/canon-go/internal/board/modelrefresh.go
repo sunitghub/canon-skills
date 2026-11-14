@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-d40b: what Refresh does with the pages it fetched. A source is a docs page (HTML with model ids and prices) or a provider's Models
@@ -195,7 +197,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 			id := fmt.Sprint(m["id"])
 			line, ver, _ := lineAndVersion(id)
 			have[id] = true
-			all = append(all, reg{id, fmt.Sprint(m["name"]), ver, line, isLegacy(m), prov})
+			all = append(all, reg{id, fmt.Sprint(m["name"]), ver, line, common.IsLegacy(m), prov})
 		}
 	}
 	best := func(prov, line string, below []int) *reg { // the highest active entry of the line, strictly below `below` when given
@@ -215,7 +217,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		defaults, _ := doc["defaults"].(map[string]any)
 		for _, step := range []string{"reviewer", "evaluator"} {
 			per, _ := defaults[step].(map[string]any)
-			for _, agent := range []string{registryAgent} { // t-aba6: a Copilot pick is Copilot's id, not a registry entry Refresh retires
+			for _, agent := range []string{common.RegistryAgent} { // t-aba6: a Copilot pick is Copilot's id, not a registry entry Refresh retires
 				if per != nil && fmt.Sprint(per[agent]) == id {
 					return true
 				}
@@ -263,7 +265,7 @@ func applyProposal(doc map[string]any, adds []map[string]any, retire [][2]string
 		if !modelIDRe.MatchString(id) || (prov != "anthropic" && prov != "openai") {
 			return fmt.Errorf("%q is not a model id of a known provider", id)
 		}
-		if p, m := registryModel(doc, id); m != nil {
+		if p, m := common.RegistryModel(doc, id); m != nil {
 			return fmt.Errorf("%s is already in the registry (%s)", id, p)
 		}
 		in, _ := a["input_price"].(float64)

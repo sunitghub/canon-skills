@@ -1175,7 +1175,15 @@ func TestHookDirLifecycle(t *testing.T) {
 	}
 }
 
-type gateModelCase struct{ Name, Plan, Parse, Expect string }
+type gateModelCase struct{ Name, Plan, Parse, Expect, Label string }
+
+// label is the case's Sign-off field (t-3425); a case without one is `Gate model:`.
+func (c gateModelCase) label() string {
+	if c.Label == "" {
+		return "gate"
+	}
+	return c.Label
+}
 
 func loadGateModelFixtures(t *testing.T) []gateModelCase {
 	t.Helper()
@@ -1199,8 +1207,8 @@ func loadGateModelFixtures(t *testing.T) []gateModelCase {
 // divergence in either port fails one of the two suites.
 func TestParseGateModelFixtures(t *testing.T) {
 	for _, c := range loadGateModelFixtures(t) {
-		if got := parseGateModel(c.Plan); got != c.Parse {
-			t.Errorf("%s: parseGateModel = %q, want %q", c.Name, got, c.Parse)
+		if got := parseSignoffModel(c.Plan, c.label()); got != c.Parse {
+			t.Errorf("%s: parseSignoffModel(%s) = %q, want %q", c.Name, c.label(), got, c.Parse)
 		}
 	}
 }
@@ -1216,8 +1224,8 @@ func TestResolveGateModelFixtures(t *testing.T) {
 			t.Fatal(err)
 		}
 		s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
-		if got := s.gateModel("t-ab12"); got != c.Expect {
-			t.Errorf("%s: gateModel = %q, want %q", c.Name, got, c.Expect)
+		if got := s.signoffModelIn(root, "t-ab12", c.label()); got != c.Expect {
+			t.Errorf("%s: signoffModelIn(%s) = %q, want %q", c.Name, c.label(), got, c.Expect)
 		}
 	}
 }
@@ -1252,12 +1260,12 @@ func TestGateModelOpenAIWarning(t *testing.T) {
 			old := os.Stderr
 			os.Stderr = w
 			s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
-			got := s.gateModel("t-ab12")
+			got := s.signoffModelIn(root, "t-ab12", "gate")
 			w.Close()
 			os.Stderr = old
 			out, _ := io.ReadAll(r)
 			if got != "" {
-				t.Errorf("gateModel = %q, want \"\"", got)
+				t.Errorf("signoffModelIn(gate) = %q, want \"\"", got)
 			}
 			if warned := strings.Contains(string(out), "ignoring invalid Gate model"); warned != tc.wantWarn {
 				t.Errorf("warned=%v, want %v; stderr: %s", warned, tc.wantWarn, out)
@@ -1268,9 +1276,10 @@ func TestGateModelOpenAIWarning(t *testing.T) {
 
 // A missing plan.md is the common case for a brand-new ticket — no override, no error.
 func TestResolveGateModelNoPlan(t *testing.T) {
-	s := newServer(config{projectRoot: t.TempDir(), stateDir: t.TempDir()})
-	if got := s.gateModel("t-ab12"); got != "" {
-		t.Fatalf("gateModel with no plan.md = %q, want \"\"", got)
+	root := t.TempDir()
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+	if got := s.signoffModelIn(root, "t-ab12", "gate"); got != "" {
+		t.Fatalf("signoffModelIn(gate) with no plan.md = %q, want \"\"", got)
 	}
 }
 
@@ -1283,31 +1292,38 @@ func TestSpawnModelFlag(t *testing.T) {
 		name, tierLine string
 		wantLeading    []string // leading argv elements before --session-id, if any
 	}{
-		{"resolved model reaches argv, prompt stays last",
-			"Tier: high-risk | Risk: none | Gate model: haiku",
+		// t-3425: the session runs on its stage's model (Plan until sprint approve's record, then Build); Gate model is the gates' only
+		{"resolved Plan model reaches argv, prompt stays last",
+			"Tier: high-risk | Risk: none | Plan model: haiku",
 			[]string{"--model", "haiku"}},
 		{"no suffix means no flag",
 			"Tier: normal | Risk: none",
 			nil},
+		{"Gate model no longer sets the session",
+			"Tier: normal | Risk: none | Gate model: haiku",
+			nil},
+		{"an approved plan runs on the Build model, not the Plan model",
+			"Tier: normal | Risk: none | Plan model: haiku | Build model: sonnet\n\n- [x] Plan approved\nApproved: sha256:abc 2026-11-14T00:00:00Z",
+			[]string{"--model", "sonnet"}},
 		{"session means no flag",
-			"Tier: normal | Risk: none | Gate model: session",
+			"Tier: normal | Risk: none | Plan model: session",
 			nil},
 		{"a value with shell metacharacters never becomes an argv element",
-			"Tier: normal | Risk: none | Gate model: haiku;touch$(id)",
+			"Tier: normal | Risk: none | Plan model: haiku;touch$(id)",
 			nil},
 		// plan.md is writable by the agent this value configures, so a value that
 		// could be re-read as a flag must never reach argv — otherwise a session
 		// could escalate the next one past the inherited-permissions guarantee.
 		{"a leading-hyphen value never reaches argv as a second flag",
-			"Tier: normal | Risk: none | Gate model: --dangerously-skip-permissions",
+			"Tier: normal | Risk: none | Plan model: --dangerously-skip-permissions",
 			nil},
 		{"a real hyphenated model id still reaches argv",
-			"Tier: normal | Risk: none | Gate model: claude-sonnet-5",
+			"Tier: normal | Risk: none | Plan model: claude-sonnet-5",
 			[]string{"--model", "claude-sonnet-5"}},
 		// t-ef27: openai:<id> is for the close gates under Copilot CLI; the session
 		// itself runs on the harness default, so it must not become --model.
 		{"openai:<id> means no flag on a claude spawn",
-			"Tier: normal | Risk: none | Gate model: openai:gpt-6-luna",
+			"Tier: normal | Risk: none | Plan model: openai:gpt-6-luna",
 			nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1317,7 +1333,7 @@ func TestSpawnModelFlag(t *testing.T) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			plan := "# Plan\n\n## Sign-off\n" + tc.tierLine + "\n\n## Approach\n1. do it\n"
+			plan := "# Plan\n\n## Sign-off\n" + strings.ReplaceAll(tc.tierLine, `\n`, "\n") + "\n\n## Approach\n1. do it\n"
 			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -1337,7 +1353,7 @@ func TestSpawnModelFlag(t *testing.T) {
 	}
 }
 
-// t-d8b0: end to end through spawn() — the Gate model in plan.md reaches a real
+// t-d8b0: end to end through spawn() — the session's model (t-3425: the Plan model line here) reaches a real
 // copilot argv as Copilot's own id, or not at all (logged), never as an alias.
 func TestCopilotSpawnMapsGateModel(t *testing.T) {
 	debugEnabled.Store(true)
@@ -1361,7 +1377,7 @@ func TestCopilotSpawnMapsGateModel(t *testing.T) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			plan := "# Plan\n\n## Sign-off\nTier: normal | Risk: none | Gate model: " + tc.gate + "\n\n## Approach\n1. do it\n"
+			plan := "# Plan\n\n## Sign-off\nTier: normal | Risk: none | Plan model: " + tc.gate + "\n\n## Approach\n1. do it\n" // t-3425: the stage's model
 			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -8901,6 +8917,9 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		if count(env, "COCKPIT_TICKET=t-ab12") != 1 || count(env, "PATH=/bin") != 1 {
 			t.Errorf("kind %q: lost COCKPIT_TICKET or the inherited env: %v", kind, env)
 		}
+		if count(env, "COCKPIT_AGENT=claude") != 1 { // t-3425: sprint approve names the claude Build model from it
+			t.Errorf("kind %q: want COCKPIT_AGENT=claude: %v", kind, env)
+		}
 	}
 	for _, kind := range []string{"pi", "copilot"} {
 		env := sessionEnv(kind, "t-ab12", environ)
@@ -8909,6 +8928,9 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		}
 		if count(env, "COCKPIT_TICKET=t-ab12") != 1 {
 			t.Errorf("kind %q lost COCKPIT_TICKET: %v", kind, env)
+		}
+		if count(env, "COCKPIT_AGENT="+kind) != 1 {
+			t.Errorf("kind %q: want COCKPIT_AGENT=%s: %v", kind, kind, env)
 		}
 	}
 	if env := sessionEnv("term", "t-ab12", environ); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
@@ -9027,5 +9049,146 @@ func TestCanonRootFrom(t *testing.T) {
 		if got := canonRootFrom(in); got != want {
 			t.Errorf("canonRootFrom(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// t-3425: with no per-ticket line the session starts on Admin's pick for its stage and agent (the registry's one owner, read from
+// $CANON_HOME/cockpit/model-tiers.json): Claude Code gets the entry's alias, and an approved plan switches the pick to Build.
+// Protects every Cockpit Start/Resume.
+func TestSpawnUsesAdminStageModel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	reg := `{"defaults":{"plan":{"claude":"claude-opus-5-5"},"build":{"claude":"claude-sonnet-5-5"},"evaluator":{"claude":"claude-sonnet-5-5"}},
+	 "models":{"anthropic":[{"id":"claude-opus-5-5","alias":"opus"},{"id":"claude-sonnet-5-5"}]}}`
+	if err := os.MkdirAll(filepath.Join(home, "cockpit"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "cockpit", "model-tiers.json"), []byte(reg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, extra string
+		want        []string
+	}{
+		{"before approval: the Plan pick, as its alias", "", []string{"--model", "opus"}},
+		{"after approval: the Build pick (no alias: the id)", "\n- [x] Plan approved\nApproved: sha256:abc 2026-11-14T00:00:00Z", []string{"--model", "claude-sonnet-5-5"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root := t.TempDir()
+			dir := filepath.Join(root, ".tickets", "t-ab12")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			plan := "# Plan\n\n## Sign-off\nTier: normal | Gate model: haiku\n" + tc.extra + "\n\n## Approach\n1. do it\n"
+			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			resp := startSession(t, ts.URL, "t-ab12", bootTok)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("start: %d", resp.StatusCode)
+			}
+			resp.Body.Close()
+			assertFreshSpawnArgv(t, waitFile(t, argvFile, 3*time.Second), "sprint start t-ab12", tc.want...)
+		})
+	}
+}
+
+// t-3425 (user, 2026-11-14: switch at approval): a session that started on the Plan model types `/model <build>` once, then a line that
+// continues the build, when it reaches the prompt and its plan carries sprint approve's record; it types nothing while the agent works,
+// before approval, or a second time. Protects every live Cockpit session at plan approval (the fake agent echoes what is typed).
+func TestSwitchToBuildAtApproval(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, ".tickets", "t-ab12")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	planFile := filepath.Join(dir, "plan.md")
+	plan := "# Plan\n\n## Sign-off\nTier: normal | Plan model: haiku | Build model: sonnet\n\n- [ ] Plan approved\n\n## Approach\n1. do it\n"
+	if err := os.WriteFile(planFile, []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	resp.Body.Close()
+	waitFile(t, argvFile, 3*time.Second)
+	var se *session
+	s.mu.Lock()
+	for _, x := range s.sessions {
+		se = x
+	}
+	s.mu.Unlock()
+	if se == nil || se.stage != "plan" || se.model != "haiku" {
+		t.Fatalf("session = %+v, want stage plan on haiku", se)
+	}
+	typed := func() string { se.mu.Lock(); defer se.mu.Unlock(); return string(se.buf) }
+	// not approved yet: nothing typed at the prompt
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if strings.Contains(typed(), "/model") {
+		t.Fatalf("typed /model before approval: %q", typed())
+	}
+	approved := strings.Replace(plan, "- [ ] Plan approved\n", "- [x] Plan approved\nApproved: sha256:abc 2026-11-14T00:00:00Z\n", 1)
+	if err := os.WriteFile(planFile, []byte(approved), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// approved but the agent is still working: nothing typed
+	se.setStatus("running")
+	s.switchToBuild(se)
+	if strings.Contains(typed(), "/model") {
+		t.Fatalf("typed /model while the agent worked: %q", typed())
+	}
+	// at the prompt but a menu is on screen (Claude Code's folder-trust menu): nothing typed
+	se.mu.Lock()
+	saved := se.buf
+	se.buf = append(append([]byte(nil), saved...), []byte("\r\n❯ Yes, I trust this folder\r\nEnter to confirm · Esc to cancel\r\n")...)
+	se.mu.Unlock()
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if strings.Contains(typed(), "/model") || se.stage != "plan" {
+		t.Fatalf("typed /model with a menu open (stage %q): %q", se.stage, typed())
+	}
+	se.mu.Lock()
+	se.buf = saved
+	se.mu.Unlock()
+	// at the prompt: one /model and one continue line
+	se.setStatus("running")
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(typed(), "continue the build") {
+		time.Sleep(50 * time.Millisecond)
+	}
+	out := typed()
+	// each typed line shows twice: the terminal echoes it and the fake agent (cat) prints it back
+	if strings.Count(out, "/model sonnet") != 2 || !strings.Contains(out, "Plan approved: continue the build (t-ab12) on sonnet.") {
+		t.Fatalf("typed = %q, want one /model sonnet and the continue line", out)
+	}
+	if strings.Index(out, "/model sonnet") > strings.Index(out, "continue the build") {
+		t.Errorf("the continue line came before /model: %q", out)
+	}
+	if se.stage != "build" || se.model != "sonnet" {
+		t.Errorf("session after the switch = stage %q model %q", se.stage, se.model)
+	}
+	// never twice
+	se.setStatus("running")
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	time.Sleep(300 * time.Millisecond)
+	if n := strings.Count(typed(), "/model sonnet"); n != 2 { // once typed = echo + cat
+		t.Errorf("/model shows %d times, want 2 (typed once)", n)
+	}
+	b, _ := os.ReadFile(filepath.Join(os.Getenv("CANON_HOME"), "events", time.Now().UTC().Format("2006-01-02")+".jsonl"))
+	if !strings.Contains(string(b), `"kind":"implement.started"`) || !strings.Contains(string(b), `"model":"sonnet"`) || !strings.Contains(string(b), `"source":"ticket Build model"`) {
+		t.Errorf("no implement.started event with the model and source: %s", b)
 	}
 }

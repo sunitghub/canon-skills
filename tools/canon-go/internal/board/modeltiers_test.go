@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"canon/internal/common"
 )
 
 // regDoc is a small registry shaped like model-tiers.json: Sonnet 5 holds the sonnet alias and the eval default,
@@ -30,7 +32,7 @@ func regDoc() map[string]any {
 
 func entry(t *testing.T, doc map[string]any, id string) map[string]any {
 	t.Helper()
-	_, m := registryModel(doc, id)
+	_, m := common.RegistryModel(doc, id)
 	if m == nil {
 		t.Fatalf("no %s in %v", id, doc)
 	}
@@ -111,7 +113,7 @@ func TestRemoveModel(t *testing.T) {
 	if err := removeModel(doc, "claude-haiku-5-5", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, m := registryModel(doc, "claude-haiku-5-5"); m != nil {
+	if _, m := common.RegistryModel(doc, "claude-haiku-5-5"); m != nil {
 		t.Error("an entry that holds nothing should be deleted")
 	}
 
@@ -128,7 +130,7 @@ func TestRemoveModel(t *testing.T) {
 	if err := removeModel(doc, "claude-sonnet-5", "claude-sonnet-5-5"); err != nil {
 		t.Fatal(err)
 	}
-	if _, m := registryModel(doc, "claude-sonnet-5"); m != nil {
+	if _, m := common.RegistryModel(doc, "claude-sonnet-5"); m != nil {
 		t.Error("the removed entry is still there")
 	}
 	if entry(t, doc, "claude-sonnet-5-5")["alias"] != "sonnet" || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5-5" {
@@ -220,7 +222,7 @@ func TestMigrateTierDefaults(t *testing.T) {
 	old := regDoc()
 	old["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-opus-5-5", "openai": "gpt-6-luna"}, "light": map[string]any{"anthropic": "claude-haiku-5-5", "openai": "gpt-6-luna"}}
 	models, _ := json.Marshal(old["models"])
-	if !migrateTierDefaults(old, seed) {
+	if !common.MigrateTierDefaults(old, seed) {
 		t.Fatal("an old-shape registry was not migrated")
 	}
 	want := map[string]map[string]string{
@@ -240,7 +242,7 @@ func TestMigrateTierDefaults(t *testing.T) {
 		t.Error("a migrated registry must pass validation")
 	}
 	again, _ := json.Marshal(old)
-	if migrateTierDefaults(old, seed) {
+	if common.MigrateTierDefaults(old, seed) {
 		t.Error("a new-shape registry was migrated again")
 	}
 	if now, _ := json.Marshal(old); string(now) != string(again) {
@@ -249,7 +251,7 @@ func TestMigrateTierDefaults(t *testing.T) {
 	// an old file with no light pick takes the seed's light; an empty eval keeps the seed's gates
 	part := regDoc()
 	part["defaults"] = map[string]any{"eval": map[string]any{}}
-	migrateTierDefaults(part, seed)
+	common.MigrateTierDefaults(part, seed)
 	if defaultOf(part, "light", "claude") != "claude-haiku-4-5" || defaultOf(part, "evaluator", "copilot") != "claude-sonnet-5" {
 		t.Errorf("missing old picks should come from the seed: %v", part["defaults"])
 	}
@@ -335,7 +337,7 @@ func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
 	for name, eval := range map[string]string{"a Haiku pick": "claude-haiku-4-5", "an id not in the registry": "claude-gone-9"} {
 		doc := regDoc()
 		doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": eval}}
-		migrateTierDefaults(doc, seed)
+		common.MigrateTierDefaults(doc, seed)
 		if !modelTiersValid(doc) {
 			t.Errorf("%s: the migrated registry fails validation: %v", name, doc["defaults"])
 		}
@@ -346,13 +348,13 @@ func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
 	// a Haiku Review & Eval pick is still a fine reviewer: only the evaluator is clamped
 	doc := regDoc()
 	doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-haiku-4-5"}}
-	migrateTierDefaults(doc, seed)
+	common.MigrateTierDefaults(doc, seed)
 	if got := defaultOf(doc, "reviewer", "claude"); got != "claude-haiku-4-5" {
 		t.Errorf("the reviewer lost the user's pick: %s", got)
 	}
 	mixed := regDoc()
 	mixed["defaults"].(map[string]any)["eval"] = map[string]any{"anthropic": "claude-opus-5-5"}
-	if !migrateTierDefaults(mixed, seed) {
+	if !common.MigrateTierDefaults(mixed, seed) {
 		t.Fatal("a mixed file keeps its old key")
 	}
 	if _, has := mixed["defaults"].(map[string]any)["eval"]; has {
@@ -367,12 +369,12 @@ func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
 func TestTierDefaultsProblemNamesTheDefault(t *testing.T) {
 	d := regDoc()
 	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["copilot"] = "claude-haiku-5.5"
-	if got := tierDefaultsProblem(d); got != "the Evaluator default for Copilot CLI: the binding evaluator is never a Haiku model" {
+	if got := common.TierDefaultsProblem(d); got != "the Evaluator default for Copilot CLI: the binding evaluator is never a Haiku model" {
 		t.Errorf("problem = %q", got)
 	}
 	d = regDoc()
 	d["defaults"].(map[string]any)["reviewer"].(map[string]any)["claude"] = "gpt-6-luna"
-	if got := tierDefaultsProblem(d); got != "the Reviewer default for Claude Code: gpt-6-luna is an OpenAI model, which Claude Code cannot run" {
+	if got := common.TierDefaultsProblem(d); got != "the Reviewer default for Claude Code: gpt-6-luna is an OpenAI model, which Claude Code cannot run" {
 		t.Errorf("problem = %q", got)
 	}
 	if res := saveModelTiers(d); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "the Reviewer default for Claude Code") {
@@ -385,7 +387,7 @@ func TestMigrateTierDefaultsLightOnly(t *testing.T) {
 	for _, prov := range []string{"anthropic", "openai"} {
 		doc := regDoc()
 		doc["defaults"] = map[string]any{"light": map[string]any{prov: "claude-haiku-5-5"}}
-		if !migrateTierDefaults(doc, regDoc()) {
+		if !common.MigrateTierDefaults(doc, regDoc()) {
 			t.Fatalf("a light-only (%s) old file was not migrated", prov)
 		}
 		want := "claude-haiku-4-5" // the seed's, unless the anthropic pick carried over
@@ -398,7 +400,7 @@ func TestMigrateTierDefaultsLightOnly(t *testing.T) {
 	}
 }
 
-// t-aba6 (DRY with validation): what Admin's pickers offer comes from tierPickProblem, so a picker can never offer a model a save would
+// t-aba6 (DRY with validation): what Admin's pickers offer comes from common.TierPickProblem, so a picker can never offer a model a save would
 // refuse. Protects GET /api/admin/model-tiers/options, the one owner static/cockpit-admin.js renders.
 func TestTierOptions(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
@@ -414,7 +416,7 @@ func TestTierOptions(t *testing.T) {
 	for step, per := range opts {
 		for agent, list := range per {
 			for _, o := range list {
-				if why := tierPickProblem(doc, step, agent, o.ID); why != "" && !o.Saved {
+				if why := common.TierPickProblem(doc, step, agent, o.ID); why != "" && !o.Saved {
 					t.Errorf("%s.%s offers %s, which a save refuses: %s", step, agent, o.ID, why)
 				}
 			}
@@ -461,5 +463,33 @@ func TestTierOptionsGroupsClaudeThenGPT(t *testing.T) {
 	}
 	if want := "Anthropic:claude-sonnet-5.5 Anthropic:claude-sonnet-5 OpenAI:gpt-6-luna OpenAI:gpt-6-sol"; strings.Join(got, " ") != want {
 		t.Errorf("order = %v, want %s", got, want)
+	}
+}
+
+// t-3425: the options route names the step each checker checks (Reviewer and Evaluator check Build), the one rule Admin's same-model
+// note reads; the other steps check nothing. Protects GET /api/admin/model-tiers/options and Admin > Model tiers' note.
+func TestTierOptionsViewNamesChecks(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	got := map[string]string{}
+	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
+		got[st["id"]] = st["checks"]
+	}
+	want := map[string]string{"plan": "", "build": "", "reviewer": "build", "evaluator": "build", "light": ""}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("steps[].checks = %v, want %v", got, want)
+	}
+}
+
+// t-3425: common.AdminStageModel is Admin's pick as --model takes it: Claude Code gets the entry's alias, else its id; Copilot its own id;
+// no pick or a value that is not an id gives "". Protects the session's model at every Cockpit start and sprint approve's Build line.
+func TestAdminStageModel(t *testing.T) {
+	doc := map[string]any{
+		"defaults": map[string]any{"build": map[string]any{"claude": "claude-opus-5-5", "copilot": "gpt-6"}, "plan": map[string]any{"claude": "claude-sonnet-5-5", "copilot": "--model"}},
+		"models":   map[string]any{"anthropic": []any{map[string]any{"id": "claude-opus-5-5", "alias": "opus"}, map[string]any{"id": "claude-sonnet-5-5"}}},
+	}
+	for _, c := range [][3]string{{"build", "claude", "opus"}, {"plan", "claude", "claude-sonnet-5-5"}, {"build", "copilot", "gpt-6"}, {"plan", "copilot", ""}, {"light", "claude", ""}} {
+		if got := common.AdminStageModel(doc, c[0], c[1]); got != c[2] {
+			t.Errorf("AdminStageModel(%s, %s) = %q, want %q", c[0], c[1], got, c[2])
+		}
 	}
 }

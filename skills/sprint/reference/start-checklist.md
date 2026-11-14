@@ -48,7 +48,7 @@ names for a case that applies.
    files; impact or "normal tier — no high-risk triggers found"; human checkpoint; criteria and Test Plan
    verbatim; each open question with its answer; blockers.
 10. **Wait for explicit approval.** No code before it. Then fill `## Sign-off` (`Tier: <tier> | Risk: …`)
-    then run `sprint approve <id>` (ticks "Plan approved", pins `## Approach`). A user's "run review/eval on <model>" goes in now as `| Gate model: <value>`.
+    then run `sprint approve <id>` (ticks "Plan approved", pins `## Approach`). User model picks: `| Gate model:` (gates), `| Build model:`; Cockpit: end the turn after.
 
 ## While building
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"canon/internal/common"
 )
 
 // Second pass over t-d40b's Go code, written from the mutation sweep's survivors: each test names what a changed line would have let through.
@@ -125,7 +127,7 @@ func TestAliasOfAndConsistencyEdgeCases(t *testing.T) {
 	doc := regDoc()
 	list := doc["models"].(map[string]any)["anthropic"].([]any)
 	list[2].(map[string]any)["alias"] = nil // a JSON null alias is "no alias", never the text "<nil>"
-	if aliasOf(list[2].(map[string]any)) != "" {
+	if common.AliasOf(list[2].(map[string]any)) != "" {
 		t.Error("a null alias is empty")
 	}
 	if a, _ := heldBy(doc, "anthropic", list[2].(map[string]any)); a != "" {

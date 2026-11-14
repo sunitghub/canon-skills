@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-aba6 (slice 2 of t-8f6d / t-2cc8): Copilot CLI's own model list, read on a click in Admin > Model tiers (Agent: Copilot CLI). The
@@ -46,18 +48,6 @@ type copilotModelList struct {
 }
 
 func copilotModelsFile() string { return filepath.Join(registryDir(), "copilot-models.json") }
-
-// copilotGroup is a Copilot model's family, the one owner of the rule (user, 2026-11-14: Anthropic and OpenAI models only): "Anthropic"
-// for claude-*, "OpenAI" for gpt-*, "" for any other (not a Copilot CLI pick canon offers or keeps). Admin lists models under it.
-func copilotGroup(id string) string {
-	switch {
-	case strings.HasPrefix(id, "claude-"):
-		return "Anthropic"
-	case strings.HasPrefix(id, "gpt-"):
-		return "OpenAI"
-	}
-	return ""
-}
 
 // cleanCopilotText keeps a field Copilot sent as plain printable text, capped: it reaches Admin's page and the cache file.
 func cleanCopilotText(s string) string {
@@ -198,7 +188,7 @@ func acpNewSession(ctx context.Context, bin, dir string) (map[string]any, error)
 func keepCopilotModels(in []copilotModel) []copilotModel {
 	out := []copilotModel{}
 	for _, m := range in {
-		if modelIDRe.MatchString(m.ID) && copilotGroup(m.ID) != "" {
+		if modelIDRe.MatchString(m.ID) && common.CopilotGroup(m.ID) != "" {
 			out = append(out, copilotModel{ID: m.ID, Name: cleanCopilotText(m.Name), Usage: cleanCopilotText(m.Usage)})
 		}
 	}

@@ -11,16 +11,21 @@
 # gate_model_parse <plan-file> — prints the raw lowercased `Gate model:` value
 # from the Sign-off section's Tier line, or nothing. Scoped to that one section
 # and that one line: a `Tier:`-looking line in a later section is ignored.
-gate_model_parse() {
+gate_model_parse() { signoff_model_parse "$1" gate; }
+
+# signoff_model_parse <plan-file> <label> — t-3425: the same rule for any `<Label> model:` field of the Sign-off Tier line
+# (gate, plan, build); the label's first letter may be either case, as `Gate model:` always allowed.
+signoff_model_parse() {
   # LC_ALL=C pins [[:space:]]/tolower to ASCII. Without it the host locale decides:
   # macOS awk strips U+00A0 as whitespace while a C-locale awk does not, so the same
   # plan.md would resolve differently per machine — and diverge from the Go port,
   # which strips ASCII whitespace only.
-  LC_ALL=C awk '
+  local first="${2:0:1}" rest="${2:1}"
+  LC_ALL=C awk -v lab="[$(printf '%s' "$first" | tr 'a-z' 'A-Z')$first]$rest" '
     /^##[[:space:]]+Sign-off[[:space:]]*$/ { in_so=1; next }
     in_so && /^##[[:space:]]/ { exit }
     in_so && /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
-      if (match($0, /[Gg]ate[[:space:]]+model[[:space:]]*:[[:space:]]*/)) {
+      if (match($0, lab "[[:space:]]+model[[:space:]]*:[[:space:]]*")) {
         s = substr($0, RSTART+RLENGTH)
         sub(/[[:space:]]*\|.*$/, "", s)
         gsub(/[[:space:]]/, "", s)
@@ -39,9 +44,13 @@ gate_model_parse() {
 # otherwise be forwarded as an invalid model id. Exits 2 on a value that is
 # present but invalid, so a real typo fails loudly rather than running silently
 # on the default.
-gate_model_resolve() {
-  local plan="$1" v
-  v="$(gate_model_parse "$plan")"
+gate_model_resolve() { signoff_model_resolve "$1" gate; }
+
+# signoff_model_resolve <plan-file> <label> — gate_model_resolve's rules for any Sign-off model field (t-3425: plan, build).
+signoff_model_resolve() {
+  local plan="$1" label="$2" v Lab
+  Lab="$(printf '%s' "${label:0:1}" | tr 'a-z' 'A-Z')${label:1}"
+  v="$(signoff_model_parse "$plan" "$label")"
   [[ -z "$v" || "$v" == "session" || "$v" == "default" ]] && return 0
   # `openai:<id>` (t-ef27) picks an OpenAI model for the CLOSE GATES under Copilot CLI
   # (complete.md). It is never a claude/copilot `--model` for this run, so it resolves
@@ -49,10 +58,10 @@ gate_model_resolve() {
   if [[ "$v" == openai:* ]]; then
     local oid="${v#openai:}"
     if [[ ! "$oid" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-      echo "Error: Gate model '$v' in $plan ## Sign-off is invalid (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
+      echo "Error: $Lab model '$v' in $plan ## Sign-off is invalid (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
       return 2
     fi
-    echo "Note: Gate model '$v' applies to Copilot CLI close gates only; this run uses the CLI's default model." >&2
+    echo "Note: $Lab model '$v' applies to Copilot CLI close gates only; this run uses the CLI's default model." >&2
     return 0
   fi
   # Must START with a letter or digit, not just consist of the allowed charset.
@@ -63,7 +72,7 @@ gate_model_resolve() {
   # a typo class — see standards/agent-design.md on durable state an agent can
   # rewrite.
   if [[ ! "$v" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    echo "Error: Gate model '$v' in $plan ## Sign-off is invalid (alias or model id — must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
+    echo "Error: $Lab model '$v' in $plan ## Sign-off is invalid (alias or model id — must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
     return 2
   fi
   printf '%s\n' "$v"
