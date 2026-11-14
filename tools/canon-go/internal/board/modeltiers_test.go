@@ -228,7 +228,8 @@ func TestMigrateTierDefaults(t *testing.T) {
 	want := map[string]map[string]string{
 		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
 		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"},
-		"light": {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
+		"light":     {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
+		"speccheck": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -470,11 +471,15 @@ func TestTierOptionsGroupsClaudeThenGPT(t *testing.T) {
 // note reads; the other steps check nothing. Protects GET /api/admin/model-tiers/options and Admin > Model tiers' note.
 func TestTierOptionsViewNamesChecks(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
-	got := map[string]string{}
+	got, roles := map[string]string{}, map[string]string{}
 	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
-		got[st["id"]] = st["checks"]
+		got[st["id"]], roles[st["id"]] = st["checks"], st["role"]
 	}
-	want := map[string]string{"plan": "", "build": "", "reviewer": "build", "evaluator": "build", "light": ""}
+	// the role Admin shows after each label: the spec check is advisory like the reviewer (t-9b13)
+	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
+		t.Errorf("steps[].role = %v, want %v", roles, want)
+	}
+	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "light": ""} // t-9b13: the spec check is compared with Plan
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("steps[].checks = %v, want %v", got, want)
 	}
@@ -491,5 +496,34 @@ func TestAdminStageModel(t *testing.T) {
 		if got := common.AdminStageModel(doc, c[0], c[1]); got != c[2] {
 			t.Errorf("AdminStageModel(%s, %s) = %q, want %q", c[0], c[1], got, c[2])
 		}
+	}
+}
+
+// t-9b13: a registry saved in the new shape before the Spec check step existed reads it from the Reviewer's picks (written so on its next
+// save); a file that already has the step keeps it. Protects Admin > Model tiers and the spec check's model at every sprint start.
+func TestFillNewStepsFromReviewer(t *testing.T) {
+	doc := map[string]any{"defaults": map[string]any{"reviewer": map[string]any{"claude": "claude-opus-5-5", "copilot": "gpt-6-luna"}}}
+	if !common.FillNewSteps(doc) {
+		t.Fatal("a file without speccheck was not filled")
+	}
+	got, _ := json.Marshal(doc["defaults"].(map[string]any)["speccheck"])
+	if string(got) != `{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}` {
+		t.Errorf("speccheck = %s, want the reviewer's picks", got)
+	}
+	doc["defaults"].(map[string]any)["speccheck"] = map[string]any{"claude": "claude-haiku-5-5"}
+	if common.FillNewSteps(doc) {
+		t.Error("a file with its own speccheck was changed")
+	}
+	if s := doc["defaults"].(map[string]any)["speccheck"].(map[string]any)["claude"]; s != "claude-haiku-5-5" {
+		t.Errorf("the saved speccheck pick was replaced: %v", s)
+	}
+	// through the loader: a user file without the step reads it filled
+	dir := t.TempDir()
+	user := filepath.Join(dir, "user.json")
+	if err := os.WriteFile(user, []byte(`{"defaults":{"reviewer":{"claude":"claude-opus-5-5"},"evaluator":{"claude":"claude-sonnet-5-5"}},"models":{"anthropic":[]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := common.AdminStageModel(common.LoadModelTiers(user, filepath.Join(dir, "none.json")), "speccheck", "claude"); got != "claude-opus-5-5" {
+		t.Errorf("loaded speccheck = %q, want the reviewer's claude-opus-5-5", got)
 	}
 }

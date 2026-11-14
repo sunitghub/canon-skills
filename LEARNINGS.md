@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-14-2026 13:45
+learnings-sweep last run: 11-14-2026 16:49
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-14 | [t-9b13](.tickets/t-9b13/learnings.md) | A new gate role at a new point in the sprint breaks readers that take the first gate.started as the start of the gates phase (token-spend); and a Go in-memory migration does not reach a protocol that reads the registry file: each new Admin step needs its fallback in the protocol text. | UNPROMOTED |
 | 2026-11-14 | [t-3425](.tickets/t-3425/learnings.md) | A daemon path that types into a session needs an output-quiet rule, not just the status: awaiting-input is set by hooks and cleared only by input, so it can stay set while the agent works; and a "end your turn now" message must match every branch of what the daemon does (the Plan == Build stall). | UNPROMOTED |
 | 2026-11-14 | [t-aba6](.tickets/t-aba6/learnings.md) | A reviewer fix that changes behaviour the acceptance states needs the user's consent and an amended criterion, or the evaluator must fail it; and a clause on an external order or time window needs a sort or a test, not a hope | UNPROMOTED |
 | 2026-11-14 | [t-8f6d](.tickets/t-8f6d/learnings.md) | A migration that carries a user's pick across a new rule must apply that rule to the pick, or validation refuses every later save behind an error that names nothing | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-14-2026 13:45
 | 2026-11-06 | [t-1148](.tickets/t-1148/learnings.md) | A poll that writes must be tested with two parallel runs (a sequential second run is stopped by the outer check and cannot kill a record-twice mutant); a state that reads a clock needs an injectable one | `dismissed` |
 | 2026-11-06 | [t-e7fb](.tickets/t-e7fb/learnings.md) | Advice a refusal prints must be a command that works (git pull could not, so users moved files by hand and lost github.md); changing output text means grepping the board for code that matches it | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-06 | [t-df13](.tickets/t-df13/learnings.md) | Changing user-facing text: grep tests/ and docs/ for the old strings first; scripts/test.sh does not run the board spec, so a second spec pinning the old tooltip passed until the evaluator ran it | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-06 | [t-e566](.tickets/t-e566/learnings.md) | A criterion that needs a machine you cannot reach (the Windows VM) fails the evaluator as not-run: plan it as another ticket's checklist item; xterm.js cancels Ctrl+V so the browser never pastes | `promoted → skills/sprint/reference/start-checklist.md` |
 <!-- canon:learnings:END -->

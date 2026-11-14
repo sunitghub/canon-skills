@@ -209,6 +209,13 @@ and every close uses it unless overridden. The chosen model and its source are r
 row as `(model: <id> — <source>)` for audit. (Applying the Admin default is confirmed only under Claude Code.) Full logic:
 [`skills/sprint/reference/complete.md`](../skills/sprint/reference/complete.md) → "Model tier for gates."
 
+**Spec check (t-9b13).** Before you approve a plan, a fresh read-only agent (`canon-spec-checker`, following
+`skills/sprint/reference/spec-check.md`) grades `acceptance.md` and `plan.md`: is each criterion testable and covered by a Test Plan
+line, does any clause rest on something nothing enforces, does each decision in the ticket show up in a criterion, can the plan deliver
+them. It writes `spec-review.md` (READY or GAPS) and its findings go in the brief; it never blocks, and you decide at approval. It is the
+`spec-check` node of the pipeline (Lite skips it; a project can switch it off) and runs on Admin's Spec check pick (a ticket's `Gate model:`
+first). It runs before approval, so it is left out of the pipeline `sprint approve` pins.
+
 **Plan and Build (t-3425).** A Cockpit session runs on Admin's Plan pick until the plan is approved, then on its Build pick: when the
 turn that ran `sprint approve` ends, the Cockpit types `/model <build>` and a line that continues the build. A ticket's own
 `| Plan model:` or `| Build model:` on the Sign-off line wins over Admin; `Gate model:` sets only the gates. Admin notes a Reviewer or

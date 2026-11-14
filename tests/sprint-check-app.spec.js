@@ -14342,7 +14342,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
 // stubbed so these tests never write the real (possibly user-local) model-tiers.json.
 test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
-    defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' },
+    defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, speccheck: { claude: 'm-haiku', copilot: 'claude-sonnet-5.5' },
       reviewer: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, light: { claude: 'm-haiku', copilot: 'gpt-6-luna' } },
     models: {
       anthropic: [
@@ -14356,10 +14356,10 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build' },
+    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build' },
       { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build' }, { id: 'light', label: 'Simple / Light work' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
-    options: Object.fromEntries(['plan', 'build', 'reviewer', 'evaluator', 'light'].map(st => [st, {
+    options: Object.fromEntries(['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'light'].map(st => [st, {
       claude: OPT(st === 'evaluator' ? [['m-sonnet', 'Sonnet Test']] : st === 'light' ? [['m-haiku', 'Haiku Test']] : [['m-sonnet', 'Sonnet Test'], ['m-haiku', 'Haiku Test']]),
       copilot: OPT(st === 'evaluator' ? [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']] : st === 'light' ? [['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]
         : [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]),
@@ -14453,8 +14453,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
-    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(5);
-    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['Plan', 'Build', 'Reviewer (advisory)', 'Evaluator (binding)', 'Simple / Light work']);
+    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(6);
+    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['Plan', 'Build', 'Spec check (advisory)', 'Reviewer (advisory)', 'Evaluator (binding)', 'Simple / Light work']);
     await expect(page.locator('#mt-agent')).toHaveValue('claude');
     expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
     expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
@@ -14464,10 +14464,16 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await expect(page.locator('#mt-step-build .setting-d').first()).toHaveText('Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).');
     expect(await page.locator('#mt-step-plan .setting-k').evaluate(el => getComputedStyle(el, '::after').content)).toBe('none');
     // t-3425: a checker on the builder's model is noted, never blocked (the step it checks is the board's steps[].checks); a pick updates it
-    const same = 'Same model as Build: the check runs on the model that built the work.';
+    const same = 'Same model as Build: the check runs on the model that made what it checks.';
     await expect(page.locator('#mt-step-reviewer .mt-same')).toHaveText(same);         // Claude Code: reviewer, evaluator and build all m-sonnet
     await expect(page.locator('#mt-step-evaluator .mt-same')).toHaveText(same);
     await expect(page.locator('#mt-step-light .mt-same')).toHaveCount(0);             // Light checks nothing
+    // t-9b13: the spec check is compared with Plan (checker is not the planner): Haiku vs Sonnet now, the note appears once it matches
+    await expect(page.locator('#mt-step-speccheck .mt-same')).toHaveCount(0);
+    await page.locator('#mt-step-speccheck select').selectOption('m-sonnet');
+    await expect(page.locator('#mt-step-speccheck .mt-same')).toHaveText('Same model as Plan: the check runs on the model that made what it checks.');
+    await expect.poll(() => posts.length).toBe(1);
+    posts.length = 0;
     await page.locator('#mt-step-reviewer select').selectOption('m-haiku');
     await expect(page.locator('#mt-step-reviewer .mt-same')).toHaveCount(0);
     await expect(page.locator('#mt-step-reviewer select')).toHaveValue('m-haiku');
@@ -14721,7 +14727,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(light[0]).toBe(light[1]);
     expect(dark[0]).not.toBe(light[0]);
     // t-8f6d: one default card per step, each with one picker for the chosen agent (Claude Code first)
-    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(5);
+    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(6);   // t-9b13: six steps
     await expect(page.locator('#mt-agent option')).toHaveText(['Claude Code', 'Copilot CLI']);
     // Anthropic tab active by default with the 6 seeded models (t-99b2: the 5.5 models sit before their predecessors)
     await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
@@ -14948,7 +14954,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       { path: 'tools/gate-model.sh', group: 'tools', gate: true, status: 'match' },
       { path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'match' },
       { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'match' }],
-      agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', effort: 'high', tools: 'Read, Grep', writes: 'review-notes.md', read_only: true, prompt: 'You are canon\'s advisory reviewer gate.' }] };
+      agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', step: 'reviewer', step_label: 'Reviewer', model: 'claude-sonnet-5', effort: 'high', tools: 'Read, Grep', writes: 'review-notes.md', read_only: true, prompt: 'You are canon\'s advisory reviewer gate.' }] };
     await page.locator('#ig-again').click();
     await expect(page.locator('#ig-body .ig-strip')).toContainText('3 of 4 files match');
     await expect(page.locator('#ig-body .ig-frow')).toHaveCount(4);              // the protocol file is in the reviewer's card, not listed twice
@@ -15194,7 +15200,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.locator('#nav-admin').click();
       await page.locator('.mt-card[data-id="claude-sonnet-5"] .b-danger').click();
       const move = page.locator('#mt-move .mt-move');
-      await expect(move).toContainText('Claude Sonnet 5 holds the alias sonnet and the Reviewer default for Claude Code');
+      await expect(move).toContainText('Claude Sonnet 5 holds the alias sonnet and the Spec check default for Claude Code and the Reviewer default for Claude Code');
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);          // no plain confirm: it must not just delete
       // an alias holder may only move to a model with no alias of its own
       await expect(move.locator('select option')).toHaveText(['Claude Sonnet 5.5', 'Claude Haiku 5.5']);
@@ -15231,7 +15237,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       // the registry as one user's machine ended up: Sonnet 5 and Haiku 4.5 removed, taking the sonnet and haiku aliases with them
       const reg = JSON.parse(canonical);
       reg.models.anthropic = reg.models.anthropic.filter(m => !['claude-sonnet-5', 'claude-haiku-4-5-20251001'].includes(m.id));
-      for (const step of ['reviewer', 'evaluator']) reg.defaults[step].claude = 'claude-sonnet-5-5';   // a Copilot pick is Copilot's own id (t-aba6)
+      for (const step of ['speccheck', 'reviewer', 'evaluator']) reg.defaults[step].claude = 'claude-sonnet-5-5';   // t-9b13: the spec check holds sonnet 5 too   // a Copilot pick is Copilot's own id (t-aba6)
       expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).ok()).toBe(true);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
@@ -21499,8 +21505,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     eval: 'Always runs: the binding evaluator is the floor of every close.', close: 'Always runs: sprint complete is how a ticket closes.',
     'your-test': 'Manual tickets only: you test by hand, and sprint manual-qa records what you saw. Waiting for your test until a fresh record exists.' };
   // t-51c6: what each ticket option skips, as pipeline.yaml declares it (skip_on), and the one Manual-only node
-  const SK = { 'code-simplifier': 'lite', 'code-reviewer': 'lite', 'doc-audit': 'lite', 'skill-eval': 'lite', 'break-it': 'lite', reviewer: 'lite,manual', 'mutation-test': 'lite,manual' };
-  const DEF = [['start', 'step', 10], ['plan', 'step', 20], ['approve-plan', 'you', 30], ['build', 'step', 40], ['your-test', 'you', 45], ['code-simplifier', 'gate', 50, 'wrapup'],
+  const SK = { 'spec-check': 'lite', 'code-simplifier': 'lite', 'code-reviewer': 'lite', 'doc-audit': 'lite', 'skill-eval': 'lite', 'break-it': 'lite', reviewer: 'lite,manual', 'mutation-test': 'lite,manual' };
+  const DEF = [['start', 'step', 10], ['plan', 'step', 20], ['spec-check', 'agent', 25], ['approve-plan', 'you', 30], ['build', 'step', 40], ['your-test', 'you', 45], ['code-simplifier', 'gate', 50, 'wrapup'],
     ['code-reviewer', 'gate', 52, 'wrapup'], ['doc-audit', 'gate', 54, 'wrapup'], ['skill-eval', 'gate', 60], ['break-it', 'agent', 62], ['reviewer', 'agent', 70],
     ['security-review', 'gate', 80], ['mutation-test', 'gate', 90], ['eval', 'agent', 100], ['close', 'step', 110]];
   const projects = [
@@ -21635,21 +21641,26 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     const gets = b.log.length;
     // Normal: every node but the Manual-only one, nothing skipped or waiting
     await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Normal ticket');
-    await expect(card.locator('.spc-row')).toHaveCount(14);
+    await expect(card.locator('.spc-row')).toHaveCount(15);
     await expect(row('your-test')).toHaveCount(0);
+    // t-9b13: Spec check runs for Normal and Manual tickets, between Plan and Approve plan; Lite and Manual + Lite skip it
+    await expect(row('spec-check').locator('.spc-n')).toHaveText('Spec check');
+    await expect(row('spec-check')).not.toHaveClass(/gone/);
+    expect(await card.locator('.spc-row').evaluateAll(r => r.map(x => x.dataset.spcRow).slice(1, 4))).toEqual(['plan', 'spec-check', 'approve-plan']);
     await expect(card.locator('.spc-row.gone')).toHaveCount(0);
     await expect(card.locator('.spc-line')).toHaveCount(0);
     // Lite: the wrapup gates, skill-eval, break-it, Reviewer, mutation-test skipped; the Evaluator runs on Haiku
     await page.locator('#fac-pipe-prev [data-pl-prev="lite"]').click();
     await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Lite ticket');
-    for (const id of ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test']) { await expect(note(id)).toHaveText('skipped \u00b7 Lite'); await expect(row(id)).toHaveClass(/gone/); }
+    for (const id of ['spec-check', 'code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test']) { await expect(note(id)).toHaveText('skipped \u00b7 Lite'); await expect(row(id)).toHaveClass(/gone/); }
     await expect(note('eval')).toHaveText('Haiku');
     await expect(row('security-review')).not.toHaveClass(/gone/);
     await expect(row('your-test')).toHaveCount(0);
     // Manual: Your test waits, Reviewer and mutation-test are skipped, the Evaluator is a read-only audit, and Close says what the yes is
     await page.locator('#fac-pipe-prev [data-pl-prev="manual"]').click();
-    await expect(card.locator('.spc-row')).toHaveCount(15);
+    await expect(card.locator('.spc-row')).toHaveCount(16);
     await expect(note('your-test')).toHaveText('waiting for your test');
+    await expect(row('spec-check')).not.toHaveClass(/gone/);
     await expect(note('reviewer')).toHaveText('skipped \u00b7 Manual');
     await expect(note('eval')).toHaveText('read-only audit');
     await expect(row('code-reviewer')).not.toHaveClass(/gone/);
@@ -21659,6 +21670,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Manual + Lite ticket');
     await expect(note('reviewer')).toHaveText('skipped \u00b7 Lite + Manual');
     await expect(note('code-simplifier')).toHaveText('skipped \u00b7 Lite');
+    await expect(note('spec-check')).toHaveText('skipped \u00b7 Lite');
     await expect(note('eval')).toHaveText('read-only audit');
     await expect(note('your-test')).toHaveText('waiting for your test');
     // display only: choosing a kind sent no request
@@ -21717,10 +21729,10 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
-  test('lists the 15 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
+  test('lists the 16 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
     const b = await board(page);
     await open(page);
-    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(15);
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
     await expect(page.locator('#fac-pipe-src')).toContainText("canon's default");
     await expect(page.locator('#fac-pipe-src')).toContainText('no project file');
     await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
@@ -21825,8 +21837,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('[data-pl-mv="doc-audit:-1"]')).toBeFocused();
     // the rows between and around the group keep their place
     const all = await page.locator('#fac-pipe-rows .pl-row .pl-n').allInnerTexts();
-    expect(all.slice(0, 5)).toEqual(['Start', 'Plan', 'Approve plan', 'Build', 'Your test']);   // t-51c6: the Manual-only row sits after Build
-    expect(all.slice(8)).toEqual(['skill-eval', 'break-it', 'Reviewer', 'security-review', 'mutation-test', 'Evaluator', 'Close']);
+    expect(all.slice(0, 6)).toEqual(['Start', 'Plan', 'Spec check', 'Approve plan', 'Build', 'Your test']);   // t-51c6: the Manual-only row sits after Build; t-9b13: Spec check before approval
+    expect(all.slice(9)).toEqual(['skill-eval', 'break-it', 'Reviewer', 'security-review', 'mutation-test', 'Evaluator', 'Close']);
   });
 
   test('Reset is enabled only when something differs, rewrites the file, and creates none when there is none', async ({ page }) => {
@@ -21857,7 +21869,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('#fac-pipe-rows .pl-sw')).toHaveCount(0);
     await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
     await page.locator('#fac-pipe-reset').click();
-    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(15);
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
     await expect(page.locator('#fac-pipe-rows .pl-err')).toHaveCount(0);
   });
 

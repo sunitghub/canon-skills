@@ -209,6 +209,12 @@ assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a repeated agent id made a second gate.finished event"
 assert_eq 1 "$(grep -c '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl")"
 [[ "$(grep '"agent_id":"reviewer-x"' "$G/.claude/subagent-runs.jsonl" | grep -c '"tokens":1500')" == 1 ]] || fail "the later row's numbers did not win"
+# t-9b13: the spec check at sprint start is a gate too: gate.started with role speccheck, gate.finished with spec-review.md's READY or GAPS.
+(cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role speccheck >/dev/null)
+assert_contains "$(event_line gate.started "$gid")" '"role":"speccheck"'
+printf '# Spec check: x\n\n## Verdict\nGAPS — criterion 2 has no Test Plan line\n' > "$gt/spec-review.md"
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id spec-x --agent-type speccheck --ticket "$gid" --tokens 900 --minutes 1 --model claude-sonnet-5 >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"role":"speccheck","ticket":"'"$gid"'","tokens":"900","verdict":"GAPS"'
 # t-7c89: the only row for an agent id is replaced too (grep -v finds no other line), and still no second gate.finished.
 SG="$(mktemp -d)"; git -C "$SG" init -q; (cd "$SG" && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose >/dev/null 2>&1 && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose --tokens 900 --minutes 1 >/dev/null 2>&1)
 assert_eq 1 "$(wc -l < "$SG/.claude/subagent-runs.jsonl" | tr -d ' ')"

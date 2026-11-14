@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"canon/internal/events"
+
+	"canon/internal/common"
 )
 
 // Admin > Integrity (t-2af0). Slice 1: do the gate files, the gate prompts and the programs' manifest in this install still have the
@@ -67,6 +69,8 @@ type integrityAgent struct {
 	File     string `json:"file"`
 	GradedBy string `json:"graded_by,omitempty"` // the protocol file the agent follows
 	Role     string `json:"role,omitempty"`      // advisory | binding
+	Step     string `json:"step,omitempty"`      // t-9b13: the Admin > Model tiers step that picks its model (common.GateAgentStep)
+	StepName string `json:"step_label,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Effort   string `json:"effort,omitempty"`
 	Tools    string `json:"tools,omitempty"`
@@ -330,7 +334,7 @@ func checkIntegrity(d integrityDeps) integrityResult {
 // tests read scripts/integrity-list.sh and fail when these drift from its GATE_FILES and GATE_PROMPTS.
 var (
 	previewGateFiles   = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"}
-	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
+	previewGatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "agents/canon-spec-checker.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/spec-check.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 )
 
 func unverifiedPreview(root string) ([]integrityFile, []integrityAgent) {
@@ -460,6 +464,9 @@ func checkIntegrityCore(d integrityDeps) integrityResult {
 // readAgent reads an agent file's front matter and prompt for display (64 KB at most; a file that cannot be read gives a bare card).
 func readAgent(root, rel string) integrityAgent {
 	a := integrityAgent{File: rel, Name: strings.TrimSuffix(filepath.Base(rel), ".md")}
+	if st := common.GateAgentStep[a.Name]; st != "" { // t-9b13: by file name, so even a bare card says which Admin step picks its model
+		a.Step, a.StepName = st, common.TierStepLabel[st]
+	}
 	fh, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
 	if err != nil {
 		return a

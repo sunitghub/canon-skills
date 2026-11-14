@@ -21,8 +21,9 @@ registry="$ROOT/tools/sprint-check-app/model-tiers.json"
 # t-8f6d: each gate's floor is its own step's Claude Code default in the seed; the Codex mirror names an active OpenAI model of the
 # registry (no OpenAI default drives a gate since the per-agent reshape: Codex reads its own toml)
 openai_ids="$(python3 -c "import json;print(' '.join(m['id'] for m in json.load(open('$registry'))['models']['openai'] if not m.get('legacy')))")"
-for g in reviewer evaluator; do
-  anth_id="$(python3 -c "import json,sys;print(json.load(open('$registry'))['defaults'][sys.argv[1]]['claude'])" "$g")"
+for g in reviewer evaluator spec-checker; do
+  step="$g"; [[ "$g" == spec-checker ]] && step=speccheck   # t-9b13: the spec checker's Admin step
+  anth_id="$(python3 -c "import json,sys;print(json.load(open('$registry'))['defaults'][sys.argv[1]]['claude'])" "$step")"
   md="$ROOT/agents/canon-$g.md"; toml="$ROOT/agents/codex/canon-$g.toml"
   assert_file_exists "$md"; assert_file_exists "$toml"
   assert_eq "---" "$(head -1 "$md")"                       # byte 0 is '-' (no BOM, no '\---')

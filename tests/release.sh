@@ -45,7 +45,9 @@ fresh() {   # prints a repo on main, equal to a bare `public` remote, VERSION 0.
   git init -q --bare -b main "$d.pub.git"; git init -q -b main "$d"; mkdir -p "$d/scripts"
   cp "$ROOT/scripts/release.sh" "$ROOT/scripts/release-zip.sh" "$ROOT/scripts/integrity-list.sh" "$d/scripts/" 2>/dev/null || true
   # t-2af0: the integrity list names the gate files and prompts, so the fixture repo holds them (any content)
-  local g; for g in tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md; do mkdir -p "$d/$(dirname "$g")"; echo "$g" > "$d/$g"; done
+  # t-9b13: the gate list is read from the script itself (one owner), so a new gate file needs no edit here
+  local g gl; read -ra gl <<< "$(sed -nE 's/^GATE_(FILES|PROMPTS)=\((.*)\)$/\2/p' "$ROOT/scripts/integrity-list.sh" | tr '\n' ' ')"
+  for g in "${gl[@]}"; do mkdir -p "$d/$(dirname "$g")"; echo "$g" > "$d/$g"; done
   echo 0.3.0 > "$d/VERSION"; printf '%s\n' "$CHANGELOG_OK" > "$d/CHANGELOG.md"
   git -C "$d" "${ident[@]}" add -A; git -C "$d" "${ident[@]}" commit -qm init
   git -C "$d" remote add public "$d.pub.git"; git -C "$d" push -q public main 2>/dev/null

@@ -193,7 +193,7 @@ grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce clos
 # while the board's CLAUDE.md names the per-step, per-agent defaults that replaced it. The old text stays in the fixture: installs carry it.
 openai_old="$(grep -F 'the Admin OpenAI defaults stay recorded only.' "$old_block")"
 [[ -n "$openai_old" ]] || fail "could not find the old OpenAI line in $old_block"
-grep -qF 'defaults.{plan,build,reviewer,evaluator,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults that replace the old OpenAI line (t-8f6d)"
+grep -qF 'defaults.{plan,build,speccheck,reviewer,evaluator,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults that replace the old OpenAI line (t-8f6d)"
 while IFS= read -r l; do
   [[ -z "${l//[[:space:]]/}" ]] && continue
   [[ "$l" == "$north" ]] && continue   # covered by the North-star check above

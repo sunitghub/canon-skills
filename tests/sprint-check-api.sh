@@ -886,7 +886,7 @@ cp_json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["source"
   || fail "sprint-check-api: GET copilot-models without a read is not the seed fallback"
 curl -s "$B/api/admin/model-tiers/options" | python3 -c 'import sys,json
 d=json.load(sys.stdin); o=d["options"]
-assert [s["id"] for s in d["steps"]]==["plan","build","reviewer","evaluator","light"] and [a["id"] for a in d["agents"]]==["claude","copilot"], d
+assert [s["id"] for s in d["steps"]]==["plan","build","speccheck","reviewer","evaluator","light"] and [a["id"] for a in d["agents"]]==["claude","copilot"], d
 assert not any("haiku" in x["id"] for x in o["evaluator"]["claude"]+o["evaluator"]["copilot"]), o["evaluator"]
 assert all(x["id"].startswith(("claude-","gpt-")) for x in o["reviewer"]["copilot"]) and all("." not in x["id"] or x["group"] for x in o["reviewer"]["copilot"]), o' \
   || fail "sprint-check-api: the options route does not follow the pick rules"

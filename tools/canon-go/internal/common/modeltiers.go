@@ -25,12 +25,17 @@ var ModelValueRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // (validation, the migration, retire/remove, the Refresh flag, the audit names and the Pipeline rows read it; static/cockpit-admin.js
 // mirrors it for the cards). A claude pick is an Anthropic model; a copilot pick is an Anthropic or an OpenAI model (Copilot CLI runs both).
 var (
-	TierSteps     = []string{"plan", "build", "reviewer", "evaluator", "light"}
+	TierSteps     = []string{"plan", "build", "speccheck", "reviewer", "evaluator", "light"}
 	TierAgents    = []string{"claude", "copilot"}
-	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "reviewer": "Reviewer", "evaluator": "Evaluator", "light": "Simple / Light work"}
-	TierStepRole  = map[string]string{"reviewer": "advisory", "evaluator": "binding"} // shown after the label in Admin
-	// TierStepChecks: the step whose work this one checks (t-3425): Admin notes a checker picked the same as the builder (never blocks)
-	TierStepChecks = map[string]string{"reviewer": "build", "evaluator": "build"}
+	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "speccheck": "Spec check", "reviewer": "Reviewer", "evaluator": "Evaluator", "light": "Simple / Light work"}
+	TierStepRole  = map[string]string{"speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding"} // shown after the label in Admin
+	// TierStepChecks: the step whose work this one checks (t-3425): Admin notes a checker picked the same as the maker (never blocks).
+	// t-9b13: the spec check grades the plan, so it is compared with Plan.
+	TierStepChecks = map[string]string{"speccheck": "plan", "reviewer": "build", "evaluator": "build"}
+	// GateAgentStep: the Admin step that picks each gate agent's model (t-9b13), so a page never guesses it from the agent's role
+	GateAgentStep = map[string]string{"canon-spec-checker": "speccheck", "canon-reviewer": "reviewer", "canon-evaluator": "evaluator"}
+	// TierStepFrom: a step added after a registry was saved starts from this step's picks (t-9b13: the spec check from the Reviewer's)
+	TierStepFrom   = map[string]string{"speccheck": "reviewer"}
 	TierAgentLabel = map[string]string{"claude": "Claude Code", "copilot": "Copilot CLI"}
 )
 
@@ -109,8 +114,11 @@ func MigrateTierDefaults(doc, seed map[string]any) bool {
 				per[agent] = v
 				continue
 			}
-			id := ""
-			switch step {
+			id, src := "", step
+			if f := TierStepFrom[step]; f != "" { // a later step starts from the step it was copied from (t-9b13)
+				src = f
+			}
+			switch src {
 			case "reviewer", "evaluator":
 				id = old("eval")
 			case "light":
@@ -243,6 +251,30 @@ func ModelTiersUserFile() string {
 	return filepath.Join(home, "cockpit", "model-tiers.json")
 }
 
+// FillNewSteps (t-9b13) gives a registry saved before a step existed that step's picks, copied from TierStepFrom's step (written so on
+// its next save). A step with any pick of its own is left alone. Reports whether it changed doc.
+func FillNewSteps(doc map[string]any) bool {
+	d, _ := doc["defaults"].(map[string]any)
+	if d == nil {
+		return false
+	}
+	changed := false
+	for step, from := range TierStepFrom {
+		if _, ok := d[step]; ok {
+			continue
+		}
+		src, _ := d[from].(map[string]any)
+		per := map[string]any{}
+		for _, agent := range TierAgents {
+			if v, _ := src[agent].(string); v != "" {
+				per[agent] = v
+			}
+		}
+		d[step], changed = per, true
+	}
+	return changed
+}
+
 // LoadModelTiers reads the registry: the person's copy (userFile) when it parses, else the seed (seedFile); a copy saved before a
 // key existed gets the seed's (sources, copilot_models), and an old shape is read migrated (written so on its next save). Read-only.
 func LoadModelTiers(userFile, seedFile string) map[string]any {
@@ -279,6 +311,7 @@ func LoadModelTiers(userFile, seedFile string) map[string]any {
 	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save);
 	// t-aba6: and its Copilot picks in Copilot's own ids.
 	MigrateTierDefaults(found[0], found[len(found)-1])
+	FillNewSteps(found[0])
 	MigrateCopilotPicks(found[0])
 	return found[0]
 }

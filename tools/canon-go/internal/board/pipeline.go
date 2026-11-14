@@ -213,10 +213,10 @@ func pipelineFileState(root string) (exists bool, text string, problem string) {
 	return true, strings.ReplaceAll(string(data), "\r", ""), ""
 }
 
-// pipelineModelFor is the display-only model of an agent row: the Admin Reviewer or Evaluator default for each agent (Admin stays the one
+// pipelineModelFor is the display-only model of an agent row: the Admin Spec check, Reviewer or Evaluator default for each agent (Admin stays the one
 // owner, t-8f6d). ID and Name are the Claude Code pick; Agents lists every agent's.
 func pipelineModelFor(id string) *pipelineModel {
-	step := map[string]string{"reviewer": "reviewer", "eval": "evaluator"}[id]
+	step := map[string]string{"spec-check": "speccheck", "reviewer": "reviewer", "eval": "evaluator"}[id] // t-9b13: the spec check
 	if step == "" {
 		return nil
 	}

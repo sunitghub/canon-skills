@@ -34,10 +34,10 @@ source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: the gate's scratch scope
 "$SCRIPT_DIR/work-beat" touch || true   # t-187e: a gate around this ticket is a sign an agent is on it
 
 mode="${1:-}"; file="${2:-}"; role=""
-# t-8854: `pre … --role reviewer|evaluator` names the gate about to run, for the gate.started event (optional).
-if [[ "$mode" == pre && "${3:-}" == --role ]]; then role="${4:-}"; [[ "$role" == reviewer || "$role" == evaluator ]] || role="?"; fi
+# t-8854: `pre … --role reviewer|evaluator|speccheck` names the gate about to run, for the gate.started event (optional; t-9b13: speccheck).
+if [[ "$mode" == pre && "${3:-}" == --role ]]; then role="${4:-}"; [[ "$role" == reviewer || "$role" == evaluator || "$role" == speccheck ]] || role="?"; fi
 if [[ ( "$mode" != pre && "$mode" != post ) || -z "$file" || "$role" == "?" ]]; then
-  echo "Usage: gate-snapshot.sh pre <snapshot-file> [--role reviewer|evaluator] | post <snapshot-file>" >&2
+  echo "Usage: gate-snapshot.sh pre <snapshot-file> [--role reviewer|evaluator|speccheck] | post <snapshot-file>" >&2
   exit 2
 fi
 
@@ -89,12 +89,16 @@ emit_gate_started() {
   canon_event gate.started gate-snapshot "$(dirname "$(dirname "$tdir")")" "ticket=$id" "role=$role" "attempt=$((fails + 1))" "docs=$docs"
 }
 
+spec_docs() { cat "$(dirname "$file")/acceptance.md" "$(dirname "$file")/plan.md" 2>/dev/null | digest; }   # the two files the spec check grades
+
 if [[ "$mode" == pre ]]; then
   stash="$(git -C "$root" stash create 2>/dev/null || true)"
   stash_note=""
   # `git stash create` exits 0 but prints a message such as "f: needs merge" while paths are unmerged: only a real commit is a recovery hash
   if [[ -n "$stash" ]] && ! git -C "$root" rev-parse --verify -q "${stash}^{commit}" >/dev/null 2>&1; then stash=""; stash_note="not available (unmerged paths or a stash error): resolve or commit first"; fi
-  { snapshot; echo "stash=${stash:-none}"; } > "$file"
+  # t-9b13: the spec check grades acceptance.md and plan.md, which live under .tickets/ (left out above, where reports are written): their
+  # digest is recorded so post can say if the gate changed what it grades
+  { snapshot; echo "stash=${stash:-none}"; [[ "$role" != speccheck ]] || echo "specdocs=$(spec_docs)"; } > "$file"
   echo "gate-snapshot: pre recorded in $file (branch $(field "$file" branch) at $(field "$file" head | cut -c1-7))."
   if [[ -n "$stash" ]]; then
     echo "gate-snapshot: recovery hash for uncommitted work: $stash (git stash apply $stash; never auto-apply)"
@@ -148,6 +152,8 @@ if [[ -n "$st_added$st_gone" ]]; then
 fi
 [[ "$(field "$file" diff)" == "$(field "$now" diff)" ]] || say "uncommitted content of tracked files changed (a path already modified before the dispatch counts too)"
 [[ "$(field "$file" audit)" == "$(field "$now" audit)" ]] || say ".claude/subagent-runs.jsonl (the audit log) changed"
+sd="$(field "$file" specdocs)"
+[[ -z "$sd" || "$sd" == "$(spec_docs)" ]] || say "acceptance.md or plan.md changed during the spec check (it may write only spec-review.md)"
 
 if [[ "$n" -gt 0 ]]; then
   echo "gate-snapshot: STOP — $n difference(s) since the pre snapshot. A gate is read-only by contract: surface this to the user with the recovery hash ($(field "$file" stash)); never auto-apply it."

@@ -29,7 +29,7 @@ def verify(d):
       blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
       assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
   assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"], d["gate_files"]
-  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
+  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "agents/canon-spec-checker.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/spec-check.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
   for p in d["gate_files"] + d["gate_prompts"]:
       assert p in d["files"], p
   # t-16f5: exec_files is every file an install can run: a script extension, a shebang, or git mode 100755
@@ -72,7 +72,9 @@ assert_contains "$r" "does not exist here"
 
 # 3. An odd file name (a space) stops the build: the JSON is hand-written, so the name is seen before it ships.
 mkdir -p "$W/repo/scripts" && cp "$LIST" "$W/repo/scripts/"
-g=(tools/sprint tools/gate-snapshot.sh tools/subagent-log.sh tools/evidence.sh tools/sprint-headless tools/sprint-headless-eval tools/gate-model.sh tools/sprint.cmd tools/sprint-headless.cmd tools/sprint-headless-eval.cmd agents/canon-reviewer.md agents/canon-evaluator.md skills/sprint/reference/review.md skills/sprint/reference/eval.md skills/sprint/reference/shared-gate-protocol.md skills/sprint/reference/visual-verify.md)
+# t-9b13: the fixture holds every gate path the script names, read from the script itself (one owner: a new gate file needs no edit here)
+read -ra g <<< "$(sed -nE 's/^GATE_(FILES|PROMPTS)=\((.*)\)$/\2/p' "$ROOT/scripts/integrity-list.sh" | tr '\n' ' ')"
+(( ${#g[@]} >= 16 )) || fail "integrity-list: could not read GATE_FILES and GATE_PROMPTS from the script (${#g[@]} paths)"
 for f in "${g[@]}"; do mkdir -p "$W/repo/$(dirname "$f")"; echo x > "$W/repo/$f"; done
 # t-16f5: a shebang alone and the executable bit alone each make a file executable (in the real tree both always coincide, so only a fixture can tell the rules apart)
 printf '#!/bin/sh\n' > "$W/repo/tools/shebang-only"; echo x > "$W/repo/tools/mode-only"; chmod 755 "$W/repo/tools/mode-only"; echo x > "$W/repo/tools/plain-data"

@@ -77,6 +77,8 @@ ev 09-30T08:10:00.000 sprint.completed t-dddd | gzip | cat >> "$events/2026-09-3
   ev 10-01T09:50:00.000 sprint.started t-cccc
   ev 10-01T10:00:00.000 sprint.completed t-cccc
   ev 10-01T10:00:00.000 sprint.started t-aaaa
+  # t-9b13: the spec check before approval is a gate.started too, but not the start of the close gates (the row below is unchanged)
+  printf '{"schema":1,"ts":"2026-10-01T10:05:00.000Z","kind":"gate.started","project":"%s","data":{"role":"speccheck","ticket":"t-aaaa"}}\n' "$root"
   ev 10-01T11:00:00.000 gate.started t-aaaa
   ev 10-01T11:30:00.000 sprint.started t-bbbb
   ev 10-01T12:00:00.000 sprint.completed t-aaaa
