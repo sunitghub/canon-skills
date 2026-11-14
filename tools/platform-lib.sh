@@ -68,6 +68,23 @@ headless_parse() {
   RESULT_TEXT="$(printf '%s\n' "$parsed" | cut -f3- | tr '\002' '\n')"
 }
 
+# The gate roles (t-864c: one list, read by gate-snapshot.sh --role and subagent-log.sh --agent-type): each writes one report under
+# .tickets/<id>/ (gate_report) whose verdict gate.finished carries (gate_verdict).
+GATE_ROLES="reviewer evaluator speccheck evaluator2"
+gate_role_ok() { [[ -n "${1:-}" && " $GATE_ROLES " == *" $1 "* ]]; }
+gate_report() {
+  case "$1" in
+    reviewer) echo review-notes.md ;; evaluator) echo eval-report.md ;; evaluator2) echo eval-report-2.md ;; speccheck) echo spec-review.md ;;
+  esac
+}
+# gate_verdict <role> <report file> — the evaluators' `pass:`/`fail:`/… line; the others' first word under `## Verdict`
+gate_verdict() {
+  case "$1" in
+    evaluator|evaluator2) sed -nE 's/^(pass|fail|partial|not-run):.*/\1/p' "$2" | head -1 ;;
+    *) awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$2" | tr -d '*' ;;
+  esac
+}
+
 # canon_event <kind> <source> <project dir> key=value... — one event line (t-f182) through the board binary, after the write it
 # describes succeeded. Observer-only: never prints, never fails, never waits on a missing or older board (it is skipped).
 # The board is checked once per shell (_CANON_EVENT_BOARD: a path, or "-" for none), through its --help: a board from

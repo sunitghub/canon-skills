@@ -5,6 +5,7 @@
      .b-danger       a secondary stop or delete (Kill, Discard): red outline on hover
      .b-close        Close, Cancel, a ✕: red outline on hover, the same rule as .b-danger
      .b-accent       a sub-action beside the main one (Scratch, CI, + efficiency): accent outline and tint on hover
+     .b-refresh      a refresh or read (↻ a source, Read Copilot's models): green outline on hover (t-864c)
      .b-neutral      any other secondary button (Copy, Browse…): brighter border and text on hover
    Theme variables only (tests/sprint-check-theme.js scans this file for both pages). */
 /* t-ae96: the base every .btn builds from, defined once (it was two copies, one per page). :where keeps it at zero specificity, so a component's own
@@ -21,11 +22,12 @@
 :where(.btn):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* The shape every role button shares; :where adds no specificity, so a button's own rule can still drop the border or
    change the background (an icon-only close, the board's raised .btn). */
-:where(.b-neutral, .b-close, .b-danger, .b-danger-main, .b-accent, .b-primary) { border-width: 1px; border-style: solid; }
-:where(.b-neutral, .b-close, .b-danger, .b-danger-main, .b-accent) { background: transparent; }
+:where(.b-neutral, .b-refresh, .b-close, .b-danger, .b-danger-main, .b-accent, .b-primary) { border-width: 1px; border-style: solid; }
+:where(.b-neutral, .b-refresh, .b-close, .b-danger, .b-danger-main, .b-accent) { background: transparent; }
 /* every role but primary looks the same at rest; only the hover tells them apart */
-.b-neutral, .b-close, .b-danger, .b-danger-main, .b-accent { color: var(--text-body); border-color: var(--border); }
+.b-neutral, .b-refresh, .b-close, .b-danger, .b-danger-main, .b-accent { color: var(--text-body); border-color: var(--border); }
 .b-neutral:hover:not(:disabled) { color: var(--text); border-color: var(--border-hover); }
+.b-refresh:hover:not(:disabled) { color: var(--col-done); border-color: var(--col-done); }
 .b-close:hover:not(:disabled), .b-danger:hover:not(:disabled) { color: var(--col-discarded); border-color: var(--col-discarded); }
 .b-danger-main:hover:not(:disabled) { color: var(--th-on-bad, #fff); border-color: var(--col-discarded); background: var(--col-discarded); }
 .b-accent:hover:not(:disabled) { color: var(--text); border-color: var(--accent); background: var(--accent-dim); }

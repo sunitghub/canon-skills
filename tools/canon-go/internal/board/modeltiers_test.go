@@ -230,6 +230,7 @@ func TestMigrateTierDefaults(t *testing.T) {
 		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"},
 		"light":     {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
 		"speccheck": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
+		"evaluator2": {}, // t-864c: Off (no pick) until one is chosen
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -476,10 +477,10 @@ func TestTierOptionsViewNamesChecks(t *testing.T) {
 		got[st["id"]], roles[st["id"]] = st["checks"], st["role"]
 	}
 	// the role Admin shows after each label: the spec check is advisory like the reviewer (t-9b13)
-	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
+	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
 		t.Errorf("steps[].role = %v, want %v", roles, want)
 	}
-	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "light": ""} // t-9b13: the spec check is compared with Plan
+	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "evaluator2": "", "light": ""} // t-9b13: the spec check is compared with Plan
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("steps[].checks = %v, want %v", got, want)
 	}
@@ -525,5 +526,46 @@ func TestFillNewStepsFromReviewer(t *testing.T) {
 	}
 	if got := common.AdminStageModel(common.LoadModelTiers(user, filepath.Join(dir, "none.json")), "speccheck", "claude"); got != "claude-opus-5-5" {
 		t.Errorf("loaded speccheck = %q, want the reviewer's claude-opus-5-5", got)
+	}
+}
+
+// t-864c: the Second eval step is Off until picked (a save with no pick is accepted), never the Evaluator's own pick for the agent and
+// never a Haiku model; its picker offers Off first and leaves those out; a registry saved before the step loads and saves with no pick.
+// Protects Admin > Model tiers saves and pickers.
+func TestSecondEvalStep(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	doc := regDoc()
+	d := doc["defaults"].(map[string]any)
+	delete(d, "evaluator2")
+	if why := common.TierDefaultsProblem(doc); why != "" {
+		t.Fatalf("a registry without evaluator2 was refused: %s", why)
+	}
+	d["evaluator2"] = map[string]any{"claude": "", "copilot": ""}
+	if why := common.TierDefaultsProblem(doc); why != "" {
+		t.Fatalf("Off (no pick) was refused: %s", why)
+	}
+	ev := d["evaluator"].(map[string]any)
+	for agent, id := range map[string]string{"claude": ev["claude"].(string), "copilot": ev["copilot"].(string)} {
+		if why := common.TierPickProblem(doc, "evaluator2", agent, id); !strings.Contains(why, "same model as the Evaluator") {
+			t.Errorf("%s: the Evaluator's own pick %s was accepted for Second eval (%q)", agent, id, why)
+		}
+		for _, o := range tierOptions(doc)["evaluator2"][agent] {
+			if o.ID == id {
+				t.Errorf("%s: the picker offers the Evaluator's pick %s", agent, id)
+			}
+		}
+		if first := tierOptions(doc)["evaluator2"][agent][0]; first.ID != "" || first.Name != "Off" {
+			t.Errorf("%s: the first option is %+v, want Off", agent, first)
+		}
+	}
+	if why := common.TierPickProblem(doc, "evaluator2", "claude", "claude-haiku-5-5"); !strings.Contains(why, "Haiku") {
+		t.Errorf("a Haiku Second eval was accepted: %q", why)
+	}
+	if why := common.TierPickProblem(doc, "evaluator", "claude", ""); why == "" {
+		t.Error("an empty pick was accepted for a step that is not optional")
+	}
+	// the one reader of a pick for a shell protocol: Off prints nothing
+	if got := common.AdminStageModel(doc, "evaluator2", "claude"); got != "" {
+		t.Errorf("AdminStageModel(evaluator2) with Off = %q", got)
 	}
 }

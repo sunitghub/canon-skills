@@ -1,7 +1,10 @@
   /* ---- Admin > Model Tiers (t-7e36) ---- */
   .mt-wrap{margin-bottom:16px}
   .mt-openai-note{margin:2px 2px 14px;max-width:440px;color:var(--text-muted);font-size:12px;line-height:1.5}
-  .mt-defaults{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  /* t-864c (user): the Agent row and every step card read as one panel */
+  .mt-panel{border:1px solid var(--border);border-radius:14px;padding:14px 14px 4px;margin:0 0 16px}
+  /* each card spans four shared rows (label, use, picker, note), so the pickers of a row's cards sit on one line (t-864c) */
+  .mt-defaults{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:auto;gap:12px;margin-bottom:14px}
   .mt-agent-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 2px 12px}
   .mt-agent-row select{border:1px solid var(--border-muted);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600}
   .mt-agent-row .setting-d{margin:0;flex:1;min-width:200px}
@@ -9,7 +12,7 @@
   .mt-copilot-read .mt-cp-err{color:var(--warn);flex-basis:100%}
   .mt-default-card .mt-used{margin:8px 0 0;color:var(--text-muted);font-size:12px}
   @media (max-width:680px){.mt-defaults{grid-template-columns:1fr}}
-  .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;display:grid;grid-row:span 4;grid-template-rows:subgrid;row-gap:0;align-content:start}
   .mt-default-card .setting-k{margin-bottom:1px}
   .mt-default-card .setting-d{margin-bottom:10px}
   .mt-picker-row{display:flex;gap:8px;flex-wrap:wrap}
@@ -71,8 +74,7 @@
   .mt-sources .b-primary:hover,.mt-prop .b-primary:hover{filter:brightness(1.08)}
   .mt-sources button:disabled,.mt-prop button:disabled{opacity:.5;cursor:default}
   .mt-src-rf,.mt-src-rm{padding:4px 9px!important;font-size:12px}
-  /* the small per-row buttons say what they do on hover: refresh turns green, remove turns red */
-  .mt-sources .mt-src-rf:hover:not(:disabled){color:var(--col-done)!important;border-color:var(--col-done)!important}   /* beats buttons.css's own hover */
+  /* the small per-row buttons say what they do on hover: refresh turns green (buttons.css .b-refresh), remove turns red */
   .mt-sources .mt-src-rm:hover{color:var(--col-discarded)!important;border-color:var(--col-discarded)!important}
   .mt-src-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border-muted)}
   .mt-src-u{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -34,10 +34,10 @@ source "$SCRIPT_DIR/gate-scope-lib.sh"   # t-b7df: the gate's scratch scope
 "$SCRIPT_DIR/work-beat" touch || true   # t-187e: a gate around this ticket is a sign an agent is on it
 
 mode="${1:-}"; file="${2:-}"; role=""
-# t-8854: `pre … --role reviewer|evaluator|speccheck` names the gate about to run, for the gate.started event (optional; t-9b13: speccheck).
-if [[ "$mode" == pre && "${3:-}" == --role ]]; then role="${4:-}"; [[ "$role" == reviewer || "$role" == evaluator || "$role" == speccheck ]] || role="?"; fi
+# t-8854: `pre … --role <role>` names the gate about to run, for the gate.started event (optional); the roles are platform-lib.sh's GATE_ROLES.
+if [[ "$mode" == pre && "${3:-}" == --role ]]; then role="${4:-}"; gate_role_ok "$role" || role="?"; fi
 if [[ ( "$mode" != pre && "$mode" != post ) || -z "$file" || "$role" == "?" ]]; then
-  echo "Usage: gate-snapshot.sh pre <snapshot-file> [--role reviewer|evaluator|speccheck] | post <snapshot-file>" >&2
+  echo "Usage: gate-snapshot.sh pre <snapshot-file> [--role ${GATE_ROLES// /|}] | post <snapshot-file>" >&2
   exit 2
 fi
 

@@ -30,8 +30,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
-   - **Mutation sweep** for shell, JS, Python or Go logic: `skills/mutation-test/SKILL.md`
-     (`mutant-sweep --check` first), triage every survivor; then
+   - **Mutation sweep** (shell, JS, Python, Go logic): `skills/mutation-test/SKILL.md`
+     (`mutant-sweep --check` first), triage survivors; then
      `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
@@ -45,14 +45,14 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
-4. **Tests:** each criterion has a Test Plan line exercising it; each item ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
+4. **Tests:** a Test Plan line per criterion; each item ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box met.
 6. **DECISIONS.md:** one short row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
 7. **Conventions:** propose a convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
-   escape `|`), plus a paragraph naming gate models, any reviewer NO. Run `tkt learn <id>`;
-   if it writes a file, run `/learnings-sweep <id>`. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
-9. **Close:** `sprint complete <id>`, never a hand-edited status. On refusal, report and stop.
+   escape `|`), plus a paragraph naming gate models, any reviewer NO. `tkt learn <id>`;
+   if it writes a file, `/learnings-sweep <id>`. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
+9. **Close:** `sprint complete <id>`, never a hand-edited status. Refused: report, stop.
 10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
     **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
@@ -83,6 +83,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 | evaluator `fail`, retry budget at 3, or `eval_override` | step 3 "Retry budget" and the `fail` paragraph |
 | the close refuses the report (transcript or stale-eval guard) | step 3 "Stale-eval guard", "backed by a real transcript" |
 | high-risk or untrusted-input sprint (break-it) | step 3 "Break-it" |
+| Second eval model | step 3 "Second evaluator" |
 | scenario-backed Test Plan lines | step 4 |
 | a waived, deferred or partial item, or the learnings cap | step 8 |
 | `manual: true` | step 1 "Manual mode" |

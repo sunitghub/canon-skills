@@ -73,6 +73,9 @@ func tierOptions(doc map[string]any) map[string]map[string][]tierOption {
 		for _, agent := range common.TierAgents {
 			cur, _ := per[agent].(string)
 			opts, has := []tierOption{}, false
+			if common.TierStepOptional[step] { // t-864c: "Off" first: no pick
+				opts = append(opts, tierOption{ID: "", Name: "Off", Group: "Off"})
+			}
 			for _, c := range cands[agent] {
 				if common.TierPickProblem(doc, step, agent, c.ID) != "" || (step == "light" && !lightLine(c.ID) && c.ID != cur) {
 					continue

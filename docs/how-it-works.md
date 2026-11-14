@@ -216,6 +216,11 @@ them. It writes `spec-review.md` (READY or GAPS) and its findings go in the brie
 `spec-check` node of the pipeline (Lite skips it; a project can switch it off) and runs on Admin's Spec check pick (a ticket's `Gate model:`
 first). It runs before approval, so it is left out of the pipeline `sprint approve` pins.
 
+**Second evaluator (t-864c, opt-in).** Admin > Model tiers has a Second eval step, Off until you pick a model (never the Evaluator's). With
+a pick, a high-risk close (or any ticket whose Sign-off says `| Second eval: on`; `off` skips it) runs `canon-evaluator` once more on that
+model after the binding one passes, writing `eval-report-2.md`; `sprint eval-compare <id>` lists each criterion the two graded differently.
+You decide each difference; it never fails a close, and the binding gate still reads only `eval-report.md`.
+
 **Plan and Build (t-3425).** A Cockpit session runs on Admin's Plan pick until the plan is approved, then on its Build pick: when the
 turn that ran `sprint approve` ends, the Cockpit types `/model <build>` and a line that continues the build. A ticket's own
 `| Plan model:` or `| Build model:` on the Sign-off line wins over Admin; `Gate model:` sets only the gates. Admin notes a Reviewer or

@@ -215,6 +215,12 @@ assert_contains "$(event_line gate.started "$gid")" '"role":"speccheck"'
 printf '# Spec check: x\n\n## Verdict\nGAPS — criterion 2 has no Test Plan line\n' > "$gt/spec-review.md"
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id spec-x --agent-type speccheck --ticket "$gid" --tokens 900 --minutes 1 --model claude-sonnet-5 >/dev/null)
 assert_contains "$(event_line gate.finished "$gid")" '"role":"speccheck","ticket":"'"$gid"'","tokens":"900","verdict":"GAPS"'
+# t-864c: the second evaluator is a gate role too (platform-lib.sh GATE_ROLES): its verdict is eval-report-2.md's line, never eval-report.md's
+(cd "$G" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$gid/gate-snapshot.txt" --role evaluator2 >/dev/null)
+assert_contains "$(event_line gate.started "$gid")" '"role":"evaluator2"'
+printf 'evaluator-run-id: 1-9\n\nfail: criterion 2 has no test\n' > "$gt/eval-report-2.md"
+(cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id 123-9 --agent-type evaluator2 --ticket "$gid" --tokens 800 --minutes 1 >/dev/null)
+assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator2","ticket":"'"$gid"'","tokens":"800","verdict":"fail"'   # eval-report.md says partial
 # t-7c89: the only row for an agent id is replaced too (grep -v finds no other line), and still no second gate.finished.
 SG="$(mktemp -d)"; git -C "$SG" init -q; (cd "$SG" && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose >/dev/null 2>&1 && "$ROOT/tools/subagent-log.sh" --agent-id solo --agent-type general-purpose --tokens 900 --minutes 1 >/dev/null 2>&1)
 assert_eq 1 "$(wc -l < "$SG/.claude/subagent-runs.jsonl" | tr -d ' ')"
