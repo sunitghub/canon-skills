@@ -1,9 +1,10 @@
 package board
 
 import (
-	"path/filepath"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -319,5 +320,58 @@ func TestLoadModelTiersMigratesAnOldUserFile(t *testing.T) {
 	}
 	if after, _ := os.ReadFile(modelTiersUserFile()); string(after) != string(ub) {
 		t.Errorf("a read rewrote the user file")
+	}
+}
+
+// t-8f6d reviewer: a carried pick that today's rules refuse (a Haiku Review & Eval pick, an id no longer in the registry) takes the seed's
+// pick, so a migrated file always validates and Admin is never locked behind a refused save; a mixed file (an old board saved over a new
+// one) keeps its new-shape picks. Protects GET and every Admin write after an update.
+func TestMigrateTierDefaultsClampsAndKeepsNewPicks(t *testing.T) {
+	seed := regDoc()
+	for name, eval := range map[string]string{"a Haiku pick": "claude-haiku-4-5", "an id not in the registry": "claude-gone-9"} {
+		doc := regDoc()
+		doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": eval}}
+		migrateTierDefaults(doc, seed)
+		if !modelTiersValid(doc) {
+			t.Errorf("%s: the migrated registry fails validation: %v", name, doc["defaults"])
+		}
+		if got := defaultOf(doc, "evaluator", "claude"); got != "claude-sonnet-5" {
+			t.Errorf("%s: evaluator = %s, want the seed's claude-sonnet-5", name, got)
+		}
+	}
+	// a Haiku Review & Eval pick is still a fine reviewer: only the evaluator is clamped
+	doc := regDoc()
+	doc["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-haiku-4-5"}}
+	migrateTierDefaults(doc, seed)
+	if got := defaultOf(doc, "reviewer", "claude"); got != "claude-haiku-4-5" {
+		t.Errorf("the reviewer lost the user's pick: %s", got)
+	}
+	mixed := regDoc()
+	mixed["defaults"].(map[string]any)["eval"] = map[string]any{"anthropic": "claude-opus-5-5"}
+	if !migrateTierDefaults(mixed, seed) {
+		t.Fatal("a mixed file keeps its old key")
+	}
+	if _, has := mixed["defaults"].(map[string]any)["eval"]; has {
+		t.Error("the old key survived the migration")
+	}
+	if defaultOf(mixed, "reviewer", "copilot") != "gpt-6-luna" || defaultOf(mixed, "evaluator", "claude") != "claude-sonnet-5" {
+		t.Errorf("a mixed file lost its new-shape picks: %v", mixed["defaults"])
+	}
+}
+
+// t-8f6d reviewer: a refused save names the default to change, so a person can fix it in Admin.
+func TestTierDefaultsProblemNamesTheDefault(t *testing.T) {
+	d := regDoc()
+	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["copilot"] = "claude-haiku-5-5"
+	if got := tierDefaultsProblem(d); got != "the Evaluator default for Copilot CLI: the binding evaluator is never a Haiku model" {
+		t.Errorf("problem = %q", got)
+	}
+	d = regDoc()
+	d["defaults"].(map[string]any)["reviewer"].(map[string]any)["claude"] = "gpt-6-luna"
+	if got := tierDefaultsProblem(d); got != "the Reviewer default for Claude Code: gpt-6-luna is an OpenAI model, which Claude Code cannot run" {
+		t.Errorf("problem = %q", got)
+	}
+	if res := saveModelTiers(d); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "the Reviewer default for Claude Code") {
+		t.Errorf("save refusal = %v", res)
 	}
 }

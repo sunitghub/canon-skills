@@ -42,7 +42,7 @@ func settingEvents(t *testing.T, home string) []map[string]any {
 }
 
 // t-4c09. Protects the Admin Model tiers page's audit line: every successful write route leaves one setting.changed event with the
-// Review & Eval default before and after and actor `user` (a person's click); a refused or invalid write leaves none; and no registry text
+// evaluator default (Claude Code) before and after and actor `user` (a person's click); a refused or invalid write leaves none; and no registry text
 // (a source URL, a model description) ever reaches the log.
 func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	dir := t.TempDir()
@@ -153,7 +153,7 @@ func TestModelTiersWriteSucceedsWhenEventsCannotBeWritten(t *testing.T) {
 }
 
 // t-4c09. Protects the Admin Model tiers routes themselves (the action name each one records and the payload each reads): a request to
-// each write route leaves exactly one setting.changed line named for it, carrying the Review & Eval default before and after.
+// each write route leaves exactly one setting.changed line named for it, carrying the evaluator default (Claude Code) before and after.
 func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CANON_HOME", dir)
@@ -241,7 +241,7 @@ func TestModelTiersRoutesRecordTheirAction(t *testing.T) {
 	}
 }
 
-// t-71c8. Protects the Admin Model tiers page's Save and Reset buttons: one that leaves the Review & Eval default as it was (a save of the
+// t-71c8. Protects the Admin Model tiers page's Save and Reset buttons: one that leaves the evaluator default (Claude Code) as it was (a save of the
 // registry unchanged, a reset with no override) writes no setting.changed line, and one that changes it still writes exactly one.
 func TestModelTiersSaveOrResetThatChangesNothingLogsNothing(t *testing.T) {
 	dir := t.TempDir()

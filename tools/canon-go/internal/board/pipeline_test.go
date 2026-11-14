@@ -594,7 +594,7 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 		}
 	}
 	// no Admin default: no model at all
-	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{}},"models":{"anthropic":[]}}`), 0o644)
+	os.WriteFile(tiers, []byte(`{"defaults":{"reviewer":{},"evaluator":{}},"models":{"anthropic":[]}}`), 0o644)
 	_, g = pipelineGetReq(id)
 	for _, n := range g["nodes"].([]any) {
 		if _, has := n.(map[string]any)["model"]; has {
@@ -602,7 +602,7 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 		}
 	}
 	// a default whose id is not in the registry shows the id as its name
-	os.WriteFile(tiers, []byte(`{"defaults":{"eval":{"anthropic":"claude-x"}},"models":{"anthropic":[]}}`), 0o644)
+	os.WriteFile(tiers, []byte(`{"defaults":{"reviewer":{"claude":"claude-x"}},"models":{"anthropic":[]}}`), 0o644)
 	_, g = pipelineGetReq(id)
 	for _, n := range g["nodes"].([]any) {
 		m := n.(map[string]any)

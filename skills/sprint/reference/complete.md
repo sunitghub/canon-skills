@@ -235,7 +235,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
     (live-observed, `t-ef27`) — treat it as unavailable (below); never try another OpenAI model or version.
   - **Fallback — loud, never a stop or a dispatch error:** if Copilot rejects the id, or the close runs in
     Claude Code or pi (which can't dispatch a non-Anthropic model), run both gates on the normal chain
-    below (demo → Admin Anthropic default → definition floor) and record
+    below (demo → Admin default → definition floor) and record
     `(model: <alias> — fallback: openai:<id> unavailable in Copilot)` or
     `(model: <alias> — fallback: openai:<id> needs Copilot CLI)`. This recorded switch is the one explicit
     exception to the Copilot note's "never silently switch families" — an OpenAI pick is a deliberate
@@ -265,7 +265,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
   reads it migrated but writes the new shape only on its next Save): when `defaults.<role>` is absent, use
   `defaults.eval.anthropic` for both gates. Under Claude Code find the id's entry in `models.anthropic`
   and read its `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes the short alias, not the
-  full id. Under Copilot CLI the pick may also be a `models.openai` id (see the Copilot bullet below). This applies to **every** ticket regardless of diff risk — a deliberate user choice
+  full id. Under Copilot CLI the pick may also be a `models.openai` id: pass it as is, exactly as a per-ticket
+  `Gate model: openai:<id>` is passed (the `openai:` bullet above: Copilot's own model list, and its loud fallback when the id is
+  unavailable), and record `Admin Reviewer default, OpenAI` / `Admin Evaluator default, OpenAI`. Under Claude Code or pi a
+  `copilot` pick is never read. This applies to **every** ticket regardless of diff risk — a deliberate user choice
   (2026-09-23) that trades the former "code changes get full-strength review by default"
   posture for one admin-configurable default; the per-ticket `Gate model:` override (checked
   first, above) remains the escape hatch. **Interactive close only** — `tools/sprint-headless`/CI

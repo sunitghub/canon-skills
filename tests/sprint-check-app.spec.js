@@ -14776,7 +14776,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     let body = { state: 'not-from-release', reason: 'this install follows main: there is no released copy to compare with', match: 0, total: 0, blocking: false,
       files: [{ path: 'agents/canon-reviewer.md', group: 'agents', gate: true, status: 'unchecked' }, { path: 'skills/sprint/reference/review.md', group: 'prompts', gate: true, status: 'unchecked' }],
       agents: [{ name: 'canon-reviewer', file: 'agents/canon-reviewer.md', graded_by: 'skills/sprint/reference/review.md', role: 'advisory', model: 'claude-sonnet-5', read_only: true }] };
-    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { evaluator: { claude: 'claude-sonnet-5-5' } }, models: { anthropic: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }] } } }));
+    await page.route('**/api/admin/model-tiers', route => route.fulfill({ json: { defaults: { reviewer: { claude: 'claude-sonnet-5-5' }, evaluator: { claude: 'claude-opus-5-5' } }, models: { anthropic: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }, { id: 'claude-opus-5-5', name: 'Claude Opus 5.5' }] } } }));
     await page.route('**/api/integrity**', route => route.fulfill({ json: body }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -14809,7 +14809,8 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.ig-agent')).toContainText('canon-reviewer');
     await expect(page.locator('.ig-agent .ig-badge')).toHaveText(['advisory', 'read-only']);
     await expect(page.locator('.ig-agent')).toContainText('claude-sonnet-5');
-    await expect(page.locator('.ig-agent')).toContainText('Admin default: Claude Sonnet 5.5');   // read from the Model Tiers registry, not from the agent file
+    await expect(page.locator('.ig-agent')).toContainText('Admin default: Claude Sonnet 5.5 (Reviewer, Claude Code)');   // read from the Model Tiers registry, not from the agent file
+    await expect(page.locator('.ig-agent')).not.toContainText('Claude Opus 5.5');   // t-8f6d: the reviewer's card shows the reviewer's pick, never the evaluator's
     await expect(page.locator('.ig-agent')).toContainText('review-notes.md');
     await expect(page.locator('.ig-agent .ig-pill-ok')).toHaveText('Matches v1.2.3');
     await page.locator('.ig-prompt summary').click();

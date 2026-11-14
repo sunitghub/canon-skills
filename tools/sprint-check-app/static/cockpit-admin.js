@@ -125,11 +125,11 @@ const MT_STEPS=[
   {id:'light',label:'Simple / Light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}];
 const mtHaiku=m=>String(m.alias||'').toLowerCase()==='haiku'||String(m.id).toLowerCase().includes('haiku');   // mirrors haikuClass
 // The models a step's picker offers for the chosen agent: the agent's providers in order; the Evaluator never a Haiku model; Simple /
-// Light only the cheap line (Haiku, and GPT-6 Luna under Copilot). The current pick always stays in the list.
+// Light only the cheap line (Haiku, and GPT-6 Luna under Copilot). The current pick always stays in the list, so the select shows what is saved.
 function mtStepModels(step,agent,cur){
   let out=[];
   MT_AGENTS[agent].providers.forEach(prov=>mtActive(prov).forEach(m=>out.push({prov,m})));
-  if(step==='evaluator') out=out.filter(x=>!mtHaiku(x.m));
+  if(step==='evaluator') out=out.filter(x=>!mtHaiku(x.m)||x.m.id===cur);   // a saved pick is always shown, never silently replaced
   if(step==='light') out=out.filter(x=>mtHaiku(x.m)||/luna/i.test(x.m.id)||x.m.id===cur);
   return out;
 }
@@ -530,7 +530,7 @@ async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
-  let dflt=''; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); const id=((m.defaults||{}).evaluator||{}).claude; const e=(m.models.anthropic||[]).find(x=>x.id===id); dflt=e?e.name:''; }catch(e){}   // what the Admin page picks for the gates; the agent file's own model is only the floor
+  const dflt={}; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); ['reviewer','evaluator'].forEach(st=>{ const id=((m.defaults||{})[st]||{}).claude; const e=(m.models.anthropic||[]).find(x=>x.id===id); if(e) dflt[st]=e.name; }); }catch(e){}   // t-8f6d: each gate's Claude Code pick in Admin; the agent file's own model is only the floor
   let [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
   // t-dccb: a differing file is said at the top: the strip leaves green, and the note under it names the files and whether the close is blocked
   const differ=r.state==='verified'?(r.files||[]).filter(x=>x.status!=='match'):[];
@@ -564,7 +564,7 @@ async function igLoad(refresh){
           return `<div class="ig-card ig-agent"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
             (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge" title="No Edit or Write tool. The shell can still write.">read-only</span>':'')+
             `<span class="ig-card-pill">${pill(list)}</span></div>`+
-            kv('Model',esc(a.model)+(dflt?` <span class="ig-note">\u00b7 Admin default: ${esc(dflt)} (Review &amp; Eval)</span>`:''),'ig-mono')+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code class="ig-mono">${esc(a.writes)}</code> only`:'')+
+            kv('Model',esc(a.model)+((st=>st&&dflt[st]?` <span class="ig-note">\u00b7 Admin default: ${esc(dflt[st])} (${st==='evaluator'?'Evaluator':'Reviewer'}, Claude Code)</span>`:'')(a.role==='binding'?'evaluator':a.role==='advisory'?'reviewer':'')),'ig-mono')+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code class="ig-mono">${esc(a.writes)}</code> only`:'')+
             `<div class="ig-files">${list.map(fileRow).join('')}</div>`+
             (a.prompt?`<details class="ig-prompt"><summary>Prompt \u00b7 ${esc(a.file)}</summary><div class="ig-md">${safeMd(a.prompt)}</div></details>`:'')+`</div>`;
         }).join('')||rows.map(fileRow).join('');

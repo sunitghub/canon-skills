@@ -5911,6 +5911,9 @@ func saveModelTiers(data map[string]any) map[string]any {
 		return map[string]any{"ok": true}
 	}
 	if !modelTiersValid(data) {
+		if why := tierDefaultsProblem(data); why != "" { // t-8f6d: name the default a person must change
+			return map[string]any{"ok": false, "error": "invalid model-tiers payload: " + why}
+		}
 		return map[string]any{"ok": false, "error": "invalid model-tiers payload (bad id or shape)"}
 	}
 	body, err := json.MarshalIndent(data, "", "  ")

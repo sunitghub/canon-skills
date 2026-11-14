@@ -11,7 +11,6 @@
   .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
   .mt-default-card .setting-k{margin-bottom:1px}
   .mt-default-card .setting-d{margin-bottom:10px}
-  .mt-default-card .mt-effort-note{margin:10px 0 0}
   .mt-picker-row{display:flex;gap:8px;flex-wrap:wrap}
   .mt-picker{flex:1;min-width:140px;display:flex;align-items:center;gap:7px;border:1px solid var(--border-muted);border-radius:8px;padding:7px 9px;background:var(--bg)}
   /* Solid, not transparent: Edge on Windows draws the native popup from the select's own colours (t-294b). */

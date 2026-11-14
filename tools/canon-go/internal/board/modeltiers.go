@@ -52,8 +52,11 @@ func haikuClass(id string, m map[string]any) bool {
 
 // migrateTierDefaults rewrites a registry saved before the reshape (defaults.eval and defaults.light by provider) in memory: the old
 // Review & Eval pick becomes the reviewer and the evaluator for both agents, the old light pick the light for both, plan and build come
-// from the seed's defaults. The OpenAI picks drove nothing and are dropped (the models stay in models.openai). A document already in
-// the new shape is left as it is. Returns whether it changed anything; the file on disk changes only on the next save.
+// from the seed's defaults. Every carried pick must pass today's rules (a model the agent can run, not legacy, never a Haiku evaluator):
+// one that does not takes the seed's pick, so a migrated file never fails validation and locks Admin. The OpenAI picks drove nothing
+// and are dropped (the models stay in models.openai). A file that already has new-shape steps (an old board saved over a new file) keeps
+// them and only loses its old keys. A document in the new shape is left as it is. Returns whether it changed anything; the file on
+// disk changes only on the next save.
 func migrateTierDefaults(doc, seed map[string]any) bool {
 	d, _ := doc["defaults"].(map[string]any)
 	if d == nil {
@@ -66,7 +69,7 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 	if !hasEval && !lightOld && !lightOldO {
 		return false
 	}
-	pick := func(tier string) string {
+	old := func(tier string) string {
 		per, _ := d[tier].(map[string]any)
 		id, _ := per["anthropic"].(string)
 		return id
@@ -77,22 +80,27 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 		id, _ := per[agent].(string)
 		return id
 	}
+	usable := func(step, agent, id string) bool { return id != "" && tierPickProblem(doc, step, agent, id) == "" }
 	out := map[string]any{}
 	for _, step := range tierSteps {
+		cur, _ := d[step].(map[string]any)
 		per := map[string]any{}
 		for _, agent := range tierAgents {
-			id := seedPick(step, agent)
+			if v, _ := cur[agent].(string); v != "" { // a new-shape pick already there (a mixed file) wins
+				per[agent] = v
+				continue
+			}
+			id := ""
 			switch step {
 			case "reviewer", "evaluator":
-				if v := pick("eval"); v != "" {
-					id = v
-				}
+				id = old("eval")
 			case "light":
-				if v := pick("light"); v != "" {
-					id = v
-				}
+				id = old("light")
 			}
-			if id != "" {
+			if !usable(step, agent, id) {
+				id = seedPick(step, agent)
+			}
+			if usable(step, agent, id) {
 				per[agent] = id
 			}
 		}
@@ -100,6 +108,54 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 	}
 	doc["defaults"] = out
 	return true
+}
+
+// tierPickProblem says why one default cannot hold id, or "": the model must be in the registry, active, one the agent can run
+// (claude: Anthropic; copilot: Anthropic or OpenAI), and the binding evaluator is never a Haiku model (user, 2026-11-14).
+func tierPickProblem(doc map[string]any, step, agent, id string) string {
+	prov, m := registryModel(doc, id)
+	switch {
+	case m == nil:
+		return id + " is not in the registry"
+	case isLegacy(m):
+		return id + " is legacy"
+	case !slices.Contains(tierAgentProviders[agent], prov):
+		return id + " is an " + map[string]string{"anthropic": "Anthropic", "openai": "OpenAI"}[prov] + " model, which " + tierAgentLabel[agent] + " cannot run"
+	case step == "evaluator" && haikuClass(id, m):
+		return "the binding evaluator is never a Haiku model"
+	}
+	return ""
+}
+
+// tierDefaultsProblem names the first default a save cannot hold ("the Evaluator default for Claude Code: ..."), or "" when all are
+// fine: the refusal a person reads in Admin.
+func tierDefaultsProblem(data map[string]any) string {
+	defaults, _ := data["defaults"].(map[string]any)
+	steps := make([]string, 0, len(defaults))
+	for step := range defaults {
+		steps = append(steps, step)
+	}
+	slices.Sort(steps)
+	for _, step := range steps {
+		if tierStepLabel[step] == "" {
+			return "defaults: unknown step " + step + " (steps: " + strings.Join(tierSteps, ", ") + ")"
+		}
+		per, _ := defaults[step].(map[string]any)
+		agents := make([]string, 0, len(per))
+		for agent := range per {
+			agents = append(agents, agent)
+		}
+		slices.Sort(agents)
+		for _, agent := range agents {
+			if tierAgentLabel[agent] == "" {
+				return "defaults." + step + ": unknown agent " + agent + " (agents: " + strings.Join(tierAgents, ", ") + ")"
+			}
+			if why := tierPickProblem(data, step, agent, fmt.Sprint(per[agent])); why != "" {
+				return tierSlot(step+"."+agent) + ": " + why
+			}
+		}
+	}
+	return ""
 }
 
 // tierSlot names one default for a person: "the Evaluator default for Claude Code".
@@ -266,27 +322,7 @@ func modelTiersConsistent(data map[string]any) bool {
 		}
 	}
 	// t-8f6d: every default is a known step and agent, names an active model the agent can run, and the binding evaluator is never Haiku.
-	defaults, _ := data["defaults"].(map[string]any)
-	for step, perRaw := range defaults {
-		if tierStepLabel[step] == "" {
-			return false
-		}
-		per, _ := perRaw.(map[string]any)
-		for agent, idRaw := range per {
-			id := fmt.Sprint(idRaw)
-			if tierAgentLabel[agent] == "" || legacyIDs[id] {
-				return false
-			}
-			prov, m := registryModel(data, id)
-			if m == nil || !slices.Contains(tierAgentProviders[agent], prov) {
-				return false
-			}
-			if step == "evaluator" && haikuClass(id, m) {
-				return false
-			}
-		}
-	}
-	return true
+	return tierDefaultsProblem(data) == ""
 }
 
 // apiHost is the one host a provider's Models API source may name: the key is attached to it and to nothing else.
