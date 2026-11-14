@@ -96,10 +96,9 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	if res := auditTiers(clickReq(), "reset", func() map[string]any { return saveModelTiers(map[string]any{"reset": true}) }); res["ok"] != true {
 		t.Fatalf("reset: %v", res)
 	}
-	// t-8f6d: a reset logs one line per default it changed back: the retire moved sonnet out of three slots (the reviewer under Copilot CLI
-	// is an OpenAI model in this registry)
+	// t-8f6d: a reset logs one line per default it changed back: the retire moved sonnet out of the two Claude Code gate slots
 	got = settingEvents(t, dir)
-	want := []string{"model-tiers.reset.evaluator.claude", "model-tiers.reset.evaluator.copilot", "model-tiers.reset.reviewer.claude"}
+	want := []string{"model-tiers.reset.evaluator.claude", "model-tiers.reset.reviewer.claude"} // t-aba6: a retire moves only Claude Code picks
 	if len(got) != 1+len(want) {
 		t.Fatalf("a reset should add one line per changed default: %v", got)
 	}
@@ -335,5 +334,39 @@ func TestModelTiersSaveLogsEveryChangedValue(t *testing.T) {
 	save(card)
 	if n := len(settingEvents(t, dir)); n != 2 {
 		t.Fatalf("the same save again changed nothing but logged %d more line(s)", n-2)
+	}
+}
+
+// t-aba6 (t-8f6d evaluator finding): the first save after an old-shape file is read migrated diffs against the migrated document, so it
+// logs only the default the person changed, never every step the migration filled. Protects the setting.changed audit (events API).
+func TestModelTiersFirstSaveAfterMigrationLogsOnlyTheChange(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := regDoc()
+	user["defaults"] = map[string]any{"eval": map[string]any{"anthropic": "claude-sonnet-5"}, "light": map[string]any{"anthropic": "claude-haiku-4-5"}}
+	ub, _ := json.Marshal(user)
+	_ = os.MkdirAll(filepath.Dir(modelTiersUserFile()), 0o755)
+	if err := os.WriteFile(modelTiersUserFile(), ub, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := loadModelTiers() // what Admin shows and posts back: migrated
+	doc["defaults"].(map[string]any)["light"].(map[string]any)["claude"] = "claude-haiku-5-5"
+	if res := auditTiers(clickReq(), "save", func() map[string]any { return saveModelTiers(doc) }); res["ok"] != true {
+		t.Fatalf("save: %v", res)
+	}
+	got := settingEvents(t, dir)
+	if len(got) != 1 {
+		t.Fatalf("the first save after a migration logged %d lines, want 1: %v", len(got), got)
+	}
+	if d := got[0]["data"].(map[string]any); d["name"] != "model-tiers.save.light.claude" || d["old"] != "claude-haiku-4-5" || d["new"] != "claude-haiku-5-5" {
+		t.Errorf("line = %v", d)
 	}
 }

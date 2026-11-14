@@ -2,11 +2,11 @@
   "defaults": {
     "plan": {
       "claude": "claude-opus-5-5",
-      "copilot": "claude-opus-5-5"
+      "copilot": "claude-opus-5.5"
     },
     "build": {
       "claude": "claude-sonnet-5-5",
-      "copilot": "claude-sonnet-5-5"
+      "copilot": "claude-sonnet-5.5"
     },
     "reviewer": {
       "claude": "claude-sonnet-5",
@@ -18,7 +18,7 @@
     },
     "light": {
       "claude": "claude-haiku-5-5",
-      "copilot": "claude-haiku-5-5"
+      "copilot": "claude-haiku-5.5"
     }
   },
   "models": {
@@ -188,6 +188,58 @@
       "url": "https://api.openai.com/v1/models",
       "kind": "api",
       "provider": "openai"
+    }
+  ],
+  "copilot_models": [
+    {
+      "id": "claude-opus-5.5",
+      "name": "Claude Opus 5.5",
+      "usage": ""
+    },
+    {
+      "id": "claude-sonnet-5.5",
+      "name": "Claude Sonnet 5.5",
+      "usage": "1x"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "name": "Claude Sonnet 5",
+      "usage": "1x"
+    },
+    {
+      "id": "claude-haiku-5.5",
+      "name": "Claude Haiku 5.5",
+      "usage": "1x"
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "name": "Claude Haiku 4.5",
+      "usage": "0.33x"
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "name": "GPT-6.1 Terra",
+      "usage": "1x"
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "usage": "1x"
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "usage": "1x"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "usage": "1x"
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "name": "GPT-5.3-Codex",
+      "usage": "1x"
     }
   ]
 }

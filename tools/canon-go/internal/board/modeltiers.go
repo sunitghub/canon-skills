@@ -2,6 +2,7 @@ package board
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -80,7 +81,6 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 		id, _ := per[agent].(string)
 		return id
 	}
-	usable := func(step, agent, id string) bool { return id != "" && tierPickProblem(doc, step, agent, id) == "" }
 	out := map[string]any{}
 	for _, step := range tierSteps {
 		cur, _ := d[step].(map[string]any)
@@ -97,10 +97,10 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 			case "light":
 				id = old("light")
 			}
-			if !usable(step, agent, id) {
-				id = seedPick(step, agent)
+			if agent == "copilot" { // t-aba6: a Copilot pick is Copilot's own id
+				id = copilotFormOf(id)
 			}
-			if usable(step, agent, id) {
+			if id = firstUsablePick(doc, step, agent, id, seedPick(step, agent)); id != "" {
 				per[agent] = id
 			}
 		}
@@ -110,9 +110,19 @@ func migrateTierDefaults(doc, seed map[string]any) bool {
 	return true
 }
 
-// tierPickProblem says why one default cannot hold id, or "": the model must be in the registry, active, one the agent can run
-// (claude: Anthropic; copilot: Anthropic or OpenAI), and the binding evaluator is never a Haiku model (user, 2026-11-14).
+// tierPickProblem says why one default cannot hold id, or "": a Claude Code pick is an active Anthropic model of the registry; a Copilot
+// CLI pick is one of Copilot's own ids (t-aba6: the list read from Copilot, else the seed's fallback list), a Claude or GPT model; the
+// binding evaluator is never a Haiku model under either agent (user, 2026-11-14).
 func tierPickProblem(doc map[string]any, step, agent, id string) string {
+	if agent == "copilot" {
+		switch { // the list holds only Claude and GPT models (keepCopilotModels), so membership is the family rule too
+		case !copilotPickIDs(doc)[id]:
+			return id + " is not in Copilot CLI's model list (Read Copilot's models in Admin)"
+		case step == "evaluator" && haikuClass(id, nil):
+			return "the binding evaluator is never a Haiku model"
+		}
+		return ""
+	}
 	prov, m := registryModel(doc, id)
 	switch {
 	case m == nil:
@@ -158,19 +168,139 @@ func tierDefaultsProblem(data map[string]any) string {
 	return ""
 }
 
+// copilotFormOf is a registry id in Copilot's spelling: the last version dash is a dot (claude-sonnet-5-5 -> claude-sonnet-5.5);
+// an id with one version number (claude-sonnet-5, gpt-6-luna) is the same in both.
+var registryVersionRe = regexp.MustCompile(`^(claude-[a-z]+-[0-9]+)-([0-9]+)$`)
+
+func copilotFormOf(id string) string { return registryVersionRe.ReplaceAllString(id, "$1.$2") }
+
+// migrateCopilotPicks (t-aba6): a registry saved before Copilot picks were Copilot's own ids holds registry ids there. Each one Copilot's
+// list does not name is mapped once to Copilot's spelling, else takes the seed's pick, else is left out; it is written on the next save.
+func migrateCopilotPicks(doc, seed map[string]any) bool {
+	d, _ := doc["defaults"].(map[string]any)
+	sd, _ := seed["defaults"].(map[string]any)
+	changed := false
+	for _, step := range tierSteps {
+		per, _ := d[step].(map[string]any)
+		cur, _ := per["copilot"].(string)
+		if per == nil || cur == "" || tierPickProblem(doc, step, "copilot", cur) == "" {
+			continue
+		}
+		seedPer, _ := sd[step].(map[string]any)
+		seedPick, _ := seedPer["copilot"].(string)
+		next := firstUsablePick(doc, step, "copilot", copilotFormOf(cur), seedPick)
+		if next == "" {
+			delete(per, "copilot")
+		} else {
+			per["copilot"] = next
+		}
+		changed = true
+	}
+	return changed
+}
+
+// firstUsablePick is the first of ids one default may hold today (tierPickProblem), or "": the one fallback rule both migrations use.
+func firstUsablePick(doc map[string]any, step, agent string, ids ...string) string {
+	for _, id := range ids {
+		if id != "" && tierPickProblem(doc, step, agent, id) == "" {
+			return id
+		}
+	}
+	return ""
+}
+
+// tierOption is one model a step's picker offers: the id stored, its name, the group it is listed under, and Copilot's multiplier.
+type tierOption struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Group string `json:"group"`
+	Usage string `json:"usage,omitempty"`
+	Saved bool   `json:"saved_only,omitempty"` // shown only because it is the saved pick (a hand-edited file); never offered otherwise
+}
+
+// tierCandidates are the models an agent can run, before any step's rule: Claude Code, the registry's active Anthropic models; Copilot
+// CLI, Copilot's own list (read in Admin, else the fallback list).
+func tierCandidates(doc map[string]any, agent string) []tierOption {
+	out := []tierOption{}
+	if agent == "copilot" {
+		list, _ := savedCopilotModels(doc)
+		for _, m := range list.Models {
+			out = append(out, tierOption{ID: m.ID, Name: m.Name, Group: copilotGroup(m.ID), Usage: m.Usage})
+		}
+		return out
+	}
+	models, _ := doc["models"].(map[string]any)
+	for _, raw := range anySlice(models["anthropic"]) {
+		m, _ := raw.(map[string]any)
+		if id := fmt.Sprint(m["id"]); m != nil && !isLegacy(m) {
+			name, _ := m["name"].(string)
+			out = append(out, tierOption{ID: id, Name: name, Group: "Anthropic"})
+		}
+	}
+	return out
+}
+
+// lightLine: the cheap line Simple / Light work offers (a Haiku model, or a Luna one under Copilot). An offer only; validation does not
+// require it, so a person's own pick from before stays valid.
+func lightLine(id string) bool {
+	return haikuClass(id, nil) || strings.Contains(strings.ToLower(id), "luna")
+}
+
+// tierOptions (t-aba6, DRY with validation): what each step's picker offers each agent, built from tierPickProblem so Admin can never
+// offer a model a save would refuse. The saved pick is always listed, marked when no rule offers it. The one owner static/cockpit-admin.js renders.
+func tierOptions(doc map[string]any) map[string]map[string][]tierOption {
+	defaults, _ := doc["defaults"].(map[string]any)
+	out := map[string]map[string][]tierOption{}
+	for _, step := range tierSteps {
+		per, _ := defaults[step].(map[string]any)
+		out[step] = map[string][]tierOption{}
+		for _, agent := range tierAgents {
+			cur, _ := per[agent].(string)
+			opts, has := []tierOption{}, false
+			for _, c := range tierCandidates(doc, agent) {
+				if tierPickProblem(doc, step, agent, c.ID) != "" || (step == "light" && !lightLine(c.ID) && c.ID != cur) {
+					continue
+				}
+				has = has || c.ID == cur
+				opts = append(opts, c)
+			}
+			if cur != "" && !has {
+				opts = append(opts, tierOption{ID: cur, Name: cur, Group: "Saved", Saved: true})
+			}
+			out[step][agent] = opts
+		}
+	}
+	return out
+}
+
+// tierOptionsView answers GET /api/admin/model-tiers/options: the steps and agents (their labels, the one place they are named) and
+// each picker's options.
+func tierOptionsView() map[string]any {
+	doc := loadModelTiers()
+	steps, agents := []map[string]string{}, []map[string]string{}
+	for _, s := range tierSteps {
+		steps = append(steps, map[string]string{"id": s, "label": tierStepLabel[s]})
+	}
+	for _, a := range tierAgents {
+		agents = append(agents, map[string]string{"id": a, "label": tierAgentLabel[a]})
+	}
+	return map[string]any{"ok": true, "steps": steps, "agents": agents, "options": tierOptions(doc)}
+}
+
 // tierSlot names one default for a person: "the Evaluator default for Claude Code".
 func tierSlot(slot string) string {
 	step, agent, _ := strings.Cut(slot, ".")
 	return "the " + tierStepLabel[step] + " default for " + tierAgentLabel[agent]
 }
 
-// heldBy lists what the entry holds: its alias and the <step>.<agent> defaults that name it.
+// heldBy lists what the entry holds: its alias and the <step>.claude defaults that name it. A Copilot CLI pick is Copilot's own id
+// (t-aba6), another id space: a registry retire or remove never moves it, even when the two spell a model the same way.
 func heldBy(doc map[string]any, prov string, m map[string]any) (alias string, tiers []string) {
 	alias = aliasOf(m)
 	defaults, _ := doc["defaults"].(map[string]any)
 	for _, step := range tierSteps {
 		per, _ := defaults[step].(map[string]any)
-		for _, agent := range tierAgents {
+		for _, agent := range []string{"claude"} {
 			if per != nil && fmt.Sprint(per[agent]) == fmt.Sprint(m["id"]) {
 				tiers = append(tiers, step+"."+agent)
 			}

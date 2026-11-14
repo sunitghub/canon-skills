@@ -221,7 +221,16 @@ func pipelineModelFor(id string) *pipelineModel {
 	doc := loadModelTiers()
 	defaults, _ := doc["defaults"].(map[string]any)
 	per, _ := defaults[step].(map[string]any)
+	copilotNames := map[string]string{}
+	if list, _ := savedCopilotModels(doc); true {
+		for _, cm := range list.Models {
+			copilotNames[cm.ID] = cm.Name
+		}
+	}
 	name := func(want string) string {
+		if n := copilotNames[want]; n != "" { // t-aba6: a Copilot CLI pick is Copilot's own id, named from its list
+			return pipelineClean(n)
+		}
 		if _, em := registryModel(doc, want); em != nil {
 			if n, _ := em["name"].(string); n != "" {
 				return pipelineClean(n)
