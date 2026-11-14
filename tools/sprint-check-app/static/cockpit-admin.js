@@ -14,7 +14,7 @@ export function renderAdminSessions(views){
   const needs=views.filter(v=>v.state==='needs-you').length;
   document.getElementById('ad-tile-agents').textContent=views.length;
   document.getElementById('ad-tile-needs').textContent=needs;
-  if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
+  if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active sessions.</div>'; return; }
   // The board holds no session token (t-391a): Answer/Open jumps to the session's tab, and Reap now / Kill go
   // through the daemon's /relay page (t-3c9a), never a token here.
   box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
@@ -92,7 +92,7 @@ export async function loadAdmin(){
   // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
   const rb=ck.running_build||{}, rp=document.getElementById('ad-reaper');
   rp.hidden=!(rb.idle_timeout_secs>0 && rb.idle_timeout_main_secs>0);
-  rp.textContent=rp.hidden?'':('Idle sessions auto-save & end after '+fmtUptime(rb.idle_timeout_secs)+' in a worktree and '+fmtUptime(rb.idle_timeout_main_secs)+' in a project\u2019s main checkout; any activity resets the timer, and a session that needs you is never ended.');
+  rp.textContent=rp.hidden?'':('Idle sessions save & end after '+fmtUptime(rb.idle_timeout_secs)+' (worktree) or '+fmtUptime(rb.idle_timeout_main_secs)+' (main checkout). Activity resets the timer; a session that needs you never ends.');   // t-864c (user): tighter
   // t-ade9: a per-state hint under the daemon panel \u2014 "Healthy" alone doesn't
   // say whether any agent is actually running, which reads as a contradiction
   // once you know the daemon spawns lazily on first Start/Resume.

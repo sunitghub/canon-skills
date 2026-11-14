@@ -6315,7 +6315,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await page.evaluate(t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }, theme0);
       await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
-      await expect(page.locator('#ad-reaper')).toContainText('after 5m in a worktree and 30m in a project’s main checkout');
+      await expect(page.locator('#ad-reaper')).toHaveText('Idle sessions save & end after 5m (worktree) or 30m (main checkout). Activity resets the timer; a session that needs you never ends.');   // t-864c (user): tighter
       await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
       await expect(box.locator('button.ad-open')).toHaveText(['Answer', 'Answer', 'Open', 'Open', 'Open', 'Open']);
       await expect(box).not.toContainText('Save & End');
@@ -6368,7 +6368,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ag-list')).toHaveText('No agents running');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'sidebar-empty.png') });
-      await expect(page.locator('#ad-sessions')).toHaveText('No active agent sessions.');
+      await expect(page.locator('#ad-sessions')).toHaveText('No active sessions.');
       expect(errors).toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -7104,7 +7104,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(banner.locator('img')).toHaveCount(0);
       // Admin: the card is renamed and lists every stopped session, including the other project's and the unregistered one.
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
-      await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents & terminal sessions (all projects)' })).toBeVisible();
+      await expect(page.locator('#view-admin .slabel', { hasText: 'Sessions · all projects' })).toBeVisible();
       await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] .s3')).toHaveText('Can\u2019t resume: project is gone');
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="resume"]')).toHaveCount(0);
