@@ -25,14 +25,16 @@ printf '%s|%s\n' "$*" "$(pwd -P)" >> "$STUB_LOG"
 case "$STUB_MODE" in exit) exit 3 ;; esac
 while IFS= read -r line; do
   case "$line" in
-    *'"initialize"'*) printf '{"jsonrpc":"2.0","method":"note","params":{}}\nnot json at all\n{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{},"authMethods":[]}}\n' ;;
-    *'"session/new"'*)
+    # the exact requests (json.Marshal sorts keys): any other shape gets no answer, so the read times out and the test fails
+    '{"id":1,"jsonrpc":"2.0","method":"initialize","params":{"clientCapabilities":{},"protocolVersion":1}}') printf '{"jsonrpc":"2.0","method":"note","params":{}}\nnot json at all\n{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":1,"agentCapabilities":{},"authMethods":[]}}\n' ;;
+    '{"id":2,"jsonrpc":"2.0","method":"session/new","params":{"cwd":"'*'","mcpServers":[]}}')
+      printf '{"jsonrpc":"2.0","id":7,"result":{}}\n'   # an answer to another request is not this one
       case "$STUB_MODE" in
         hang) sleep 30 ;;
         error) printf '{"jsonrpc":"2.0","id":2,"error":{"code":-32000,"message":"Not signed in\u001b[2J"}}\n' ;;
         signedout) printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s"}}\n' ;;
         none) printf '{"jsonrpc":"2.0","id":2,"result":{"models":{"availableModels":[{"modelId":"gemini-3.8-flash","name":"Gemini"},{"modelId":"auto","name":"Auto"}]}}}\n' ;;
-        *) printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s","models":{"currentModelId":"claude-sonnet-5.5","availableModels":[{"modelId":"auto","name":"Auto"},{"modelId":"claude-sonnet-5.5","name":"Claude Sonnet 5.5","_meta":{"copilotUsage":"1x"}},{"modelId":"claude-haiku-4.5","name":"Claude Haiku 4.5","_meta":{"copilotUsage":"0.33x"}},{"modelId":"gpt-6-luna","name":"GPT-6 Luna\u001b[31m","_meta":{"copilotUsage":"1x"}},{"modelId":"gemini-3.8-flash","name":"Gemini 3.8 Flash","_meta":{"copilotUsage":"14x"}},{"modelId":"../evil","name":"x"},{"modelId":"claude-sonnet-5.5","name":"dup"}]}}}\n' ;;
+        *) printf '{"jsonrpc":"2.0","id":2,"result":{"sessionId":"s","models":{"currentModelId":"claude-sonnet-5.5","availableModels":[{"modelId":"auto","name":"Auto"},{"modelId":"claude-sonnet-5.5","name":"Claude Sonnet 5.5","_meta":{"copilotUsage":"1x"}},{"modelId":"claude-haiku-4.5","name":"Claude Haiku 4.5","_meta":{"copilotUsage":"0.33x"}},{"modelId":"gpt-6-luna","name":"GPT-6 Luna\u001b[31m","_meta":{"copilotUsage":"1x"}},{"modelId":"gpt-6.1-terra","name":"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"},{"modelId":"gemini-3.8-flash","name":"Gemini 3.8 Flash","_meta":{"copilotUsage":"14x"}},{"modelId":"../evil","name":"x"},{"modelId":"claude-sonnet-5.5","name":"dup"}]}}}\n' ;;
       esac ;;
   esac
 done
@@ -57,7 +59,7 @@ func TestReadCopilotModels(t *testing.T) {
 		t.Fatalf("read = %v", res)
 	}
 	got, _ := json.Marshal(res["models"])
-	want := `[{"id":"claude-sonnet-5.5","name":"Claude Sonnet 5.5","usage":"1x"},{"id":"claude-haiku-4.5","name":"Claude Haiku 4.5","usage":"0.33x"},{"id":"gpt-6-luna","name":"GPT-6 Luna[31m","usage":"1x"}]`
+	want := `[{"id":"claude-sonnet-5.5","name":"Claude Sonnet 5.5","usage":"1x"},{"id":"claude-haiku-4.5","name":"Claude Haiku 4.5","usage":"0.33x"},{"id":"gpt-6-luna","name":"GPT-6 Luna[31m","usage":"1x"},{"id":"gpt-6.1-terra","name":"TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT"}]`
 	if string(got) != want {
 		t.Errorf("models = %s\nwant     %s", got, want)
 	}
@@ -110,7 +112,7 @@ func TestReadCopilotModelsFailures(t *testing.T) {
 		if mode == "hang" && time.Since(start) > 6*time.Second {
 			t.Errorf("a hung copilot was not stopped at the deadline (%s)", time.Since(start))
 		}
-		if res["source"] != "copilot" || len(res["models"].([]copilotModel)) != 3 {
+		if res["source"] != "copilot" || len(res["models"].([]copilotModel)) != 4 {
 			t.Errorf("%s: the last saved list is not shown: %v", mode, res)
 		}
 		if now, _ := os.ReadFile(copilotModelsFile()); string(now) != string(saved) {
@@ -144,7 +146,8 @@ func TestSavedCopilotModelsFallback(t *testing.T) {
 // result. Protects the read path and the close (it passes the pick as is).
 func TestMigrateCopilotPicks(t *testing.T) {
 	for in, want := range map[string]string{"claude-sonnet-5-5": "claude-sonnet-5.5", "claude-haiku-4-5-20251001": "claude-haiku-4.5", "claude-opus-5-5": "claude-opus-5.5",
-		"claude-sonnet-5": "claude-sonnet-5", "gpt-6-luna": "gpt-6-luna", "gpt-6.1-sol": "gpt-6.1-sol", "claude-sonnet-5.5": "claude-sonnet-5.5"} {
+		"claude-sonnet-5": "claude-sonnet-5", "gpt-6-luna": "gpt-6-luna", "gpt-6.1-sol": "gpt-6.1-sol", "claude-sonnet-5.5": "claude-sonnet-5.5",
+		"my-claude-sonnet-5-5": "my-claude-sonnet-5-5", "claude-sonnet-5-5-x": "claude-sonnet-5-5-x"} { // only a whole registry id is respelled
 		if got := copilotFormOf(in); got != want {
 			t.Errorf("copilotFormOf(%s) = %s, want %s", in, got, want)
 		}
