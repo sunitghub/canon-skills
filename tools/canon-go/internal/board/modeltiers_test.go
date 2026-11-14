@@ -558,6 +558,14 @@ func TestSecondEvalStep(t *testing.T) {
 			t.Errorf("%s: the first option is %+v, want Off", agent, first)
 		}
 	}
+	// and the Evaluator's picker never offers the Second eval's model, so a pick there can never be refused for it (reviewer Consider)
+	d["evaluator2"] = map[string]any{"claude": "claude-opus-5-5"}
+	for _, o := range tierOptions(doc)["evaluator"]["claude"] {
+		if o.ID == "claude-opus-5-5" {
+			t.Error("the Evaluator's picker offers the Second eval's model")
+		}
+	}
+	d["evaluator2"] = map[string]any{"claude": "", "copilot": ""}
 	if why := common.TierPickProblem(doc, "evaluator2", "claude", "claude-haiku-5-5"); !strings.Contains(why, "Haiku") {
 		t.Errorf("a Haiku Second eval was accepted: %q", why)
 	}
