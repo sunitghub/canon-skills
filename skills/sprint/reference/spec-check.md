@@ -48,12 +48,12 @@ Grade every criterion under `acceptance.md ## Criteria`, then the plan:
 6. **Changed after approval.** If `plan.md` already carries `Approved: sha256:` and a criterion reads differently from what the
    ticket's decisions say, flag it: a criterion changed without the person (t-aba6: a reviewer fix changed criterion 5).
 
-**`[manual]` criteria.** On a Manual ticket (`manual: true` in `ticket.md`'s front matter), a criterion starting with `[manual]`
-is judged by the person and recorded with `sprint manual-qa`: it needs no Test Plan command, so never report it under check 2.
-Still check that it says what the person does and what they should see (check 1). On a ticket that is not Manual, a `[manual]`
-criterion is a gap: `sprint complete` would have no record to read for it.
+**`[manual]` criteria.** A criterion starting with `[manual]` is judged by the person and recorded with `sprint manual-qa`, on any
+ticket (Manual or not: `sprint check-evidence` asks for that record before the evaluator runs). It needs no Test Plan command, so never
+report it under check 2. Still check that it says what the person does and what they should see (check 1).
 
-A criterion that needs a machine the grader lacks (a Windows VM) belongs on a follow-up ticket's checklist, not here: flag it.
+A criterion that needs a machine the gates do not have (a Windows VM, a real device) is a gap only when it is not tagged `[manual]`:
+then say to tag it, or to move it to a follow-up ticket's checklist.
 
 ## Report
 

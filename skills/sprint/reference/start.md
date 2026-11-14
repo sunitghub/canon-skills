@@ -265,13 +265,16 @@ Start checklist — rules that need no reference read (each owned by the step na
 9. **Impact analysis for high-risk work.** Read `skills/sprint/reference/impact-analysis.md` and run the full impact analysis process. Writes `## Impact Assessment` to `plan.md` and required mitigation tests to `acceptance.md ## Test Plan`. Resolve any human checkpoint before implementation.
 
 10. **Sprint brief.** First the **spec check** (t-9b13): once `acceptance.md` and `plan.md` are written, dispatch the advisory
-   spec checker, unless the ticket is Lite (`demo: true`) or `tools/pipeline.sh resolve --full --project <root>` says `spec-check` is
-   off. `tools/gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role speccheck`; the `Agent` tool with
+   spec checker, unless `tools/pipeline.sh resolve --full --project <root>` says `spec-check` is off or one of the ticket's options is in
+   its `skip_on` column (today `lite`: a `demo: true` ticket). Delete an old `.tickets/<id>/spec-review.md` first (a failed re-run must not leave the last verdict), then
+   `tools/gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role speccheck`; the `Agent` tool with
    `subagent_type: "canon-spec-checker"` (fallback `general-purpose`), told to follow `skills/sprint/reference/spec-check.md` for the
-   ticket and to write `.tickets/<id>/spec-review.md`; then `gate-snapshot.sh post …` and `tools/subagent-log.sh --agent-id <id>
+   ticket and to write `.tickets/<id>/spec-review.md`; then `gate-snapshot.sh post …` (exit 1: stop and show the person what it names,
+   as for a close gate) and `tools/subagent-log.sh --agent-id <id>
    --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: a ticket's `Gate model:`, else Admin > Model tiers'
-   Spec check default for the agent (`defaults.speccheck.<claude|copilot>`; Claude Code: its alias), else omit it (the agent file's
-   floor). It never blocks and you never apply its findings yourself: put them in the brief, and the person decides. A failed or
+   Spec check default for the agent (`defaults.speccheck.<claude|copilot>` in `$CANON_HOME/cockpit/model-tiers.json`, else the seed
+   `tools/sprint-check-app/model-tiers.json`; a file saved before the step has none: use its `defaults.reviewer.<agent>`, as Admin
+   shows; Claude Code: the entry's alias), else omit it (the agent file's floor). It never blocks and you never apply its findings yourself: put them in the brief, and the person decides. A failed or
    refused dispatch is said in the brief, not retried in a loop. Then produce:
    - What this sprint accomplishes (one sentence)
    - Tier: trivial skipped / normal / high-risk, with the reason

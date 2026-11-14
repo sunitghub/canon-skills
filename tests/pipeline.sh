@@ -185,6 +185,9 @@ AP='  - id: approve-plan\n    kind: you\n    order: 30\n    locked: true\n    re
 refuse_default "node 'a': before_approval must be true" "${N1}    before_approval: false\n${AP}"
 refuse_default "node 'a': before_approval needs the approve-plan node" "${N1}    before_approval: true\n"
 refuse_default "node 'a': before_approval needs an order below approve-plan's" "nodes:\n  - id: a\n    kind: gate\n    order: 90\n    locked: false\n    before_approval: true\n${AP}"
+refuse_default "node 'a': before_approval needs an order below approve-plan's" "nodes:\n  - id: a\n    kind: gate\n    order: 31\n    locked: false\n    before_approval: true\n${AP}"   # just after it
+fakedef "nodes:\n  - id: a\n    kind: agent\n    order: 29\n    locked: false\n    before_approval: true\n${AP}" resolve
+[[ "$FRC" == 0 && "$FOUT" == "30 approve-plan you on locked" ]] || fail "pipeline: a node just before approve-plan was refused or pinned (exit $FRC): $FOUT"
 
 # ── more project-file shapes ──
 d="$(mkproj 'extends: canon-default\noff: [ ]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n')"

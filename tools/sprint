@@ -1885,7 +1885,7 @@ cmd_token_spend() {
         t = field("ticket"); k = field("kind"); ts = substr(field("ts"), 1, 19); key = t SUBSEP pr
         if (k == "sprint.cost") { print "C\t" t "\t" pr "\t" fv("planning") "\t" fv("implementation") "\t" fv("gates") "\t" fv("cache_read"); next }
         if (k == "sprint.started") { if (!(key in S)) { S[key] = ts; G[key] = "" } }
-        else if (k == "gate.started") { if ((key in S) && G[key] == "") G[key] = ts }
+        else if (k == "gate.started") { if ((key in S) && G[key] == "" && field("role") != "speccheck") G[key] = ts }   # t-9b13: the spec check runs before approval, in planning
         else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts "\t" rawp; delete S[key] }
       }')"
   local dropped

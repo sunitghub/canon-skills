@@ -170,4 +170,20 @@ nogit="$(mktemp -d)"
 nocommit="$(make_project)"
 ( cd "$nocommit"; out="$("$TOOL" pre "$scratch/nc" 2>&1)"; assert_contains "$out" "skipped" ); rm -rf "$nocommit"
 
+# t-9b13: the spec check grades acceptance.md and plan.md (under .tickets/, otherwise ignored): with --role speccheck, post names an edit to
+# either; its own report and an edit during another gate's run are not differences
+sd="$(mktemp -d)"; mkdir -p "$sd/.tickets/t-s"; spj="$(make_project)"
+( cd "$spj"; git config user.email t@example.com; git config user.name test; mkdir -p .tickets/t-s
+  printf '# A\n- [ ] c\n' > .tickets/t-s/acceptance.md; printf '# P\n' > .tickets/t-s/plan.md; git add -A >/dev/null; git commit -qm base
+  ss=.tickets/t-s/gate-snapshot.txt
+  "$TOOL" pre "$ss" --role speccheck >/dev/null 2>&1
+  echo 'report' > .tickets/t-s/spec-review.md
+  "$TOOL" post "$ss" >/dev/null || fail "the spec check's own report must not count as a difference"
+  "$TOOL" pre "$ss" --role speccheck >/dev/null 2>&1
+  echo '- [ ] a criterion the checker added' >> .tickets/t-s/acceptance.md
+  out="$(run_fail "$TOOL" post "$ss")"; assert_contains "$out" "acceptance.md or plan.md changed during the spec check"
+  "$TOOL" pre "$ss" --role reviewer >/dev/null 2>&1
+  echo '- [x] ticked by the person' >> .tickets/t-s/plan.md
+  "$TOOL" post "$ss" >/dev/null || fail "an edit of plan.md during the reviewer must stay ignored (only the spec check grades it)" ); rm -rf "$spj" "$sd"
+
 echo "gate-snapshot: ok (clean pass, .tickets/ ignored, Windows path spellings (t-8120), commit/branch/ref/tag/untracked/deleted/edited/staged/audit-log each named, incident reproduced, sibling and linked worktrees, tracked .tickets/.claude, subdirectory project, unmerged stash, no-git warns)"

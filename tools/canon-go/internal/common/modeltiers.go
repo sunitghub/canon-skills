@@ -114,9 +114,12 @@ func MigrateTierDefaults(doc, seed map[string]any) bool {
 				per[agent] = v
 				continue
 			}
-			id := ""
-			switch step {
-			case "reviewer", "evaluator", "speccheck":
+			id, src := "", step
+			if f := TierStepFrom[step]; f != "" { // a later step starts from the step it was copied from (t-9b13)
+				src = f
+			}
+			switch src {
+			case "reviewer", "evaluator":
 				id = old("eval")
 			case "light":
 				id = old("light")
