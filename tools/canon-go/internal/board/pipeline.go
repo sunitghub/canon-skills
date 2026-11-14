@@ -222,14 +222,16 @@ func pipelineModelFor(id string) *pipelineModel {
 	defaults, _ := doc["defaults"].(map[string]any)
 	per, _ := defaults[step].(map[string]any)
 	copilotNames := map[string]string{}
-	if list, _ := savedCopilotModels(doc); true {
-		for _, cm := range list.Models {
-			copilotNames[cm.ID] = cm.Name
-		}
+	list, _ := savedCopilotModels(doc)
+	for _, cm := range list.Models {
+		copilotNames[cm.ID] = cm.Name
 	}
-	name := func(want string) string {
-		if n := copilotNames[want]; n != "" { // t-aba6: a Copilot CLI pick is Copilot's own id, named from its list
-			return pipelineClean(n)
+	name := func(want, agent string) string {
+		if agent != registryAgent { // t-aba6: a Copilot CLI pick is Copilot's own id, named from its list
+			if n := copilotNames[want]; n != "" {
+				return pipelineClean(n)
+			}
+			return want
 		}
 		if _, em := registryModel(doc, want); em != nil {
 			if n, _ := em["name"].(string); n != "" {
@@ -244,9 +246,9 @@ func pipelineModelFor(id string) *pipelineModel {
 		if want == "" {
 			continue
 		}
-		m.Agents = append(m.Agents, pipelineAgentModel{Agent: tierAgentLabel[agent], ID: want, Name: name(want)})
-		if agent == "claude" {
-			m.ID, m.Name = want, name(want)
+		m.Agents = append(m.Agents, pipelineAgentModel{Agent: tierAgentLabel[agent], ID: want, Name: name(want, agent)})
+		if agent == registryAgent {
+			m.ID, m.Name = want, name(want, agent)
 		}
 	}
 	if len(m.Agents) == 0 {

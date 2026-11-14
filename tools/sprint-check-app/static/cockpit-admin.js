@@ -112,21 +112,26 @@ export async function loadAdmin(){
 // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
 // Board-wide registry (not per-project, not daemon state) backing this
 // panel and the board's per-ticket Gate-model dropdown. t-8f6d + t-2cc8: one
-// default per step and agent, defaults.<step>.<agent> (the Go owner is
-// tierSteps/tierAgents in internal/board/modeltiers.go; this table mirrors it).
+// default per step and agent, defaults.<step>.<agent>. t-aba6: the steps, the
+// agents and every picker's options are the board's (GET /api/admin/model-tiers/
+// options, internal/board/modeltiers.go tierOptions); this file renders them.
 let mtData=null, mtProvider='anthropic', mtAgent='claude', mtCopilot={models:[],source:'fallback',read_at:''}, mtCopilotErr='', mtCopilotBusy=false, mtOpts={steps:[],agents:[],options:{}};
 const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
-// t-aba6: the steps, the agents and what each picker offers come from the board (GET /api/admin/model-tiers/options, built from the
-// same rule a save is validated with): this file only renders them. MT_STEP_UI is the page's own wording per step.
+// MT_STEP_UI is this page's own wording per step (where it is used); names and roles are the board's.
 const MT_STEP_UI={
-  plan:{label:'Plan',used:'Research, acceptance criteria and the plan, before approval.',later:true},
-  build:{label:'Build',used:'Implementation inside the approved plan.',later:true},
-  reviewer:{label:'Reviewer (advisory)',used:'Used by: sprint complete step 2, the fresh reviewer.'},
-  evaluator:{label:'Evaluator (binding)',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
-  light:{label:'Simple / Light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}};
-const mtStepLabel=st=>(MT_STEP_UI[st.id]||{}).label||st.label;
+  plan:{used:'Research, acceptance criteria and the plan, before approval.',later:true},
+  build:{used:'Implementation inside the approved plan.',later:true},
+  reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
+  evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
+  light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
+const MT_REGISTRY_AGENT='claude';   // whose picks are registry ids (modeltiers.go registryAgent): the registry cards' Default badge and Remove's holders
+const mtStepLabel=st=>st.label+(st.role?` (${st.role})`:'');
 const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
-async function mtLoadOptions(){ try{ mtOpts=await (await fetch('/api/admin/model-tiers/options')).json(); }catch(e){} }
+let mtOptsErr='';
+async function mtLoadOptions(){
+  try{ const r=await fetch('/api/admin/model-tiers/options'); if(!r.ok) throw new Error(r.status); mtOpts=await r.json(); mtOptsErr=''; }
+  catch(e){ mtOptsErr='The model lists could not be loaded from the board; reload the page.'; }
+}
 
 async function mtLoad(){
   try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }
@@ -167,7 +172,8 @@ function mtRender(){
   }
   mtRenderCopilotRead();
   const box=document.getElementById('mt-defaults');
-  if(box){
+  if(box&&mtOptsErr){ box.innerHTML=`<div class="setting-d" role="alert" id="mt-opts-err">${esc(mtOptsErr)}</div>`; }
+  else if(box){
     box.innerHTML=(mtOpts.steps||[]).map(st=>{
       const ui=MT_STEP_UI[st.id]||{}, cur=(mtData.defaults[st.id]||{})[mtAgent]||'';
       const list=((mtOpts.options||{})[st.id]||{})[mtAgent]||[];
@@ -188,7 +194,7 @@ function mtRender(){
   // Card grid
   const grid=document.getElementById('mt-grid');
   const models=mtActive(mtProvider);
-  const defaultIds=new Set(Object.values(mtData.defaults||{}).flatMap(per=>Object.values(per||{})));
+  const defaultIds=new Set(Object.values(mtData.defaults||{}).map(per=>(per||{})[MT_REGISTRY_AGENT]).filter(Boolean));   // registry cards: registry picks only
   const hasAlias=MT_ALIAS_PROVIDERS.has(mtProvider);
   grid.innerHTML = models.map(m=>{
     const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
@@ -242,6 +248,7 @@ async function mtReadCopilot(){
   }catch(e){ mtCopilotErr='the board could not be reached'; }
   mtCopilotBusy=false;
   try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }catch(e){}
+  await mtLoadOptions();   // the pickers offer what was just read
   mtRender();
 }
 
@@ -324,7 +331,7 @@ const mtActive=prov=>(mtData.models[prov]||[]).filter(m=>!m.legacy);
 const mtLegacy=prov=>(mtData.models[prov]||[]).filter(m=>m.legacy);
 function mtHeld(prov,m){
   const held=[]; if(m.alias) held.push('the alias '+m.alias);
-  (mtOpts.steps||[]).forEach(st=>{ if(((mtData.defaults[st.id]||{}).claude)===m.id) held.push('the '+st.label+' default for '+mtAgentLabel('claude')); });   // registry moves touch Claude Code picks only (t-aba6)
+  (mtOpts.steps||[]).forEach(st=>{ if(((mtData.defaults[st.id]||{})[MT_REGISTRY_AGENT])===m.id) held.push('the '+st.label+' default for '+mtAgentLabel(MT_REGISTRY_AGENT)); });   // registry moves touch these picks only (t-aba6)
   return held;
 }
 // The newest active Anthropic model of an alias's line (claude-<alias>-<version>), if none holds the alias yet.

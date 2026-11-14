@@ -819,13 +819,21 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	// The request never carries a URL: sources come from the saved registry.
 	// t-aba6: Read Copilot's models (a click): runs `copilot --acp` with fixed arguments and saves the list; the request carries nothing.
 	if path == "/api/admin/copilot-models/read" {
-		before := len(copilotPickIDs(loadModelTiers()))
+		if !agentOriginOK(r) { // it starts a program: a loopback Origin is required, as for every route that does (t-d42a)
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		list, _ := savedCopilotModels(loadModelTiers())
 		res := readAndSaveCopilotModels(r.Context())
 		status := http.StatusOK
-		if ok, _ := res["ok"].(bool); !ok {
+		switch ok, _ := res["ok"].(bool); {
+		case res["busy"] == true:
+			status = http.StatusConflict
+		case !ok:
 			status = http.StatusBadGateway
-		} else if ms, _ := res["models"].([]copilotModel); true {
-			emitSetting(r, "copilot-models.read", fmt.Sprint(before), fmt.Sprint(len(ms)))
+		default:
+			ms, _ := res["models"].([]copilotModel)
+			emitSetting(r, "copilot-models.read", fmt.Sprint(len(list.Models)), fmt.Sprint(len(ms)))
 		}
 		sendJSONStatus(w, res, status)
 		return
@@ -5608,7 +5616,7 @@ func loadModelTiers() map[string]any {
 	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save);
 	// t-aba6: and its Copilot picks in Copilot's own ids.
 	migrateTierDefaults(found[0], found[len(found)-1])
-	migrateCopilotPicks(found[0], found[len(found)-1])
+	migrateCopilotPicks(found[0])
 	return found[0]
 }
 

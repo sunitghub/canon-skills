@@ -47,9 +47,16 @@ type copilotModelList struct {
 
 func copilotModelsFile() string { return filepath.Join(registryDir(), "copilot-models.json") }
 
-// copilotFamily: the families a Copilot CLI pick may be (user, 2026-11-14): Anthropic and OpenAI models only.
-func copilotFamily(id string) bool {
-	return strings.HasPrefix(id, "claude-") || strings.HasPrefix(id, "gpt-")
+// copilotGroup is a Copilot model's family, the one owner of the rule (user, 2026-11-14: Anthropic and OpenAI models only): "Anthropic"
+// for claude-*, "OpenAI" for gpt-*, "" for any other (not a Copilot CLI pick canon offers or keeps). Admin lists models under it.
+func copilotGroup(id string) string {
+	switch {
+	case strings.HasPrefix(id, "claude-"):
+		return "Anthropic"
+	case strings.HasPrefix(id, "gpt-"):
+		return "OpenAI"
+	}
+	return ""
 }
 
 // cleanCopilotText keeps a field Copilot sent as plain printable text, capped: it reaches Admin's page and the cache file.
@@ -96,8 +103,7 @@ func parseCopilotModels(result map[string]any) ([]copilotModel, error) {
 	return out, nil
 }
 
-// readCopilotModels runs one ACP exchange and returns the models, or a one-line reason. Fixed arguments, a fresh empty folder as cwd
-// (removed after), no request data; stdin is closed and the process waited for, and killed at the deadline.
+// readCopilotModels is one read: find copilot, run the exchange in a fresh empty folder (removed after), keep the usable models.
 func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 	bin, err := exec.LookPath(copilotBin)
 	if err != nil {
@@ -108,11 +114,21 @@ func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 		return nil, fmt.Errorf("could not make a folder to run Copilot in: %v", err)
 	}
 	defer os.RemoveAll(dir)
+	res, err := acpNewSession(ctx, bin, dir)
+	if err != nil {
+		return nil, err
+	}
+	return parseCopilotModels(res)
+}
+
+// acpNewSession runs `copilot --acp` in dir with fixed arguments and returns the session/new result (initialize first). Lines are read in
+// their own goroutine and every wait selects on the deadline, so a child of copilot that keeps the pipe open cannot hold the read past
+// it; the process is killed at the deadline (exec.CommandContext) and waited for once stdin is closed.
+func acpNewSession(ctx context.Context, bin, dir string) (map[string]any, error) {
 	ctx, cancel := context.WithTimeout(ctx, copilotReadTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "--acp")
 	cmd.Dir = dir
-	cmd.WaitDelay = 2 * time.Second
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -125,8 +141,6 @@ func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 		return nil, fmt.Errorf("could not start Copilot CLI: %v", err)
 	}
 	defer func() { _ = stdin.Close(); _ = cmd.Wait() }()
-	// Lines are read in their own goroutine so the deadline holds even when a child of copilot keeps the pipe open after the kill;
-	// cmd.WaitDelay then closes the pipes, which ends this goroutine.
 	lineCh := make(chan []byte)
 	go func() {
 		defer close(lineCh)
@@ -140,22 +154,23 @@ func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 			}
 		}
 	}()
-	send := func(id int, method string, params map[string]any) error {
+	timeout := fmt.Errorf("Copilot CLI did not answer within %s", copilotReadTimeout)
+	stopped := errors.New("Copilot CLI stopped before it answered")
+	call := func(id int, method string, params map[string]any) (map[string]any, error) {
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-		_, err := stdin.Write(append(b, '\n'))
-		return err
-	}
-	answer := func(id int) (map[string]any, error) {
+		if _, err := stdin.Write(append(b, '\n')); err != nil {
+			return nil, stopped
+		}
 		for {
 			select {
 			case <-ctx.Done():
-				return nil, fmt.Errorf("Copilot CLI did not answer within %s", copilotReadTimeout)
+				return nil, timeout
 			case line, ok := <-lineCh:
 				if !ok {
 					if ctx.Err() != nil {
-						return nil, fmt.Errorf("Copilot CLI did not answer within %s", copilotReadTimeout)
+						return nil, timeout
 					}
-					return nil, errors.New("Copilot CLI stopped before it answered")
+					return nil, stopped
 				}
 				var msg map[string]any
 				if json.Unmarshal(line, &msg) != nil {
@@ -172,28 +187,10 @@ func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 			}
 		}
 	}
-	if err := send(1, "initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": map[string]any{}}); err != nil {
-		return nil, errors.New("Copilot CLI stopped before it answered")
-	}
-	if _, err := answer(1); err != nil {
+	if _, err := call(1, "initialize", map[string]any{"protocolVersion": 1, "clientCapabilities": map[string]any{}}); err != nil {
 		return nil, err
 	}
-	if err := send(2, "session/new", map[string]any{"cwd": dir, "mcpServers": []any{}}); err != nil {
-		return nil, errors.New("Copilot CLI stopped before it answered")
-	}
-	res, err := answer(2)
-	if err != nil {
-		return nil, err
-	}
-	return parseCopilotModels(res)
-}
-
-// copilotGroup is the group a Copilot model is listed under in Admin: its family.
-func copilotGroup(id string) string {
-	if strings.HasPrefix(id, "gpt-") {
-		return "OpenAI"
-	}
-	return "Anthropic"
+	return call(2, "session/new", map[string]any{"cwd": dir, "mcpServers": []any{}})
 }
 
 // keepCopilotModels is the one filter for a list from any source (a read, the saved file, the fallback): ids canon can store, in the two
@@ -201,7 +198,7 @@ func copilotGroup(id string) string {
 func keepCopilotModels(in []copilotModel) []copilotModel {
 	out := []copilotModel{}
 	for _, m := range in {
-		if modelIDRe.MatchString(m.ID) && copilotFamily(m.ID) {
+		if modelIDRe.MatchString(m.ID) && copilotGroup(m.ID) != "" {
 			out = append(out, copilotModel{ID: m.ID, Name: cleanCopilotText(m.Name), Usage: cleanCopilotText(m.Usage)})
 		}
 	}
@@ -223,16 +220,6 @@ func savedCopilotModels(doc map[string]any) (list copilotModelList, source strin
 	return copilotModelList{Models: keepCopilotModels(fallback)}, "fallback"
 }
 
-// copilotPickIDs is the set a Copilot CLI pick in doc may name.
-func copilotPickIDs(doc map[string]any) map[string]bool {
-	list, _ := savedCopilotModels(doc)
-	ids := map[string]bool{}
-	for _, m := range list.Models {
-		ids[m.ID] = true
-	}
-	return ids
-}
-
 // copilotModelsView answers GET /api/admin/copilot-models: the list, where it came from and when it was read.
 func copilotModelsView() map[string]any {
 	list, source := savedCopilotModels(loadModelTiers())
@@ -242,7 +229,7 @@ func copilotModelsView() map[string]any {
 // readAndSaveCopilotModels is the click: read, then save. A failed read keeps the old file and answers with the reason.
 func readAndSaveCopilotModels(ctx context.Context) map[string]any {
 	if !copilotReadMu.TryLock() {
-		return map[string]any{"ok": false, "error": "a read of Copilot's models is already running"}
+		return map[string]any{"ok": false, "busy": true, "error": "a read of Copilot's models is already running"}
 	}
 	defer copilotReadMu.Unlock()
 	models, err := readCopilotModels(ctx)

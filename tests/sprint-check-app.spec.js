@@ -14290,7 +14290,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: ['plan', 'build', 'reviewer', 'evaluator', 'light'].map(id => ({ id, label: id })),
+    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory' },
+      { id: 'evaluator', label: 'Evaluator', role: 'binding' }, { id: 'light', label: 'Simple / Light work' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
     options: Object.fromEntries(['plan', 'build', 'reviewer', 'evaluator', 'light'].map(st => [st, {
       claude: OPT(st === 'evaluator' ? [['m-sonnet', 'Sonnet Test']] : st === 'light' ? [['m-haiku', 'Haiku Test']] : [['m-sonnet', 'Sonnet Test'], ['m-haiku', 'Haiku Test']]),
@@ -14300,9 +14301,15 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   };
   async function openModelTiers(page, copilot = { ok: true, source: 'fallback', read_at: '', models: [] }, readAnswer = null) {
     const posts = [], reads = [];
-    await page.route('**/api/admin/model-tiers/options', route => route.fulfill({ json: OPTIONS }));
+    // stateful, like the board: a successful read changes what the Copilot CLI pickers offer
+    let options = JSON.parse(JSON.stringify(OPTIONS));
+    await page.route('**/api/admin/model-tiers/options', route => route.fulfill({ json: options }));
     await page.route('**/api/admin/copilot-models', route => route.fulfill({ json: copilot }));
-    await page.route('**/api/admin/copilot-models/read', route => { reads.push(route.request().method()); return route.fulfill({ status: readAnswer && !readAnswer.ok ? 502 : 200, json: readAnswer || copilot }); });
+    await page.route('**/api/admin/copilot-models/read', route => {
+      reads.push(route.request().method());
+      if (readAnswer && readAnswer.ok) for (const st of Object.keys(options.options)) options.options[st].copilot = readAnswer.models.map(m => ({ ...m, group: m.id.startsWith('gpt-') ? 'OpenAI' : 'Anthropic' }));
+      return route.fulfill({ status: readAnswer && !readAnswer.ok ? 502 : 200, json: readAnswer || copilot });
+    });
     let current = JSON.parse(JSON.stringify(FIXTURE));
     await page.route('**/api/admin/model-tiers', async route => {
       if (route.request().method() === 'POST') {
@@ -14343,9 +14350,13 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await expect(page.locator('#mt-cp-when')).toHaveText('A starter list (not read from Copilot yet)');
     await expect(page.locator('#mt-cp-note')).toHaveText("Each read leaves one empty session in Copilot's own history; no model is called.");
     expect(posts.reads).toEqual([]);                                         // never read by itself
+    await expect(page.locator('#mt-step-reviewer select option')).toHaveCount(3);   // the starter list
     await page.locator('#mt-cp-read').click();
     await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
     expect(posts.reads).toEqual(['POST']);
+    // the pickers offer what was just read, without a reload (reviewer t-aba6 Act On 1); the saved pick stays listed
+    await expect(page.locator('#mt-step-reviewer select option[value="claude-sonnet-5.5"]')).toHaveText('Claude Sonnet 5.5 \u00b7 1x');
+    await expect(page.locator('#mt-step-reviewer select option[value="claude-haiku-4.5"]')).toHaveCount(0);
     await expect(page.locator('#mt-cp-err')).toHaveCount(0);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
     posts = await openModelTiers(page, read, { ok: false, error: 'Copilot refused: Authentication required', source: 'copilot', read_at: read.read_at, models: read.models });

@@ -272,13 +272,14 @@ func TestTierDefaultsValidation(t *testing.T) {
 		t.Fatal("the fixture must be valid")
 	}
 	for name, d := range map[string]map[string]any{
-		"an unknown step":                     set("deploy", "claude", "claude-sonnet-5"),
-		"an unknown agent":                    set("reviewer", "codex", "claude-sonnet-5"),
-		"the old shape":                       set("eval", "anthropic", "claude-sonnet-5"),
-		"an OpenAI model for Claude Code":     set("reviewer", "claude", "gpt-6-luna"),
-		"a model not in the registry":         set("build", "copilot", "gpt-9"),
-		"a Haiku evaluator under Claude Code": set("evaluator", "claude", "claude-haiku-4-5"),
-		"a Haiku evaluator under Copilot":     set("evaluator", "copilot", "claude-haiku-5-5"),
+		"an unknown step":                        set("deploy", "claude", "claude-sonnet-5"),
+		"an unknown agent":                       set("reviewer", "codex", "claude-sonnet-5"),
+		"the old shape":                          set("eval", "anthropic", "claude-sonnet-5"),
+		"an OpenAI model for Claude Code":        set("reviewer", "claude", "gpt-6-luna"),
+		"a Copilot pick outside Claude and GPT":  set("build", "copilot", "gemini-3.8-flash"),
+		"a Claude Code pick not in the registry": set("build", "claude", "claude-gone-9"),
+		"a Haiku evaluator under Claude Code":    set("evaluator", "claude", "claude-haiku-4-5"),
+		"a Haiku evaluator under Copilot":        set("evaluator", "copilot", "claude-haiku-5-5"),
 	} {
 		if modelTiersValid(d) {
 			t.Errorf("%s should be refused", name)

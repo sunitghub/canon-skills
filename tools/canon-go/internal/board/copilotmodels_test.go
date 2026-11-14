@@ -76,8 +76,9 @@ func TestReadCopilotModels(t *testing.T) {
 	if _, err := os.Stat(cwd); !os.IsNotExist(err) {
 		t.Errorf("the run folder %s was left behind", cwd)
 	}
-	if ids := copilotPickIDs(loadModelTiers()); !ids["gpt-6-luna"] || ids["gemini-3.8-flash"] {
-		t.Errorf("a pick reads the saved list: %v", ids)
+	opts := tierOptions(loadModelTiers())["reviewer"]["copilot"]
+	if len(opts) < 3 || opts[0].ID != "claude-sonnet-5.5" || opts[2].Group != "OpenAI" {
+		t.Errorf("the pickers offer the saved list: %+v", opts)
 	}
 }
 
@@ -138,33 +139,58 @@ func TestSavedCopilotModelsFallback(t *testing.T) {
 	}
 }
 
-// t-aba6. A registry saved by slice 1 holds registry ids as Copilot picks: each is mapped once to Copilot's spelling (or the seed's
-// pick), so the file stays valid; a pick Copilot's list names is kept.
+// t-aba6. A registry saved by slice 1 holds registry spellings as Copilot picks: each is respelled once (the release date dropped), and a
+// pick Copilot's current list lacks is kept (that list decides only what Admin offers), so nothing is lost and every read gives the same
+// result. Protects the read path and the close (it passes the pick as is).
 func TestMigrateCopilotPicks(t *testing.T) {
-	if got := copilotFormOf("claude-sonnet-5-5"); got != "claude-sonnet-5.5" {
-		t.Errorf("copilotFormOf = %s", got)
-	}
-	for _, same := range []string{"claude-sonnet-5", "gpt-6-luna", "gpt-6.1-sol", "claude-haiku-4-5-20251001"} {
-		if got := copilotFormOf(same); got != same {
-			t.Errorf("copilotFormOf(%s) = %s", same, got)
+	for in, want := range map[string]string{"claude-sonnet-5-5": "claude-sonnet-5.5", "claude-haiku-4-5-20251001": "claude-haiku-4.5", "claude-opus-5-5": "claude-opus-5.5",
+		"claude-sonnet-5": "claude-sonnet-5", "gpt-6-luna": "gpt-6-luna", "gpt-6.1-sol": "gpt-6.1-sol", "claude-sonnet-5.5": "claude-sonnet-5.5"} {
+		if got := copilotFormOf(in); got != want {
+			t.Errorf("copilotFormOf(%s) = %s, want %s", in, got, want)
 		}
 	}
 	doc := regDoc()
 	d := doc["defaults"].(map[string]any)
-	d["build"].(map[string]any)["copilot"] = "claude-sonnet-5-5" // slice 1's registry id
-	d["plan"].(map[string]any)["copilot"] = "claude-fable-9"     // nowhere: takes the seed's
-	seed := regDoc()
-	if !migrateCopilotPicks(doc, seed) {
-		t.Fatal("registry-form Copilot picks were not migrated")
+	d["build"].(map[string]any)["copilot"] = "claude-sonnet-5-5"         // slice 1's registry spelling
+	d["light"].(map[string]any)["copilot"] = "claude-haiku-4-5-20251001" // with a release date
+	d["plan"].(map[string]any)["copilot"] = "claude-fable-9.1"           // not on this account's list: kept
+	if !migrateCopilotPicks(doc) {
+		t.Fatal("registry-spelled Copilot picks were not migrated")
 	}
-	if defaultOf(doc, "build", "copilot") != "claude-sonnet-5.5" || defaultOf(doc, "plan", "copilot") != "claude-opus-5.5" || defaultOf(doc, "reviewer", "copilot") != "gpt-6-luna" {
+	if defaultOf(doc, "build", "copilot") != "claude-sonnet-5.5" || defaultOf(doc, "light", "copilot") != "claude-haiku-4.5" || defaultOf(doc, "plan", "copilot") != "claude-fable-9.1" {
 		t.Errorf("migrated = %v", d)
 	}
 	if !modelTiersValid(doc) {
 		t.Errorf("a migrated registry fails validation: %s", tierDefaultsProblem(doc))
 	}
-	if migrateCopilotPicks(doc, seed) {
-		t.Error("a valid registry was migrated again")
+	if migrateCopilotPicks(doc) {
+		t.Error("a migrated registry was migrated again")
+	}
+	// the kept pick is listed, marked, so Admin shows what is saved instead of the first option
+	var saved *tierOption
+	for _, o := range tierOptions(doc)["plan"]["copilot"] {
+		if o.ID == "claude-fable-9.1" {
+			o := o
+			saved = &o
+		}
+	}
+	if saved == nil || !saved.Saved {
+		t.Errorf("a saved Copilot pick missing from the list is not shown as saved: %v", tierOptions(doc)["plan"]["copilot"])
+	}
+}
+
+// t-aba6. One read at a time: a second click while a read runs answers busy (409 at the route) and starts nothing.
+func TestReadCopilotModelsOneAtATime(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	log := stubCopilot(t, "ok")
+	copilotReadMu.Lock()
+	res := readAndSaveCopilotModels(context.Background())
+	copilotReadMu.Unlock()
+	if res["ok"] != false || res["busy"] != true {
+		t.Errorf("a read during a read = %v", res)
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Errorf("a busy read started copilot: %s", b)
 	}
 }
 

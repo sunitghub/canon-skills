@@ -890,9 +890,11 @@ assert [s["id"] for s in d["steps"]]==["plan","build","reviewer","evaluator","li
 assert not any("haiku" in x["id"] for x in o["evaluator"]["claude"]+o["evaluator"]["copilot"]), o["evaluator"]
 assert all(x["id"].startswith(("claude-","gpt-")) for x in o["reviewer"]["copilot"]) and all("." not in x["id"] or x["group"] for x in o["reviewer"]["copilot"]), o' \
   || fail "sprint-check-api: the options route does not follow the pick rules"
-cp_post() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "$B/api/admin/copilot-models/read"; }
-[[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://evil.example' -H 'Content-Type: application/json' -d '{}' "$B/api/admin/copilot-models/read")" == 403 ]] \
-  || fail "sprint-check-api: a cross-site Read Copilot's models was not refused"
+# the read starts a program: like every such route it needs a loopback Origin (agentOriginOK, t-d42a): a foreign one and none are refused
+for org in 'Origin: http://evil.example' 'X-No-Origin: 1'; do
+  [[ "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "$org" -H 'Content-Type: application/json' -d '{}' "$B/api/admin/copilot-models/read")" == 403 ]] \
+    || fail "sprint-check-api: Read Copilot's models with '$org' was not refused"
+done
 copilot_bad="$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; d=json.load(sys.stdin); d["defaults"]["reviewer"]["copilot"]="gemini-3.8-flash"; print(json.dumps(d))')"
 [[ "$(tiers_post "$copilot_bad")" == 400 ]] || fail "sprint-check-api: a Copilot pick outside Claude and GPT was accepted"
 
