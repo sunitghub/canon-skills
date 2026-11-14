@@ -2948,7 +2948,7 @@ _ff_here() {
       fi
       # t-dde9: any ticket's ticket.md, not only $id's: an imported cloud ticket's local copy collides when another ticket's merge brings it
       if [[ "$p" =~ ^\.tickets/t-[a-z0-9]+/ticket\.md$ ]] \
-        && { local mm=""; tr -d '\r' < "$root/$p" | grep -q '^manual: true$' && mm=manual
+        && { local mm=""; grep -qE $'^manual: true\r?$' "$root/$p" && mm=manual
              cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields "$mm") <(tr -d '\r' < "$root/$p" | _ff_strip_fields "$mm"); }; then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:

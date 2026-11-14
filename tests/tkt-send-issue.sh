@@ -207,7 +207,7 @@ assert_contains "$acc_part" "The list shows the time"; [[ "$acc_part" != *"[manu
 assert_grep '^- \[Manual\] Works offline$' "$STUB_BODY"
 assert_grep '^## Tested by the person after the merge$' "$STUB_BODY"; assert_grep '^- \[manual\] Looks right on a phone$' "$STUB_BODY"
 assert_grep 'do not run `sprint manual-qa`' "$STUB_BODY"
-[[ "$(tail -2 "$STUB_BODY" | head -1)" == "<!-- canon:manual-after-merge -->" ]] || fail "the marker is not right above the ticket marker"
+[[ "$(tail -2 "$STUB_BODY" | sed -n 1p)" == "<!-- canon:manual-after-merge -->" ]] || fail "the marker is not right above the ticket marker"
 [[ "$(cksum < ".tickets/$idm/acceptance.md")" == "$ma" ]] || fail "the local acceptance.md changed"
 assert_grep '^manual: true$' ".tickets/$idm/ticket.md"; assert_grep '^manual after merge: ' ".tickets/$idm/github.md"
 cp "$STUB_BODY" "$stub/mam-body"
