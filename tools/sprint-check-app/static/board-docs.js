@@ -20,12 +20,24 @@ let MODEL_TIER_LABELS = {};
 const SIGNOFF_TIER_OPTIONS = ['normal', 'bugfix', 'high-risk'];
 const SIGNOFF_TIER_LABELS = { normal: 'Normal', bugfix: 'Bugfix', 'high-risk': 'High-risk' };
 
+// t-3425: the Tier line can carry several model fields (`| Gate model: x | Build model: y`); each is one `|` segment, ending at the
+// next `|`. MODEL_SEGMENTS matches all of them (the base Tier + Risk is what is left); GATE_SEGMENT only the Gate model's.
+const MODEL_SEGMENTS = /\s*\|\s*(?:Gate|Plan|Build) model:[^|]*/gi;
+const GATE_SEGMENT = /\s*\|\s*Gate model:\s*([^|]*?)(?=\s*(?:\||$))/i;
+
 export function parseGateModel(content) {
   const signoff = sectionContent(content, 'Sign-off');
   const tierLine = signoff.match(/^Tier:.*$/m);
   if (!tierLine) return { filled: false, value: null };
-  const gateMatch = tierLine[0].match(/\|\s*Gate model:\s*(.+?)\s*$/i);
-  return { filled: true, value: gateMatch ? gateMatch[1].trim() : null };
+  const gateMatch = tierLine[0].match(GATE_SEGMENT);
+  return { filled: true, value: gateMatch && gateMatch[1].trim() ? gateMatch[1].trim() : null };
+}
+
+// lineWithGateModel: the Tier line with its Gate model segment set to value (removed for 'default'); every other segment is kept.
+function lineWithGateModel(line, value) {
+  const trimmed = line.replace(/[ \t]+$/, '');
+  if (GATE_SEGMENT.test(trimmed)) return trimmed.replace(GATE_SEGMENT, value === 'default' ? '' : ` | Gate model: ${value}`);
+  return value === 'default' ? trimmed : `${trimmed} | Gate model: ${value}`;
 }
 
 function withGateModel(content, newValue) {
@@ -39,21 +51,17 @@ function withGateModel(content, newValue) {
   const rest = content.slice(start);
   const nextHeadingOffset = rest.search(/^##\s+/m);
   const end = nextHeadingOffset === -1 ? content.length : start + nextHeadingOffset;
-  const section = content.slice(start, end).replace(
-    /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?[ \t]*$/im,
-    (m, base) => newValue === 'default' ? base : `${base} | Gate model: ${newValue}`
-  );
+  const section = content.slice(start, end).replace(/^Tier:.*$/im, line => lineWithGateModel(line, newValue));
   return content.slice(0, start) + section + content.slice(end);
 }
 
-// Parses the base (Tier + Risk) portion of the Sign-off line, independent of
-// whatever Gate model suffix parseGateModel handles — mirrors its own logic
-// with base and suffix swapped.
+// Parses the base (Tier + Risk) portion of the Sign-off line: what is left once
+// every model segment (MODEL_SEGMENTS) is taken out.
 function parseSignoffBase(content) {
   const signoff = sectionContent(content, 'Sign-off');
   const tierLine = signoff.match(/^Tier:.*$/m);
   if (!tierLine) return { exists: false, parseable: true, tier: 'normal', risk: '' };
-  const base = tierLine[0].replace(/\s*\|\s*Gate model:\s*.+?\s*$/i, '');
+  const base = tierLine[0].replace(MODEL_SEGMENTS, '').replace(/\s+$/, '');
   const m = base.match(/^Tier:\s*(.+?)\s*\|\s*Risk:\s*(.*)$/i);
   const tier = m ? m[1].trim().toLowerCase() : '';
   if (!m || !SIGNOFF_TIER_OPTIONS.includes(tier)) return { exists: true, parseable: false };
@@ -71,10 +79,7 @@ function withSignoffBase(content, tier, risk) {
   const section = content.slice(start, end);
   const newLine = `Tier: ${tier} | Risk: ${risk}`;
   const updatedSection = /^Tier:.*$/m.test(section)
-    ? section.replace(
-        /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?[ \t]*$/im,
-        (m, base, suffix) => `${newLine}${suffix || ''}`
-      )
+    ? section.replace(/^Tier:.*$/im, line => newLine + (line.match(MODEL_SEGMENTS) || []).map(seg => ' | ' + seg.replace(/^\s*\|\s*/, '').trim()).join(''))
     : '\n' + newLine + '\n' + section.replace(/^\n+/, '');
   return content.slice(0, start) + updatedSection + content.slice(end);
 }

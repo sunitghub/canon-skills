@@ -118,7 +118,7 @@ buildline() { grep 'Build model' <<< "$1" || true; }
 mkdir -p "$CANON_HOME/cockpit"
 printf '%s' '{"defaults":{"build":{"claude":"claude-sonnet-5-5","copilot":"gpt-6"}},"models":{"anthropic":[{"id":"claude-sonnet-5-5","alias":"sonnet"}]}}' > "$CANON_HOME/cockpit/model-tiers.json"
 signoff "Tier: normal | Build model: haiku"
-assert_eq "Build model (the ticket's Build model line): haiku: switch with /model haiku" "$(buildline "$(COCKPIT_TICKET= "$SPRINT" approve "$id")")"
+assert_eq "Build model (the ticket's Build model line): haiku: switch with /model haiku" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
 signoff "Tier: normal"
 assert_eq "This session switches to the Build model (sonnet, from Admin > Model tiers) when this turn ends: end your turn now." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=claude "$SPRINT" approve "$id")")"
 signoff "Tier: normal"
@@ -128,7 +128,7 @@ assert_eq "Build model: Pi has no /model, so this session keeps its model." "$(b
 # a leading-dash value is never offered as a model; with no Admin pick there is no line at all
 printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
 signoff "Tier: normal | Build model: --dangerously-skip-permissions"
-assert_eq "" "$(buildline "$(COCKPIT_TICKET= "$SPRINT" approve "$id")")"
+assert_eq "" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
 assert_grep '^- \[x\] Plan approved' "$plan"
 
 echo "sprint-approve: ok"

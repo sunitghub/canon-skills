@@ -8,13 +8,9 @@
 # pinned to one fixture set by tests/gate-model-parity.sh (cross-runtime port,
 # per standards/efficiency-notes.md). Change one, change both, or the parity test fails.
 
-# gate_model_parse <plan-file> — prints the raw lowercased `Gate model:` value
-# from the Sign-off section's Tier line, or nothing. Scoped to that one section
+# signoff_model_parse <plan-file> <label> — prints the raw lowercased value of one `<Label> model:` field (t-3425: gate, plan,
+# build; the label's first letter may be either case) from the Sign-off section's Tier line, or nothing. Scoped to that one section
 # and that one line: a `Tier:`-looking line in a later section is ignored.
-gate_model_parse() { signoff_model_parse "$1" gate; }
-
-# signoff_model_parse <plan-file> <label> — t-3425: the same rule for any `<Label> model:` field of the Sign-off Tier line
-# (gate, plan, build); the label's first letter may be either case, as `Gate model:` always allowed.
 signoff_model_parse() {
   # LC_ALL=C pins [[:space:]]/tolower to ASCII. Without it the host locale decides:
   # macOS awk strips U+00A0 as whitespace while a C-locale awk does not, so the same

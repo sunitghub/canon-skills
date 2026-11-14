@@ -45,7 +45,7 @@ var (
 	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`) // also used for worktree branch names — same git-ref-name charset
 	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-	modelIDRe        = regexp.MustCompile(`^[A-Za-z0-9._-]+$`) // t-7e36: mirrors server.py's MODEL_ID_RE
+	modelIDRe        = common.ModelIDRe // t-7e36; t-3425: one owner with the daemon (internal/common)
 	projectRoot      string
 	ticketsDir       string
 	handoffFile      string

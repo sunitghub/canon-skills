@@ -3108,6 +3108,72 @@ test.describe('board modal', () => {
     }
   });
 
+  // Protects the board's Plan tab Gate model dropdown, which rewrites the Sign-off line that also carries Plan/Build model fields.
+  test('model tier control keeps a Build model field on the Tier line (t-3425)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-build');
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier write test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius | Gate model: haiku | Build model: sonnet',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeEnabled();
+      await expect(select).toHaveValue('haiku');                 // the Gate model segment alone, not the rest of the line
+
+      await select.selectOption('sonnet');
+      // t-3425 (reviewer Act On 2): each model field is one `|` segment; setting or clearing the Gate model keeps the Build model
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius | Gate model: sonnet | Build model: sonnet\n\n- [x] Plan approved');
+
+      // Close and re-open the ticket modal fresh, confirm it reflects the saved value.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      const select2 = page.locator('.model-tier-select');
+      await expect(select2).toHaveValue('sonnet');
+
+      await select2.selectOption('default');
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius | Build model: sonnet\n');
+      expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).not.toContain('Gate model');
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('model tier control is disabled for a hand-set value it does not recognize', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'model-tier-custom');
 

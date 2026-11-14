@@ -9103,6 +9103,7 @@ func TestSpawnUsesAdminStageModel(t *testing.T) {
 // before approval, or a second time. Protects every live Cockpit session at plan approval (the fake agent echoes what is typed).
 func TestSwitchToBuildAtApproval(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
 	bin, argvFile, _ := fakeSprint(t)
 	root := t.TempDir()
 	dir := filepath.Join(root, ".tickets", "t-ab12")
@@ -9183,12 +9184,125 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	se.setStatus("running")
 	se.setStatus("awaiting-input")
 	s.switchToBuild(se)
-	time.Sleep(300 * time.Millisecond)
-	if n := strings.Count(typed(), "/model sonnet"); n != 2 { // once typed = echo + cat
-		t.Errorf("/model shows %d times, want 2 (typed once)", n)
+	time.Sleep(500 * time.Millisecond)
+	if n, c := strings.Count(typed(), "/model sonnet"), strings.Count(typed(), "continue the build"); n != 2 || c != 2 { // once typed = echo + cat
+		t.Errorf("/model shows %d times and the continue line %d, want 2 each (typed once)", n, c)
 	}
 	b, _ := os.ReadFile(filepath.Join(os.Getenv("CANON_HOME"), "events", time.Now().UTC().Format("2006-01-02")+".jsonl"))
 	if !strings.Contains(string(b), `"kind":"implement.started"`) || !strings.Contains(string(b), `"model":"sonnet"`) || !strings.Contains(string(b), `"source":"ticket Build model"`) {
 		t.Errorf("no implement.started event with the model and source: %s", b)
+	}
+}
+
+// restQuietWait shortens the switch's at-rest timings for a test.
+func restQuietWait(t *testing.T, quiet, wait time.Duration) {
+	oq, ow := restQuiet, restWait
+	restQuiet, restWait = quiet, wait
+	t.Cleanup(func() { restQuiet, restWait = oq, ow })
+}
+
+// buildSwitchSession starts a fake-agent session for t-ab12 with the given Sign-off line and an approved plan, and returns it.
+func buildSwitchSession(t *testing.T, tierLine string) (*server, *session, string) {
+	t.Helper()
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, ".tickets", "t-ab12")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plan := "# Plan\n\n## Sign-off\n" + tierLine + "\n\n- [ ] Plan approved\n\n## Approach\n1. do it\n"
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	resp.Body.Close()
+	waitFile(t, argvFile, 3*time.Second)
+	var se *session
+	s.mu.Lock()
+	for _, x := range s.sessions {
+		se = x
+	}
+	s.mu.Unlock()
+	approved := strings.Replace(plan, "- [ ] Plan approved\n", "- [x] Plan approved\nApproved: sha256:abc 2026-11-14T00:00:00Z\n", 1)
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(approved), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return s, se, dir
+}
+
+// t-3425 (reviewer Act On 1): when the Build model is the one the session already runs on, sprint approve still told the agent to end
+// its turn, so the continue line is typed (without /model); otherwise the session would stall. Protects live sessions at approval.
+func TestSwitchToBuildSameModelStillContinues(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	s, se, _ := buildSwitchSession(t, "Tier: normal | Plan model: sonnet | Build model: sonnet")
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	out, stage := string(se.buf), se.stage
+	se.mu.Unlock()
+	if strings.Contains(out, "/model") || !strings.Contains(out, "Plan approved: continue the build (t-ab12) on sonnet.") || stage != "build" {
+		t.Fatalf("stage %q, typed %q: want the continue line and no /model", stage, out)
+	}
+}
+
+// t-3425 (reviewer Consider): awaiting-input can stay set while the agent still writes (it is set by hooks, cleared only by input), so
+// the switch types only once the session has been quiet; with output still flowing it types nothing and tries again later.
+func TestSwitchToBuildWaitsForQuiet(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 300*time.Millisecond, 800*time.Millisecond)
+	s, se, _ := buildSwitchSession(t, "Tier: normal | Plan model: haiku | Build model: sonnet")
+	se.setStatus("awaiting-input")
+	stop := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(50 * time.Millisecond):
+				se.mu.Lock()
+				se.lastActivity = time.Now()
+				se.mu.Unlock()
+			}
+		}
+	}()
+	s.switchToBuild(se)
+	close(stop)
+	se.mu.Lock()
+	out, stage := string(se.buf), se.stage
+	se.mu.Unlock()
+	if strings.Contains(out, "/model") || stage != "plan" {
+		t.Fatalf("typed into a working session (stage %q): %q", stage, out)
+	}
+}
+
+// t-3425 (plan item 6): a Start or Resume on an approved plan launches on the Build model and records implement.started with its source.
+func TestSpawnOnBuildRecordsImplementStarted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	dir := filepath.Join(root, ".tickets", "t-ab12")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	plan := "# Plan\n\n## Sign-off\nTier: normal | Build model: sonnet\n\n- [x] Plan approved\nApproved: sha256:abc 2026-11-14T00:00:00Z\n\n## Approach\n1. do it\n"
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	resp.Body.Close()
+	waitFile(t, argvFile, 3*time.Second)
+	b, _ := os.ReadFile(filepath.Join(home, "events", time.Now().UTC().Format("2006-01-02")+".jsonl"))
+	if !strings.Contains(string(b), `"kind":"implement.started"`) || !strings.Contains(string(b), `"source":"ticket Build model"`) {
+		t.Errorf("no implement.started at a Start on Build: %s", b)
 	}
 }
