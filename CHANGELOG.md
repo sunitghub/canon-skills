@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.20] - 2026-11-14
+
+- Changed: the board and the Cockpit daemon compare two folders one way, `common.PathKey` / `SamePath` (the same rule as the shell's `canon_same_folder`: the same file, else the same key; `C:\x`, `C:/x` and `/c/x` are one folder). No whole path is lower-cased any more, so two folders that differ only in case on Linux are no longer merged. A session start returns the folder's own spelling, so a worktree in use stays held on a case-insensitive volume. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-9d04).
+- Changed: the board's start guard and the shell guard read one table (`tests/fixtures/folder-guard.tsv`): the board now also refuses `C:\\Windows` written with a doubled separator, and a one-letter top-level folder (`/c`) as a drive root, as the shell guard does (t-9d04).
+
 ## [0.55.19] - 2026-11-14
 
 - Changed: canon's shell code compares two folders one way, `canon_same_folder` in `tools/platform-lib.sh` (the same file, else the same key: `C:\x`, `C:/x` and `/c/x` are one folder). `canon update` on a Windows zip install now recognises `%USERPROFILE%\.canon` however it is spelled, and the uninstaller lists a project registered in two spellings once, even without `cygpath`. The folder guard also refuses `C:\\Windows` written with a doubled separator (t-c8c6).
