@@ -6,7 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
-- Fixed: when a cloud PR merged on GitHub while a worktree ticket was merged here, local `main` and origin's diverged and canon said "Update it by hand: git pull" (Check & merge) or refused the push (Finish > Push). canon now merges origin's branch into the local one itself (a merge commit, never a rebase or force), resolves the conflicts in its own docs (`HANDOFF.md`'s Recent block and Scratch entries, `LEARNINGS.md` rows) and sets aside a local copy of an imported cloud ticket; any other conflict changes nothing and names the files. Finish's dialog says so before you push (t-dde9).
+## [0.55.17] - 2026-11-13
+
+- Fixed: when a cloud PR merged on GitHub while a worktree ticket was merged here, local `main` and origin's diverged and canon said "Update it by hand: git pull" (Check & merge) or refused the push (Finish > Push). canon now merges origin's branch into the local one itself (a merge commit, never a rebase or force), resolves the conflicts in its own docs (`HANDOFF.md`'s Recent block and Scratch entries, `LEARNINGS.md` rows) and sets aside a local copy of an imported cloud ticket; any other conflict changes nothing and names the files. Finish's dialog says so before you push. A force-pushed origin is never merged into, and a branch that is only behind is fast-forwarded. The end-user zip's size cap is now 4352 KB (t-dde9).
 
 ## [0.55.16] - 2026-11-13
 
