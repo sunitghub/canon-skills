@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 14:55
+learnings-sweep last run: 11-13-2026 18:03
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-13 | [t-dde9](.tickets/t-dde9/learnings.md) | A test harness that rewinds a remote (stubbed heads) poisons any guard that reads the tracking ref's reflog: reset the tracking ref in the fixture, and pin layout (block position), not only content, when a resolver rewrites a file | UNPROMOTED |
 | 2026-11-13 | [t-a01e](.tickets/t-a01e/learnings.md) | A merge guard that skips a file class (`.cockpit-*` markers) must skip it in every check that reads the tree, or `--check` says ready while `--yes` refuses after its own side effect | UNPROMOTED |
 | 2026-11-13 | [t-141a](.tickets/t-141a/learnings.md) | A Lite docs sprint stamps only doc-check, so a new file under docs/ that the release zip ships can break the zip's size and file caps (release-zip-slim) and nobody sees it until the next full-suite run (t-9915's report did, found two tickets later): when a docs sprint adds a shipped file, run release-zip-slim or the suite before the close, and put contributor-only files on the zip's exclusion list; a file whose test clones the repo cannot be a mutant-sweep map. | UNPROMOTED |
 | 2026-11-13 | [t-9915](.tickets/t-9915/learnings.md) | A research agent's WebFetch returns a model-written digest, not page text, so its quotes are not byte-exact: check every load-bearing quote against the raw page (curl, line numbers) and tag each source raw or digest; and before naming a source in a criterion, check it is readable (NASA's lessons-learned site is client-rendered, so the criterion failed until two readable sources were found). | UNPROMOTED |
