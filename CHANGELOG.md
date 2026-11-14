@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.22] - 2026-11-14
+
 - Added: Admin > Model tiers > Agent: Copilot CLI reads Copilot's own model list on a click (**Read Copilot's models**; no model is called, and each read leaves one empty session in Copilot's history), keeps its Claude and GPT models with their premium-request multiplier, and lists them in every step's picker; a failed read says why and keeps the last list. A Copilot CLI pick is now Copilot's own id (e.g. `claude-sonnet-5.5`) and the close passes it as is; your saved Copilot picks are converted once. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-aba6).
 - Changed (events API): a successful read writes one `setting.changed` line, `copilot-models.read` (t-aba6).
 
