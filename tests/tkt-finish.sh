@@ -255,7 +255,10 @@ refuse_merge "a conflict in a code file" "conflicts in: base.txt"
 # A force-pushed origin (commits it had are gone) is never merged into: that would bring back what was removed.
 mkmerge force f.txt here; git fetch -q origin
 (cd "$C3" && git reset -q --hard HEAD~1 && echo r > r.txt && git add -A && git commit -qm "rewritten" && git push -qf origin main)
-"$TKT" finish "$id6" --check --fetch < /dev/null >/dev/null 2>&1   # the dialog's read moves origin/main first: the guard must still see it
+out="$("$TKT" finish "$id6" --check --fetch < /dev/null 2>&1)"   # the dialog's read moves origin/main first: the guard must still see it
+# t-67f5: the dialog says Push will refuse; it never promises the merge Push will not make
+assert_contains "$out" "finish: push: origin/main was rewritten (force-pushed: commits it had are gone): Push will refuse; nothing is merged or pushed"
+[[ "$out" != *"Push first merges"* ]] || fail "--check promised a merge into a force-pushed origin: $out"
 refuse_merge "a force-pushed origin" "origin/main was rewritten (force-pushed"
 # Only behind, not diverged (pushed from another clone, origin/main here stale): a fast-forward, never a needless merge commit.
 mkmerge behind b.txt b; git push -q "$O3" main:main   # by path: origin/main here is not updated
