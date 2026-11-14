@@ -375,3 +375,21 @@ func TestTierDefaultsProblemNamesTheDefault(t *testing.T) {
 		t.Errorf("save refusal = %v", res)
 	}
 }
+
+// t-8f6d: an old file with only a light pick by provider (no eval) is still the old shape: it is migrated, the light pick kept.
+func TestMigrateTierDefaultsLightOnly(t *testing.T) {
+	for _, prov := range []string{"anthropic", "openai"} {
+		doc := regDoc()
+		doc["defaults"] = map[string]any{"light": map[string]any{prov: "claude-haiku-5-5"}}
+		if !migrateTierDefaults(doc, regDoc()) {
+			t.Fatalf("a light-only (%s) old file was not migrated", prov)
+		}
+		want := "claude-haiku-4-5" // the seed's, unless the anthropic pick carried over
+		if prov == "anthropic" {
+			want = "claude-haiku-5-5"
+		}
+		if got := defaultOf(doc, "light", "claude"); got != want || defaultOf(doc, "evaluator", "claude") != "claude-sonnet-5" {
+			t.Errorf("light-only (%s): light %s (want %s), defaults %v", prov, got, want, doc["defaults"])
+		}
+	}
+}
