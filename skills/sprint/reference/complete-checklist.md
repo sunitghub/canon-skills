@@ -60,7 +60,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 
 - **Model:** `Gate model:` in plan.md's Sign-off wins (`session` = your alias). Else each gate's Admin default:
   `$CANON_HOME/cockpit/model-tiers.json` (else the seed) `defaults.<reviewer|evaluator>.<claude|copilot>` (an old file:
-  `defaults.eval.anthropic`) → its `alias`; pass it as `model` if `fable`, `opus`, `sonnet` or `haiku` (evaluator never Haiku).
+  `defaults.eval.anthropic`) → claude: its `alias` if `fable`, `opus`, `sonnet` or `haiku`; copilot: as is (evaluator never Haiku).
   Else omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`. Source: `Gate model override`,
   `Admin Reviewer|Evaluator default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; read `reference/review.md` (reviewer) or
