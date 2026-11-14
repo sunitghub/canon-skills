@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-13-2026 22:55
+learnings-sweep last run: 11-14-2026 06:08
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-14 | [t-c8c6](.tickets/t-c8c6/learnings.md) | An identity-then-key helper is safe only if the key runs when identity cannot apply; falling back when `-ef` says no merges two real folders that differ only by a backslash (kept on purpose until `-ef` is verified on Git Bash, t-e88d) | UNPROMOTED |
 | 2026-11-13 | [t-e790](.tickets/t-e790/learnings.md) | A test that checks a restored line is "somewhere under some heading" passes a restore that lands in the wrong place: assert the exact position, and map every suite that exercises the changed lines into the mutation sweep (tkt-finish.sh was missing, inflating survivors) | UNPROMOTED |
 | 2026-11-13 | [t-dde9](.tickets/t-dde9/learnings.md) | A test harness that rewinds a remote (stubbed heads) poisons any guard that reads the tracking ref's reflog: reset the tracking ref in the fixture, and pin layout (block position), not only content, when a resolver rewrites a file | UNPROMOTED |
 | 2026-11-13 | [t-a01e](.tickets/t-a01e/learnings.md) | A merge guard that skips a file class (`.cockpit-*` markers) must skip it in every check that reads the tree, or `--check` says ready while `--yes` refuses after its own side effect | UNPROMOTED |
