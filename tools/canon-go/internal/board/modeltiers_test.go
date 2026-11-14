@@ -447,3 +447,19 @@ func TestTierOptions(t *testing.T) {
 		t.Errorf("a saved Haiku evaluator (refused by validation) must be listed as saved_only: %+v", l)
 	}
 }
+
+// t-aba6 (evaluator, criterion 3): the Copilot CLI pickers list Claude, then GPT, whatever order Copilot answered in; each family keeps
+// Copilot's own order. Protects the options route and Admin's grouped pickers.
+func TestTierOptionsGroupsClaudeThenGPT(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	doc := regDoc()
+	doc["copilot_models"] = []any{map[string]any{"id": "gpt-6-luna"}, map[string]any{"id": "claude-sonnet-5.5"}, map[string]any{"id": "gpt-6-sol"}, map[string]any{"id": "claude-sonnet-5"}}
+	doc["defaults"].(map[string]any)["reviewer"].(map[string]any)["copilot"] = "claude-sonnet-5"
+	got := []string{}
+	for _, o := range tierOptions(doc)["reviewer"]["copilot"] {
+		got = append(got, o.Group+":"+o.ID)
+	}
+	if want := "Anthropic:claude-sonnet-5.5 Anthropic:claude-sonnet-5 OpenAI:gpt-6-luna OpenAI:gpt-6-sol"; strings.Join(got, " ") != want {
+		t.Errorf("order = %v, want %s", got, want)
+	}
+}

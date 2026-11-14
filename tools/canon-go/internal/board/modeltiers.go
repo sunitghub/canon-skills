@@ -225,6 +225,9 @@ func tierCandidates(doc map[string]any, agent string) []tierOption {
 		for _, m := range list.Models {
 			out = append(out, tierOption{ID: m.ID, Name: m.Name, Group: copilotGroup(m.ID), Usage: m.Usage})
 		}
+		// Claude, then GPT (acceptance: grouped Claude then GPT), each family in Copilot's own order
+		rank := map[string]int{"Anthropic": 0, "OpenAI": 1}
+		slices.SortStableFunc(out, func(a, b tierOption) int { return rank[a.Group] - rank[b.Group] })
 		return out
 	}
 	models, _ := doc["models"].(map[string]any)

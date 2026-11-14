@@ -14402,6 +14402,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(await opts('evaluator')).toEqual(['claude-sonnet-5.5', 'gpt-6-luna']);
     await expect(page.locator('#mt-step-reviewer select')).toHaveValue('gpt-6-luna');
     await expect(page.locator('#mt-step-reviewer optgroup')).toHaveCount(2);
+    expect(await page.locator('#mt-step-reviewer optgroup').evaluateAll(g => g.map(x => x.label))).toEqual(['Anthropic', 'OpenAI']);   // in the board's order (Claude, then GPT)
     await expect(page.locator('#mt-step-reviewer option[value="claude-haiku-4.5"]')).toHaveText('Claude Haiku 4.5 \u00b7 0.33x');
     await page.locator('#mt-step-evaluator select').selectOption('gpt-6-luna');
     await expect.poll(() => posts.length).toBe(1);
