@@ -569,3 +569,43 @@ func TestSecondEvalStep(t *testing.T) {
 		t.Errorf("AdminStageModel(evaluator2) with Off = %q", got)
 	}
 }
+
+// t-864c (user): Admin's Agent list offers Copilot CLI only when `copilot` is on PATH (checked on every options request, so one installed
+// later shows the next time Admin opens), or when the person's own saved registry holds a Copilot pick that differs from the seed's.
+// Protects GET /api/admin/model-tiers/options and the Agent dropdown.
+func TestCopilotAgentShownOnlyWhenFound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	seed := filepath.Join(t.TempDir(), "seed.json")
+	os.WriteFile(seed, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	old, oldBin := modelTiersPath, copilotBin
+	modelTiersPath, copilotBin = seed, "canon-test-no-such-copilot"
+	defer func() { modelTiersPath, copilotBin = old, oldBin }()
+	ids := func() string {
+		out := []string{}
+		for _, a := range tierOptionsView()["agents"].([]map[string]string) {
+			out = append(out, a["id"])
+		}
+		return strings.Join(out, " ")
+	}
+	if got := ids(); got != "claude" {
+		t.Errorf("no copilot on PATH and no saved file: agents = %q, want claude", got)
+	}
+	os.MkdirAll(filepath.Join(home, "cockpit"), 0o755)
+	user := filepath.Join(home, "cockpit", "model-tiers.json")
+	os.WriteFile(user, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	if got := ids(); got != "claude" {
+		t.Errorf("a saved file with the seed's own Copilot pick: agents = %q, want claude", got)
+	}
+	os.WriteFile(user, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"gpt-6-luna"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	if got := ids(); got != "claude copilot" {
+		t.Errorf("a Copilot pick of the person's own: agents = %q, want both", got)
+	}
+	os.Remove(user)
+	bin := filepath.Join(t.TempDir(), "copilot")
+	os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755)
+	copilotBin = bin
+	if got := ids(); got != "claude copilot" {
+		t.Errorf("copilot found: agents = %q, want both", got)
+	}
+}

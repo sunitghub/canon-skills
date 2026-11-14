@@ -2,6 +2,8 @@ package board
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -101,9 +103,34 @@ func tierOptionsView() map[string]any {
 		steps = append(steps, map[string]string{"id": s, "label": common.TierStepLabel[s], "role": common.TierStepRole[s], "checks": common.TierStepChecks[s]})
 	}
 	for _, a := range common.TierAgents {
+		if a == "copilot" && !copilotAgentShown(doc) { // t-864c (user): not offered on a machine without Copilot CLI
+			continue
+		}
 		agents = append(agents, map[string]string{"id": a, "label": common.TierAgentLabel[a]})
 	}
 	return map[string]any{"ok": true, "steps": steps, "agents": agents, "registry_agent": common.RegistryAgent, "options": tierOptions(doc)}
+}
+
+// copilotAgentShown (t-864c, user): Admin lists Copilot CLI when `copilot` is on PATH, or when the person's own saved registry holds a
+// Copilot pick that differs from the seed's (a pick made earlier stays visible and changeable after Copilot is removed).
+func copilotAgentShown(doc map[string]any) bool {
+	if _, err := exec.LookPath(copilotBin); err == nil {
+		return true
+	}
+	if _, err := os.Stat(modelTiersUserFile()); err != nil {
+		return false
+	}
+	seed := common.LoadModelTiers("", modelTiersPath)
+	mine, _ := doc["defaults"].(map[string]any)
+	theirs, _ := seed["defaults"].(map[string]any)
+	for _, step := range common.TierSteps {
+		m, _ := mine[step].(map[string]any)
+		t, _ := theirs[step].(map[string]any)
+		if p, _ := m["copilot"].(string); p != "" && p != fmt.Sprint(t["copilot"]) {
+			return true
+		}
+	}
+	return false
 }
 
 // heldBy lists what the entry holds: its alias and the <step>.claude defaults that name it. A Copilot CLI pick is Copilot's own id
