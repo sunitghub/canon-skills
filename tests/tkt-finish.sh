@@ -264,6 +264,20 @@ out="$("$TKT" finish "$id6" --push --yes < /dev/null 2>&1)" || fail "finish --pu
 assert_contains "$out" "(fast-forward)"; [[ "$out" != *"Merge origin/main"* ]] || fail "a merge commit when only behind: $out"
 assert_eq "after it" "$(git log -1 --format=%s main)"; assert_eq "$(git rev-parse main)" "$(git -C "$O3" rev-parse main)"
 echo "finish --push: only behind origin is a fast-forward, no merge commit"
+# t-e790: a project that tracks .tickets/: a Manual ticket sent with --manual-after-merge comes back in the PR closed and without manual:
+# (the cloud's copy), while here it is open and Manual (import-results). Updating main sets the local copy aside and keeps it: the merge
+# never closes it before the person's test, and never stops on it either.
+(cd "$C3" && git pull -q && mkdir -p .tickets/t-mmmm && printf -- '---\nid: t-mmmm\nstatus: open\ntype: task\npriority: 2\n---\n# Manual\n' > .tickets/t-mmmm/ticket.md \
+  && git add -A && git commit -qm "chore: add ticket t-mmmm" && git push -q origin main)
+mkmerge manualpr mp.txt mp
+printf -- '---\nid: t-mmmm\nstatus: open\ntype: task\npriority: 2\nmanual: true\ngithub: acme/app#9\nruns: github\ncloud_status: closed\n---\n# Manual\n' > .tickets/t-mmmm/ticket.md
+(cd "$C3" && printf -- '---\nid: t-mmmm\nstatus: closed\ntype: task\npriority: 2\nclosed: 2026-11-13T00:00:00Z\n---\n# Manual\n' > .tickets/t-mmmm/ticket.md \
+  && git add -A && git commit -qm "Merge pull request #9" && git push -q origin main)
+out="$("$TKT" finish "$id6" --push --yes < /dev/null 2>&1)" || fail "finish --push stopped on the local Manual ticket copy: $out"
+assert_contains "$out" "pushed main to origin"
+assert_grep '^manual: true$' .tickets/t-mmmm/ticket.md; assert_grep '^status: open$' .tickets/t-mmmm/ticket.md
+assert_grep '^status: closed$' <(git show main:.tickets/t-mmmm/ticket.md)   # what merged is the cloud's copy; the local one is kept beside it
+echo "finish --push: a tracked Manual ticket's local copy (open, Manual) is kept across the merge"
 cd "$P"
 
 # --dismiss sets finish_dismissed (no --yes, it touches only the ticket's own field) and is refused with --yes.

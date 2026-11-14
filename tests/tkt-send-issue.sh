@@ -195,27 +195,33 @@ unset STUB_VIS
 # --manual-after-merge, which sends it on purpose: the cloud copy's acceptance has no [manual] criterion (they go to a section the agent
 # must not attempt), the body carries the marker, and the local ticket stays as it was.
 idm="$("$TKT" create "Manual one" -t task -p 3)"; "$TKT" manual "$idm" on >/dev/null
-printf '# Acceptance\n\nTicket: `%s`\n\n## Criteria\n- [ ] The list shows the time\n- [ ] [manual] Looks right on a phone\n\n## Test Plan\n- [ ] tests/x.sh\n' "$idm" > ".tickets/$idm/acceptance.md"
+printf '# Acceptance\n\nTicket: `%s`\n\n## Criteria\n- [ ] The list shows the time\n- [ ] [manual] Looks right on a phone\n* [ ]  [Manual] Works offline\n\n## Test Plan\n- [ ] tests/x.sh\n' "$idm" > ".tickets/$idm/acceptance.md"   # sprint's forms: * bullet, two spaces, any case
 out="$(run_fail "$TKT" send-issue "$idm" --dry-run 2>&1)"
 assert_contains "$out" "is a Manual ticket (manual: true): a person cannot test in the cloud"; assert_contains "$out" "tkt send-issue $idm --manual-after-merge"
-assert_contains "$(run_fail "$TKT" send-issue "$id2" --dry-run --manual-after-merge 2>&1)" "--manual-after-merge is for a Manual ticket; $id2 is not one"
+idn="$("$TKT" create "Not manual" -t task -p 3)"
+assert_contains "$(run_fail "$TKT" send-issue "$idn" --dry-run --manual-after-merge 2>&1)" "--manual-after-merge is for a Manual ticket; $idn is not one"
 ma="$(cksum < ".tickets/$idm/acceptance.md")"   # ticket.md changes on a real send (github:, runs:); acceptance.md must not
 "$TKT" send-issue "$idm" --manual-after-merge > /dev/null 2>&1 || fail "send-issue --manual-after-merge failed"
 acc_part="$(awk '/^# Acceptance$/ { f = 1; next } /^# Plan$/ { f = 0 } f' "$STUB_BODY")"
-assert_contains "$acc_part" "The list shows the time"; [[ "$acc_part" != *"[manual]"* ]] || fail "a [manual] criterion went into the cloud copy's acceptance"
+assert_contains "$acc_part" "The list shows the time"; [[ "$acc_part" != *"[manual]"* && "$acc_part" != *"[Manual]"* ]] || fail "a [manual] criterion went into the cloud copy's acceptance"
+assert_grep '^- \[Manual\] Works offline$' "$STUB_BODY"
 assert_grep '^## Tested by the person after the merge$' "$STUB_BODY"; assert_grep '^- \[manual\] Looks right on a phone$' "$STUB_BODY"
 assert_grep 'do not run `sprint manual-qa`' "$STUB_BODY"
 [[ "$(tail -2 "$STUB_BODY" | head -1)" == "<!-- canon:manual-after-merge -->" ]] || fail "the marker is not right above the ticket marker"
 [[ "$(cksum < ".tickets/$idm/acceptance.md")" == "$ma" ]] || fail "the local acceptance.md changed"
 assert_grep '^manual: true$' ".tickets/$idm/ticket.md"; assert_grep '^manual after merge: ' ".tickets/$idm/github.md"
 cp "$STUB_BODY" "$stub/mam-body"
+# already sent (with the flag): sending again is "already sent", never the Manual refusal (To Claude Cloud's --launch only starts its session)
+out="$(run_fail "$TKT" send-issue "$idm" 2>&1)"; assert_contains "$out" "$idm was already sent"; [[ "$out" != *"is a Manual ticket"* ]] || fail "an already-sent Manual ticket hit the Manual refusal"
 # The cloud's import-issue: a tracked ticket.md that says manual: true (it rode along in the clone) ends without it; a body
 # without the marker leaves it alone.
-for withmark in yes no; do
+awk -v m="<!-- canon:manual-after-merge -->" '{ print } $0 == m { print "<!-- canon:lite -->" }' "$stub/mam-body" > "$stub/mam-lite-body"   # Lite + Manual: the marker sits above lite
+for withmark in yes no lite; do
   imp="$(make_project)"; mkdir -p "$imp/.tickets/$idm"; cp ".tickets/$idm/ticket.md" "$imp/.tickets/$idm/ticket.md"
-  if [[ "$withmark" == yes ]]; then cp "$stub/mam-body" "$stub/imp-body"; else grep -vx '<!-- canon:manual-after-merge -->' "$stub/mam-body" > "$stub/imp-body"; fi
+  case "$withmark" in yes) cp "$stub/mam-body" "$stub/imp-body" ;; lite) cp "$stub/mam-lite-body" "$stub/imp-body" ;; *) grep -vx '<!-- canon:manual-after-merge -->' "$stub/mam-body" > "$stub/imp-body" ;; esac
   (cd "$imp" && "$TKT" import-issue 57 --body-file "$stub/imp-body" >/dev/null 2>&1) || fail "import-issue of the Manual body failed ($withmark)"
-  if [[ "$withmark" == yes ]]; then ! grep -q '^manual:' "$imp/.tickets/$idm/ticket.md" || fail "the cloud copy kept manual: true"
+  if [[ "$withmark" != no ]]; then ! grep -q '^manual:' "$imp/.tickets/$idm/ticket.md" || fail "the cloud copy kept manual: true ($withmark)"
+    [[ "$withmark" != lite ]] || assert_grep '^demo: true$' "$imp/.tickets/$idm/ticket.md"
     ! grep -q '\[manual\]' "$imp/.tickets/$idm/acceptance.md" || fail "the cloud copy's acceptance.md has a [manual] criterion"
   else assert_grep '^manual: true$' "$imp/.tickets/$idm/ticket.md"; fi
   rm -rf "$imp"

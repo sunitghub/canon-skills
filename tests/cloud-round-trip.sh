@@ -288,13 +288,15 @@ assert_contains "$out" "no re-grade needed"
 # for the person's test after the merge, so the card still offers Check & merge (results-in), not Continue here.
 cp ".tickets/$id/ticket.md" "$W/closed-ticket.md"; cp ".tickets/$id/acceptance.md" "$W/closed-acc.md"
 cp "$A/$d/ticket.md" ".tickets/$id/ticket.md"; "$TKT" manual "$id" on >/dev/null
-printf '# Acceptance\n\n## Criteria\n- [ ] The list shows the time\n- [ ] [manual] Looks right on a phone\n\n## Test Plan\n- [ ] x\n' > ".tickets/$id/acceptance.md"
+printf '# Acceptance\n\n## Criteria\n- [ ] The list shows the time\n- [ ] [manual] Looks right on a phone\n* [ ]  [Manual] Works offline\n\n## Test Plan\n- [ ] x\n' > ".tickets/$id/acceptance.md"
 cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && cd "$L"
 out="$("$TKT" import-results "$id" --pr 58 2>&1)" || fail "import-results of a Manual ticket failed: $out"
 assert_grep '^manual: true$' ".tickets/$id/ticket.md"; assert_grep '^status: open$' ".tickets/$id/ticket.md"; assert_grep '^cloud_status: closed$' ".tickets/$id/ticket.md"
-assert_eq "- [ ] [manual] Looks right on a phone" "$(awk '/^## Criteria$/ { c = 1; next } /^## / { c = 0 } c && /\[manual\]/' ".tickets/$id/acceptance.md")"
+assert_eq "- [ ] [manual] Looks right on a phone
+* [ ]  [Manual] Works offline" "$(awk '/^## Criteria$/ { c = 1; next } /^## / { c = 0 } c && tolower($0) ~ /\[manual\]/' ".tickets/$id/acceptance.md")"
 assert_contains "$out" "Manual: it stays open until you test the merged result here (sprint manual-qa $id, then sprint complete $id)"
 [[ "$out" != *"expected closed"* ]] || fail "a Manual import reads as an unfinished cloud sprint: $out"
+[[ "$out" != *"next: tkt land"* ]] || fail "a Manual import whose cloud copy closed was sent to tkt land, not Check & merge: $out"
 cp "$W/closed-ticket.md" ".tickets/$id/ticket.md"; cp "$W/closed-acc.md" ".tickets/$id/acceptance.md"
 nblocks="$(grep -c '^## ' "$gt")"   # the import above is one more trail block
 echo "cloud-round-trip: a Manual ticket comes back Manual and open, its [manual] criteria restored"
