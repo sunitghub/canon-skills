@@ -307,7 +307,7 @@ async function mtSetDefault(sel){
   const step=sel.dataset.step, agent=sel.dataset.agent;
   mtData.defaults[step]=mtData.defaults[step]||{};
   mtData.defaults[step][agent]=sel.value;
-  if(await mtSave()){ await mtLoadOptions(); mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick; t-864c: and the lists (Second eval leaves out the Evaluator's pick)
+  if(await mtSave()){ mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick; mtSave reloads the lists (t-864c: Second eval leaves out the Evaluator's pick)
 }
 
 const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors main.go's modelIDRe
