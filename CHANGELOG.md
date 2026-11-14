@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.21] - 2026-11-14
+
 - Changed: Admin > Model tiers keeps one model per step and per agent: Plan, Build, Reviewer (advisory), Evaluator (binding) and Simple / Light work, each for Claude Code and for Copilot CLI (an Agent dropdown picks which). The reviewer and the evaluator can now run on different models, e.g. an Opus reviewer and a Sonnet evaluator; a Copilot CLI pick may be an OpenAI model. The binding evaluator is never a Haiku model (a Lite ticket still runs it on Haiku). Plan and Build are recorded now and used from a later release. Your saved settings carry over: your Review & Eval pick becomes both gates for both agents, your Simple / Light pick stays. Update canon and restart the daemon together (Admin › Restart Daemon): an older board reading the new settings falls back to the default gate model (t-8f6d, t-2cc8).
 - Changed (events API): the Model tiers audit lines are named `model-tiers.save.<step>.<agent>` (e.g. `model-tiers.save.evaluator.claude`); the bare `model-tiers.save` now marks only a save that changed no default (t-8f6d).
 
