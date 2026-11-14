@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"canon/internal/common"
 )
 
 // annotateWorktreeMerge marks a closed, unmerged ticket that was not sent to GitHub and is bound (.cockpit-cwd) to an existing
@@ -42,7 +44,7 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		if !linkedWorktreeOf(cwd, wtDir) {
 			continue
 		}
-		cands = append(cands, cand{t, id, pathKey(cwd)})
+		cands = append(cands, cand{t, id, common.ResolvedKey(cwd)})
 	}
 	if len(cands) == 0 {
 		return
@@ -66,12 +68,12 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		}
 	}
 	base := defaultBranchRef(root)
-	waiting := map[string]*wt{} // pathKey -> a live linked worktree whose branch is not in main; nil: in main, or not one
+	waiting := map[string]*wt{} // common.ResolvedKey -> a live linked worktree whose branch is not in main; nil: in main, or not one
 	for _, c := range cands {
 		w, seen := waiting[c.key]
 		if !seen {
 			for i := range wts {
-				if pathKey(wts[i].path) == c.key {
+				if common.ResolvedKey(wts[i].path) == c.key {
 					if _, in := gitCtx(root, "merge-base", "--is-ancestor", wts[i].head, base); !in {
 						w = &wts[i]
 					}
@@ -123,7 +125,7 @@ func linkedWorktreeOf(dir, wtDir string) bool {
 	if !filepath.IsAbs(gd) {
 		gd = filepath.Join(dir, gd)
 	}
-	return pathKey(filepath.Dir(filepath.Clean(gd))) == pathKey(wtDir)
+	return common.SamePath(filepath.Dir(filepath.Clean(gd)), wtDir)
 }
 
 // defaultBranchRef is the ref tkt merge merges into (t-e1a2): origin/HEAD's branch, else main, else master, as a local ref; HEAD when

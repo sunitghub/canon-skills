@@ -2883,12 +2883,9 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 	}
 	flush()
 	mainRoot := rootOr(root)
-	if resolved, err := filepath.EvalSymlinks(mainRoot); err == nil {
-		mainRoot = resolved
-	}
 	for _, e := range entries {
-		resolved, err := filepath.EvalSymlinks(fmt.Sprint(e["path"]))
-		e["is_main"] = err == nil && resolved == mainRoot
+		_, err := os.Stat(fmt.Sprint(e["path"]))
+		e["is_main"] = err == nil && common.SamePath(fmt.Sprint(e["path"]), mainRoot) // t-9d04: one folder in any spelling
 	}
 	// t-e5ff: parity with server.py — a git worktree materializes only tracked
 	// files, so when `.tickets/` is gitignored a non-main worktree can't see any
@@ -2963,12 +2960,11 @@ func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, stri
 	var cand map[string]any
 	if raw, err := os.ReadFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
 		if cwd := strings.TrimSpace(string(raw)); cwd != "" {
-			key := pathKey(cwd)
-			if key == pathKey(root) {
+			if common.SamePath(cwd, root) {
 				return "", "", "", false // t-1aa7: bound to the main checkout: no worktree, and no divergence guess
 			}
 			for _, e := range wts {
-				if pathKey(fmt.Sprint(e["path"])) == key {
+				if common.SamePath(fmt.Sprint(e["path"]), cwd) {
 					cand = e
 					break
 				}
@@ -3063,7 +3059,7 @@ func liveTargetFrom(docFile, dir, wtPath string, names map[string]bool) (string,
 		}
 	}
 	// Belt and braces: the resolved folder must be exactly where the worktree says it is.
-	if pathKey(dir) != pathKey(filepath.Join(realWT, ".tickets", parts[0])) {
+	if !common.SamePath(dir, filepath.Join(realWT, ".tickets", parts[0])) {
 		return "", trust
 	}
 	target := filepath.Join(dir, name)
@@ -3438,13 +3434,6 @@ func liveForDocFull(docFile, root string) (string, string, string, bool) {
 // ("uncommitted changes"), or unmerged ("branch not merged"). The requesting
 // ticket's own worktree is marked own and never held.
 
-func pathKey(p string) string {
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		p = r
-	}
-	return strings.ToLower(strings.TrimRight(strings.ReplaceAll(p, "\\", "/"), "/"))
-}
-
 func isWorktreeNoise(path string) bool {
 	return isCanonRuntimePath(path) || path[strings.LastIndex(path, "/")+1:] == "cockpit-sessions.md"
 }
@@ -3535,7 +3524,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		mainStatus[id] = st
 		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" {
-				k := pathKey(cwd)
+				k := common.ResolvedKey(cwd)
 				bound[k] = append(bound[k], id)
 			}
 		}
@@ -3553,7 +3542,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 			e["held_by"] = map[string]any{"ticket": "", "reason": "folder missing"}
 			continue
 		}
-		binders := bound[pathKey(path)]
+		binders := bound[common.ResolvedKey(path)]
 		statusOf := func(id string) string {
 			if st, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
 				return st
@@ -3641,7 +3630,7 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	// so this is correct for any project without a separate ?project= lookup.
 	isWorktree := false
 	for _, e := range listWorktreesBase("", cwdReal) {
-		if wt, err := filepath.EvalSymlinks(fmt.Sprint(e["path"])); err == nil && wt == cwdReal {
+		if common.SamePath(fmt.Sprint(e["path"]), cwdReal) { // t-9d04
 			isWorktree = true
 			break
 		}

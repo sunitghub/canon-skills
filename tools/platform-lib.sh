@@ -222,7 +222,7 @@ canon_awk_pkey='function pkey(p,   unc, lead) {
 '
 
 # canon_path_key <path> — t-141a: the key of ONE path for shell code that compares paths (the same text as canon_awk_pkey, so there is no second
-# definition). A pure function: no filesystem, no environment, no OS test, the same answer on every OS. Compare two keys, never two raw spellings;
+# shell definition; the Go twin is common.PathKey, tools/canon-go/internal/common/pathkey.go, checked against the same corpus). A pure function: no filesystem, no environment, no OS test, the same answer on every OS. Compare two keys, never two raw spellings;
 # when both folders exist compare file identity first (`[ a -ef b ]`, unverified on Git Bash, t-c8c6) and use the key only as the fallback. Never hand
 # a key to another program. An empty path has an empty key: two empty keys are "no path", never "the same folder". A newline is encoded as %0A so
 # two paths that differ only by a newline never merge (awk reads a line at a time). No argument is an empty path (safe under `set -u`).

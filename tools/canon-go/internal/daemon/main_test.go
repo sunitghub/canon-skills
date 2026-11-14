@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"canon/internal/common"
+
 	pty "github.com/aymanbagabas/go-pty"
 )
 
@@ -4483,7 +4485,7 @@ func TestResolveProjectForCwd(t *testing.T) {
 	}
 	got, ok := s.resolveProjectForCwd(root)
 	wantResolved, _ := filepath.EvalSymlinks(root)
-	if !ok || !pathsEqual(got, wantResolved) {
+	if !ok || !common.SamePath(got, wantResolved) {
 		t.Fatalf("git cwd = (%q,%v), want (%q,true)", got, ok, wantResolved)
 	}
 }
@@ -4871,6 +4873,28 @@ func TestAppendDebugLogLineTruncatesToTail(t *testing.T) {
 
 // t-6a45: an in_progress ticket's persisted .cockpit-cwd lives in agent-writable .tickets/, so spawn must
 // re-validate it (project root / live `git worktree list`) rather than trust it after a stat.
+// t-9d04: on a case-insensitive volume (macOS APFS, Windows) a differently-cased spelling of the worktree or the root is the same folder
+// (common.SamePath is file identity), and resolveSpawnCwd returns the folder's own spelling, never the client's: .cockpit-cwd and the board's
+// worktree holds (keyed by common.ResolvedKey) then see one spelling, so a worktree in use stays held. Prod path: every session start.
+func TestResolveSpawnCwdReturnsTheFoldersOwnSpelling(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	realRoot, _ := filepath.EvalSymlinks(root)
+	realWt, _ := filepath.EvalSymlinks(wt)
+	upper := strings.ToUpper // the whole path: a temp folder's own name is digits
+	if _, err := os.Stat(upper(realWt)); err != nil || upper(realWt) == realWt {
+		t.Skip("this volume is case-sensitive: a differently-cased spelling is another folder")
+	}
+	for _, c := range []struct{ in, want string }{{upper(realWt), realWt}, {upper(realRoot), realRoot}, {realWt, realWt}} {
+		got, ok := s.resolveSpawnCwd(c.in, root)
+		if !ok || got != c.want {
+			t.Errorf("resolveSpawnCwd(%q) = %q, %v; want %q, true", c.in, got, ok, c.want)
+		}
+	}
+}
+
 func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
@@ -6486,7 +6510,7 @@ func TestScratchWorktrees(t *testing.T) {
 	})
 
 	first := start("s-aa01")
-	if !pathsEqual(first.Cwd, resolvedRoot) && !pathsEqual(first.Cwd, root) {
+	if !common.SamePath(first.Cwd, resolvedRoot) && !common.SamePath(first.Cwd, root) {
 		t.Fatalf("first scratch should run in the main checkout, got %q", first.Cwd)
 	}
 	second := start("s-bb02")
@@ -7259,7 +7283,7 @@ func TestNonGitTrustRule(t *testing.T) {
 	want := func(name, cwd string, ok bool) {
 		t.Helper()
 		got, gotOK := s.resolveProjectForCwd(cwd)
-		if gotOK != ok || (ok && !pathsEqual(got, realRoot)) {
+		if gotOK != ok || (ok && !common.SamePath(got, realRoot)) {
 			t.Fatalf("%s: resolveProjectForCwd(%q) = (%q,%v), want ok=%v", name, cwd, got, gotOK, ok)
 		}
 	}
@@ -7563,7 +7587,7 @@ func TestNonGitConcurrentScratchSessionsShareTheFolder(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&full)
 	resp.Body.Close()
 	for _, r := range full {
-		if !pathsEqual(r.Cwd, realRoot) || !r.Shared {
+		if !common.SamePath(r.Cwd, realRoot) || !r.Shared {
 			t.Fatalf("row %+v: want every session in %s flagged shared", r, realRoot)
 		}
 	}
@@ -8970,7 +8994,7 @@ func TestStartWorktreeLinksGateAgents(t *testing.T) {
 	t.Cleanup(func() { exec.Command("git", "-C", root, "worktree", "prune").Run() })
 	startScratchSession(t, ts2.URL, "s-ab12", "")
 	sc := startScratchSession(t, ts2.URL, "s-ab13", "")
-	if sc.Cwd == "" || pathsEqual(sc.Cwd, root) {
+	if sc.Cwd == "" || common.SamePath(sc.Cwd, root) {
 		t.Fatalf("the second scratch session should run in its own worktree, got cwd %q", sc.Cwd)
 	}
 	if _, err := os.Lstat(filepath.Join(sc.Cwd, ".claude", "agents")); err == nil {

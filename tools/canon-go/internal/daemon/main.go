@@ -44,7 +44,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -544,11 +543,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// t-e5ff, t-6bae: a cwd other than the main checkout must let tkt find the ticket: in the worktree's own .tickets/ when it
 	// has one, else in the main checkout's (tkt resolves a worktree's .git file back to it, t-cd06), which passed the check
 	// above. A worktree of a gitignored .tickets/ has none, so its sprint uses main's ticket.
-	if scratch && !pathsEqual(cwd, projectRoot) {
+	if scratch && !common.SamePath(cwd, projectRoot) {
 		http.Error(w, "the daemon picks a scratch session's directory — start it from the project's main checkout", http.StatusBadRequest)
 		return
 	}
-	if !pathsEqual(cwd, projectRoot) {
+	if !common.SamePath(cwd, projectRoot) {
 		if !common.TicketVisibleIn(cwd, body.Ticket) {
 			http.Error(w, "ticket not in this worktree's own .tickets/ — start from the main checkout", http.StatusBadRequest)
 			return
@@ -608,7 +607,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// gate agents before the agent starts: Claude Code loads agents only at start, and a worktree made by the Cockpit, by
 	// `tkt land` or by an older canon may lack them, which sends the close's gates to fallback agents.
 	var linked []string
-	if !scratch && !pathsEqual(cwd, projectRoot) {
+	if !scratch && !common.SamePath(cwd, projectRoot) {
 		if root := canonRoot(); root != "" {
 			linked = common.LinkWorktree(root, cwd)
 		}
@@ -669,7 +668,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	requested := s.resolveRequestedEcho(body.Cwd)
 	// t-75cb: the cwd actually used vs the one asked for — a persisted .cockpit-cwd lock can
 	// override the picker, and that is the first thing to check when a run lands in the wrong tree.
-	se.debugf("start spawned new session sid=%s cwd=%s requested=%s cwd_differs=%v", se.sid, cwd, requested, !pathsEqual(cwd, requested))
+	se.debugf("start spawned new session sid=%s cwd=%s requested=%s cwd_differs=%v", se.sid, cwd, requested, !common.SamePath(cwd, requested))
 	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": requested})
 }
 
@@ -693,7 +692,7 @@ func (s *server) mainCheckoutBusy(projectRoot string) bool {
 	defer s.mu.Unlock()
 	for _, se := range s.sessions {
 		se.mu.Lock()
-		busy := !se.exited && pathsEqual(se.projectRoot, projectRoot) && pathsEqual(se.cwd, projectRoot)
+		busy := !se.exited && common.SamePath(se.projectRoot, projectRoot) && common.SamePath(se.cwd, projectRoot)
 		se.mu.Unlock()
 		if busy {
 			return true
@@ -1641,7 +1640,7 @@ func (s *server) handleAdopt(w http.ResponseWriter, r *http.Request, se *session
 	se.mu.Unlock()
 	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-cwd"), []byte(cwd+"\n"), 0o600)
 	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-adopted"), []byte("from "+se.ticket+"\n"), 0o600)
-	if !pathsEqual(cwd, root) {
+	if !common.SamePath(cwd, root) {
 		if err := copyTicketDir(ticketDir, filepath.Join(cwd, ".tickets", body.Ticket)); err != nil {
 			se.debugf("adopt: copying %s into the worktree failed: %v", body.Ticket, err)
 		}
@@ -1879,7 +1878,7 @@ func (s *server) liveSessionIn(root string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, se := range s.sessions {
-		if pathsEqual(se.projectRoot, root) && !se.isExited() {
+		if common.SamePath(se.projectRoot, root) && !se.isExited() {
 			return true
 		}
 	}
@@ -2123,7 +2122,7 @@ func scratchNoteLine(se *session, wt *scratchWorktree, files, commits int, noGit
 	if noGit {
 		place = "your folder" // a folder without git has no checkout to speak of
 	}
-	if !pathsEqual(cwd, se.projectRoot) {
+	if !common.SamePath(cwd, se.projectRoot) {
 		place = "worktree " + filepath.Base(cwd)
 		if wt != nil {
 			place += " (branch " + wt.Branch + ")"
@@ -2642,7 +2641,7 @@ func (s *server) idleTimeoutFor(projectRoot, cwd string) time.Duration {
 	if err != nil {
 		resolvedRoot = projectRoot
 	}
-	if cwd == "" || pathsEqual(cwd, resolvedRoot) || pathsEqual(cwd, projectRoot) {
+	if cwd == "" || common.SamePath(cwd, resolvedRoot) || common.SamePath(cwd, projectRoot) {
 		return s.cfg.idleTimeoutMain
 	}
 	return s.cfg.idleTimeout
@@ -4048,7 +4047,7 @@ func (s *server) listWorktreesIn(root string) ([]string, error) {
 // linked-worktree cwd still resolves to the parent repo that holds the ticket,
 // preserving the t-e5ff "not visible in this worktree" flow. Empty cwd falls
 // back to cfg.projectRoot (backward compatible). Reuses the OS-aware
-// EvalSymlinks/pathsEqual helpers — no per-OS path branch (DRY, Mac/Win).
+// EvalSymlinks/common.SamePath helpers — no per-OS path branch (DRY, Mac/Win).
 func (s *server) resolveProjectForCwd(cwd string) (string, bool) {
 	if cwd == "" {
 		// Verbatim (not EvalSymlinks'd): the "" request resolves to the launch
@@ -4108,7 +4107,7 @@ func (s *server) registeredRoot(resolved string) (string, bool) {
 		if err != nil {
 			continue
 		}
-		if pathsEqual(p, resolved) {
+		if common.SamePath(p, resolved) {
 			return resolved, true
 		}
 	}
@@ -4118,15 +4117,6 @@ func (s *server) registeredRoot(resolved string) (string, bool) {
 // defaultRegistryFile is where the boards keep the registered projects (server.py _registry_file).
 func defaultRegistryFile() string {
 	return filepath.Join(defaultCanonCockpitDir(), "projects.json")
-}
-
-// pathsEqual compares two already-resolved absolute paths. Windows paths are
-// case-insensitive; POSIX paths are not.
-func pathsEqual(a, b string) bool {
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
 }
 
 // resolveSpawnCwd validates a client-supplied cwd against the given project
@@ -4149,8 +4139,10 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 	if err != nil {
 		resolvedRoot = projectRoot
 	}
-	if pathsEqual(resolvedCwd, resolvedRoot) {
-		return resolvedCwd, true
+	// t-9d04: SamePath is file identity, so on a case-insensitive volume a differently-cased spelling of the same folder matches. Return the
+	// root's (or below, git's) own spelling, never the client's: .cockpit-cwd and the board's holds (keyed by common.ResolvedKey) must see one.
+	if common.SamePath(resolvedCwd, resolvedRoot) {
+		return resolvedRoot, true
 	}
 	worktrees, err := s.listWorktreesIn(projectRoot)
 	if err != nil {
@@ -4161,8 +4153,8 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 		if err != nil {
 			continue
 		}
-		if pathsEqual(resolvedWt, resolvedCwd) {
-			return resolvedCwd, true
+		if common.SamePath(resolvedWt, resolvedCwd) {
+			return resolvedWt, true
 		}
 	}
 	return "", false
@@ -4226,7 +4218,7 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 func (s *server) logSessionStart(ticket, cwd, projectRoot string) {
 	label := "main checkout"
 	if resolvedRoot, err := filepath.EvalSymlinks(projectRoot); err == nil {
-		if !pathsEqual(cwd, resolvedRoot) && !pathsEqual(cwd, projectRoot) {
+		if !common.SamePath(cwd, resolvedRoot) && !common.SamePath(cwd, projectRoot) {
 			label = cwd
 		}
 	} else if cwd != projectRoot {
@@ -4315,7 +4307,7 @@ func (s *server) boundWorktreeIn(root, ticket string) string {
 		return ""
 	}
 	for _, w := range wts[1:] { // the first entry is the main checkout
-		if cand, err := filepath.EvalSymlinks(w); err == nil && pathsEqual(cand, resolved) {
+		if cand, err := filepath.EvalSymlinks(w); err == nil && common.SamePath(cand, resolved) {
 			tdir := filepath.Join(resolved, ".tickets", ticket)
 			fi, ferr := os.Lstat(filepath.Join(tdir, "ticket.md"))
 			if !plainDir(filepath.Join(resolved, ".tickets")) || !plainDir(tdir) || ferr != nil || !fi.Mode().IsRegular() {

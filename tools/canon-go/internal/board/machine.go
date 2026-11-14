@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"canon/internal/common"
 	"canon/internal/events"
 	"canon/internal/machine"
 )
@@ -140,40 +141,35 @@ func indexDay(path string) *dayIndex {
 
 // belongsTo: an event's project is this root, one of its live worktrees, or a folder in the board's worktree folder
 // (<root>-worktrees/, createWorktree), so a worktree removed after its sprint still counts.
-// Paths are compared in one form (normPath): on Windows the board writes C:\Users\..., tkt C:/Users/... and Git Bash may give
+// Paths are compared by canon's key (common.PathKey, t-9d04: a removed worktree cannot be resolved, so identity cannot be asked): on Windows the board writes C:\Users\..., tkt C:/Users/... and Git Bash may give
 // /c/Users/... for the same folder (user's VM, 2026-11-02: every tkt event was missed).
 func belongsTo(project, root string, live map[string]bool) bool {
-	p, r := normPath(project), normPath(root)
+	p, r := eventKey(project), eventKey(root)
 	if p == r {
 		return true
 	}
 	for l := range live {
-		if normPath(l) == p {
+		if eventKey(l) == p {
 			return true
 		}
 	}
 	return pathDir(p) == r+"-worktrees"
 }
 
-var msysDriveRe = regexp.MustCompile(`^/([a-zA-Z])(/|$)`)
+var eventDriveRe = regexp.MustCompile(`^/[a-zA-Z](/|$)`) // Git Bash takes /C/... too
 
-// normPath is a path in one comparable form: forward slashes, a Git Bash /c/... drive written C:/..., no trailing slash, and a
-// drive-letter path lowercased (Windows paths ignore case). Other paths keep their case.
-func normPath(p string) string {
-	s := strings.ReplaceAll(p, `\`, "/")
-	if m := msysDriveRe.FindStringSubmatch(s); m != nil {
-		s = strings.ToUpper(m[1]) + ":/" + strings.TrimPrefix(s[len(m[0]):], "/")
+// eventKey is canon's key (common.PathKey) of an event's project, wholly lower-cased when it names a drive (/c/...): Windows folders ignore
+// case, and the board, tkt and Git Bash may spell one differently. This is belongsTo's own rule, kept from normPath (t-2db7): an event is
+// only counted toward a project here, nothing is written or trusted by it, and a removed worktree cannot be asked by identity.
+func eventKey(p string) string {
+	k := common.PathKey(p)
+	if eventDriveRe.MatchString(k) {
+		k = strings.ToLower(k)
 	}
-	for len(s) > 1 && strings.HasSuffix(s, "/") && !strings.HasSuffix(s, ":/") {
-		s = strings.TrimSuffix(s, "/")
-	}
-	if len(s) >= 2 && s[1] == ':' {
-		s = strings.ToLower(s)
-	}
-	return s
+	return k
 }
 
-// pathDir is the parent of a normPath path ("" for none).
+// pathDir is the parent of a key (common.PathKey) ("" for none).
 func pathDir(p string) string {
 	if i := strings.LastIndex(p, "/"); i > 0 {
 		return p[:i]

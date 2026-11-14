@@ -3,6 +3,7 @@ package common
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,16 +31,6 @@ func TestNotAProject(t *testing.T) {
 	cases := []struct {
 		name, dir, want string
 	}{
-		{"the filesystem root", "/", "the root of a drive"},
-		{"a drive root", `C:\`, "the root of a drive"},
-		{"a drive root, lower case", "c:", "the root of a drive"},
-		{"System32", `C:\Windows\System32`, "a system folder"},
-		{"System32, odd case, slashes", "c:/WINDOWS/system32", "a system folder"},
-		{"the Windows folder", `C:\Windows`, "a system folder"},
-		{"inside the Windows tree", `C:\Windows\System32\drivers`, "a system folder"},
-		{"Program Files", `C:\Program Files`, "a system folder"},
-		{"Program Files (x86)", `C:\Program Files (x86)`, "a system folder"},
-		{"ProgramData", `D:\ProgramData`, "a system folder"},
 		{"/usr", "/usr", "a system folder"},
 		{"/etc", "/etc", "a system folder"},
 		{"/var", "/var", "a system folder"},
@@ -48,22 +39,40 @@ func TestNotAProject(t *testing.T) {
 		{"/bin", "/bin", "a system folder"},
 		{"/private/etc (macOS's own name for /etc)", "/private/etc", "a system folder"},
 		{"/private/var", "/private/var", "a system folder"},
-		{"a folder under /private/var is fine", "/private/var/folders/x/T", ""},
 		{"/sbin", "/sbin", "a system folder"},
 		{"/opt", "/opt", "a system folder"},
 		{"/Library", "/Library", "a system folder"},
-		{"a folder inside Program Files is fine", `C:\Program Files\Foo`, ""},
-		{"a folder that only starts with Windows is fine", `C:\Windowsfoo`, ""},
-		{"a drive-looking piece in the middle is not a drive", "/tmp/c:/windows/x", ""},
-		{"a user folder is fine", `C:\Users\sam\proj`, ""},
 		{"the home folder is a project like any other (t-dec4)", home, ""},
-		{"a unix subfolder is fine", "/usr/local/src/p", ""},
 		{"a temp folder under /var is fine", filepath.Join(plain), ""},
 		{"a folder inside home is fine", sub, ""},
 		{"a plain folder with no git is fine", plain, ""},
 		{"a git project is fine", proj, ""},
 		{"a dotfiles repository in the home folder is a project", gitHome, ""},
 		{"a .tickets-only folder is fine", ticketsOnly, ""},
+	}
+	// t-9d04: the rows whose answer does not depend on the machine come from the table tests/folder-guard.sh reads too (one answer)
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "tests", "fixtures", "folder-guard.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		f := strings.Split(line, "\t")
+		if len(f) != 3 {
+			t.Fatalf("folder-guard.tsv line %q: %d fields, want 3", line, len(f))
+		}
+		want := f[1]
+		if want == "-" {
+			want = ""
+		}
+		cases = append(cases, struct{ name, dir, want string }{f[2], f[0], want})
+		rows++
+	}
+	if rows < 22 {
+		t.Fatalf("only %d table rows ran (the table has 22)", rows)
 	}
 	for _, c := range cases {
 		if got := NotAProject(c.dir); got != c.want {
