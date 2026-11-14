@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-11-14
+
+- Added: a **Spec check** before you approve a plan. A fresh read-only agent (`canon-spec-checker`) grades `acceptance.md` and `plan.md`: is each criterion testable and covered by a Test Plan line, does any clause rest on something nothing enforces, does each decision in the ticket show up, can the plan deliver it. It writes `spec-review.md` (READY or GAPS) and its findings go in the brief; it never blocks. It is the `spec-check` node of the pipeline (Lite skips it; a project can switch it off), and tickets approved before this update still close. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-9b13).
+- Added: Admin > Model tiers has a sixth step, **Spec check**, per agent; an older saved registry starts it on your Reviewer pick (t-9b13).
+- Changed (events API): `gate.started` / `gate.finished` carry role `speccheck` with verdict `READY` or `GAPS` (t-9b13).
+
 ## [0.56.0] - 2026-11-14
 
 - Added: a Cockpit session runs on the Plan model until its plan is approved, then on the Build model (Admin > Model tiers, or the ticket's own `| Plan model:` / `| Build model:` on the Sign-off line). When the turn that ran `sprint approve` ends, the Cockpit types `/model <build>` once and a line that continues the build, only once the session is quiet at the prompt; `sprint approve` says so, or prints the `/model` line outside the Cockpit. Pi has no `/model` and keeps its model. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-3425).
