@@ -127,7 +127,7 @@ const MT_STEP_UI={
   evaluator2:{used:'Used by: sprint complete, after the binding evaluator passes: a second opinion on another model, on high-risk tickets (or Second eval: on). Off until you pick one; never the Evaluator\'s model.'},
   light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
 const mtRegistryAgent=()=>mtOpts.registry_agent||'claude';   // whose picks are registry ids (the board's registryAgent): the registry cards' Default badge and Remove's holders
-const mtStepLabel=st=>st.label+(st.role?` (${st.role})`:'');
+const mtStepLabel=st=>(st.seq?st.seq+'. ':'')+st.label+(st.role?` (${st.role})`:'');   // t-864c (user): numbered in the order a sprint runs them
 const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
 let mtOptsErr='';
 async function mtLoadOptions(){

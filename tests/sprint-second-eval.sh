@@ -32,6 +32,12 @@ signoff "Tier: normal | Risk: x"
 assert_eq "skip: not high-risk (add | Second eval: on to run it)" "$(second)"
 signoff "Tier: normal | Risk: x | second eval: on | Gate model: haiku"
 assert_eq "opus" "$(second)"                                   # on runs it on any tier; the Gate model never sets it
+signoff "**Tier:** normal | Risk: x | **Second eval:** ON"
+assert_eq "opus" "$(second)"                                   # bold markdown and capitals parse like _signoff_tier
+signoff "Tier: high-risk | Risk: x | Second eval: yes"
+out="$(second)"; assert_contains "$out" "ignoring 'Second eval: yes'"; assert_contains "$out" "opus"   # an unknown value is said, then ignored
+signoff "Tier: high-risk | Risk: x | Gate model: opus"
+assert_eq "skip: the ticket's Gate model already put the binding evaluator on opus" "$(second)"
 
 # 2. sprint eval-compare: rows matched by their first cell; a different status, and a row only one side has, are disagreements
 report() {   # report <file> <criterion 1 status> <criterion 2 status> [extra criterion row]
@@ -50,6 +56,13 @@ assert_contains "$out" "Criteria: Three is new: only in eval-report-2.md (pass)"
 assert_contains "$out" "Disagreements: 2"
 assert_contains "$(event_line eval.compared "$id")" '"disagreements":"2"'
 assert_contains "$(event_line eval.compared "$id")" '"model":"opus (claude-opus-5-5)"'
+# a first cell holding an escaped pipe or a pipe in backticks, and a bold status, still parse (reviewer t-864c: about 100 real rows)
+report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass '| `a | b` and x \\| y | **pass** | q |'
+report "opus (claude-opus-5-5)" eval-report-2.md pass pass '| `a | b` and x \\| y | fail | q |'
+out="$("$SPRINT" eval-compare "$id")"
+assert_contains "$out" 'Criteria: `a | b` and x'; assert_contains "$out" ': binding pass, second fail'   # one cell, not split at either pipe
+assert_contains "$out" "Disagreements: 1"
+report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass   # back to the plain binding report for the sections below
 printf '# nothing here\n' > "$t/eval-report-2.md"
 rc=0; out="$("$SPRINT" eval-compare "$id" 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "eval-report-2.md has no Criteria or Test Plan rows"
@@ -65,15 +78,22 @@ acc "| second-eval | ran | opus; Disagreements: 0; none |"
 gates >/dev/null && fail "a second-eval row with the wrong count was accepted"
 acc "| second-eval | ran | opus; Disagreements: 1; criterion 2: the user kept the binding pass |"
 gates >/dev/null || fail "the right second-eval row was refused"
+acc "| second-eval | ran | opus; Disagreements: 12; none |"
+gates >/dev/null && fail "Disagreements: 12 passed for a count of 1"
 rm "$t/eval-report-2.md"; acc ""
 gates >/dev/null || fail "a close without a second evaluator now needs a second-eval row"
 
 # 4. the binding evaluator's report checks never read eval-report-2.md: a failing or malformed one changes nothing there
-binding() { ( eval "$(sed -n '/^_gate_eval_report()/,/^}/p' "$SPRINT")"; _gate_eval_report "$id" "$t" 2>&1 ); }
+# every function tools/sprint defines, with the libraries it sources (reviewer t-864c: one function alone ran with undefined helpers, so
+# both runs printed "command not found" and matched; the check below fails if any helper is missing)
+binding() { ( SCRIPT_DIR="$ROOT/tools"; source "$ROOT/tools/ticket-root.sh"; source "$ROOT/tools/platform-lib.sh"
+  eval "$(awk '/^[A-Za-z_][A-Za-z0-9_]*\(\) \{/,/^}/' "$SPRINT")"; _gate_eval_report "$id" "$t" 2>&1; echo "rc=$?" ) }
 printf 'evaluator-run-id: 1-1\n' > "$t/eval-report.md"
-before="$(binding || true)"
+before="$(binding)"
+[[ "$before" != *"command not found"* && "$before" == *"rc="* ]] || fail "the binding check did not run for real: $before"
+[[ "$before" == *"eval-report.md"* ]] || fail "the binding check said nothing about eval-report.md: $before"   # it refuses this short report
 printf 'fail: everything is wrong\n' > "$t/eval-report-2.md"
-assert_eq "$before" "$(binding || true)"
+assert_eq "$before" "$(binding)"
 
 # 5. complete-checklist.md stays inside its word cap (it gained the second-eval step)
 words="$(wc -w < "$ROOT/skills/sprint/reference/complete-checklist.md" | tr -d ' ')"

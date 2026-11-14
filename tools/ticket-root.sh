@@ -107,7 +107,9 @@ _handoff_block_ok() {
   total="$(printf '%s\n' "$inner" | wc -l)"; total="${total//[[:space:]]/}"
   pat="## Recent activity|_Written by canon from the activity log at plan approval, sprint close and merge; edits here are replaced\\._|- No stage recorded yet\\.|"
   pat+="- [0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} $dot (t-[a-z0-9]{4}|-) $dot ("
-  pat+="plan approved( \\($tier\\))?|(reviewer|evaluator) (pass|fail|partial|not-run|YES|NO|unknown|-)( \\($model\\))?|sprint completed"
+  # t-864c: the gate roles are platform-lib.sh's GATE_ROLES (loaded by tkt and sprint), so a new gate's line is never refused here
+  local roles="${GATE_ROLES:-reviewer evaluator}"; roles="${roles// /|}"
+  pat+="plan approved( \\($tier\\))?|($roles) (pass|fail|partial|not-run|YES|NO|READY|GAPS|unknown|-)( \\($model\\))?|sprint completed"
   pat+="|sent to GitHub( \\(issue #[0-9]{1,7}\\))?|cloud results imported( \\(PR #[0-9]{1,7}\\))?|merged( \\(PR #[0-9]{1,7}\\))?|merged here( \\($branch\\))?)"
   # count, not "print the first miss": a grep that errors, or reads binary data, counts fewer lines and fails the check (a blank line matches the empty alternative)
   ok="$(printf '%s\n' "$inner" | LC_ALL=C grep -acxE "($pat)?" || true)"; ok="${ok//[[:space:]]/}"

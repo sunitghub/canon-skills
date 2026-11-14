@@ -46,6 +46,7 @@ async function expectRole(page, loc, role) {
   const hover = {
     // an outline role leaves the background to the button's own rule; only a filling role sets it
     'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover') },
+    'b-refresh': { color: await themeColor(page, '--col-done'), border: await themeColor(page, '--col-done') },   // t-864c: a refresh or read turns green
     'b-danger': { color: red, border: red },
     'b-close': { color: red, border: red },   // Close, Cancel, ✕: the same red outline
     'b-danger-main': { color: await themeColor(page, '--th-on-bad', '#fff'), border: red, fill: red },   // a main danger action fills red
@@ -14356,8 +14357,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build' },
-      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory' }, { id: 'light', label: 'Simple / Light work' }],
+    steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '4' },
+      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '5' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '6' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
     // t-864c: the board's Second eval lists: Off first, never the Evaluator's pick (m-sonnet; claude-sonnet-5.5) or a Haiku model
     options: Object.fromEntries(['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'evaluator2', 'light'].map(st => st === 'evaluator2'
@@ -14484,9 +14485,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     const st = await btn.evaluate(el => { const c = getComputedStyle(el); return [parseFloat(c.paddingLeft), parseFloat(c.borderTopLeftRadius)]; });
     expect(st[0]).toBeGreaterThanOrEqual(10); expect(st[1]).toBeGreaterThanOrEqual(6);
     // (user) it turns green on hover like the Sources refresh buttons: buttons.css .b-refresh, the one owner of that colour
-    await btn.hover();
-    const done = await page.evaluate(() => { const d = document.createElement('i'); d.style.color = getComputedStyle(document.documentElement).getPropertyValue('--col-done').trim(); document.body.appendChild(d); const v = getComputedStyle(d).color; d.remove(); return v; });
-    await expect.poll(() => btn.evaluate(el => getComputedStyle(el).borderTopColor)).toBe(done);   // the .btn base eases the border in
+    await expectRole(page, btn, 'b-refresh');
     await page.locator('#mt-agent').selectOption('claude');
     const panel = page.locator('#mt-panel');
     await expect(panel.locator('#mt-agent')).toHaveCount(1);
@@ -14498,7 +14497,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     const top = async id => (await page.locator(`#mt-step-${id} select`).boundingBox()).y;
-    for (const [a, b] of [['plan', 'build'], ['speccheck', 'reviewer'], ['evaluator', 'evaluator2']]) {
+    for (const [a, b] of [['plan', 'speccheck'], ['build', 'reviewer'], ['evaluator', 'evaluator2']]) {
       expect(Math.abs(await top(a) - await top(b))).toBeLessThan(1);   // descriptions of different lengths, one line of pickers
     }
   });
@@ -14507,7 +14506,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
     await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(7);
-    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['Plan', 'Build', 'Spec check (advisory)', 'Reviewer (advisory)', 'Evaluator (binding)', 'Second eval (advisory)', 'Simple / Light work']);
+    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['1. Plan', '2. Spec check (advisory)', '3. Build', '4. Reviewer (advisory)', '5. Evaluator (binding)', '6. Second eval (advisory)', 'Simple / Light work']);   // t-864c (user): numbered in run order
     await expect(page.locator('#mt-agent')).toHaveValue('claude');
     expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
     expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
@@ -19881,7 +19880,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
-  const ROLES = ['b-neutral', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
+  const ROLES = ['b-neutral', 'b-refresh', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
   test('Close and Cancel show a red outline on hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh-e523a');
     const { job, button } = await mergeFlow(page, id);

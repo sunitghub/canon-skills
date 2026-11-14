@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -99,8 +100,14 @@ func tierOptions(doc map[string]any) map[string]map[string][]tierOption {
 func tierOptionsView() map[string]any {
 	doc := loadModelTiers()
 	steps, agents := []map[string]string{}, []map[string]string{}
+	seq := 0
 	for _, s := range common.TierSteps {
-		steps = append(steps, map[string]string{"id": s, "label": common.TierStepLabel[s], "role": common.TierStepRole[s], "checks": common.TierStepChecks[s]})
+		n := "" // t-864c (user): the cards are numbered in the order a sprint runs them; a step used throughout has none
+		if !common.TierStepAnytime[s] {
+			seq++
+			n = strconv.Itoa(seq)
+		}
+		steps = append(steps, map[string]string{"id": s, "label": common.TierStepLabel[s], "role": common.TierStepRole[s], "checks": common.TierStepChecks[s], "seq": n})
 	}
 	for _, a := range common.TierAgents {
 		if a == "copilot" && !copilotAgentShown(doc) { // t-864c (user): not offered on a machine without Copilot CLI

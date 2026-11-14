@@ -409,8 +409,8 @@ _gate_wrapup_gates() {
   if [[ -f "$tdir2/eval-report-2.md" ]]; then
     cmp="$(_eval_compare "$tdir2")" || { echo "Sprint $id cannot close: sprint eval-compare $id cannot read the reports: $cmp."; return 1; }
     n="$(printf '%s\n' "$cmp" | sed -n 's/^Disagreements: //p')"
-    if ! printf '%s\n' "$data_rows" | grep -E '^\|[[:space:]]*second-eval[[:space:]]*\|[[:space:]]*ran[[:space:]]*\|' | grep -qF "Disagreements: $n"; then
-      echo "Sprint $id cannot close: eval-report-2.md exists, so ## Wrapup Gates needs the row | second-eval | ran | … Disagreements: $n … | (from sprint eval-compare $id; show them to the user first)."
+    if ! printf '%s\n' "$data_rows" | grep -E '^\|[[:space:]]*second-eval[[:space:]]*\|[[:space:]]*ran[[:space:]]*\|' | grep -qE "Disagreements: $n([^0-9]|$)"; then
+      echo "Sprint $id cannot close: eval-report-2.md exists, so ## Wrapup Gates needs the row | second-eval | ran | … Disagreements: $n … | (from sprint eval-compare $id; show them to the user first). An eval-report-2.md left from an earlier run that this close did not dispatch: delete it."
       return 1
     fi
   fi
@@ -1588,11 +1588,13 @@ cmd_check_evidence() {
 # check still verifies the evaluator's report against that same transcript. Refuses when no transcript holds it.
 cmd_relay_report() {
   local id="${1:-}" role="${2:-evaluator}" tdir cfg marker proto agents dest f meta report found=""
-  [[ -n "$id" ]] || { echo "Usage: sprint relay-report <id> [evaluator|reviewer]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer]" >&2; exit 1; }
+  local second=""   # t-864c: only the second evaluator's dispatch names .tickets/<id>/eval-report-2.md (eval.md names the file without a path)
   case "$role" in
     evaluator) marker="evaluator-run-id:" proto="reference/eval.md" agents="canon-evaluator|Plan" dest="eval-report.md" ;;
+    evaluator2) marker="evaluator-run-id:" proto="reference/eval.md" agents="canon-evaluator|Plan" dest="eval-report-2.md" ;;
     reviewer)  marker="# Review Notes"    proto="reference/review.md" agents="canon-reviewer|Plan" dest="review-notes.md" ;;
-    *) echo "Usage: sprint relay-report <id> [evaluator|reviewer]" >&2; exit 1 ;;
+    *) echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer]" >&2; exit 1 ;;
   esac
   tdir="$(ticket_dir_for "$id")"
   [[ -d "$tdir" ]] || { echo "relay-report: no ticket folder for $id" >&2; exit 1; }
@@ -1609,6 +1611,8 @@ cmd_relay_report() {
     meta="${f%.jsonl}.meta.json"
     [[ -f "$meta" ]] && grep -qE "\"agentType\"[[:space:]]*:[[:space:]]*\"($agents)\"" "$meta" || continue
     grep -qF -e "$proto" "$f" && grep -qF -e "$id" "$f" || continue
+    second=no; grep -qF -e ".tickets/$id/eval-report-2.md" "$f" && second=yes
+    case "$role" in evaluator) [[ $second == no ]] || continue ;; evaluator2) [[ $second == yes ]] || continue ;; esac   # never one in place of the other
     report="$("$board" transcript-report "$f" "$marker" 2>/dev/null)" || continue
     found="$f"; break
   done < <(find "$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec ls -t {} + 2>/dev/null)
@@ -1631,8 +1635,8 @@ cmd_relay_report() {
 # _signoff_option <plan.md> <label> — t-864c: the lowercased value of a `| <Label>: <value>` segment of the Sign-off Tier line (the label in
 # either case, its words separated by spaces), or nothing.
 _signoff_option() {
-  _acceptance_section "Sign-off" "$1" 2>/dev/null | LC_ALL=C awk -v lab="$2" '
-    /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
+  _acceptance_section "Sign-off" "$1" 2>/dev/null | sed 's/\*//g' | LC_ALL=C awk -v lab="$2" '
+    tolower($0) ~ /^[[:space:]]*tier[[:space:]]*:/ {
       n = split($0, seg, "|")
       for (i = 2; i <= n; i++) {
         s = seg[i]; sub(/^[[:space:]]+/, "", s); k = s; sub(/[[:space:]]*:.*$/, "", k)
@@ -1654,7 +1658,10 @@ cmd_second_eval() {
   m="$(_admin_stage_model evaluator2 "$agent")"
   [[ -n "$m" ]] || { echo "skip: no Second eval model in Admin for $agent"; return 0; }
   sel="$(_signoff_option "$plan" "second eval")"
+  [[ -z "$sel" || "$sel" == on || "$sel" == off ]] || echo "sprint second-eval: ignoring 'Second eval: $sel' on $id's Sign-off (on or off)" >&2
   [[ "$sel" != off ]] || { echo "skip: Second eval: off on this ticket"; return 0; }
+  # the binding evaluator already ran on this model when the ticket's Gate model set it: a second run on it is no second opinion
+  [[ "$(signoff_model_resolve "$plan" gate 2>/dev/null)" != "$m" ]] || { echo "skip: the ticket's Gate model already put the binding evaluator on $m"; return 0; }
   if [[ "$sel" != on && "$(_signoff_tier "$plan")" != high-risk ]]; then echo "skip: not high-risk (add | Second eval: on to run it)"; return 0; fi
   echo "$m"
 }
@@ -1664,8 +1671,14 @@ _eval_rows() {
   LC_ALL=C awk '
     /^## / { sec = ($0 ~ /^## Criteria[[:space:]]*$/) ? "Criteria" : ($0 ~ /^## Test Plan[[:space:]]*$/) ? "Test Plan" : ""; next }
     sec != "" && /^\|/ {
-      n = split($0, c, "|"); if (n < 4) next
-      k = c[2]; st = c[3]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); gsub(/^[[:space:]]+|[[:space:]]+$/, "", st)
+      # a `\|` and a `|` inside a backtick span are cell text, not separators (eval.md quotes code in its cells): hide them before the split
+      line = ""; inb = 0
+      for (i = 1; i <= length($0); i++) { ch = substr($0, i, 1)
+        if (ch == "\\" && substr($0, i + 1, 1) == "|") { line = line "\001"; i++; continue }
+        if (ch == "`") inb = !inb
+        line = line ((ch == "|" && inb) ? "\001" : ch) }
+      n = split(line, c, "|"); if (n < 4) next
+      k = c[2]; st = c[3]; gsub(/\001/, "|", k); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); gsub(/[*_`]/, "", st); gsub(/^[[:space:]]+|[[:space:]]+$/, "", st)
       if (k == "" || k ~ /^-+$/ || tolower(k) == "criterion" || tolower(k) == "item") next
       split(tolower(st), w, /[^a-z-]/); print sec "\t" k "\t" w[1]
     }' "$1"

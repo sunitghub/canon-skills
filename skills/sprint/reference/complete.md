@@ -659,8 +659,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    <id>`. It prints `skip: <reason>` (no Second eval model in Admin > Model tiers for the agent: Off is the default; `Second eval: off` on
    the Sign-off line; not high-risk without `Second eval: on`), or the model to use: never the Evaluator's (Admin refuses that pick) and
    never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more exactly as the binding
-   evaluator (`gate-snapshot.sh pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output), on that
-   model, telling it its report file is `.tickets/<id>/eval-report-2.md` (eval.md: a named report file replaces `eval-report.md`
+   evaluator (`gate-snapshot.sh pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
+   file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is `.tickets/<id>/eval-report-2.md` (eval.md: a named report file replaces `eval-report.md`
    everywhere, so the binding report and its run-id are never touched); then `gate-snapshot.sh post …` and `subagent-log.sh --agent-id
    <its run-id> --agent-type evaluator2` with the cost flags. Run `sprint eval-compare <id>`: it lists each Criteria or Test Plan row whose
    grade differs (or that only one report has) and ends `Disagreements: <n>`. Show every difference to the user, who decides (fix it, or

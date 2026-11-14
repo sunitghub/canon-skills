@@ -228,9 +228,9 @@ func TestMigrateTierDefaults(t *testing.T) {
 	want := map[string]map[string]string{
 		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
 		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"},
-		"light":     {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
-		"speccheck": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
-		"evaluator2": {}, // t-864c: Off (no pick) until one is chosen
+		"light":      {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
+		"speccheck":  {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
+		"evaluator2": {},                                                          // t-864c: Off (no pick) until one is chosen
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -607,5 +607,54 @@ func TestCopilotAgentShownOnlyWhenFound(t *testing.T) {
 	copilotBin = bin
 	if got := ids(); got != "claude copilot" {
 		t.Errorf("copilot found: agents = %q, want both", got)
+	}
+}
+
+// t-864c reviewer Act On 1: Off after a pick goes through the real save (the spec mocks the POST, so only this reaches the board's own
+// shape check, which once ran every pick through modelIDRe and refused ""). And the Evaluator can never be set to the Second eval's
+// model either. Protects POST /api/admin/model-tiers.
+func TestSaveSecondEvalOffAfterAPick(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := loadModelTiers()
+	defs := d["defaults"].(map[string]any)
+	defs["evaluator2"] = map[string]any{"claude": "claude-opus-5-5", "copilot": ""}
+	if res := saveModelTiers(d); res["ok"] != true {
+		t.Fatalf("a Second eval pick was refused: %v", res)
+	}
+	d = loadModelTiers()
+	d["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"] = ""
+	if res := saveModelTiers(d); res["ok"] != true {
+		t.Fatalf("Off after a pick was refused: %v", res)
+	}
+	if got := loadModelTiers()["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"]; got != "" {
+		t.Errorf("Off was not saved: %v", got)
+	}
+	d = loadModelTiers()
+	d["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"] = "claude-opus-5-5"
+	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["claude"] = "claude-opus-5-5"
+	if res := saveModelTiers(d); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "different models") {
+		t.Errorf("the Evaluator set to the Second eval's model was accepted: %v", res)
+	}
+}
+
+// t-864c (user): the options route lists the steps in the order a sprint runs them and numbers them (Simple / Light, used throughout,
+// has no number). Protects Admin > Model tiers' card order and labels.
+func TestTierStepsNumberedInRunOrder(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	got := []string{}
+	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
+		got = append(got, st["seq"]+":"+st["id"])
+	}
+	if want := "1:plan 2:speccheck 3:build 4:reviewer 5:evaluator 6:evaluator2 :light"; strings.Join(got, " ") != want {
+		t.Errorf("steps = %q, want %q", strings.Join(got, " "), want)
 	}
 }

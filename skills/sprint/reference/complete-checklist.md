@@ -45,6 +45,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
+   - `sprint second-eval <id>` names a model: complete.md "Second evaluator".
 4. **Tests:** a Test Plan line per criterion; each item ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box met.
 6. **DECISIONS.md:** one short row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
@@ -83,7 +84,6 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
 | evaluator `fail`, retry budget at 3, or `eval_override` | step 3 "Retry budget" and the `fail` paragraph |
 | the close refuses the report (transcript or stale-eval guard) | step 3 "Stale-eval guard", "backed by a real transcript" |
 | high-risk or untrusted-input sprint (break-it) | step 3 "Break-it" |
-| Second eval model | step 3 "Second evaluator" |
 | scenario-backed Test Plan lines | step 4 |
 | a waived, deferred or partial item, or the learnings cap | step 8 |
 | `manual: true` | step 1 "Manual mode" |

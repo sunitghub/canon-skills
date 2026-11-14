@@ -1559,6 +1559,16 @@ tx_cfg="$(mktemp -d)"
   [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report through an old board"
   out="$("$SPRINT" relay-report "$gid")"; assert_contains "$out" "relay-report: wrote"; assert_contains "$out" "(Plan)"
   assert_eq "$rel" "$(cat ".tickets/$gid/eval-report.md")"   # byte for byte, from the run-id line on
+  # t-864c: a newer second-evaluator transcript (its dispatch names .tickets/<id>/eval-report-2.md) is never relayed as the binding report,
+  # and `relay-report <id> evaluator2` relays only that one, into eval-report-2.md
+  rel2="$(printf 'evaluator-run-id: %s\nModel: other-model\n## Verdict\nfail: criterion 2' "$rid6")"
+  jtranscript s2 Plan "$rel2"; sed -i.bak "s#for $gid#for $gid; your report file is .tickets/$gid/eval-report-2.md#" "$tx_cfg/projects/-proj/sess1/subagents/agent-s2.jsonl"
+  touch "$tx_cfg/projects/-proj/sess1/subagents/agent-s2.jsonl"   # the newest
+  "$SPRINT" relay-report "$gid" >/dev/null
+  assert_eq "$rel" "$(cat ".tickets/$gid/eval-report.md")"   # still the binding evaluator's
+  "$SPRINT" relay-report "$gid" evaluator2 >/dev/null
+  assert_eq "$rel2" "$(cat ".tickets/$gid/eval-report-2.md")"
+  rm -f ".tickets/$gid/eval-report-2.md" "$tx_cfg/projects/-proj/sess1/subagents/agent-s2".*
   # a reviewer's report relays the same way, from its own heading (its last text message here, no hand-back call)
   d="$tx_cfg/projects/-proj/sess1/subagents"; printf '{"agentType": "Plan"}\n' > "$d/agent-rv.meta.json"
   printf '{"type":"user","message":{"content":"Read skills/sprint/reference/review.md for %s"}}\n{"type":"assistant","message":{"content":[{"type":"text","text":"# Review Notes\\n\\nTicket: `%s`\\n\\n## Verdict\\nYES"}]}}\n' "$gid" "$gid" > "$d/agent-rv.jsonl"
