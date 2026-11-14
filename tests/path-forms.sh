@@ -70,6 +70,29 @@ done < "$corpus"
 ( set -u; canon_path_key >/dev/null 2>&1 ) || fail "path-forms: canon_path_key with no argument aborts under set -u"
 [[ -z "$(canon_path_key)" ]] || fail "path-forms: canon_path_key with no argument printed something"
 
+# t-c8c6: canon_same_folder, the comparison callers use (tools/canon's Windows update check, uninstall's project list). The string fallback:
+# every two corpus inputs (none of them exist here) are the same folder exactly when their keys are equal.
+ins=(); keys=()
+while IFS=$'\t' read -r input key note; do [[ -z "$input" || "$input" == \#* ]] && continue; ins+=("$input"); keys+=("$key"); done < "$corpus"
+same=0 diff=0
+for ((i = 0; i < ${#ins[@]}; i++)); do for ((j = i + 1; j < ${#ins[@]}; j++)); do
+  [[ "${keys[$i]}" == "${keys[$j]}" || "$j" == $((i + 1)) ]] || continue   # every same-key pair, and each row against the next (one awk pair each)
+  if canon_same_folder "${ins[$i]}" "${ins[$j]}"; then got=same; else got=diff; fi
+  if [[ "${keys[$i]}" == "${keys[$j]}" ]]; then want=same; same=$((same + 1)); else want=diff; diff=$((diff + 1)); fi
+  [[ "$got" == "$want" ]] || fail "path-forms: canon_same_folder '${ins[$i]}' '${ins[$j]}' gave $got, want $want"
+done; done
+[[ "$same" -ge 5 && "$diff" -ge 20 ]] || fail "path-forms: the pair check ran $same same / $diff different pairs, too few"
+canon_same_folder 'C:\Users\x\.canon' '/c/Users/x/.canon' || fail "path-forms: the drive spellings of one missing folder are not the same folder"
+! canon_same_folder 'C:\Users\x\.canon' '/c/Users/y/.canon' || fail "path-forms: two folders were the same folder by spelling"
+! canon_same_folder '' '' || fail "path-forms: two empty paths were the same folder"
+! canon_same_folder '/a' '' || fail "path-forms: a path and an empty one were the same folder"
+# The identity step: a folder and a symlink to it (no string rule makes them equal) are the same; a sibling is not.
+mkdir -p "$tmp/real/sub" "$tmp/other"; ln -s "$tmp/real" "$tmp/link"
+canon_same_folder "$tmp/real" "$tmp/link" || fail "path-forms: a folder and its symlink are not the same folder (identity step)"
+canon_same_folder "$tmp/real/sub" "$tmp/link/sub/" || fail "path-forms: the same folder through a symlink with a trailing slash is not the same folder"
+! canon_same_folder "$tmp/real" "$tmp/other" || fail "path-forms: two real folders were the same folder"
+canon_same_folder "$tmp/real//gone" "$tmp/real/gone/" || fail "path-forms: a missing folder's two spellings are not the same folder (key fallback)"
+
 # --- sprint token-spend: git lists the worktree as C:/Users/x/wt, the events name it C:\Users\x\wt (JSON-escaped), the transcript's cwd is /c/Users/x/wt.
 proj="$(make_project)"; root="$(cd "$proj" && pwd -P)"
 cfg="$(mktemp -d)"; chome="$(mktemp -d)"; shim="$(mktemp -d)"

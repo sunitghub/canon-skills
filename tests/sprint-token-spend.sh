@@ -63,6 +63,12 @@ out="$("$SPRINT" token-spend)"
 assert_contains "$out" "No canon events"
 
 ev() { printf '{"schema":1,"ts":"2026-%sZ","kind":"%s","project":"%s","data":{"ticket":"%s"}}\n' "$1" "$2" "$root" "$3"; }
+# t-c8c6: events only for a project spelled another way (another folder here): the no-match message names that spelling beside the path list,
+# control bytes shown as ?, so a mis-spelled event project is visible instead of a bare "No completed sprints"
+printf '{"schema":1,"ts":"2026-09-29T08:00:00.000Z","kind":"sprint.started","project":"D:/elsewhere/p\033x","data":{"ticket":"t-mmmm"}}\n' > "$events/2026-09-29.jsonl"
+out="$("$SPRINT" token-spend)"
+assert_contains "$out" "No completed sprints in $events for $root. Event projects that did not match: D:/elsewhere/p?x; path list: $root"
+rm "$events/2026-09-29.jsonl"
 ev 09-30T08:00:00.000 sprint.started t-dddd | gzip > "$events/2026-09-30.jsonl.gz"
 ev 09-30T08:10:00.000 sprint.completed t-dddd | gzip | cat >> "$events/2026-09-30.jsonl.gz"
 {

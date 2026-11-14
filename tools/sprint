@@ -1851,20 +1851,30 @@ cmd_token_spend() {
   if [[ ${#evfiles[@]} -eq 0 ]]; then [[ -n "$rec" ]] || echo "${notr:-No canon events under $evdir: sprint start and complete times are unknown.}"; return 0; fi
   # Sprint windows from the events, oldest file first: ticket, project, start, first gate.started, end.
   local windows costs
-  windows="$(printf '%s\n' "${evfiles[@]}" | sort | _token_spend_events | TS_PATHS="$tspaths" awk "$canon_awk_pkey"'
+  windows="$(printf '%s\n' "${evfiles[@]}" | sort | _token_spend_events | TS_PATHS="$tspaths" LC_ALL=C awk "$canon_awk_pkey"'
       function field(name,   m) { if (!match($0, "\"" name "\":\"[^\"]*\"")) return ""; m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
       BEGIN { n = split(ENVIRON["TS_PATHS"], P, "\n"); for (i = 1; i <= n; i++) if (P[i] != "") OK[pkey(P[i])] = 1 }
       function fv(name,   m) { if (!match($0, "\"" name "\":\"?[^\",}]*")) return 0; m = substr($0, RSTART, RLENGTH); m = substr(m, index(m, ":") + 1); gsub(/"/, "", m); return m + 0 }
       /"kind":"(sprint\.started|gate\.started|sprint\.completed|sprint\.cost)"/ {
-        rawp = field("project"); pr = pkey(rawp); if (!(pr in OK)) next
+        # t-c8c6: a dropped project is kept (first 3, control bytes shown as ?) for the no-match message: a mis-spelled event project names itself
+        rawp = field("project"); pr = pkey(rawp); if (!(pr in OK)) { if (rawp != "" && !(rawp in DROP) && nd < 3) { DROP[rawp] = 1; nd++; d = rawp; gsub(/[\001-\037\177]/, "?", d); print "D\t" d }; next }
         t = field("ticket"); k = field("kind"); ts = substr(field("ts"), 1, 19); key = t SUBSEP pr
         if (k == "sprint.cost") { print "C\t" t "\t" pr "\t" fv("planning") "\t" fv("implementation") "\t" fv("gates") "\t" fv("cache_read"); next }
         if (k == "sprint.started") { if (!(key in S)) { S[key] = ts; G[key] = "" } }
         else if (k == "gate.started") { if ((key in S) && G[key] == "") G[key] = ts }
         else if (key in S) { print t "\t" pr "\t" S[key] "\t" G[key] "\t" ts "\t" rawp; delete S[key] }
       }')"
-  costs="$(printf '%s\n' "$windows" | awk -F'\t' '$1 == "C"')"; windows="$(printf '%s\n' "$windows" | awk -F'\t' '$1 != "C" && NF')"
-  [[ -n "$windows" ]] || { [[ -n "$rec" ]] || echo "${notr:-No completed sprints in $evdir for $root.}"; return 0; }
+  local dropped
+  costs="$(printf '%s\n' "$windows" | awk -F'\t' '$1 == "C"')"; dropped="$(printf '%s\n' "$windows" | awk -F'\t' '$1 == "D" { printf "%s%s", (n++ ? ", " : ""), $2 }')"
+  windows="$(printf '%s\n' "$windows" | awk -F'\t' '$1 != "C" && $1 != "D" && NF')"
+  if [[ -z "$windows" ]]; then
+    [[ -n "$rec" ]] && return 0
+    if [[ -z "$notr" && -n "$dropped" ]]; then
+      local plist; plist="$(printf '%s\n' "${paths[@]}" | LC_ALL=C tr -d '\000-\010\013-\037\177' | paste -sd, - | sed 's/,/, /g')"
+      echo "No completed sprints in $evdir for $root. Event projects that did not match: $dropped; path list: ${plist:0:2000}"
+    else echo "${notr:-No completed sprints in $evdir for $root.}"; fi
+    return 0
+  fi
   # Approval time and tier from each window ticket's plan.md (the Approved: stamp exists since 0.30.6).
   local plans="" t pl
   for t in $(printf '%s\n' "$windows" | cut -f1 | sort -u); do
@@ -1885,7 +1895,7 @@ cmd_token_spend() {
     if [[ ${#subs[@]} -gt 0 || ${#mains[@]} -gt 0 ]]; then
       grep -H '"type":"assistant"' ${subs[@]+"${subs[@]}"} ${mains[@]+"${mains[@]}"} 2>/dev/null || true
     fi
-  } | TS_PATHS="$tspaths" awk -v last="$last" -v only="$only" -v rec="$rec" "$canon_awk_pkey"'
+  } | TS_PATHS="$tspaths" LC_ALL=C awk -v last="$last" -v only="$only" -v rec="$rec" "$canon_awk_pkey"'
     function jf(s, name,   m) { if (!match(s, "\"" name "\":\"[^\"]*\"")) return ""; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
     function jn(s, name,   m) { if (!match(s, "\"" name "\":[0-9]+")) return 0; m = substr(s, RSTART, RLENGTH); sub(/^[^:]*:/, "", m); return m + 0 }
     function winpath(c,   q, i, best) {  # c is already a key (pkey: C:\\x, C:/x and /c/x are one folder), as P[] is

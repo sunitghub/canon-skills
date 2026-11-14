@@ -79,7 +79,8 @@ run "$h" "$inst" --help; assert_eq 0 "$rc"; assert_contains "$out" "canon uninst
 # ── a zip-style install, --yes: projects cleaned (both registries), empty .claude/.agents folders removed, data and install gone ─────────────
 inst="$WORK/i2"; h="$WORK/h2"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/p2a" "$h"; echo f > "$WORK/p2a/.claude/keep.txt"
 mkdir -p "$WORK/p2b/.claude" "$WORK/p2b/.agents"   # known only to the Cockpit registry
-mkdir -p "$h/.canon/cockpit"; printf '{"projects":[{"path":"%s"},{"path":"%s"}]}\n' "$WORK/p2b" "$WORK/missing-folder" > "$h/.canon/cockpit/projects.json"
+# t-c8c6: p2a again in two more spellings (trailing slash, doubled separator) is still one project: the dedupe compares canon's key
+mkdir -p "$h/.canon/cockpit"; printf '{"projects":[{"path":"%s"},{"path":"%s"},{"path":"%s"},{"path":"%s"}]}\n' "$WORK/p2b" "$WORK/missing-folder" "$WORK/p2a/" "${WORK%/*}//${WORK##*/}/p2a" > "$h/.canon/cockpit/projects.json"
 : > "$WORK/stub.log"; run "$h" "$inst" --yes
 [[ "$rc" == 0 ]] || fail "zip-style uninstall failed ($rc): $out"
 assert_contains "$out" "canon uninstall: done."; assert_contains "$out" "skip    $WORK/missing-folder (folder missing)"

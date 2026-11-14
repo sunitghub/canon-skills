@@ -187,7 +187,12 @@ folder_guard_reason() {
 _folder_guard_one() {
   local dir="$1" p why="" tree=0 d
   case "$dir" in
-    [A-Za-z]:*) p="$(printf '%s' "$dir" | tr 'A-Z\\' 'a-z/')"; p="/${p%%:*}${p#*:}"; dir="$p" ;;   # a C:\ form is walked as /c/...
+    # t-c8c6: a C:\ form is walked as /c/...: canon's key, then lower-cased (the guard's table ignores case, as its Go twin does). platform-lib.sh
+    # is loaded only here, when a caller that sources this file alone (evidence.sh, the tests) meets a C: form.
+    [A-Za-z]:*)
+      # shellcheck source=platform-lib.sh
+      declare -F canon_path_key >/dev/null 2>&1 || source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"
+      p="$(canon_path_key "$dir" | tr 'A-Z' 'a-z')"; dir="$p" ;;
     *) p="$(printf '%s' "$dir" | tr 'A-Z' 'a-z')" ;;
   esac
   p="${p%/}"; [[ -n "$p" ]] || p="/"

@@ -227,3 +227,12 @@ canon_awk_pkey='function pkey(p,   unc, lead) {
 # a key to another program. An empty path has an empty key: two empty keys are "no path", never "the same folder". A newline is encoded as %0A so
 # two paths that differ only by a newline never merge (awk reads a line at a time). No argument is an empty path (safe under `set -u`).
 canon_path_key() { local p="${1-}"; printf '%s\n' "${p//$'\n'/%0A}" | LC_ALL=C awk "$canon_awk_pkey"'{ print pkey($0) }'; }
+
+# canon_same_folder <a> <b> — t-c8c6: the contract's two steps in one place. Both exist: file identity (`[ a -ef b ]`, which follows symlinks;
+# unverified on Git Bash for Windows, t-e88d checks it). Otherwise (one is missing, or identity says no for a spelling it cannot read):
+# equal canon_path_key keys. An empty path is never the same folder as anything.
+canon_same_folder() {
+  [ -n "${1-}" ] && [ -n "${2-}" ] || return 1
+  if [ -e "$1" ] && [ -e "$2" ] && [ "$1" -ef "$2" ]; then return 0; fi
+  [ "$(canon_path_key "$1")" = "$(canon_path_key "$2")" ]
+}

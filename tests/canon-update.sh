@@ -421,6 +421,15 @@ assert_eq "1" "$code"; assert_contains "$out" "isn't a git clone"
 # Windows zip install outside the installer's folder (a stub uname fakes Windows): refused with the installer hint.
 set +e; out="$(PATH="$WSTUB:$PATH" "$WORK/zip3/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "isn't the installer's folder (%USERPROFILE%\\.canon). Re-run the installer to update the copy there."
+# t-c8c6: the install IS %USERPROFILE%\.canon, spelled another way (a doubled separator, a trailing slash, the backslash join; no real cygpath):
+# canon_same_folder matches it and the installer re-runs. A different USERPROFILE is still refused.
+mkdir -p "$WORK/u"; cp -R "$WORK/zip3" "$WORK/u/.canon"
+PSSTUB="$WORK/psstub"; mkdir -p "$PSSTUB"; printf '#!/bin/sh\necho "powershell $*" >> "%s/ps.log"\n' "$WORK" > "$PSSTUB/powershell.exe"
+printf '#!/bin/sh\nshift; printf "%%s\\n" "$1"\n' > "$PSSTUB/cygpath"; chmod +x "$PSSTUB/powershell.exe" "$PSSTUB/cygpath"
+set +e; out="$(PATH="$PSSTUB:$WSTUB:$PATH" USERPROFILE="$(cd "$WORK" && pwd -P)//u/" "$WORK/u/.canon/tools/canon" update < /dev/null 2>&1)"; code=$?; set -e
+[[ "$code" == 0 ]] || fail "update in %USERPROFILE%\\.canon: $code: $out"; assert_contains "$out" "Updating canon by re-running the installer..."; assert_grep 'irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1' "$WORK/ps.log"
+set +e; out="$(PATH="$PSSTUB:$WSTUB:$PATH" USERPROFILE="$WORK/elsewhere" "$WORK/u/.canon/tools/canon" update < /dev/null 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "isn't the installer's folder"
 # No registry: nothing to refresh, exit 0.
 set +e; out="$(CANON_HOME="$WORK/no-registry" "$CANON" update --refresh-only 2>&1)"; code=$?; set -e
 assert_eq "0" "$code"; assert_eq "No Cockpit projects registered. Nothing to refresh." "$out"
