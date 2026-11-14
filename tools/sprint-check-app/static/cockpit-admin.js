@@ -92,7 +92,7 @@ export async function loadAdmin(){
   // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
   const rb=ck.running_build||{}, rp=document.getElementById('ad-reaper');
   rp.hidden=!(rb.idle_timeout_secs>0 && rb.idle_timeout_main_secs>0);
-  rp.textContent=rp.hidden?'':('Idle sessions save & end after '+fmtUptime(rb.idle_timeout_secs)+' (worktree) or '+fmtUptime(rb.idle_timeout_main_secs)+' (main checkout). Activity resets the timer; a session that needs you never ends.');   // t-864c (user): tighter
+  rp.textContent=rp.hidden?'':('Idle sessions save & end after '+fmtUptime(rb.idle_timeout_secs)+' (worktree) or '+fmtUptime(rb.idle_timeout_main_secs)+' (main checkout). Activity resets the timer.');   // t-864c (user): tighter
   // t-ade9: a per-state hint under the daemon panel \u2014 "Healthy" alone doesn't
   // say whether any agent is actually running, which reads as a contradiction
   // once you know the daemon spawns lazily on first Start/Resume.

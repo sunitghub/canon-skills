@@ -6315,7 +6315,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await page.evaluate(t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }, theme0);
       await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
-      await expect(page.locator('#ad-reaper')).toHaveText('Idle sessions save & end after 5m (worktree) or 30m (main checkout). Activity resets the timer; a session that needs you never ends.');   // t-864c (user): tighter
+      await expect(page.locator('#ad-reaper')).toHaveText('Idle sessions save & end after 5m (worktree) or 30m (main checkout). Activity resets the timer.');   // t-864c (user): tighter
       await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
       await expect(box.locator('button.ad-open')).toHaveText(['Answer', 'Answer', 'Open', 'Open', 'Open', 'Open']);
       await expect(box).not.toContainText('Save & End');
