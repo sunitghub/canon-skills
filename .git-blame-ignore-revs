@@ -1,3 +1,5 @@
 # Commits that only added the P-nnn ids to the promoted lines (t-f74e): git blame (and canon-go promoted-report) skip them so a line keeps its promotion date.
 d8443de7cd36c501be399d7279138bb3ffaa6388
 7957564cecfb5902199bc1b722850d8b5572861b
+# t-c8c6: P-027 reworded to name the Windows spellings (its promotion date stays)
+ec33b408753714f6ad9ea740e590d76b597df813
