@@ -3108,6 +3108,72 @@ test.describe('board modal', () => {
     }
   });
 
+  // Protects the board's Plan tab Gate model dropdown, which rewrites the Sign-off line that also carries Plan/Build model fields.
+  test('model tier control keeps a Build model field on the Tier line (t-3425)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'model-tier-build');
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier write test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius | Gate model: haiku | Build model: sonnet',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeEnabled();
+      await expect(select).toHaveValue('haiku');                 // the Gate model segment alone, not the rest of the line
+
+      await select.selectOption('sonnet');
+      // t-3425 (reviewer Act On 2): each model field is one `|` segment; setting or clearing the Gate model keeps the Build model
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius | Gate model: sonnet | Build model: sonnet\n\n- [x] Plan approved');
+
+      // Close and re-open the ticket modal fresh, confirm it reflects the saved value.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      const select2 = page.locator('.model-tier-select');
+      await expect(select2).toHaveValue('sonnet');
+
+      await select2.selectOption('default');
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius | Build model: sonnet\n');
+      expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).not.toContain('Gate model');
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('model tier control is disabled for a hand-set value it does not recognize', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'model-tier-custom');
 
@@ -14290,8 +14356,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory' },
-      { id: 'evaluator', label: 'Evaluator', role: 'binding' }, { id: 'light', label: 'Simple / Light work' }],
+    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build' },
+      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build' }, { id: 'light', label: 'Simple / Light work' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
     options: Object.fromEntries(['plan', 'build', 'reviewer', 'evaluator', 'light'].map(st => [st, {
       claude: OPT(st === 'evaluator' ? [['m-sonnet', 'Sonnet Test']] : st === 'light' ? [['m-haiku', 'Haiku Test']] : [['m-sonnet', 'Sonnet Test'], ['m-haiku', 'Haiku Test']]),
@@ -14337,7 +14403,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   });
 
   // t-8f6d + t-2cc8: one card per step for the chosen agent; Claude Code lists Anthropic models only, Copilot CLI Anthropic then OpenAI;
-  // the binding Evaluator never offers a Haiku model; Simple / Light offers the cheap line; Plan and Build say they are not used yet; a
+  // the binding Evaluator never offers a Haiku model; Simple / Light offers the cheap line; Plan and Build say where they are used (t-3425); a
   // pick saves defaults.<step>.<agent>. Prod path: Admin > Model tiers, and every close reads what it saves.
   // t-aba6: under Copilot CLI a button reads Copilot's own list (never by itself: a read leaves one empty Copilot session), says when it
   // was read, and on a failure says why and keeps the list. Under Claude Code none of it shows. Prod path: Admin > Model tiers.
@@ -14393,10 +14459,20 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
     expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
     expect(await opts('light')).toEqual(['m-haiku']);                  // the cheap line
-    await expect(page.locator('#mt-step-plan.mt-later')).toHaveCount(1);
-    await expect(page.locator('#mt-step-build.mt-later')).toHaveCount(1);
-    await expect(page.locator('#mt-step-reviewer.mt-later')).toHaveCount(0);
-    await expect(page.locator('#mt-step-plan .mt-used')).toHaveText('Recorded now; a later update starts this step on it.');
+    // t-3425: Plan and Build are used now (no badge, no "later" line) and say where
+    await expect(page.locator('#mt-step-plan .mt-used')).toHaveCount(0);
+    await expect(page.locator('#mt-step-build .setting-d').first()).toHaveText('Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).');
+    expect(await page.locator('#mt-step-plan .setting-k').evaluate(el => getComputedStyle(el, '::after').content)).toBe('none');
+    // t-3425: a checker on the builder's model is noted, never blocked (the step it checks is the board's steps[].checks); a pick updates it
+    const same = 'Same model as Build: the check runs on the model that built the work.';
+    await expect(page.locator('#mt-step-reviewer .mt-same')).toHaveText(same);         // Claude Code: reviewer, evaluator and build all m-sonnet
+    await expect(page.locator('#mt-step-evaluator .mt-same')).toHaveText(same);
+    await expect(page.locator('#mt-step-light .mt-same')).toHaveCount(0);             // Light checks nothing
+    await page.locator('#mt-step-reviewer select').selectOption('m-haiku');
+    await expect(page.locator('#mt-step-reviewer .mt-same')).toHaveCount(0);
+    await expect(page.locator('#mt-step-reviewer select')).toHaveValue('m-haiku');
+    await expect.poll(() => posts.length).toBe(1);
+    posts.length = 0;
     await page.locator('#mt-agent').selectOption('copilot');
     expect(await opts('reviewer')).toEqual(['claude-sonnet-5.5', 'claude-haiku-4.5', 'gpt-6-luna']);   // Copilot CLI: Copilot's own ids (t-aba6)
     expect(await opts('evaluator')).toEqual(['claude-sonnet-5.5', 'gpt-6-luna']);
@@ -14407,6 +14483,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-step-evaluator select').selectOption('gpt-6-luna');
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].defaults.evaluator).toEqual({ claude: 'm-sonnet', copilot: 'gpt-6-luna' });
+    await expect(page.locator('#mt-step-evaluator .mt-same')).toHaveCount(1);         // Copilot CLI: now the same as its Build pick (gpt-6-luna)
     await expect(page.locator('#mt-codex-note')).toContainText('.codex/agents/*.toml');
   });
 

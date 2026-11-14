@@ -82,7 +82,7 @@ gate >/dev/null || fail "trailing spaces in Approach must not trip the plan gate
 # tools/caps.tsv); exactly 10%, no row, an absent capped file and an older board print nothing; a failed read says so.
 handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
 approve_with() { printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n\n## Files\n%s\n' "$1" > "$plan"; "$SPRINT" approve "$id"; }
-caplines() { grep -v '^Approved ' <<< "$1" || true; }
+caplines() { grep -v '^Approved \|Build model' <<< "$1" || true; }   # t-3425: the Build model line is checked below
 echo notes > notes.md
 handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
@@ -110,5 +110,29 @@ assert_eq "" "$(caplines "$out")"
 # a CRLF plan.md still names its files
 printf '# Plan\r\n\r\n## Sign-off\r\n- [ ] Plan approved\r\n\r\n## Approach\r\nstep one\r\n\r\n## Files\r\n- HANDOFF.md\r\n' > "$plan"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$("$SPRINT" approve "$id")")"
+
+# t-3425: approve names the Build model: the ticket's line first, else Admin's Build pick for the agent ($CANON_HOME's registry, read by
+# canon-go stage-model); in the Cockpit it says the switch comes when the turn ends, elsewhere it gives the /model line; Pi gets none.
+signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [ ] Plan approved\n\n## Approach\nstep one\n' "$1" > "$plan"; }
+buildline() { grep 'Build model' <<< "$1" || true; }
+mkdir -p "$CANON_HOME/cockpit"
+printf '%s' '{"defaults":{"build":{"claude":"claude-sonnet-5-5","copilot":"gpt-6"}},"models":{"anthropic":[{"id":"claude-sonnet-5-5","alias":"sonnet"}]}}' > "$CANON_HOME/cockpit/model-tiers.json"
+signoff "Tier: normal | Build model: haiku"
+assert_eq "Build model (the ticket's Build model line): haiku: switch with /model haiku" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
+signoff "Tier: normal"
+assert_eq "This session switches to the Build model (sonnet, from Admin > Model tiers) when this turn ends: end your turn now." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=claude "$SPRINT" approve "$id")")"
+signoff "Tier: normal"
+assert_eq "This session switches to the Build model (gpt-6, from Admin > Model tiers) when this turn ends: end your turn now." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=copilot "$SPRINT" approve "$id")")"
+signoff "Tier: normal | Build model: haiku"
+assert_eq "Build model: Pi has no /model, so this session keeps its model." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=pi "$SPRINT" approve "$id")")"
+# outside the Cockpit a pi run gets no line, and approve still succeeds
+signoff "Tier: normal | Build model: haiku"
+out="$(COCKPIT_TICKET='' COCKPIT_AGENT=pi "$SPRINT" approve "$id")" || fail "approve failed for pi"
+assert_eq "" "$(buildline "$out")"
+# a leading-dash value is never offered as a model; with no Admin pick there is no line at all
+printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
+signoff "Tier: normal | Build model: --dangerously-skip-permissions"
+assert_eq "" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
+assert_grep '^- \[x\] Plan approved' "$plan"
 
 echo "sprint-approve: ok"

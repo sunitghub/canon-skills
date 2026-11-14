@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"canon/internal/common"
 )
 
 // stubCopilot puts a fake `copilot` on PATH that speaks newline JSON-RPC like `copilot --acp`: it answers initialize, then session/new
@@ -151,8 +153,8 @@ func TestMigrateCopilotPicks(t *testing.T) {
 	for in, want := range map[string]string{"claude-sonnet-5-5": "claude-sonnet-5.5", "claude-haiku-4-5-20251001": "claude-haiku-4.5", "claude-opus-5-5": "claude-opus-5.5",
 		"claude-sonnet-5": "claude-sonnet-5", "gpt-6-luna": "gpt-6-luna", "gpt-6.1-sol": "gpt-6.1-sol", "claude-sonnet-5.5": "claude-sonnet-5.5",
 		"my-claude-sonnet-5-5": "my-claude-sonnet-5-5", "claude-sonnet-5-5-x": "claude-sonnet-5-5-x"} { // only a whole registry id is respelled
-		if got := copilotFormOf(in); got != want {
-			t.Errorf("copilotFormOf(%s) = %s, want %s", in, got, want)
+		if got := common.CopilotFormOf(in); got != want {
+			t.Errorf("common.CopilotFormOf(%s) = %s, want %s", in, got, want)
 		}
 	}
 	doc := regDoc()
@@ -160,16 +162,16 @@ func TestMigrateCopilotPicks(t *testing.T) {
 	d["build"].(map[string]any)["copilot"] = "claude-sonnet-5-5"         // slice 1's registry spelling
 	d["light"].(map[string]any)["copilot"] = "claude-haiku-4-5-20251001" // with a release date
 	d["plan"].(map[string]any)["copilot"] = "claude-fable-9.1"           // not on this account's list: kept
-	if !migrateCopilotPicks(doc) {
+	if !common.MigrateCopilotPicks(doc) {
 		t.Fatal("registry-spelled Copilot picks were not migrated")
 	}
 	if defaultOf(doc, "build", "copilot") != "claude-sonnet-5.5" || defaultOf(doc, "light", "copilot") != "claude-haiku-4.5" || defaultOf(doc, "plan", "copilot") != "claude-fable-9.1" {
 		t.Errorf("migrated = %v", d)
 	}
 	if !modelTiersValid(doc) {
-		t.Errorf("a migrated registry fails validation: %s", tierDefaultsProblem(doc))
+		t.Errorf("a migrated registry fails validation: %s", common.TierDefaultsProblem(doc))
 	}
-	if migrateCopilotPicks(doc) {
+	if common.MigrateCopilotPicks(doc) {
 		t.Error("a migrated registry was migrated again")
 	}
 	// the kept pick is listed, marked, so Admin shows what is saved instead of the first option
@@ -226,7 +228,7 @@ func TestLoadModelTiersConvertsSliceOneCopilotPicks(t *testing.T) {
 		t.Errorf("a slice-1 Copilot pick was not converted: %v", got["defaults"])
 	}
 	if _, has := got["copilot_models"]; !has || !modelTiersValid(got) {
-		t.Errorf("the fallback list was not filled, or the registry is invalid: %s", tierDefaultsProblem(got))
+		t.Errorf("the fallback list was not filled, or the registry is invalid: %s", common.TierDefaultsProblem(got))
 	}
 }
 

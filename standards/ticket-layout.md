@@ -104,6 +104,8 @@ command: the board renders the resolved `<runner> <feature-path>` beneath the sc
 Such criteria must be locked at the
 sprint-start approval gate before implementation. This is additive; prose criteria are unchanged.
 
+**Optional `Plan model:` / `Build model:` fields (t-3425).** The same line can carry `| Plan model: <value>` and `| Build model: <value>`: the model a Cockpit session runs on before and after approval, over Admin > Model tiers' pick; same value rules as `Gate model:`, which sets only the close gates.
+
 **Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,
 `Tier: <tier> | Risk: <one line> | Gate model: <value>`, to force the `sprint complete`
 reviewer/evaluator dispatches onto a specific model — `<value>` is a model id (`haiku`,

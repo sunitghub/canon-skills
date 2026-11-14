@@ -51,22 +51,26 @@ out = []
 for i, c in enumerate(cases):
     (tmp / f"plan{i}.md").write_text(c["plan"])
     assert not any("\x1f" in c[k] for k in ("name", "parse", "expect")), c["name"]
-    out.append("\x1f".join([c["name"], str(tmp / f"plan{i}.md"), c["parse"], c["expect"], str(c.get("status", ""))]))
+    out.append("\x1f".join([c["name"], str(tmp / f"plan{i}.md"), c["parse"], c["expect"], str(c.get("status", "")), c.get("label", "gate")]))
 (tmp / "records").write_text("\n".join(out) + "\n")
 PY
 
 count=0
-while IFS=$'\x1f' read -r name plan want_parse want_resolve want_status; do
-  got_parse="$(gate_model_parse "$plan")"
+while IFS=$'\x1f' read -r name plan want_parse want_resolve want_status label; do
+  got_parse="$(signoff_model_parse "$plan" "$label")"
   ok "parse: $name" "$got_parse" "$want_parse"
   # gate_model_resolve exits 2 on a present-but-invalid value; that is a pass when the
   # fixture expects no model, since "rejected" and "absent" both mean no --model flag.
   status=0
-  got_resolve="$(gate_model_resolve "$plan" 2>/dev/null)" || status=$?
+  got_resolve="$(signoff_model_resolve "$plan" "$label" 2>/dev/null)" || status=$?
   ok "resolve: $name" "$got_resolve" "$want_resolve"
   # Optional per-case exit status (t-ef27): "rejected" and "valid, no model" both print
   # nothing, so only the exit code tells a valid `openai:<id>` from an invalid one.
   [[ -z "$want_status" ]] || ok "resolve status: $name" "$status" "$want_status"
+  # gate_model_resolve is sprint-headless's entry point: the gate label's resolver, same answer
+  if [[ "$label" == gate ]]; then
+    ok "gate_model_resolve: $name" "$(gate_model_resolve "$plan" 2>/dev/null || true)" "$want_resolve"
+  fi
   count=$((count + 1))
 done < "$TMP/records"
 

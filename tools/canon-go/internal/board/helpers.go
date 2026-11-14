@@ -9,6 +9,7 @@
 //	sprint-check skill-check <skill-dir>           the Skill Eval checks as JSON (was tools/skill-check)
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
+//	sprint-check stage-model <step> <agent> <seed>   Admin's pick for one step and agent, as --model takes it (t-3425); prints nothing for none
 //	sprint-check finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
 //	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
@@ -80,6 +81,15 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return sessionsTableCLI(stdin, stdout, stderr), true
 	case "finding-classes": // t-70f2: how often each finding class repeats across tickets, with the escalation ladder; read-only
 		return findingClassesCLI(args[1:], stdout, stderr), true
+	case "stage-model": // t-3425: Admin's pick for one step and agent, as --model takes it; sprint approve names the Build model with it
+		if len(args) != 4 {
+			fmt.Fprintln(stderr, "usage: canon-go stage-model <step> <agent> <seed model-tiers.json>")
+			return 2, true
+		}
+		if m := common.AdminStageModel(common.LoadModelTiers(common.ModelTiersUserFile(), args[3]), args[1], args[2]); m != "" {
+			fmt.Fprintln(stdout, m)
+		}
+		return 0, true
 	case "promoted-report": // t-1219: promoted lines and the later tickets that name their class; read-only
 		return promotedReportCLI(args[1:], stdout, stderr), true
 	case "skill-check":

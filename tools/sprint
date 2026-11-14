@@ -14,6 +14,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-f182)
+source "$SCRIPT_DIR/gate-model.sh"     # signoff_model_resolve (t-3425: the Build model line)
 TKT_BIN="$SCRIPT_DIR/tkt"
 
 ticket_dir_for() {
@@ -542,6 +543,28 @@ _signoff_tier() {
   printf '%s' "${t%%$'\n'*}"
 }
 
+# _build_model_line <plan.md> — t-3425: the model the build runs on, after approval: the ticket's `Build model:` line, else Admin's Build
+# pick for the agent (canon-go stage-model, the registry's one reader). In the Cockpit (COCKPIT_TICKET) the session switches to it when the
+# turn ends; elsewhere the person types /model. Prints nothing when there is no Build model (the session keeps its model); never fails.
+_build_model_line() {
+  local plan="$1" agent="${COCKPIT_AGENT:-claude}" m="" src="the ticket's Build model line" b
+  if [[ "$agent" == pi ]]; then
+    [[ -z "${COCKPIT_TICKET:-}" ]] || echo "Build model: Pi has no /model, so this session keeps its model."
+    return 0
+  fi
+  m="$(signoff_model_resolve "$plan" build 2>/dev/null)" || m=""
+  if [[ -z "$m" ]] && b="$(board_has 'stage-model <step>' 2>/dev/null)"; then
+    m="$("$b" stage-model build "$agent" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null)" || m=""
+    src="Admin > Model tiers"
+  fi
+  [[ -n "$m" ]] || return 0
+  if [[ -n "${COCKPIT_TICKET:-}" ]]; then
+    echo "This session switches to the Build model ($m, from $src) when this turn ends: end your turn now."
+  else
+    echo "Build model ($src): $m: switch with /model $m"
+  fi
+}
+
 cmd_approve() {
   local id="${1:-}" root plan digest stamp tmp signoff pstate="" prc=0
   [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
@@ -567,6 +590,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
+  _build_model_line "$plan"
   local _tier; _tier="$(_signoff_tier "$plan")"
   canon_event plan.approved sprint "$root" "ticket=$id" ${_tier:+"tier=$_tier"}   # t-2db7: the kind existed with no writer
   handoff_recent "$root"

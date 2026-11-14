@@ -24,6 +24,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"canon/internal/common"
 )
 
 const (
@@ -227,27 +229,27 @@ func pipelineModelFor(id string) *pipelineModel {
 		copilotNames[cm.ID] = cm.Name
 	}
 	name := func(want, agent string) string {
-		if agent != registryAgent { // t-aba6: a Copilot CLI pick is Copilot's own id, named from its list
+		if agent != common.RegistryAgent { // t-aba6: a Copilot CLI pick is Copilot's own id, named from its list
 			if n := copilotNames[want]; n != "" {
 				return pipelineClean(n)
 			}
 			return want
 		}
-		if _, em := registryModel(doc, want); em != nil {
+		if _, em := common.RegistryModel(doc, want); em != nil {
 			if n, _ := em["name"].(string); n != "" {
 				return pipelineClean(n)
 			}
 		}
 		return want
 	}
-	m := &pipelineModel{Source: "Admin > Model tiers > " + tierStepLabel[step] + " default"}
-	for _, agent := range tierAgents {
+	m := &pipelineModel{Source: "Admin > Model tiers > " + common.TierStepLabel[step] + " default"}
+	for _, agent := range common.TierAgents {
 		want, _ := per[agent].(string)
 		if want == "" {
 			continue
 		}
-		m.Agents = append(m.Agents, pipelineAgentModel{Agent: tierAgentLabel[agent], ID: want, Name: name(want, agent)})
-		if agent == registryAgent {
+		m.Agents = append(m.Agents, pipelineAgentModel{Agent: common.TierAgentLabel[agent], ID: want, Name: name(want, agent)})
+		if agent == common.RegistryAgent {
 			m.ID, m.Name = want, name(want, agent)
 		}
 	}

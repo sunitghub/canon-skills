@@ -45,7 +45,7 @@ var (
 	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`) // also used for worktree branch names — same git-ref-name charset
 	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-	modelIDRe        = regexp.MustCompile(`^[A-Za-z0-9._-]+$`) // t-7e36: mirrors server.py's MODEL_ID_RE
+	modelIDRe        = common.ModelIDRe // t-7e36; t-3425: one owner with the daemon (internal/common)
 	projectRoot      string
 	ticketsDir       string
 	handoffFile      string
@@ -236,6 +236,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-insights [--days N] [--json]
   gate-corpus [--json]
   finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
+  stage-model <step> <agent> <seed>   Admin's pick for one step and agent, as --model takes it (t-3425)
   promoted-report [--json] [--since YYYY-MM-DD]   promoted lines, recurrence and the size table
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
   sessions-table           a /api/v1/sessions body on stdin as canon's table (t-5b80)
@@ -5583,41 +5584,7 @@ func registrySave(entries []registryProject) error {
 // model id is validated here because it later becomes a
 // ~/.codex/agents/<id>.toml filename in the follow-up ticket (t-ef27).
 func loadModelTiers() map[string]any {
-	empty := map[string]any{
-		"defaults": map[string]any{"plan": map[string]any{}, "build": map[string]any{}, "reviewer": map[string]any{}, "evaluator": map[string]any{}, "light": map[string]any{}},
-		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
-	}
-	var found []map[string]any
-	for _, p := range []string{modelTiersUserFile(), modelTiersPath} {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		var parsed map[string]any
-		if json.Unmarshal(data, &parsed) == nil && parsed != nil {
-			found = append(found, parsed)
-		}
-	}
-	if len(found) == 0 {
-		return empty
-	}
-	// t-d40b: the same for the Refresh sources: a user file saved before they existed gets the seed's list.
-	if _, ok := found[0]["sources"]; !ok && len(found) > 1 {
-		if u, ok := found[len(found)-1]["sources"]; ok {
-			found[0]["sources"] = u
-		}
-	}
-	// t-aba6: the Copilot fallback list too (a user file saved before it existed gets the seed's).
-	if _, ok := found[0]["copilot_models"]; !ok && len(found) > 1 {
-		if u, ok := found[len(found)-1]["copilot_models"]; ok {
-			found[0]["copilot_models"] = u
-		}
-	}
-	// t-8f6d: a user file saved before the per-step, per-agent defaults is read in the new shape (written so on its next save);
-	// t-aba6: and its Copilot picks in Copilot's own ids.
-	migrateTierDefaults(found[0], found[len(found)-1])
-	migrateCopilotPicks(found[0])
-	return found[0]
+	return common.LoadModelTiers(modelTiersUserFile(), modelTiersPath)
 }
 
 // ── User themes (t-f889) — mirrors server.py's list_themes/open_themes_folder ──
@@ -5893,7 +5860,7 @@ func openThemesFolder() map[string]any {
 
 // t-5df2: edits live in the Cockpit data dir (gitignored); modelTiersPath is the
 // tracked, read-only seed. Writing it dirtied the clone and blocked `canon update`.
-func modelTiersUserFile() string { return filepath.Join(registryDir(), "model-tiers.json") }
+func modelTiersUserFile() string { return common.ModelTiersUserFile() }
 
 func modelTiersValid(data map[string]any) bool {
 	models, ok := data["models"].(map[string]any)
@@ -5944,7 +5911,7 @@ func saveModelTiers(data map[string]any) map[string]any {
 		return map[string]any{"ok": true}
 	}
 	if !modelTiersValid(data) {
-		if why := tierDefaultsProblem(data); why != "" { // t-8f6d: name the default a person must change
+		if why := common.TierDefaultsProblem(data); why != "" { // t-8f6d: name the default a person must change
 			return map[string]any{"ok": false, "error": "invalid model-tiers payload: " + why}
 		}
 		return map[string]any{"ok": false, "error": "invalid model-tiers payload (bad id or shape)"}

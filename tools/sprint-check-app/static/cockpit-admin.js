@@ -119,8 +119,8 @@ let mtData=null, mtProvider='anthropic', mtAgent='claude', mtCopilot={models:[],
 const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
 // MT_STEP_UI is this page's own wording per step (where it is used); names and roles are the board's.
 const MT_STEP_UI={
-  plan:{used:'Research, acceptance criteria and the plan, before approval.',later:true},
-  build:{used:'Implementation inside the approved plan.',later:true},
+  plan:{used:'Used by: a Cockpit session until its plan is approved (research, acceptance criteria, the plan).'},
+  build:{used:'Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).'},
   reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
   evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
   light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
@@ -180,8 +180,10 @@ function mtRender(){
       const groups=[...new Set(list.map(o=>o.group))];
       const opt=o=>`<option value="${escAttr(o.id)}"${o.id===cur?' selected':''}>${esc(o.name+(o.usage?' \u00b7 '+o.usage:'')+(o.saved_only?' (saved, not offered)':''))}</option>`;
       const body=groups.length>1?groups.map(g=>`<optgroup label="${escAttr(g)}">${list.filter(o=>o.group===g).map(opt).join('')}</optgroup>`).join(''):list.map(opt).join('');
-      const later=ui.later?'<div class="setting-d mt-used">Recorded now; a later update starts this step on it.</div>':'';
-      return `<div class="mt-default-card${ui.later?' mt-later':''}" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${later}</div>`;
+      // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
+      const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
+      const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that built the work.</div>`:'';
+      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }
@@ -302,7 +304,7 @@ async function mtSetDefault(sel){
   const step=sel.dataset.step, agent=sel.dataset.agent;
   mtData.defaults[step]=mtData.defaults[step]||{};
   mtData.defaults[step][agent]=sel.value;
-  if(await mtSave()) toast('Default updated');
+  if(await mtSave()){ mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick
 }
 
 const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors main.go's modelIDRe

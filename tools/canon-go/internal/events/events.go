@@ -73,7 +73,9 @@ var kinds = map[string][]field{
 	"log.deleted":             {{"from", 10}, {"to", 10}, {"files", 6}}, // t-1bd5: the user deleted the log from Admin > Logging
 	// t-5ef8: the sprint progress card. "Build" has no kind: it is the time after plan.approved and before the first
 	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, doc-audit, ...).
-	"plan.written":         {{"ticket", 64}, {"tier", 16}},
+	"plan.written": {{"ticket", 64}, {"tier", 16}},
+	// t-3425: the session moved to the Build model (the Cockpit's switch at approval); tier is the stage ("build")
+	"implement.started":    {{"ticket", 64}, {"session", 32}, {"agent", 32}, {"model", 80}, {"tier", 16}, {"source", 48}},
 	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
 	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},
 	// t-57ab: the board's restricted terminal. "ticket" is the scratch id; no typed text, word or path is ever logged.
