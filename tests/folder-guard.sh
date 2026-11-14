@@ -22,16 +22,15 @@ check() { assert_eq "$3" "$(why "$1" "$2")"; }
 # such a system folder is checked only where it exists, and the ones left out are named at the end.
 absent=()
 check_dir() { if [[ -d "$1" ]]; then check "$@"; else absent+=("$1"); fi; }
-check /                              "$HOME_DIR" "the root of a drive"
-check 'C:\'                          "$HOME_DIR" "the root of a drive"
-check 'c:'                           "$HOME_DIR" "the root of a drive"
-check 'C:\Windows\System32'          "$HOME_DIR" "a system folder"
-check 'c:/WINDOWS/system32'          "$HOME_DIR" "a system folder"
-check 'C:\Windows'                   "$HOME_DIR" "a system folder"
-check 'C:\Windows\System32\drivers'  "$HOME_DIR" "a system folder"
-check 'C:\Program Files'             "$HOME_DIR" "a system folder"
-check 'C:\Program Files (x86)'       "$HOME_DIR" "a system folder"
-check 'D:\ProgramData'               "$HOME_DIR" "a system folder"
+# t-9d04: the rows whose answer does not depend on the machine come from the table the Go test reads too (one answer, bash and Go)
+rows=0
+while IFS=$'\t' read -r d want note; do
+  [[ -z "$d" || "$d" == \#* ]] && continue
+  [[ "$want" == - ]] && want=""
+  [[ "$(why "$d" "$HOME_DIR")" == "$want" ]] || fail "folder-guard: '$d' ($note): got '$(why "$d" "$HOME_DIR")', want '$want'"
+  rows=$((rows + 1))
+done < "$ROOT/tests/fixtures/folder-guard.tsv"
+[[ "$rows" -ge 15 ]] || fail "folder-guard: only $rows table rows ran"
 check_dir /usr                          "$HOME_DIR" "a system folder"
 check_dir /etc                          "$HOME_DIR" "a system folder"
 check_dir /var                          "$HOME_DIR" "a system folder"
@@ -40,14 +39,9 @@ for d in /System /Applications /Library; do   # macOS folders: only where they e
 done
 check_dir /private/etc                  "$HOME_DIR" "a system folder"       # macOS's physical /etc, reached without the /etc alias
 check_dir /private/var                  "$HOME_DIR" "a system folder"
-check /private/var/folders/x/T       "$HOME_DIR" ""
 check_dir /bin                          "$HOME_DIR" "a system folder"
 check_dir /sbin                         "$HOME_DIR" "a system folder"
 check_dir /opt                          "$HOME_DIR" "a system folder"
-check 'C:\Program Files\Foo'         "$HOME_DIR" ""
-check 'C:\Windowsfoo'                 "$HOME_DIR" ""
-check 'C:\Users\sam\proj'            "$HOME_DIR" ""
-check /usr/local/src/p               "$HOME_DIR" ""                       # a subfolder of a unix system folder is fine
 check "$HOME_DIR"                    "$HOME_DIR" ""                       # t-dec4: the home folder is a project like any other
 check "$HOME_DIR/work"               "$HOME_DIR" ""
 check "$W/plain"                     "$HOME_DIR" ""                       # a plain folder with no git is a supported project
@@ -167,10 +161,5 @@ grep -qi 'git init' <<<"$ps1_code" && fail "folder-guard: install.ps1 still tell
 [[ "$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -c 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo')" == 2 ]] || fail "folder-guard: install.ps1 must print the next step in both its bootstrap and its file ending"
 awk '/^[[:space:]]*#/{next} /^if [(][$]Bootstrap[)] [{]/{b=1; f=0} b&&/Next: open a terminal/{f=1} b&&/canon installed successfully/{ok=f} b&&/^  return/{b=0} END{exit !ok}' "$ROOT/install.ps1" || fail "folder-guard: the bootstrap ending of install.ps1 does not print the next step before it returns"
 
-# t-c8c6: the bash guard reads a C: form through canon_path_key, so a doubled separator is one: C:\\Windows is a system folder and C:\\ a drive
-# root (the old hand-written conversion let both through). Bash only: the Go guard (folderguard.go) gets the same rule in t-9d04, so these
-# rows are not in the shared corpus yet.
-assert_eq "a system folder" "$(why 'C:\\Windows' "$HOME")"; assert_eq "the root of a drive" "$(why 'C:\\' "$HOME")"
-assert_eq "a system folder" "$(why 'c://windows//System32' "$HOME")"
 [[ ${#absent[@]} -eq 0 ]] || echo "folder-guard: not on this machine, so not checked: ${absent[*]}"
 echo "folder-guard: ok"

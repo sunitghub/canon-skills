@@ -13,9 +13,10 @@ import (
 // (folder_guard_reason) for the launcher, tkt and sprint; tests/folder-guard.sh and the test here run one corpus through both.
 
 var (
-	driveRootRe    = regexp.MustCompile(`^[a-z]:/?$`)
-	windowsTreeRe  = regexp.MustCompile(`^[a-z]:/windows(/|$)`)
-	windowsExactRe = regexp.MustCompile(`^[a-z]:/(program files|program files \(x86\)|programdata)$`)
+	// t-9d04: matched against the lower-cased PathKey (C:\x, C:/x and /c/x are /c/x), the bash table's form (tools/ticket-root.sh)
+	driveRootRe    = regexp.MustCompile(`^/[a-z]$`)
+	windowsTreeRe  = regexp.MustCompile(`^/[a-z]/windows(/|$)`)
+	windowsExactRe = regexp.MustCompile(`^/[a-z]/(program files|program files \(x86\)|programdata)$`)
 	unixSystem     = map[string]bool{"/usr": true, "/bin": true, "/sbin": true, "/etc": true, "/var": true, "/private/etc": true, "/private/var": true, "/opt": true, "/system": true, "/library": true, "/applications": true}
 )
 
@@ -45,7 +46,7 @@ func NotAProject(dir string) string {
 }
 
 func refused(abs string) string {
-	p := strings.ToLower(filepath.ToSlash(abs))
+	p := strings.ToLower(PathKey(abs))
 	why, tree := "", windowsTreeRe.MatchString(p)
 	switch {
 	case p == "/" || driveRootRe.MatchString(p):
@@ -78,18 +79,7 @@ func IsHome(dir, home string) bool {
 			return false
 		}
 	}
-	return sameFolder(abs, home)
-}
-
-// sameFolder: the same folder, resolving links and ignoring case (Windows and macOS file systems do).
-func sameFolder(a, b string) bool {
-	if r, err := filepath.EvalSymlinks(b); err == nil {
-		b = r
-	}
-	if r, err := filepath.EvalSymlinks(a); err == nil {
-		a = r
-	}
-	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+	return SamePath(abs, home)
 }
 
 var gitBashDriveRe = regexp.MustCompile(`^/([a-zA-Z])(/.*)?$`)
