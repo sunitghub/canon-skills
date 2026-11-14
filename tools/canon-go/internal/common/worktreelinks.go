@@ -29,7 +29,7 @@ func LinkWorktree(canonRoot, wt string) []string {
 			}
 			switch {
 			case isDirLink(link):
-				if sameDir(readDirLink(link), skills) {
+				if SamePath(readDirLink(link), skills) {
 					continue
 				}
 				createDirLink(skills, link)
@@ -67,7 +67,7 @@ func linkGateAgents(canonRoot, wt string) []string {
 	switch {
 	case isDirLink(link):
 		cur := readDirLink(link)
-		if sameDir(cur, target) {
+		if SamePath(cur, target) {
 			return ensureLine(wt, "/.claude/agents")
 		}
 		if !isDir(cur) || isCanonAgentsDir(cur) {
@@ -115,7 +115,7 @@ func isLinkedWorktree(dir string) bool {
 		return false
 	}
 	f := strings.Split(strings.TrimSpace(string(out)), "\n")
-	return len(f) == 2 && !sameDir(strings.TrimSpace(f[0]), strings.TrimSpace(f[1]))
+	return len(f) == 2 && !SamePath(strings.TrimSpace(f[0]), strings.TrimSpace(f[1]))
 }
 
 // ignoreFile is where wt's ignore lines go (t-74d8, user's choice): in a linked worktree git's own
@@ -289,24 +289,6 @@ func isDirLink(p string) bool {
 }
 
 func readDirLink(p string) string { t, _ := os.Readlink(p); return t }
-
-// sameDir compares two folders by where they really are (a symlinked temp folder, a case-insensitive Windows path).
-func sameDir(a, b string) bool {
-	if a == "" || b == "" {
-		return false
-	}
-	if ra, err := filepath.EvalSymlinks(a); err == nil {
-		a = ra
-	}
-	if rb, err := filepath.EvalSymlinks(b); err == nil {
-		b = rb
-	}
-	a, b = filepath.Clean(a), filepath.Clean(b)
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(a, b)
-	}
-	return a == b
-}
 
 // createDirLink points link at target, replacing a link already there: a junction on Windows (no elevated rights; mklink
 // needs cmd), a symlink elsewhere.

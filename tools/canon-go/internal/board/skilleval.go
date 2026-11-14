@@ -22,7 +22,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +29,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"canon/internal/common"
 )
 
 const (
@@ -756,14 +757,6 @@ func canonRootDir() string {
 	return root
 }
 
-// samePath compares two resolved absolute paths; Windows paths are case-insensitive.
-func samePath(a, b string) bool {
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
-	}
-	return filepath.Clean(a) == filepath.Clean(b)
-}
-
 func resolvedOrAbs(p string) string {
 	if r, err := filepath.EvalSymlinks(p); err == nil {
 		return r
@@ -843,7 +836,7 @@ func validateSkillDir(root, raw string) (string, string) {
 		return "", "skill folder must be inside the selected project"
 	}
 	canon := canonRootDir()
-	if canon == "" || samePath(p, canon) || strictlyInside(p, canon) {
+	if canon == "" || common.SamePath(p, canon) || strictlyInside(p, canon) {
 		return "", "canon's own skills are checked internally, not here"
 	}
 	if !skillNameRe.MatchString(filepath.Base(p)) {
@@ -922,7 +915,7 @@ func skillEvalStateLoad(root string) map[string]any {
 func skillEvalStateSave(root, key string, entry map[string]any) {
 	dir := filepath.Dir(skillEvalStatePath(root))
 	if st, err := os.Lstat(dir); err == nil {
-		if !st.IsDir() || !plainMode(st.Mode()) || !samePath(filepath.Dir(resolvedOrAbs(dir)), resolvedOrAbs(root)) {
+		if !st.IsDir() || !plainMode(st.Mode()) || !common.SamePath(filepath.Dir(resolvedOrAbs(dir)), resolvedOrAbs(root)) {
 			return // a project-controlled .reports link must not redirect this write outside the project
 		}
 	}

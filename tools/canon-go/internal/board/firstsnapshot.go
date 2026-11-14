@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-a854: the first snapshot of a project that just turned on version history. trackChanges commits only a
@@ -40,7 +42,7 @@ func canonStartOnly(root string) (bool, string) {
 		return false, "This folder does not keep a version history yet."
 	}
 	// The folder itself must be the repository's top: inside a parent's repo, `git add -A` would stage the parent's other files too.
-	if top, _, err := gitOutIn(root, 10*time.Second, "rev-parse", "--show-toplevel"); err != nil || !samePath(resolvedOrAbs(strings.TrimSpace(top)), resolvedOrAbs(root)) {
+	if top, _, err := gitOutIn(root, 10*time.Second, "rev-parse", "--show-toplevel"); err != nil || !common.SamePath(resolvedOrAbs(strings.TrimSpace(top)), resolvedOrAbs(root)) {
 		return false, "A first snapshot is only offered for a folder that is itself the repository."
 	}
 	n, _, err := gitOutIn(root, 10*time.Second, "rev-list", "--count", "HEAD")

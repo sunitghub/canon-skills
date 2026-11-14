@@ -444,7 +444,7 @@ func skillCheckCLI(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	canon := cliCanonRoot()
-	if canon == "" || samePath(p, canon) || strictlyInside(p, canon) {
+	if canon == "" || common.SamePath(p, canon) || strictlyInside(p, canon) {
 		fmt.Fprintln(stderr, "skill-check: refusing a path inside the canon repo — its skills are checked internally")
 		return 2
 	}

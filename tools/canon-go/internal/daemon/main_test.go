@@ -27,6 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"canon/internal/common"
+
 	pty "github.com/aymanbagabas/go-pty"
 )
 
@@ -4483,7 +4485,7 @@ func TestResolveProjectForCwd(t *testing.T) {
 	}
 	got, ok := s.resolveProjectForCwd(root)
 	wantResolved, _ := filepath.EvalSymlinks(root)
-	if !ok || !pathsEqual(got, wantResolved) {
+	if !ok || !common.SamePath(got, wantResolved) {
 		t.Fatalf("git cwd = (%q,%v), want (%q,true)", got, ok, wantResolved)
 	}
 }
@@ -6486,7 +6488,7 @@ func TestScratchWorktrees(t *testing.T) {
 	})
 
 	first := start("s-aa01")
-	if !pathsEqual(first.Cwd, resolvedRoot) && !pathsEqual(first.Cwd, root) {
+	if !common.SamePath(first.Cwd, resolvedRoot) && !common.SamePath(first.Cwd, root) {
 		t.Fatalf("first scratch should run in the main checkout, got %q", first.Cwd)
 	}
 	second := start("s-bb02")
@@ -7259,7 +7261,7 @@ func TestNonGitTrustRule(t *testing.T) {
 	want := func(name, cwd string, ok bool) {
 		t.Helper()
 		got, gotOK := s.resolveProjectForCwd(cwd)
-		if gotOK != ok || (ok && !pathsEqual(got, realRoot)) {
+		if gotOK != ok || (ok && !common.SamePath(got, realRoot)) {
 			t.Fatalf("%s: resolveProjectForCwd(%q) = (%q,%v), want ok=%v", name, cwd, got, gotOK, ok)
 		}
 	}
@@ -7563,7 +7565,7 @@ func TestNonGitConcurrentScratchSessionsShareTheFolder(t *testing.T) {
 	json.NewDecoder(resp.Body).Decode(&full)
 	resp.Body.Close()
 	for _, r := range full {
-		if !pathsEqual(r.Cwd, realRoot) || !r.Shared {
+		if !common.SamePath(r.Cwd, realRoot) || !r.Shared {
 			t.Fatalf("row %+v: want every session in %s flagged shared", r, realRoot)
 		}
 	}
@@ -8970,7 +8972,7 @@ func TestStartWorktreeLinksGateAgents(t *testing.T) {
 	t.Cleanup(func() { exec.Command("git", "-C", root, "worktree", "prune").Run() })
 	startScratchSession(t, ts2.URL, "s-ab12", "")
 	sc := startScratchSession(t, ts2.URL, "s-ab13", "")
-	if sc.Cwd == "" || pathsEqual(sc.Cwd, root) {
+	if sc.Cwd == "" || common.SamePath(sc.Cwd, root) {
 		t.Fatalf("the second scratch session should run in its own worktree, got cwd %q", sc.Cwd)
 	}
 	if _, err := os.Lstat(filepath.Join(sc.Cwd, ".claude", "agents")); err == nil {
