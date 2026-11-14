@@ -277,6 +277,9 @@ for file in "$SHARED" "$EVAL" "$REVIEW"; do
   done
 done
 
+# Every gate agent file and its Codex mirror (t-9b13: by glob, so a new gate agent is checked without a fifth list)
+GATE_AGENT_FILES=("$ROOT"/agents/canon-*.md "$ROOT"/agents/codex/canon-*.toml)
+(( ${#GATE_AGENT_FILES[@]} >= 6 )) || fail "doc-mirror-parity: expected at least 3 gate agents and 3 Codex mirrors, found ${#GATE_AGENT_FILES[@]}"
 # ── Check M: the "pin the environment" rule (t-ce0b) lives in shared-gate-protocol.md and is mirrored in the two agent files and the two Codex
 # files — a gate may read only its agent file first. Live trigger: a reviewer ran `canon update` in a scratch clone and re-linked the user's
 # registered projects. The four mirrors carry the same sentence; the owner carries the paragraph.
@@ -286,7 +289,7 @@ PIN_RULE_FRAGMENTS=(
   'fresh `mktemp -d`'
   'gate scope'
 )
-for file in "$SHARED" "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+for file in "$SHARED" "${GATE_AGENT_FILES[@]}"; do
   label="${file#"$ROOT"/}"
   for frag in "${PIN_RULE_FRAGMENTS[@]}"; do
     grep -qF -- "$frag" "$file" || fail "doc-mirror-parity: $label is missing the pin-the-environment rule fragment verbatim: $frag (t-ce0b, Check M)"
@@ -294,19 +297,19 @@ for file in "$SHARED" "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evalu
 done
 # The verb and the condition carry the rule: a flipped "Never run ... unless" must not pass on its nouns alone.
 grep -qF -- "refuse the user's REAL \`HOME\` and \`CANON_HOME\`" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the dispatcher-scope rule 'refuse the user's REAL HOME and CANON_HOME' (t-b7df, t-9fb1, Check M)"
-for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+for file in "${GATE_AGENT_FILES[@]}"; do
   grep -qF -- 'Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon with your real `HOME`/`CANON_HOME`' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'Never run ... unless' sentence (t-ce0b, Check M)"
 done
 # t-5d4e: canon's docs sit behind a link outside the project; a regex sed there stops a gate on a permission prompt. The owner holds the
 # paragraph, the four gate agent files the same sentence (a gate may read only its agent file).
 grep -qF -- "**Read canon's docs without a regex \`sed\`**" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the no-regex-sed paragraph (t-5d4e, Check M)"
-for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+for file in "${GATE_AGENT_FILES[@]}"; do
   grep -qF -- 'never `sed` with a `/regex/` address' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the no-regex-sed sentence (t-5d4e, Check M)"
 done
 # t-85dc: a gate returns with nothing it started still running, or its first completion notice is interim and the logged cost is too small. The
 # owner holds the paragraph; the two agent files and the two Codex files carry the same sentence (a gate may read only its agent file).
 grep -qF -- '**Leave nothing running when you return.**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the '**Leave nothing running when you return.**' paragraph (t-85dc, Check M)"
-for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+for file in "${GATE_AGENT_FILES[@]}"; do
   grep -qF -- 'Return only when nothing you started is still running: run every long command in the foreground with a timeout, and start no background process you cannot stop' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'leave nothing running' sentence (t-85dc, Check M)"
 done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"

@@ -126,7 +126,7 @@ func TestPipelineGetDefaultCreatesNothing(t *testing.T) {
 		t.Fatalf("GET with no file = %d %v", code, m)
 	}
 	ids := strings.Join(nodeIDs(m), " ")
-	want := "start plan approve-plan build your-test code-simplifier code-reviewer doc-audit skill-eval break-it reviewer security-review mutation-test eval close"
+	want := "start plan spec-check approve-plan build your-test code-simplifier code-reviewer doc-audit skill-eval break-it reviewer security-review mutation-test eval close"
 	if ids != want {
 		t.Fatalf("nodes = %q, want %q", ids, want)
 	}
@@ -187,7 +187,7 @@ func TestPipelineOrder(t *testing.T) {
 		t.Fatalf("file = %q", got)
 	}
 	_, g := pipelineGetReq(id)
-	if g["changed"] != true || !strings.HasPrefix(strings.Join(nodeIDs(g), " "), "start plan approve-plan build your-test doc-audit code-reviewer code-simplifier") {
+	if g["changed"] != true || !strings.HasPrefix(strings.Join(nodeIDs(g), " "), "start plan spec-check approve-plan build your-test doc-audit code-reviewer code-simplifier") {
 		t.Fatalf("view after order = %v", g)
 	}
 	// putting the default order back: the file is rewritten without the wrapup-order line
@@ -577,7 +577,8 @@ func TestPipelineReplyCarriesEveryField(t *testing.T) {
 	}
 	// the Admin default model is shown on reviewer and eval only, with its registry name and source; t-8f6d: each row names its own
 	// step's default and lists every agent's pick (this registry is in the old shape, so it is read migrated: both agents get the old pick)
-	for nid, src := range map[string]string{"reviewer": "Admin > Model tiers > Reviewer default", "eval": "Admin > Model tiers > Evaluator default"} {
+	// t-9b13: spec-check names the Spec check default (an old-shape file reads it from the old Review & Eval pick, as the reviewer)
+	for nid, src := range map[string]string{"spec-check": "Admin > Model tiers > Spec check default", "reviewer": "Admin > Model tiers > Reviewer default", "eval": "Admin > Model tiers > Evaluator default"} {
 		m, _ := by[nid]["model"].(map[string]any)
 		if m == nil || m["id"] != "claude-sonnet-5" || m["name"] != "Claude Sonnet 5" || m["source"] != src {
 			t.Errorf("%s model = %v", nid, by[nid]["model"])

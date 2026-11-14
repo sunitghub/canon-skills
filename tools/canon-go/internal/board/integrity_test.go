@@ -20,7 +20,12 @@ import (
 // install, and that nothing but a verified release install can block.
 
 var gateFiles = []string{"tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"}
-var gatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
+
+// integAll is how many files a clean fixture install lists: every gate file and prompt, plus the daemon manifest (t-9b13: derived, so a new
+// gate file needs no count edited here).
+func integAll() int { return len(gateFiles) + len(gatePrompts) + 1 }
+
+var gatePrompts = []string{"agents/canon-reviewer.md", "agents/canon-evaluator.md", "agents/canon-spec-checker.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/spec-check.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"}
 
 type integFx struct {
 	t     *testing.T
@@ -107,7 +112,7 @@ func (f *integFx) status(r integrityResult, p string) string {
 func TestIntegrityVerifiedMatchesEverything(t *testing.T) {
 	f := newIntegFx(t)
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != 17 || r.Total != 17 {
+	if r.State != integrityVerified || r.Source != "online" || r.Blocking || r.Match != integAll() || r.Total != integAll() {
 		t.Fatalf("a clean release install: %+v", r)
 	}
 	for _, g := range gateFiles {
@@ -130,7 +135,7 @@ func TestIntegrityOneByteInAGateFileBlocks(t *testing.T) {
 		f := newIntegFx(t)
 		f.edit(gate, "content of "+gate+"!\n") // one byte more
 		r := checkIntegrity(f.deps)
-		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != 16 {
+		if r.State != integrityVerified || !r.Blocking || f.status(r, gate) != "changed" || r.Match != integAll()-1 {
 			t.Errorf("%s: %+v", gate, r)
 		}
 		for _, x := range r.Files {
@@ -468,11 +473,11 @@ func TestIntegrityAssetFetchFailureFallsBackOnlyToAGoodSavedList(t *testing.T) {
 func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f := newIntegFx(t)
 	var out bytes.Buffer
-	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), "17 of 17 files match release v1.2.3") || strings.Count(out.String(), "\n") != 1 {
+	if code := integrityRun(false, true, f.deps, &out); code != 0 || !strings.Contains(out.String(), fmt.Sprintf("%d of %d files match release v1.2.3", integAll(), integAll())) || strings.Count(out.String(), "\n") != 1 {
 		t.Errorf("a clean verified gate check prints one line and exits 0: %d %q", code, out.String())
 	}
 	out.Reset()
-	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), "17 of 17 files match release v1.2.3") {
+	if code := integrityRun(false, false, f.deps, &out); code != 0 || !strings.Contains(out.String(), fmt.Sprintf("%d of %d files match release v1.2.3", integAll(), integAll())) {
 		t.Errorf("without --gate the summary prints: %d %q", code, out.String())
 	}
 	out.Reset()
@@ -482,7 +487,7 @@ func TestIntegrityRunExitCodesAndOutput(t *testing.T) {
 	f.edit("tools/gate-model.sh", "x")
 	f.edit(integrityManifest, "x")
 	out.Reset()
-	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), "differs from release v1.2.3 (15 of 17") ||
+	if code := integrityRun(false, true, f.deps, &out); code != 3 || !strings.Contains(out.String(), fmt.Sprintf("differs from release v1.2.3 (%d of %d", integAll()-2, integAll())) ||
 		!strings.Contains(out.String(), "tools/gate-model.sh: changed. Put it back: ") || strings.Contains(out.String(), integrityManifest) {
 		t.Errorf("a changed gate file exits 3 and names only the gate file: %d %q", code, out.String())
 	}
@@ -615,7 +620,7 @@ func TestIntegrityGroupsAndJSONKeys(t *testing.T) {
 		}
 	}
 	b, _ := json.Marshal(r) // the page reads these names
-	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, `"match":16`, `"total":17`, `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"`} {
+	for _, k := range []string{`"state":"verified"`, `"tag":"v1.2.3"`, `"source":"online"`, fmt.Sprintf(`"match":%d`, integAll()-1), fmt.Sprintf(`"total":%d`, integAll()), `"blocking":true`, `"files":[`, `"path":"tools/sprint"`, `"group":"tools"`, `"gate":true`, `"status":"changed"`, `"restore":"`} {
 		if !strings.Contains(string(b), k) {
 			t.Errorf("the JSON lacks %s: %s", k, b)
 		}
@@ -662,8 +667,14 @@ func TestIntegrityOversizedSavedListIsNotUsed(t *testing.T) {
 func TestIntegrityAgentCards(t *testing.T) {
 	f := newIntegFx(t)
 	r := checkIntegrity(f.deps)
-	if len(r.Agents) != 2 {
+	if len(r.Agents) != 3 {
 		t.Fatalf("agents: %+v", r.Agents)
+	}
+	// t-9b13: each card names the Admin step that picks its model (common.GateAgentStep), not one guessed from the role
+	for i, want := range [][2]string{{"reviewer", "Reviewer"}, {"evaluator", "Evaluator"}, {"speccheck", "Spec check"}} {
+		if a := r.Agents[i]; a.Step != want[0] || a.StepName != want[1] {
+			t.Errorf("agent %s step = %q %q, want %v", a.Name, a.Step, a.StepName, want)
+		}
 	}
 	rev, ev := r.Agents[0], r.Agents[1]
 	if rev.Name != "canon-reviewer" || rev.Role != "advisory" || ev.Role != "binding" || rev.Model != "claude-sonnet-5" || rev.Effort != "high" ||
@@ -681,7 +692,7 @@ func TestIntegrityAgentCards(t *testing.T) {
 	}
 	g := newIntegFx(t)
 	g.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
-	if r := checkIntegrity(g.deps); len(r.Agents) != 2 || r.Agents[0].Model != "claude-sonnet-5" {
+	if r := checkIntegrity(g.deps); len(r.Agents) != 3 || r.Agents[0].Model != "claude-sonnet-5" {
 		t.Errorf("a state that is not verified still lists the cards: %+v", r.Agents)
 	}
 }
@@ -721,14 +732,14 @@ func TestIntegrityPreviewListsFilesWithoutClaimingAnything(t *testing.T) {
 	f.deps.atTag = func(string, string) (bool, bool, error) { return true, false, nil }
 	f.edit("tools/sprint", "edited")
 	r := checkIntegrity(f.deps)
-	if r.State != integrityNotFromRelease || len(r.Files) != 17 || anyChecked(r) || len(r.Agents) != 2 {
+	if r.State != integrityNotFromRelease || len(r.Files) != integAll() || anyChecked(r) || len(r.Agents) != 3 {
 		t.Fatalf("preview: %+v", r)
 	}
 	groups := map[string]int{}
 	for _, x := range r.Files {
 		groups[x.Group]++
 	}
-	if groups["agents"] != 2 || groups["prompts"] != 4 || groups["tools"] != 10 || groups["programs"] != 1 {
+	if groups["agents"] != 3 || groups["prompts"] != 5 || groups["tools"] != 10 || groups["programs"] != 1 {
 		t.Errorf("groups: %v", groups)
 	}
 	h := newIntegFx(t)
@@ -798,13 +809,13 @@ func TestIntegrityEditedLauncherIsFlaggedNotBlocking(t *testing.T) {
 	f := newIntegFx(t)
 	f.withExec("tools/tkt.cmd", "tools/skills/lib.sh", "tools/sprint") // tools/sprint is a gate file too: it keeps its group
 	r := checkIntegrity(f.deps)
-	if r.State != integrityVerified || r.Flagged || r.Blocking || !r.ScriptsListed || r.Total != 19 || r.Match != 19 {
+	if r.State != integrityVerified || r.Flagged || r.Blocking || !r.ScriptsListed || r.Total != integAll()+2 || r.Match != integAll()+2 {
 		t.Fatalf("a clean install counts the scripts once each: %+v", r)
 	}
 	f.edit("tools/tkt.cmd", "@echo Updated\n")
 	os.Remove(filepath.Join(f.root, "tools/skills/lib.sh"))
 	r = checkIntegrity(f.deps)
-	if f.status(r, "tools/tkt.cmd") != "changed" || f.status(r, "tools/skills/lib.sh") != "missing" || !r.Flagged || r.Blocking || r.Match != 17 {
+	if f.status(r, "tools/tkt.cmd") != "changed" || f.status(r, "tools/skills/lib.sh") != "missing" || !r.Flagged || r.Blocking || r.Match != integAll() {
 		t.Fatalf("an edited and a deleted script are flagged, neither blocks: %+v", r)
 	}
 	for _, x := range r.Files {
@@ -854,8 +865,8 @@ func TestIntegrityExecKeysAreTheScriptsAndThePages(t *testing.T) {
 func TestIntegrityScriptListedTwiceCountsOnce(t *testing.T) {
 	f := newIntegFx(t)
 	f.withExec("tools/sprint.cmd", "tools/sprint.cmd", "tools/sprint") // a repeat of a gate launcher, and a gate file
-	if r := checkIntegrity(f.deps); r.Total != 17 || r.Match != 17 {
-		t.Fatalf("16 gate paths + the manifest, each once (a repeated launcher and a gate file add nothing): %+v", r)
+	if r := checkIntegrity(f.deps); r.Total != integAll() || r.Match != integAll() {
+		t.Fatalf("the gate paths + the manifest, each once (a repeated launcher and a gate file add nothing): %+v", r)
 	}
 }
 

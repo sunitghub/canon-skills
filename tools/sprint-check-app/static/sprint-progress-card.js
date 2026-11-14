@@ -3,7 +3,7 @@
 // builds a string from the nodes it is given, escapes every value, and sends nothing.
 import { esc } from './html-escape.js';
 
-const LABEL = { start: 'Start', plan: 'Plan', 'approve-plan': 'Approve plan', build: 'Build', 'your-test': 'Your test', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
+const LABEL = { start: 'Start', plan: 'Plan', 'spec-check': 'Spec check', 'approve-plan': 'Approve plan', build: 'Build', 'your-test': 'Your test', reviewer: 'Reviewer', eval: 'Evaluator', close: 'Close' };
 export const TAG = { step: 'Step', gate: 'Gate', agent: 'Agent', you: 'You' };
 export const MODES = [['normal', 'Normal'], ['lite', 'Lite'], ['manual', 'Manual'], ['both', 'Manual + Lite']];
 export const label = id => LABEL[id] || id;

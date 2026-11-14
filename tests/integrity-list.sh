@@ -29,7 +29,7 @@ def verify(d):
       blob = subprocess.check_output(["git", "-C", root, "cat-file", "blob", "HEAD:" + p])
       assert hashlib.sha256(blob).hexdigest() == d["files"][p], p
   assert d["gate_files"] == ["tools/sprint", "tools/gate-snapshot.sh", "tools/subagent-log.sh", "tools/evidence.sh", "tools/sprint-headless", "tools/sprint-headless-eval", "tools/gate-model.sh", "tools/sprint.cmd", "tools/sprint-headless.cmd", "tools/sprint-headless-eval.cmd"], d["gate_files"]
-  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
+  assert d["gate_prompts"] == ["agents/canon-reviewer.md", "agents/canon-evaluator.md", "agents/canon-spec-checker.md", "skills/sprint/reference/review.md", "skills/sprint/reference/eval.md", "skills/sprint/reference/spec-check.md", "skills/sprint/reference/shared-gate-protocol.md", "skills/sprint/reference/visual-verify.md"], d["gate_prompts"]
   for p in d["gate_files"] + d["gate_prompts"]:
       assert p in d["files"], p
   # t-16f5: exec_files is every file an install can run: a script extension, a shebang, or git mode 100755

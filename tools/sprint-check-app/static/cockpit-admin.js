@@ -121,6 +121,7 @@ const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
 const MT_STEP_UI={
   plan:{used:'Used by: a Cockpit session until its plan is approved (research, acceptance criteria, the plan).'},
   build:{used:'Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).'},
+  speccheck:{used:'Used by: sprint start, before you approve: a fresh agent grades acceptance.md and plan.md. Advisory: it never blocks.'},
   reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
   evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
   light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
@@ -182,7 +183,7 @@ function mtRender(){
       const body=groups.length>1?groups.map(g=>`<optgroup label="${escAttr(g)}">${list.filter(o=>o.group===g).map(opt).join('')}</optgroup>`).join(''):list.map(opt).join('');
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
-      const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that built the work.</div>`:'';
+      const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
       return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
@@ -563,7 +564,7 @@ async function igLoad(refresh){
   const box=document.getElementById('ig-body'); if(!box) return;
   box.innerHTML='<div class="setting-d">Checking\u2026</div>';
   let r; try{ r=await (await fetch('/api/integrity'+(refresh?'?refresh=1':''))).json(); }catch(e){ box.innerHTML='<div class="setting-d">Could not reach the board.</div>'; return; }
-  const dflt={}; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); ['reviewer','evaluator'].forEach(st=>{ const id=((m.defaults||{})[st]||{}).claude; const e=(m.models.anthropic||[]).find(x=>x.id===id); if(e) dflt[st]=e.name; }); }catch(e){}   // t-8f6d: each gate's Claude Code pick in Admin; the agent file's own model is only the floor
+  const dflt={}; try{ const m=await (await fetch('/api/admin/model-tiers')).json(); Object.keys(m.defaults||{}).forEach(st=>{ const id=((m.defaults||{})[st]||{}).claude; const e=(m.models.anthropic||[]).find(x=>x.id===id); if(e) dflt[st]=e.name; }); }catch(e){}   // t-8f6d: each gate's Claude Code pick in Admin; the agent file's own model is only the floor
   let [cls,label,note]=IG_STATE[r.state]||['mute',r.state,''];
   // t-dccb: a differing file is said at the top: the strip leaves green, and the note under it names the files and whether the close is blocked
   const differ=r.state==='verified'?(r.files||[]).filter(x=>x.status!=='match'):[];
@@ -597,7 +598,7 @@ async function igLoad(refresh){
           return `<div class="ig-card ig-agent"><div class="ig-card-h"><b class="ig-name">${esc(a.name)}</b>`+
             (a.role?`<span class="ig-badge">${esc(a.role)}</span>`:'')+(a.read_only?'<span class="ig-badge" title="No Edit or Write tool. The shell can still write.">read-only</span>':'')+
             `<span class="ig-card-pill">${pill(list)}</span></div>`+
-            kv('Model',esc(a.model)+((st=>st&&dflt[st]?` <span class="ig-note">\u00b7 Admin default: ${esc(dflt[st])} (${st==='evaluator'?'Evaluator':'Reviewer'}, Claude Code)</span>`:'')(a.role==='binding'?'evaluator':a.role==='advisory'?'reviewer':'')),'ig-mono')+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code class="ig-mono">${esc(a.writes)}</code> only`:'')+
+            kv('Model',esc(a.model)+(a.step&&dflt[a.step]?` <span class="ig-note">\u00b7 Admin default: ${esc(dflt[a.step])} (${esc(a.step_label||a.step)}, Claude Code)</span>`:''),'ig-mono')+kv('Effort',esc(a.effort))+kv('Tools',esc(a.tools))+kv('Writes',a.writes?`<code class="ig-mono">${esc(a.writes)}</code> only`:'')+
             `<div class="ig-files">${list.map(fileRow).join('')}</div>`+
             (a.prompt?`<details class="ig-prompt"><summary>Prompt \u00b7 ${esc(a.file)}</summary><div class="ig-md">${safeMd(a.prompt)}</div></details>`:'')+`</div>`;
         }).join('')||rows.map(fileRow).join('');

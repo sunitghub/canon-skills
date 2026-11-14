@@ -165,15 +165,30 @@ out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out
 [[ "$("$P" resolve)" != *your-test* ]] || fail "pipeline: the Manual-only node is in the plain list, so every approve-time pin would change"
 full="$("$P" resolve --full)"
 yt="$(printf '%s\n' "$full" | awk -F'\t' '$2 == "your-test" { print $3 "|" $5 "|" $11 }')"; [[ "$yt" == "you|locked|manual" ]] || fail "pipeline: your-test is not a locked you node that is only for manual: $yt"
-lite="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /lite/ { printf "%s ", $2 }')"; [[ "$lite" == "code-simplifier code-reviewer doc-audit skill-eval break-it reviewer mutation-test " ]] || fail "pipeline: Lite skips $lite"
+lite="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /lite/ { printf "%s ", $2 }')"; [[ "$lite" == "spec-check code-simplifier code-reviewer doc-audit skill-eval break-it reviewer mutation-test " ]] || fail "pipeline: Lite skips $lite"
 man="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /manual/ { printf "%s ", $2 }')"; [[ "$man" == "reviewer mutation-test " ]] || fail "pipeline: Manual skips $man"
 for locked in start plan approve-plan build your-test security-review eval close; do [[ "$(printf '%s\n' "$full" | awk -F'\t' -v n="$locked" '$2 == n { print $10 }')" == "-" ]] || fail "pipeline: locked node $locked is skipped by a ticket option"; done
 refuse_default "node 'a': skip_on must be lite, manual or lite,manual" "${N1}    skip_on: bogus\n"
 refuse_default "node 'a': only must be manual" "${N1}    only: lite\n"
 
+# ── t-9b13: spec-check runs before approval, so it is left out of the approve-time pin; a node marked so must really run before it ──
+sc="$(printf '%s\n' "$full" | awk -F'\t' '$2 == "spec-check" { print $1 "|" $3 "|" $4 "|" $5 "|" $8 "|" $10 }')"
+[[ "$sc" == "25|agent|on|open|skills/sprint/reference/spec-check.md|lite" ]] || fail "pipeline: spec-check is not the open pre-approval agent node: $sc"
+[[ "$("$P" resolve)" != *spec-check* ]] || fail "pipeline: spec-check is in the plain list, so every approved ticket's pin would change"
+# the pinned list is the same as the default's without the node: adding it changes no project's pin (tools/sprint _pipeline_state hashes it)
+fakedef "$(awk '/^  - id: spec-check$/ { skip = 1; next } skip && /^  - id: / { skip = 0 } !skip' "$ROOT/skills/sprint/pipeline.yaml")" resolve
+[[ "$FRC" == 0 && "$FOUT" == "$("$P" resolve)" ]] || fail "pipeline: the plain list differs from the default without spec-check (exit $FRC): $FOUT"
+d="$(mkproj 'extends: canon-default\noff: [spec-check]\n')"
+[[ "$("$P" resolve --project "$d" --full | awk -F'\t' '$2 == "spec-check" { print $4 }')" == off ]] || fail "pipeline: a project cannot switch spec-check off"
+[[ "$("$P" resolve --project "$d")" == "$("$P" resolve)" ]] || fail "pipeline: switching spec-check off changed the pinned list"
+AP='  - id: approve-plan\n    kind: you\n    order: 30\n    locked: true\n    reason: "r"\n'
+refuse_default "node 'a': before_approval must be true" "${N1}    before_approval: false\n${AP}"
+refuse_default "node 'a': before_approval needs the approve-plan node" "${N1}    before_approval: true\n"
+refuse_default "node 'a': before_approval needs an order below approve-plan's" "nodes:\n  - id: a\n    kind: gate\n    order: 90\n    locked: false\n    before_approval: true\n${AP}"
+
 # ── more project-file shapes ──
 d="$(mkproj 'extends: canon-default\noff: [ ]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n')"
-got="$("$P" resolve --project "$d" --full | sed -n 6,8p | cut -f1,2,6)"
+got="$("$P" resolve --project "$d" --full | awk -F'\t' '$6 == "wrapup"' | cut -f1,2,6)"   # by group, not line number (t-9b13 added a node above)
 assert_eq "50	doc-audit	wrapup
 52	code-reviewer	wrapup
 54	code-simplifier	wrapup" "$got"
