@@ -124,7 +124,7 @@ const MT_STEP_UI={
   reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
   evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
   light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
-const MT_REGISTRY_AGENT='claude';   // whose picks are registry ids (modeltiers.go registryAgent): the registry cards' Default badge and Remove's holders
+const mtRegistryAgent=()=>mtOpts.registry_agent||'claude';   // whose picks are registry ids (the board's registryAgent): the registry cards' Default badge and Remove's holders
 const mtStepLabel=st=>st.label+(st.role?` (${st.role})`:'');
 const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
 let mtOptsErr='';
@@ -194,7 +194,7 @@ function mtRender(){
   // Card grid
   const grid=document.getElementById('mt-grid');
   const models=mtActive(mtProvider);
-  const defaultIds=new Set(Object.values(mtData.defaults||{}).map(per=>(per||{})[MT_REGISTRY_AGENT]).filter(Boolean));   // registry cards: registry picks only
+  const defaultIds=new Set(Object.values(mtData.defaults||{}).map(per=>(per||{})[mtRegistryAgent()]).filter(Boolean));   // registry cards: registry picks only
   const hasAlias=MT_ALIAS_PROVIDERS.has(mtProvider);
   grid.innerHTML = models.map(m=>{
     const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
@@ -331,7 +331,7 @@ const mtActive=prov=>(mtData.models[prov]||[]).filter(m=>!m.legacy);
 const mtLegacy=prov=>(mtData.models[prov]||[]).filter(m=>m.legacy);
 function mtHeld(prov,m){
   const held=[]; if(m.alias) held.push('the alias '+m.alias);
-  (mtOpts.steps||[]).forEach(st=>{ if(((mtData.defaults[st.id]||{})[MT_REGISTRY_AGENT])===m.id) held.push('the '+st.label+' default for '+mtAgentLabel(MT_REGISTRY_AGENT)); });   // registry moves touch these picks only (t-aba6)
+  (mtOpts.steps||[]).forEach(st=>{ if(((mtData.defaults[st.id]||{})[mtRegistryAgent()])===m.id) held.push('the '+st.label+' default for '+mtAgentLabel(mtRegistryAgent())); });   // registry moves touch these picks only (t-aba6)
   return held;
 }
 // The newest active Anthropic model of an alias's line (claude-<alias>-<version>), if none holds the alias yet.

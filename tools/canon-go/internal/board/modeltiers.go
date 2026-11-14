@@ -286,7 +286,7 @@ func tierOptionsView() map[string]any {
 	for _, a := range tierAgents {
 		agents = append(agents, map[string]string{"id": a, "label": tierAgentLabel[a]})
 	}
-	return map[string]any{"ok": true, "steps": steps, "agents": agents, "options": tierOptions(doc)}
+	return map[string]any{"ok": true, "steps": steps, "agents": agents, "registry_agent": registryAgent, "options": tierOptions(doc)}
 }
 
 // tierSlot names one default for a person: "the Evaluator default for Claude Code".

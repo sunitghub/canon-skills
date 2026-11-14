@@ -878,9 +878,9 @@ for bad in 'd["defaults"]["evaluator"]["claude"]="claude-haiku-5-5"' 'd["default
 done
 [[ "$(tiers_post '{"reset":true}')" == 200 && "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: reset after the migration case is not the seed"
 
-# t-aba6: Copilot CLI's models. With no read saved the list is the seed's fallback; the read runs a stub copilot (fixed arguments) and
-# saves Claude and GPT models only; the options route offers each picker's models from the validation rule; a Copilot pick outside
-# the list is refused.
+# t-aba6: Copilot CLI's models. With no read saved the list is the seed's fallback; the options route offers each picker's models from
+# the validation rule; the read route needs a loopback Origin; a Copilot pick outside Claude and GPT is refused. (The read itself, with a
+# stub copilot, is TestCopilotReadRoute in internal/board: this board was started before a stub could be put on its PATH.)
 cp_json() { curl -s "$B/api/admin/copilot-models"; }
 cp_json | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["source"]=="fallback" and any(m["id"]=="claude-sonnet-5.5" for m in d["models"]), d' \
   || fail "sprint-check-api: GET copilot-models without a read is not the seed fallback"

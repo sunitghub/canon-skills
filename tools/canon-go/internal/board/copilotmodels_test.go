@@ -3,6 +3,9 @@ package board
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -224,5 +227,56 @@ func TestLoadModelTiersConvertsSliceOneCopilotPicks(t *testing.T) {
 	}
 	if _, has := got["copilot_models"]; !has || !modelTiersValid(got) {
 		t.Errorf("the fallback list was not filled, or the registry is invalid: %s", tierDefaultsProblem(got))
+	}
+}
+
+// t-aba6 (evaluator finding): the read route end to end through handlePost with a stub copilot. Protects POST
+// /api/admin/copilot-models/read: 200 with the list and one copilot-models.read audit line (old and new: the model counts), 409 while a
+// read runs (nothing started), 502 with the reason when the read fails, 403 without a loopback Origin (it starts a program).
+func TestCopilotReadRoute(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	post := func(origin string) (int, map[string]any) {
+		req := httptest.NewRequest(http.MethodPost, "/api/admin/copilot-models/read", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		w := httptest.NewRecorder()
+		handlePost(w, req)
+		var body map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &body)
+		return w.Code, body
+	}
+	log := stubCopilot(t, "ok")
+	if code, _ := post(""); code != http.StatusForbidden {
+		t.Errorf("no Origin = %d, want 403", code)
+	}
+	if b, _ := os.ReadFile(log); len(b) != 0 {
+		t.Errorf("a refused read started copilot: %s", b)
+	}
+	code, body := post("http://localhost")
+	if code != http.StatusOK || body["source"] != "copilot" {
+		t.Fatalf("read = %d %v", code, body)
+	}
+	ev := settingEvents(t, dir)
+	if len(ev) != 1 {
+		t.Fatalf("a read logged %d lines, want 1: %v", len(ev), ev)
+	}
+	if d := ev[0]["data"].(map[string]any); d["name"] != "copilot-models.read" || d["new"] != "4" {
+		t.Errorf("audit line = %v", d)
+	}
+	copilotReadMu.Lock()
+	code, body = post("http://localhost")
+	copilotReadMu.Unlock()
+	if code != http.StatusConflict || body["busy"] != true {
+		t.Errorf("a read during a read = %d %v, want 409", code, body)
+	}
+	stubCopilot(t, "error")
+	if code, body = post("http://localhost"); code != http.StatusBadGateway || !strings.Contains(fmt.Sprint(body["error"]), "Copilot refused") {
+		t.Errorf("a failed read = %d %v, want 502 with the reason", code, body)
+	}
+	if n := len(settingEvents(t, dir)); n != 1 {
+		t.Errorf("a busy or failed read logged: %d lines", n)
 	}
 }

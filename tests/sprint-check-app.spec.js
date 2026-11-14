@@ -14366,6 +14366,24 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
   });
 
+  // t-aba6 (criteria 3, user 2026-11-14): a list read more than a day ago says so; a saved Copilot pick the list lacks stays selected,
+  // marked "saved, not offered" (the board lists it with saved_only), instead of the select falling back to its first option.
+  test('Copilot CLI: an old list says so, and a saved pick the list lacks stays shown (t-aba6)', async ({ page }) => {
+    const old = { ok: true, source: 'copilot', read_at: '2026-01-01T00:00:00Z', models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
+    OPTIONS.options.plan.copilot.push({ id: 'claude-opus-5.5', name: 'claude-opus-5.5', group: 'Saved', saved_only: true });
+    FIXTURE.defaults.plan.copilot = 'claude-opus-5.5';
+    try {
+      await openModelTiers(page, old);
+      await page.locator('#mt-agent').selectOption('copilot');
+      await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-01-01 00:00 UTC \u00b7 more than a day old");
+      await expect(page.locator('#mt-step-plan select')).toHaveValue('claude-opus-5.5');
+      await expect(page.locator('#mt-step-plan select option:checked')).toHaveText('claude-opus-5.5 (saved, not offered)');
+    } finally {
+      OPTIONS.options.plan.copilot.pop();
+      FIXTURE.defaults.plan.copilot = 'claude-sonnet-5.5';
+    }
+  });
+
   test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
