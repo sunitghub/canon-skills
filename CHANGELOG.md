@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.55.19] - 2026-11-14
+
+- Changed: canon's shell code compares two folders one way, `canon_same_folder` in `tools/platform-lib.sh` (the same file, else the same key: `C:\x`, `C:/x` and `/c/x` are one folder). `canon update` on a Windows zip install now recognises `%USERPROFILE%\.canon` however it is spelled, and the uninstaller lists a project registered in two spellings once, even without `cygpath`. The folder guard also refuses `C:\\Windows` written with a doubled separator (t-c8c6).
+- Changed: `sprint token-spend`'s "No completed sprints" message names the event projects that did not match, beside the path list (t-c8c6).
+- Added: the pre-gate's advisory `path forms` field names a new shell line that writes its own drive-letter rule or compares a `cygpath -u` result; it never fails the gate (t-c8c6).
+
 ## [0.55.18] - 2026-11-14
 
 - Added: send a Manual ticket to GitHub on purpose. The Send panel shows a notice and a box, **Send it. Will test after merged** (off; Create issue waits for it); `tkt send-issue <id> --manual-after-merge` is the same in a terminal. The cloud gets the ticket without its `[manual]` criteria and with Manual off; Import results keeps your ticket Manual and open with those criteria back, and Check & merge then tells you to test the merged result, record it (`sprint manual-qa`) and close it (`sprint complete`). The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-e790).
