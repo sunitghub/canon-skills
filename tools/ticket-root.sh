@@ -262,3 +262,23 @@ copy_ticket_back() {
   rm -f "$old"
   echo "copied $id's closed folder back to $main/$id"
 }
+
+# manual_criteria <acceptance.md> <lines|strip|numbered> — t-aa24, t-e790: the one rule for a [manual] criterion: a checkbox bullet (- or *) under
+# `## Criteria` whose text starts with [manual] (any case), outside a fenced block. lines: those lines as written; strip: the file without them;
+# numbered: "<n>\t<text>" (n counted among all criteria), as `sprint check-evidence` lists them. Reads at most 256 KiB, CRs dropped.
+manual_criteria() {
+  [[ -f "$1" && ! -L "$1" ]] || return 0
+  head -c 262144 -- "$1" | LC_ALL=C tr -d '\r' | awk -v mode="$2" '
+    /^[[:space:]]*```/ { fence = !fence; if (mode == "strip") print; next }
+    fence { if (mode == "strip") print; next }
+    /^##[[:space:]]/ { inc = ($0 ~ /^##[[:space:]]+Criteria[[:space:]]*$/); if (mode == "strip") print; next }
+    inc && /^[[:space:]]*[-*] \[[ xX]\][[:space:]]+[^[:space:]]/ {
+      n++; t = $0; sub(/^[[:space:]]*[-*] \[[ xX]\][[:space:]]+/, "", t)
+      if (tolower(substr(t, 1, 8)) == "[manual]") {
+        if (mode == "lines") print
+        else if (mode == "numbered") { t = substr(t, 9); sub(/^[[:space:]]+/, "", t); print n "\t" substr(t, 1, 100) }
+        next
+      }
+    }
+    mode == "strip" { print }'
+}

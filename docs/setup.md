@@ -185,6 +185,12 @@ After you change the setup script, start a new session: one that is already open
    `origin` (never forced; `-u` for a branch origin does not have; refused when origin has commits you lack). When files are changed the panel numbers the steps (Step 1: Commit and push, Step 2: Create issue): a changed tracked file keeps **Create issue** disabled until the push succeeds or you tick "Send without these changes (the cloud will not see them)"; files that are only untracked get a one-line note and do not block. Unpushed commits still refuse. A ticket you planned here is
    `in_progress`; it can still be sent once no session is working on it, and it goes back to `open` as it leaves. The
    board's GitHub option and `--dry-run` show exactly what the command says.
+   A Manual ticket (`manual: true`: you test it by hand) is refused unless you send it on purpose with
+   `--manual-after-merge` (the Send panel's box **Send it. Will test after merged**): the issue leaves its `[manual]`
+   criteria out of Acceptance, lists them in a section the agent must not attempt, and the cloud's copy has Manual off,
+   so its close does not wait for you. Import results keeps your ticket Manual and open (`cloud_status: closed`) and
+   puts the `[manual]` criteria back; after Check & merge, test the merged result, record it with `sprint manual-qa`,
+   and close it with `sprint complete` (t-e790).
 3. Start the session. One command does steps 2 and 3: `tkt send-issue <id> --launch` shows the issue, asks `[y/N]`
    (`--yes` skips the question), creates it, then runs `claude --cloud "<prompt>"` from your checkout and notes the
    launch in `.tickets/<id>/github.md`. It needs a real terminal window: `claude --cloud` refuses when its output is piped,

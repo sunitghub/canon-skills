@@ -500,6 +500,15 @@ git reset -q --hard "$BASE"; out="$(STUB_FF_FETCH_FAIL=1 ff_merge)"; assert_cont
 assert_eq "$BASE" "$(git rev-parse main)"
 git checkout -q -B side; git branch -qD main; out="$(ff_merge)"; assert_contains "$out" "Local main: none here; nothing to update"
 git checkout -q -B main "$BASE"
+# t-e790: a Manual ticket (sent with --manual-after-merge) is still open after its merge: merge-pr says how to test and close it, and
+# does not close it. Any other ticket gets no such line.
+out="$(ff_merge)"; [[ "$out" != *"is Manual and stays open"* ]] || fail "a non-Manual ticket got the Manual next step: $out"
+git reset -q --hard "$BASE"; cp "$f" "$W/f-before"
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+out="$(ff_merge)"
+assert_contains "$out" "next: $id is Manual and stays open: test the merged main here, record it (sprint manual-qa $id --by \"<you>\" --step \"<what you tested>|pass\"), then close it (sprint complete $id)"
+assert_grep '^status: open$' "$f"
+cp "$W/f-before" "$f"; git reset -q --hard "$BASE"
 
 # t-41ff: the PR carries files canon already wrote here (import-results): identical ones, this ticket's ticket.md (local
 # fields aside) and the audit log are set aside, main fast-forwards, and the local fields and log lines come back. Any
@@ -727,6 +736,12 @@ assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"
 before="$(sig)"; out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "second tkt merged failed: $out"
 assert_contains "$out" "already has merged:"
 [[ "$(sig)" == "$before" && "$(grep -c '^## ' "$gt")" == "$((blocks + 1))" ]] || fail "a second tkt merged wrote again"
+[[ "$out" != *"is Manual and stays open"* ]] || fail "tkt merged gave a non-Manual ticket the Manual next step: $out"
+# t-e790: _record_merge (tkt merged, the poll) gives an open Manual ticket the same next step merge-pr does, and leaves it open
+cp "$f" "$W/f-before"; sed -i.bak -e '/^merged: /d' -e 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "tkt merged of a Manual ticket failed: $out"
+assert_contains "$out" "next: $id is Manual and stays open: test the merged main here, record it (sprint manual-qa $id"
+assert_grep '^status: open$' "$f"; cp "$W/f-before" "$f"
 echo "tkt merged: records once, refuses without writing (t-7c89)"
 
 # t-7c89: each tkt merged refusal names its reason and writes nothing; a recorded merge writes exactly the fields merge-pr does.

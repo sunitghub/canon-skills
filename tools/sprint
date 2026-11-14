@@ -1405,16 +1405,8 @@ _manual_qa_state() {
 
 # _manual_criteria <id> — one line per criterion under `## Criteria` whose text starts with [manual]: "<number>\t<text>" (numbered among all criteria).
 _manual_criteria() {
-  local f; f="$(_mqa_dir "$1")/acceptance.md"
-  [[ -f "$f" && ! -L "$f" ]] || return 0
-  # the same section and bullet forms `sprint complete` accepts (_acceptance_section, _gate_acceptance_sections); a fenced block is skipped
-  head -c 262144 -- "$f" | LC_ALL=C tr -d '\r' | awk '
-    /^[[:space:]]*```/ { fence = !fence; next }
-    fence { next }
-    /^##[[:space:]]/ { inc = ($0 ~ /^##[[:space:]]+Criteria[[:space:]]*$/); next }
-    inc && /^[[:space:]]*[-*] \[[ xX]\][[:space:]]+[^[:space:]]/ {
-      n++; t = $0; sub(/^[[:space:]]*[-*] \[[ xX]\][[:space:]]+/, "", t)
-      if (tolower(substr(t, 1, 8)) == "[manual]") { t = substr(t, 9); sub(/^[[:space:]]+/, "", t); print n "\t" substr(t, 1, 100) } }'
+  # the same section and bullet forms `sprint complete` accepts (_acceptance_section, _gate_acceptance_sections); one owner (t-e790): ticket-root.sh
+  manual_criteria "$(_mqa_dir "$1")/acceptance.md" numbered
 }
 
 # _manual_list <script text> <NAME> — the words of the bash array `NAME=( ... )` (one line or several), one per line.

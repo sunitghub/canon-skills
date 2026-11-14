@@ -761,7 +761,9 @@ export async function showGithubPanel(t, tab) {
   }
   panel.innerHTML = `<div class="ck-gh-box" data-gh-send="${esc(t.id)}"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;
   let pv;
-  try { pv = await getJSON(ghApi(t.id, 'send-preview')); }
+  // t-e790: a Manual ticket goes only on purpose: the preview is the --manual-after-merge issue, and Create waits for the checkbox
+  const manual = String(t.manual) === 'true';
+  try { pv = await getJSON(ghApi(t.id, 'send-preview') + (manual ? '?manual_after_merge=1' : '')); }
   catch (e) { pv = { ok: false, output: String(e.message || e) }; }
   if (gen !== ghPanelGen) return;   // a later call (the Sent panel, a tab switch) or a hide owns the panel now
   if (tab && (tab !== cockpitState || !tab.ghPick)) return;   // another tab, or another place, was picked meanwhile
@@ -794,20 +796,24 @@ export async function showGithubPanel(t, tab) {
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
+      ${manual ? `<div class="ck-gh-note" id="ck-gh-manual" role="note"><p>${esc(t.id)} is a Manual ticket: you test it by hand. The cloud does the rest; its [manual] criteria stay here, and the ticket stays open after the merge until you test the merged result and close it.</p></div>` : ''}
       ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step1">Step 1: Commit and push — the cloud only sees what is on GitHub</h4>` : ''}
       ${localChanges && !kinds.tracked && kinds.untracked ? `<p id="ck-gh-untracked">${kinds.untracked} new file${kinds.untracked === 1 ? ' is' : 's are'} not tracked, so the cloud will not see ${kinds.untracked === 1 ? 'it' : 'them'}. You can still create the issue.</p>` : ''}
       ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div></div>` : ''}
       <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
       ${needPush ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-skip"> Send without these changes (the cloud will not see them)</label>` : ''}
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
+      ${manual && pv.ok ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-manual-ok"> Send it. Will test after merged</label>` : ''}
       ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step2">Step 2: Create issue</h4>` : ''}
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok && !needPush ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok && !needPush && !manual ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   if (cpOffer) wireCommitPush(t, tab, gen);
   const create = document.getElementById('ck-gh-create');
   const skip = document.getElementById('ck-gh-skip');
-  const canCreate = () => pv.ok && (!needPush || skip.checked);
+  const mok = document.getElementById('ck-gh-manual-ok');
+  const canCreate = () => pv.ok && (!needPush || skip.checked) && (!manual || (mok && mok.checked));
   skip?.addEventListener('change', () => { create.disabled = !canCreate(); });
+  mok?.addEventListener('change', () => { create.disabled = !canCreate(); });
   create?.addEventListener('click', async () => {
     const pub = document.getElementById('ck-gh-public');
     if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
@@ -815,7 +821,10 @@ export async function showGithubPanel(t, tab) {
     const statusEl = document.getElementById('ck-gh-status'), previewEl = document.getElementById('ck-gh-preview');
     create.disabled = true; create.textContent = 'Sending…';
     let res;
-    try { res = await postJSON(ghApi(t.id, 'send'), pub ? { public: true } : {}); }
+    const body = {};
+    if (pub) body.public = true;
+    if (manual) body.manual_after_merge = true;   // t-e790: only reachable with the box ticked (canCreate)
+    try { res = await postJSON(ghApi(t.id, 'send'), body); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
     if (!res.ok) {
       create.disabled = !canCreate(); create.textContent = 'Create issue';

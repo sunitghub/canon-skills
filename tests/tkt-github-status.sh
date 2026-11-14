@@ -50,6 +50,14 @@ git push -q origin --delete "canon-results/$id"
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$HEAD7" > ".tickets/$id/eval-report.md"
 sed -i.bak 's/^status: open$/status: closed/' "$f" && rm -f "$f.bak"
                                                 assert_eq "results-in|24|OPEN|false|pass|true" "$(st)"
+# t-e790: a Manual ticket stays open after its import (the person tests after the merge) with cloud_status: closed: still results-in, so
+# the card offers Check & merge, not Continue here (land).
+cp "$f" "$W/f-closed"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+awk '/^---$/ && ++n == 2 { print "cloud_status: closed" } { print }' "$f" > "$W/fm" && mv "$W/fm" "$f"
+assert_eq "results-in|24|OPEN|false|pass|true" "$(st)"
+assert_eq false "$("$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).land))')"
+"$TKT" manual "$id" off >/dev/null; assert_eq "pr-open|24|OPEN|false|pass|true" "$(st)"   # not Manual: an open ticket is not results-in
+cp "$W/f-closed" "$f"
 # A verdict on another head is not results-in.
 printf 'evaluator-run-id: 1-1\ngraded-head: ffffffffffffffffffffffffffffffffffffffff\npass: all met\n' > ".tickets/$id/eval-report.md"
                                                 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"

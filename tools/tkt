@@ -1278,10 +1278,11 @@ _si_live_session() {
 }
 
 cmd_send_issue() {
-  local id="" dry=false public=false launch=false yes=false allow=false
+  local id="" dry=false public=false launch=false yes=false allow=false mam=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
+      --manual-after-merge) mam=true; shift ;;
       --public)  public=true; shift ;;
       --launch)  launch=true; shift ;;
       --yes)     yes=true; shift ;;
@@ -1290,7 +1291,7 @@ cmd_send_issue() {
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]" >&2; exit 1; }
+  [[ -z "$id" ]] && { echo "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--manual-after-merge] [--launch [--yes]]" >&2; exit 1; }
   $yes && ! $launch && { echo "send-issue: --yes only goes with --launch" >&2; exit 1; }
   $launch && $dry && { echo "send-issue: --launch and --dry-run cannot go together; --dry-run only previews" >&2; exit 1; }
   # t-0da2: --launch starts a cloud session, which costs plan usage, so every refusal comes before anything is created.
@@ -1308,7 +1309,6 @@ cmd_send_issue() {
   file="$(find_ticket "$id")"
   id="$(get_field "$file" id)"
   tdir="$(dirname "$file")"
-  [[ "$(get_field "$file" manual)" == true ]] && { echo "send-issue: $id is a Manual ticket (manual: true): a person cannot test in the cloud. Run it here, or 'tkt manual $id off' first." >&2; exit 1; }   # t-51c6: before anything is sent or launched
   title="$(get_title "$file")"
   local sent; sent="$(get_field "$file" github)"
   if [[ -n "$sent" && "$(get_field "$file" runs)" == github ]]; then
@@ -1329,6 +1329,13 @@ cmd_send_issue() {
   # A github: line without runs: github links an issue this ticket came from (sync-issues, import-issue) or one a
   # take-back left open: sending again would make a second issue for the same work.
   [[ -n "$sent" ]] && { echo "send-issue: $id is already linked to $sent; work it here, or close that issue and remove the github: line to send it" >&2; exit 1; }
+  # t-51c6: before anything is sent (a ticket already sent, above, only gets its session started: it went with the flag). t-e790: --manual-after-merge sends it on purpose: the cloud copy has Manual off and
+  # no [manual] criteria; the person tests the merged result here, where the ticket stays Manual and open.
+  if [[ "$(get_field "$file" manual)" == true ]]; then
+    $mam || { echo "send-issue: $id is a Manual ticket (manual: true): a person cannot test in the cloud. Send it anyway and test it here after the merge: tkt send-issue $id --manual-after-merge. Or run it here, or 'tkt manual $id off' first." >&2; exit 1; }
+  else
+    $mam && { echo "send-issue: --manual-after-merge is for a Manual ticket; $id is not one (manual: true is not set)" >&2; exit 1; }
+  fi
 
   local root repo
   root="$(dirname "$(tickets_dir)")"
@@ -1366,8 +1373,16 @@ cmd_send_issue() {
     done < <(awk '/^```/ { fence = !fence; next } !fence && sub(/^## /, "")' "$1" | tr -d '\r')
     return 0
   }
-  local asecs psecs rbody
-  asecs="$(_si_all "$acc" prompts)"; psecs="$(_si_all "$plan")"
+  local asecs psecs rbody mcrit=""
+  if $mam && [[ -f "$acc" ]]; then   # t-e790: the [manual] criteria stay home: the cloud copy's acceptance has none
+    mcrit="$(manual_criteria "$acc" lines | sed -E 's/^[[:space:]]*[-*] \[[ xX]\][[:space:]]+/- /')"
+    local fa; fa="$(mktemp "${TMPDIR:-/tmp}/tkt-acc.XXXXXX")" || exit 1
+    manual_criteria "$acc" strip > "$fa"
+    asecs="$(_si_all "$fa" prompts)"; rm -f "$fa"
+  else
+    asecs="$(_si_all "$acc" prompts)"
+  fi
+  psecs="$(_si_all "$plan")"
   _has_criteria "$acc" || echo "send-issue: warning: $id has no acceptance criteria: the session will draft them and wait for your approval" >&2
   [[ -n "$(_si_section "$plan" Approach)" ]] || echo "send-issue: warning: $id has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval" >&2
   rbody=""; [[ -f "$res" ]] && rbody="$(awk 'NR == 1 && /^# / { next } { print }' "$res" | awk 'NF { s = 1 } s')"
@@ -1385,6 +1400,12 @@ cmd_send_issue() {
     printf '\n# Plan\n'; _si_or_none "$psecs"
     printf '\n# Research\n'; _si_or_none "$rbody"
     printf '\n# Working on this\n'
+    if $mam; then
+      printf '## Tested by the person after the merge\n'
+      printf 'This is a Manual ticket sent on purpose: the person tests these by hand on their machine after the merge. Do not attempt\n'
+      printf 'them, do not add them to acceptance.md, and do not run `sprint manual-qa`; close the rest of the sprint as usual.\n\n'
+      if [[ -n "$mcrit" ]]; then printf '%s\n\n' "$mcrit"; else printf '(no [manual] criteria are listed yet; the person tests the whole change)\n\n'; fi
+    fi
     [[ -z "$caps" ]] || printf 'Capped files this plan lists (make room before adding to them):\n%s\n\n' "$caps"
     printf 'This repository uses canon. Work in this order:\n\n'
     printf '1. Run `sprint import-issue <this issue number>` first: it rebuilds .tickets/%s/ from the sections above and starts the\n' "$id"
@@ -1416,6 +1437,7 @@ cmd_send_issue() {
     printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
     printf '   and say you are done.\n'
     printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
+    $mam && printf '\n<!-- canon:manual-after-merge -->'   # t-e790: read back by import-issue (above lite and the ticket marker)
     [[ "$lite" == true ]] && printf '\n<!-- canon:lite -->'
     printf '\n<!-- canon:ticket %s -->\n' "$id"
   } > "$body"
@@ -1465,7 +1487,8 @@ cmd_send_issue() {
   if [[ "$st" == in_progress ]]; then   # t-ced8: out on GitHub is open + runs: github (t-718b); a ticket planned here joins that state, last
     cmd_set_status "$id" open   # also clears ACTIVE when it names this ticket
   fi
-  _gh_trail "$tdir" sent "issue: $url" "repo: $repo"
+  if $mam; then _gh_trail "$tdir" sent "issue: $url" "repo: $repo" "manual after merge: the cloud copy has Manual off; test it here after the merge"
+  else _gh_trail "$tdir" sent "issue: $url" "repo: $repo"; fi
   canon_event github.sent tkt "$root" "ticket=$id" "issue=$n"   # t-4c09: observer-only; after the post and every write
   _si_texts "$id" "$n"
   printf 'Sent %s as %s\nIn a Claude cloud session on %s, type:\n' "$id" "$url" "$repo"
@@ -1511,9 +1534,13 @@ cmd_import_issue() {
   [[ -n "$title" ]] || title="$id"
   # t-4d39: send-issue marks a Lite ticket with this line directly above the closing ticket marker; the same text anywhere
   # else (a ticket's own notes, a code block, an issue sync-issues wraps: it always leaves a blank line there) is content.
-  local lite=false
+  local lite=false mam=false
   awk -v t="<!-- canon:ticket $id -->" '$0 == t { found = (prev == "<!-- canon:lite -->") } { prev = $0 } END { exit !found }' "$tmp/body" \
     && lite=true
+  # t-e790: a Manual ticket sent with --manual-after-merge: this line sits right above the lite marker or the ticket marker
+  awk -v t="<!-- canon:ticket $id -->" -v m="<!-- canon:manual-after-merge -->" \
+    '$0 == t { found = (prev == m || (prev == "<!-- canon:lite -->" && prev2 == m)) } { prev2 = prev; prev = $0 } END { exit !found }' "$tmp/body" \
+    && mam=true
   # Split the body into its "# " parts; "(none yet)" means the part was empty.
   # Only the five headings send-issue writes start a part; any other "# " line (a note, a shell comment) is content.
   awk -v d="$tmp" '/^```/ { fence = !fence }
@@ -1559,6 +1586,9 @@ cmd_import_issue() {
       set_or_add_field "$tdir/ticket.md" github "$repo#$n"
     fi
     if $lite; then set_or_add_field "$tdir/ticket.md" demo true; fi   # adds only: a body without the marker never clears it
+    # t-e790: the cloud copy of a Manual ticket sent on purpose has Manual off (a tracked ticket.md brings manual: true along),
+    # so its close does not wait for a manual-qa record a cloud session cannot write
+    if $mam && [[ -n "$(get_field "$tdir/ticket.md" manual)" ]]; then remove_field "$tdir/ticket.md" manual; echo "import-issue: Manual is off in this copy: the person tests it after the merge" >&2; fi
   fi
   # t-4b34: a PR that says "Fixes #<n>" is the evidence a cloud session ran, so the recovered ticket is out on GitHub again (runs: github) and the card shows its
   # state. Only when the issue was read through gh: a --body-file import and sync-issues never look and must not claim a session (t-718b). A cloud session's own
@@ -2280,6 +2310,15 @@ cmd_merge_pr() {
     elif [[ "$ist" == CLOSED ]]; then echo "issue #$issue was already closed"
     else echo "merge-pr: issue #$issue on $repo reads as '$ist'; not closing it" >&2; fi
   fi
+  _manual_next "$file" "$base"
+}
+
+# _manual_next <ticket.md> <base> — t-e790: a Manual ticket sent with --manual-after-merge is still open after its merge: the person tests
+# the merged result here, records it and closes it. Prints that next step; nothing for any other ticket.
+_manual_next() {
+  [[ "$(get_field "$1" manual)" == true && "$(get_field "$1" status)" != closed ]] || return 0
+  local id; id="$(get_field "$1" id)"
+  echo "next: $id is Manual and stays open: test the merged $2 here, record it (sprint manual-qa $id --by \"<you>\" --step \"<what you tested>|pass\"), then close it (sprint complete $id)"
 }
 
 # cmd_merge <id> [--test CMD] [--yes | --check] — t-2906: Check & merge for any closed ticket, the one command the board runs. A
@@ -2686,6 +2725,7 @@ _record_merge_locked() {
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base" "recorded by: $label"
   echo "$label: recorded PR #$pr as merged into $base${sha:+ ($sha)}"
+  _manual_next "$file" "$base"   # t-e790
 }
 
 # cmd_merged <id> --pr N [--sha S] — t-7c89: the terminal path for a PR merged outside merge-pr (by hand, or on GitHub).
@@ -2755,7 +2795,12 @@ _branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1"
 
 # _ff_strip_fields — t-41ff: a ticket.md on stdin without the frontmatter lines canon keeps per machine, to compare a local
 # ticket.md with the merged one.
-_ff_strip_fields() { awk 'NR == 1 && $0 == "---" { fm = 1; print; next } fm && $0 == "---" { fm = 0 } fm && /^(github|runs|merged|cloud_status):/ { next } { print }'; }
+# t-e790: with "manual", a Manual ticket's status:, manual: and closed: count as local too: it stays open here, untested, while the cloud's copy
+# (a tracked .tickets/ brings it in the PR) closed without Manual; the person's test closes it here.
+_ff_strip_fields() {
+  local re='^(github|runs|merged|cloud_status):'; [[ "${1:-}" == manual ]] && re='^(github|runs|merged|cloud_status|status|manual|closed):'
+  awk -v re="$re" 'NR == 1 && $0 == "---" { fm = 1; print; next } fm && $0 == "---" { fm = 0 } fm && $0 ~ re { next } { print }'
+}
 
 # _ff_extra_lines <merged> <local> — t-41ff: the local file's lines the merged copy lacks, in order (each merged line
 # accounts for one equal local line).
@@ -2903,7 +2948,8 @@ _ff_here() {
       fi
       # t-dde9: any ticket's ticket.md, not only $id's: an imported cloud ticket's local copy collides when another ticket's merge brings it
       if [[ "$p" =~ ^\.tickets/t-[a-z0-9]+/ticket\.md$ ]] \
-        && cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields) <(tr -d '\r' < "$root/$p" | _ff_strip_fields); then safe+=("$p"); kinds+=(ticket); continue; fi
+        && { local mm=""; grep -qE $'^manual: true\r?$' "$root/$p" && mm=manual
+             cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields "$mm") <(tr -d '\r' < "$root/$p" | _ff_strip_fields "$mm"); }; then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
       # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log. t-e7fb: canon's own
@@ -3043,7 +3089,9 @@ cmd_github_status() {
     else warn="$(printf '%s' "${warn%%$'\n'*}" | sed 's/^github-status: //')"; fi
   fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
-  elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
+  # t-e790: a Manual ticket stays open after the import (the person tests after the merge); its cloud copy closed is the same "results in"
+  elif [[ "$verdict" == pass ]] && { $match || $late; } && { [[ "$(get_field "$file" status)" == closed ]] \
+       || [[ "$(get_field "$file" manual)" == true && "$(get_field "$file" cloud_status)" == closed ]]; }; then stage=results-in
   elif $branch || $trk; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
@@ -3780,8 +3828,10 @@ cmd_import_results() {
   # t-6278: a ticket.md whose id: is another ticket's would, once imported, be read as that ticket; refuse before writing anything.
   local fid; fid="$(get_field "$tmp/$rel/ticket.md" id)"
   [[ "$fid" == "$id" ]] || { echo "import-results: $src has $rel/ticket.md with id: ${fid:-none}, not $id; nothing imported, $rel/ is as it was" >&2; exit 1; }
-  local gh_line="" runs_line=""
-  [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
+  local gh_line="" runs_line="" man="" mcrit=""
+  [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; man="$(get_field "$tdir/ticket.md" manual)"; }
+  # t-e790: a Manual ticket sent with --manual-after-merge comes back from a copy with Manual off and no [manual] criteria: keep both from here
+  [[ "$man" == true ]] && mcrit="$(manual_criteria "$tdir/acceptance.md" lines)"
   local f n=0 kept=0
   mkdir -p "$tdir"
   while IFS= read -r -d '' f; do
@@ -3798,8 +3848,33 @@ cmd_import_results() {
   [[ -n "$runs_line" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs "$runs_line"
   # t-4b34: a cloud sprint's results coming back are the same evidence: a ticket with a github: link and no runs: is out on GitHub
   [[ -n "$(get_field "$tdir/ticket.md" github)" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs github
-  local st cst="" verdict graded rc=0 prline=""
+  local st cst="" verdict graded rc=0 prline="" mopen=false
   st="$(get_field "$tdir/ticket.md" status)"
+  # t-e790: a Manual ticket stays Manual and open: the person tests the merged result here, then closes it (sprint manual-qa, sprint complete).
+  if [[ "$man" == true ]]; then
+    set_or_add_field "$tdir/ticket.md" manual true || { echo "import-results: could not keep manual: true on $id" >&2; exit 1; }
+    if [[ -n "$mcrit" && -f "$tdir/acceptance.md" ]]; then
+      local mline mt; mt="$(mktemp "${TMPDIR:-/tmp}/tkt-mcrit.XXXXXX")" || exit 1
+      while IFS= read -r mline; do grep -qxF -- "$mline" <(tr -d '\r' < "$tdir/acceptance.md") || printf '%s\n' "$mline"; done <<< "$mcrit" > "$mt"
+      if [[ -s "$mt" ]]; then
+        awk -v mf="$mt" 'function put() { while ((getline l < mf) > 0) print l; done = 1 }
+          { h = $0; sub(/\r$/, "", h) }
+          crit && !done && h ~ /^## / { put(); print ""; crit = 0 }
+          h == "## Criteria" { crit = 1 }
+          { print }
+          END { if (!done) { if (!crit) print "\n## Criteria"; put() } }' "$tdir/acceptance.md" > "$mt.out" && cat "$mt.out" > "$tdir/acceptance.md" \
+          || { rm -f "$mt" "$mt.out"; echo "import-results: could not put the [manual] criteria back into $rel/acceptance.md" >&2; exit 1; }
+      fi
+      rm -f "$mt" "$mt.out"
+    fi
+    if [[ -n "$st" && "$st" != open ]]; then
+      set_field "$tdir/ticket.md" status open && set_or_add_field "$tdir/ticket.md" cloud_status "$st" \
+        || { echo "import-results: could not set $id to open" >&2; exit 1; }
+      canon_event ticket.status_changed tkt "$(dirname "$dir")" "ticket=$id" "from=$st" to=open
+      cst=" (cloud: $st)"; st=open
+    fi
+    mopen=true
+  fi
   # t-1cf5: an in_progress import would bind to this checkout and block its local close; the close happens in a
   # worktree at the PR head, where tkt start sets in_progress again. cloud_status keeps what the cloud left.
   if [[ "$st" == in_progress ]]; then
@@ -3810,12 +3885,14 @@ cmd_import_results() {
   fi
   read -r verdict graded < <(_eval_verdict_head "$tdir")
   echo "import-results: $n files into $rel/ ($kept local files kept in $rel/.before-import/)"
-  echo "  status: ${st:-unknown}$cst$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"
+  if $mopen; then echo "  status: open$cst; Manual: it stays open until you test the merged result here (sprint manual-qa $id, then sprint complete $id)"
+  else echo "  status: ${st:-unknown}$cst$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"; fi
   [[ "$verdict" == - ]] && verdict=""; [[ "$graded" == - ]] && graded=""
   echo "  evaluator: ${verdict:-no eval-report.md}  graded-head: ${graded:-none}"
   # t-b650: the cloud's evaluator run record (.claude/subagent-runs.jsonl, the harness transcript) cannot travel, so a ticket
   # the cloud did not close is closed here, in a worktree at the PR head, with its own evaluator run.
-  if [[ "$st" != closed ]]; then
+  # t-e790: a Manual ticket whose cloud copy closed is open on purpose (the person tests after the merge): its next step is Check & merge
+  if [[ "$st" != closed ]] && ! { $mopen && [[ "$(get_field "$tdir/ticket.md" cloud_status)" == closed ]]; }; then
     echo "  next: tkt land $id${pr:+ --pr $pr}"
     echo "    run the evaluator and sprint complete in that worktree: the cloud's evaluator run record cannot travel,$([[ "$verdict" == pass ]] && echo " so its pass will not satisfy the local close" || echo " and ${verdict:-no report} is all that came back")"
   fi
@@ -3914,11 +3991,13 @@ Commands:
                             ticket.md is older than DAYS (default 14): delete raw
                             board-spec JSON reports, pack the rest into evidence.tgz.
                             Files cited by path stay loose. sprint complete runs it.
-  send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]
+  send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--manual-after-merge] [--launch [--yes]]
                             Post the ticket as an issue on origin's GitHub repo, laid
                             out like the board (Description, Acceptance, Plan, Research), for a
                             Claude cloud session ("Work on Issue#N"). Records github:
-                            and runs: github. --launch also starts that session with
+                            and runs: github. A Manual ticket needs --manual-after-merge:
+                            the cloud copy leaves out its [manual] criteria, and you
+                            test it here after the merge. --launch also starts that session with
                             `claude --cloud` from this checkout, in a real terminal only
                             (asks first; --yes skips the question; warns, never pushes,
                             if the branch is ahead). On a ticket that was already sent,

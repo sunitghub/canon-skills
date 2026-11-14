@@ -187,14 +187,53 @@ assert_contains "$pub" "acme/app is PUBLIC"
 dry="$("$TKT" send-issue "$id2" --dry-run)"; assert_contains "$dry" "repo: acme/app (PUBLIC)"
 [[ "$(writes)" == 0 && "$(cksum < ".tickets/$id2/ticket.md")" == "$before" ]] || fail "a public dry run called gh or changed the ticket"
 "$TKT" send-issue "$id2" --public >/dev/null
+! grep -q 'canon:manual-after-merge' "$STUB_BODY" || fail "a non-Manual send carries the Manual marker"
 assert_grep '^## .* — sent$' ".tickets/$id2/github.md"   # t-1dec: only a real send starts the trail
 assert_grep "^github: acme/app#57$" ".tickets/$id2/ticket.md"
 unset STUB_VIS
 
-# t-51c6: a Manual ticket is refused: a person cannot test in the cloud (nothing is sent, nothing written).
+# t-51c6: a Manual ticket is refused: a person cannot test in the cloud (nothing is sent, nothing written). t-e790: the refusal names
+# --manual-after-merge, which sends it on purpose: the cloud copy's acceptance has no [manual] criterion (they go to a section the agent
+# must not attempt), the body carries the marker, and the local ticket stays as it was.
 idm="$("$TKT" create "Manual one" -t task -p 3)"; "$TKT" manual "$idm" on >/dev/null
-assert_contains "$(run_fail "$TKT" send-issue "$idm" --dry-run 2>&1)" "is a Manual ticket (manual: true): a person cannot test in the cloud"
-"$TKT" manual "$idm" off >/dev/null; "$TKT" send-issue "$idm" --dry-run >/dev/null
+printf '# Acceptance\n\nTicket: `%s`\n\n## Criteria\n- [ ] The list shows the time\n- [ ] [manual] Looks right on a phone\n* [ ]  [Manual] Works offline\n```\n- [ ] [manual] shown in a fence\n```\n\n## Test Plan\n- [ ] tests/x.sh\n' "$idm" > ".tickets/$idm/acceptance.md"   # sprint's forms: * bullet, two spaces, any case
+out="$(run_fail "$TKT" send-issue "$idm" --dry-run 2>&1)"
+assert_contains "$out" "is a Manual ticket (manual: true): a person cannot test in the cloud"; assert_contains "$out" "tkt send-issue $idm --manual-after-merge"
+idn="$("$TKT" create "Not manual" -t task -p 3)"
+assert_contains "$(run_fail "$TKT" send-issue "$idn" --dry-run --manual-after-merge 2>&1)" "--manual-after-merge is for a Manual ticket; $idn is not one"
+ma="$(cksum < ".tickets/$idm/acceptance.md")"   # ticket.md changes on a real send (github:, runs:); acceptance.md must not
+"$TKT" send-issue "$idm" --manual-after-merge > /dev/null 2>&1 || fail "send-issue --manual-after-merge failed"
+acc_part="$(awk '/^# Acceptance$/ { f = 1; next } /^# Plan$/ { f = 0 } f' "$STUB_BODY")"
+assert_contains "$acc_part" "The list shows the time"; [[ "$(grep -ci '\[manual\]' <<<"$acc_part")" == 1 ]] || fail "a [manual] criterion went into the cloud copy's acceptance"   # only the fenced example
+assert_grep '^- \[Manual\] Works offline$' "$STUB_BODY"
+assert_grep '^## Tested by the person after the merge$' "$STUB_BODY"; assert_grep '^- \[manual\] Looks right on a phone$' "$STUB_BODY"
+assert_grep 'do not run `sprint manual-qa`' "$STUB_BODY"; assert_grep 'by hand on their machine after the merge. Do not attempt$' "$STUB_BODY"
+assert_contains "$acc_part" '- [ ] [manual] shown in a fence'   # a fenced example is text, not a criterion: it stays where it was
+[[ "$(grep -c 'shown in a fence' "$STUB_BODY")" == 1 ]] || fail "a fenced [manual] example was listed as a criterion"
+[[ "$(tail -2 "$STUB_BODY" | sed -n 1p)" == "<!-- canon:manual-after-merge -->" ]] || fail "the marker is not right above the ticket marker"
+[[ "$(cksum < ".tickets/$idm/acceptance.md")" == "$ma" ]] || fail "the local acceptance.md changed"
+assert_grep '^manual: true$' ".tickets/$idm/ticket.md"; assert_grep '^manual after merge: ' ".tickets/$idm/github.md"
+cp "$STUB_BODY" "$stub/mam-body"
+# already sent (with the flag): sending again is "already sent", never the Manual refusal (To Claude Cloud's --launch only starts its session)
+out="$(run_fail "$TKT" send-issue "$idm" 2>&1)"; assert_contains "$out" "$idm was already sent"; [[ "$out" != *"is a Manual ticket"* ]] || fail "an already-sent Manual ticket hit the Manual refusal"
+# The cloud's import-issue: a tracked ticket.md that says manual: true (it rode along in the clone) ends without it; a body
+# without the marker leaves it alone.
+awk -v m="<!-- canon:manual-after-merge -->" '{ print } $0 == m { print "<!-- canon:lite -->" }' "$stub/mam-body" > "$stub/mam-lite-body"   # Lite + Manual: the marker sits above lite
+for withmark in yes no lite; do
+  imp="$(make_project)"; mkdir -p "$imp/.tickets/$idm"; cp ".tickets/$idm/ticket.md" "$imp/.tickets/$idm/ticket.md"
+  case "$withmark" in yes) cp "$stub/mam-body" "$stub/imp-body" ;; lite) cp "$stub/mam-lite-body" "$stub/imp-body" ;; *) grep -vx '<!-- canon:manual-after-merge -->' "$stub/mam-body" > "$stub/imp-body" ;; esac
+  (cd "$imp" && "$TKT" import-issue 57 --body-file "$stub/imp-body" >/dev/null 2>&1) || fail "import-issue of the Manual body failed ($withmark)"
+  if [[ "$withmark" != no ]]; then ! grep -q '^manual:' "$imp/.tickets/$idm/ticket.md" || fail "the cloud copy kept manual: true ($withmark)"
+    [[ "$withmark" != lite ]] || assert_grep '^demo: true$' "$imp/.tickets/$idm/ticket.md"
+    [[ -z "$(bash -c 'source "$1/tools/ticket-root.sh"; manual_criteria "$2" lines' _ "$ROOT" "$imp/.tickets/$idm/acceptance.md")" ]] || fail "the cloud copy's acceptance.md has a [manual] criterion"
+  else assert_grep '^manual: true$' "$imp/.tickets/$idm/ticket.md"; fi
+  rm -rf "$imp"
+done
+# manual_criteria reads no symlink (an imported folder could point it anywhere) and treats a missing file as no criteria
+ln -s "$PWD/.tickets/$idm/acceptance.md" "$stub/acc-link"
+assert_eq "" "$(bash -c 'source "$1/tools/ticket-root.sh"; manual_criteria "$2" lines' _ "$ROOT" "$stub/acc-link")"
+bash -c 'source "$1/tools/ticket-root.sh"; manual_criteria "$2/none.md" lines' _ "$ROOT" "$stub" || fail "manual_criteria failed on a missing file"
+echo "send-issue --manual-after-merge: the cloud copy has no [manual] criteria and Manual off; the local ticket is unchanged"
 
 # Missing acceptance, plan and research: "(none yet)", and a warning.
 id3="$("$TKT" create "Bare" -t task -p 3)"
@@ -335,9 +374,9 @@ idc="$(fresh noclaude)"
 rc=0; r="$(PATH="$noclaude$path_nocl" "$TKT" send-issue "$idc" --launch --yes 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "no claude should exit 1, got $rc: $r"; assert_contains "$r" "needs the Claude CLI with --cloud"
 rc=0; r="$("$TKT" send-issue 2>&1)" || rc=$?
-[[ "$rc" == 1 ]] || fail "send-issue without an id should exit 1, got $rc"; assert_contains "$r" "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]"
+[[ "$rc" == 1 ]] || fail "send-issue without an id should exit 1, got $rc"; assert_contains "$r" "Usage: tkt send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--manual-after-merge] [--launch [--yes]]"
 h="$("$TKT" --help 2>&1)"
-assert_contains "$h" "send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--launch [--yes]]"; assert_contains "$h" "in a real terminal only"
+assert_contains "$h" "send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--manual-after-merge] [--launch [--yes]]"; assert_contains "$h" "in a real terminal only"
 
 # Refusals come before anything is created: a claude without --cloud, no terminal (with or without --yes), --yes alone, --launch with --dry-run.
 idl="$(fresh refuse)"; : > "$STUB_LOG"; before="$(cksum < ".tickets/$idl/ticket.md")"

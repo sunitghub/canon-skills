@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added: send a Manual ticket to GitHub on purpose. The Send panel shows a notice and a box, **Send it. Will test after merged** (off; Create issue waits for it); `tkt send-issue <id> --manual-after-merge` is the same in a terminal. The cloud gets the ticket without its `[manual]` criteria and with Manual off; Import results keeps your ticket Manual and open with those criteria back, and Check & merge then tells you to test the merged result, record it (`sprint manual-qa`) and close it (`sprint complete`). The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-e790).
+
 ## [0.55.17] - 2026-11-13
 
 - Fixed: when a cloud PR merged on GitHub while a worktree ticket was merged here, local `main` and origin's diverged and canon said "Update it by hand: git pull" (Check & merge) or refused the push (Finish > Push). canon now merges origin's branch into the local one itself (a merge commit, never a rebase or force), resolves the conflicts in its own docs (`HANDOFF.md`'s Recent block and Scratch entries, `LEARNINGS.md` rows) and sets aside a local copy of an imported cloud ticket; any other conflict changes nothing and names the files. Finish's dialog says so before you push. A force-pushed origin is never merged into, and a branch that is only behind is fast-forwarded. The end-user zip's size cap is now 4352 KB (t-dde9).

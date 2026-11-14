@@ -16882,12 +16882,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   const made = [];
   test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
-  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '' } = {}) {
+  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', manual = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2',
       ...(github ? [`github: ${github}`] : []), ...(runs ? [`runs: ${runs}`] : []), ...(merged ? [`merged: ${merged}`] : []),
-      'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
+      ...(manual ? ['manual: true'] : []), 'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [ ] works', '', '## Test Plan', '- [ ] check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
     made.push(id);
   }
@@ -17118,6 +17118,47 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(page.frames().filter(f => f.url().includes('mode=term'))).toHaveLength(0);   // no Terminal, so nothing typed
     expect(await page.evaluate(() => window.__copied)).toBeNull();
     await expect(page.locator('#ck-gh-status')).toHaveText('');
+  });
+
+  // Prod path: the Send panel for a Manual ticket (t-e790). It goes only on purpose: a notice, the exact checkbox, Create disabled until it
+  // is ticked, and the preview and the send carry the flag. A non-Manual ticket's panel shows neither and sends no flag.
+  test('Send panel: a Manual ticket goes only with "Send it. Will test after merged" ticked (t-e790)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh79'), plain = newTicketId(PROJECT_ROOT, 'gh80');
+    ghTicket(id, { manual: true }); ghTicket(plain);
+    const previews = [], posts = [];
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>cockpit</body></html>' }));
+    for (const t of [id, plain]) {
+      await page.route(`**/api/ticket/${t}/github/send-preview*`, r => { previews.push(r.request().url()); return json(r, { ok: true, exit_code: 0, output: 'repo: acme/app (PRIVATE)\ntitle: x\n--- body ---\n# Description\nx\n' }); });
+      await page.route(`**/api/ticket/${t}/github/send`, r => { posts.push({ t, body: r.request().postDataJSON() }); return json(r, { ok: false, exit_code: 1, output: 'stub: not sent' }); });
+    }
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-manual')).toContainText(`${id} is a Manual ticket: you test it by hand.`);
+    await expect(page.locator('label:has(#ck-gh-manual-ok)')).toHaveText('Send it. Will test after merged');
+    await expect(page.locator('#ck-gh-manual-ok')).not.toBeChecked();
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    expect(previews.filter(u => u.includes(`/${id}/`)).every(u => u.endsWith('send-preview?manual_after_merge=1'))).toBe(true);
+    await page.locator('#ck-gh-manual-ok').check();
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await page.locator('#ck-gh-manual-ok').uncheck();
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await page.locator('#ck-gh-manual-ok').check();
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    expect(posts).toEqual([{ t: id, body: { manual_after_merge: true } }]);
+    // not Manual: no notice, no box, Create enabled, no flag either way
+    await openBoard(page, plain);
+    await page.locator(`.card[data-id="${plain}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await expect(page.locator('#ck-gh-manual')).toHaveCount(0); await expect(page.locator('#ck-gh-manual-ok')).toHaveCount(0);
+    expect(previews.filter(u => u.includes(`/${plain}/`)).every(u => u.endsWith('/send-preview'))).toBe(true);
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-status')).toHaveText('Not sent; nothing changed.');
+    expect(posts[1]).toEqual({ t: plain, body: {} });
   });
 
   // Prod path: the Send panel's Commit and push (t-32f9), shown for unpushed commits (a refusal) and uncommitted files (a warning).
