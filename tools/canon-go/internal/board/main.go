@@ -603,7 +603,11 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			switch m[2] {
 			case "send-preview":
-				sendJSON(w, runTkt(groot, []string{"send-issue", m[1], "--dry-run"}))
+				args := []string{"send-issue", m[1], "--dry-run"}
+				if r.URL.Query().Get("manual_after_merge") == "1" { // t-e790: a Manual ticket the person tests after the merge
+					args = append(args, "--manual-after-merge")
+				}
+				sendJSON(w, runTkt(groot, args))
 			case "commit-push-preview": // t-32f9: the files and branch the Send panel's Commit and push offers
 				sendJSON(w, runTkt(groot, []string{"commit-push", m[1], "--dry-run"}))
 			case "merge":
@@ -1013,6 +1017,9 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			args := []string{"send-issue", id}
 			if b, _ := payload["public"].(bool); b {
 				args = append(args, "--public")
+			}
+			if b, _ := payload["manual_after_merge"].(bool); b { // t-e790: only a real true, as public
+				args = append(args, "--manual-after-merge")
 			}
 			sendJSON(w, runTkt(eroot, args))
 			return

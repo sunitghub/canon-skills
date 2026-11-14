@@ -61,6 +61,10 @@ for P in "$GOP"; do
   expect_call "$srv send"          "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{}')" "send-issue t-ab12"
   expect_call "$srv send public"   "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":true}')" "send-issue t-ab12 --public"
   expect_call "$srv send public?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"public":"yes"}')" "send-issue t-ab12"   # only a real true
+  expect_call "$srv send manual"   "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"manual_after_merge":true}')" "send-issue t-ab12 --manual-after-merge"   # t-e790
+  expect_call "$srv send manual?"  "$P" "$(post "$P" /api/ticket/t-ab12/github/send '{"manual_after_merge":"yes"}')" "send-issue t-ab12"
+  expect_call "$srv preview manual" "$P" "$(get "$P" '/api/ticket/t-ab12/github/send-preview?manual_after_merge=1')" "send-issue t-ab12 --dry-run --manual-after-merge"
+  expect_call "$srv preview manual?" "$P" "$(get "$P" '/api/ticket/t-ab12/github/send-preview?manual_after_merge=yes')" "send-issue t-ab12 --dry-run"
   # t-607a: the Finish step after a worktree merge: one tkt finish call each; the push and the reset carry --yes (the dialog's own
   # confirm came first), a GET never does, and an id that is not a ticket id runs nothing.
   expect_call "$srv finish-check"   "$P" "$(get "$P" /api/ticket/t-ab12/github/finish-check)" "finish t-ab12 --check --fetch"
