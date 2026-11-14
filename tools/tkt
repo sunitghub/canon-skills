@@ -2310,6 +2310,15 @@ cmd_merge_pr() {
     elif [[ "$ist" == CLOSED ]]; then echo "issue #$issue was already closed"
     else echo "merge-pr: issue #$issue on $repo reads as '$ist'; not closing it" >&2; fi
   fi
+  _manual_next "$file" "$base"
+}
+
+# _manual_next <ticket.md> <base> — t-e790: a Manual ticket sent with --manual-after-merge is still open after its merge: the person tests
+# the merged result here, records it and closes it. Prints that next step; nothing for any other ticket.
+_manual_next() {
+  [[ "$(get_field "$1" manual)" == true && "$(get_field "$1" status)" != closed ]] || return 0
+  local id; id="$(get_field "$1" id)"
+  echo "next: $id is Manual and stays open: test the merged $2 here, record it (sprint manual-qa $id --by \"<you>\" --step \"<what you tested>|pass\"), then close it (sprint complete $id)"
 }
 
 # cmd_merge <id> [--test CMD] [--yes | --check] — t-2906: Check & merge for any closed ticket, the one command the board runs. A
@@ -2716,6 +2725,7 @@ _record_merge_locked() {
   set_or_add_field "$file" merged "${sha:-PR #$pr}"
   _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base" "recorded by: $label"
   echo "$label: recorded PR #$pr as merged into $base${sha:+ ($sha)}"
+  _manual_next "$file" "$base"   # t-e790
 }
 
 # cmd_merged <id> --pr N [--sha S] — t-7c89: the terminal path for a PR merged outside merge-pr (by hand, or on GitHub).
@@ -3073,7 +3083,9 @@ cmd_github_status() {
     else warn="$(printf '%s' "${warn%%$'\n'*}" | sed 's/^github-status: //')"; fi
   fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
-  elif [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; then stage=results-in
+  # t-e790: a Manual ticket stays open after the import (the person tests after the merge); its cloud copy closed is the same "results in"
+  elif [[ "$verdict" == pass ]] && { $match || $late; } && { [[ "$(get_field "$file" status)" == closed ]] \
+       || [[ "$(get_field "$file" manual)" == true && "$(get_field "$file" cloud_status)" == closed ]]; }; then stage=results-in
   elif $branch || $trk; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
@@ -3810,8 +3822,10 @@ cmd_import_results() {
   # t-6278: a ticket.md whose id: is another ticket's would, once imported, be read as that ticket; refuse before writing anything.
   local fid; fid="$(get_field "$tmp/$rel/ticket.md" id)"
   [[ "$fid" == "$id" ]] || { echo "import-results: $src has $rel/ticket.md with id: ${fid:-none}, not $id; nothing imported, $rel/ is as it was" >&2; exit 1; }
-  local gh_line="" runs_line=""
-  [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; }
+  local gh_line="" runs_line="" man="" mcrit=""
+  [[ -f "$tdir/ticket.md" ]] && { gh_line="$(get_field "$tdir/ticket.md" github)"; runs_line="$(get_field "$tdir/ticket.md" runs)"; man="$(get_field "$tdir/ticket.md" manual)"; }
+  # t-e790: a Manual ticket sent with --manual-after-merge comes back from a copy with Manual off and no [manual] criteria: keep both from here
+  [[ "$man" == true && -f "$tdir/acceptance.md" ]] && mcrit="$(grep -E '^[[:space:]]*- \[[ xX]\] \[manual\]' "$tdir/acceptance.md" | tr -d '\r' || true)"
   local f n=0 kept=0
   mkdir -p "$tdir"
   while IFS= read -r -d '' f; do
@@ -3828,8 +3842,33 @@ cmd_import_results() {
   [[ -n "$runs_line" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs "$runs_line"
   # t-4b34: a cloud sprint's results coming back are the same evidence: a ticket with a github: link and no runs: is out on GitHub
   [[ -n "$(get_field "$tdir/ticket.md" github)" && -z "$(get_field "$tdir/ticket.md" runs)" ]] && set_or_add_field "$tdir/ticket.md" runs github
-  local st cst="" verdict graded rc=0 prline=""
+  local st cst="" verdict graded rc=0 prline="" mopen=false
   st="$(get_field "$tdir/ticket.md" status)"
+  # t-e790: a Manual ticket stays Manual and open: the person tests the merged result here, then closes it (sprint manual-qa, sprint complete).
+  if [[ "$man" == true ]]; then
+    set_or_add_field "$tdir/ticket.md" manual true || { echo "import-results: could not keep manual: true on $id" >&2; exit 1; }
+    if [[ -n "$mcrit" && -f "$tdir/acceptance.md" ]]; then
+      local mline mt; mt="$(mktemp "${TMPDIR:-/tmp}/tkt-mcrit.XXXXXX")" || exit 1
+      while IFS= read -r mline; do grep -qxF -- "$mline" <(tr -d '\r' < "$tdir/acceptance.md") || printf '%s\n' "$mline"; done <<< "$mcrit" > "$mt"
+      if [[ -s "$mt" ]]; then
+        awk -v mf="$mt" 'function put() { while ((getline l < mf) > 0) print l; done = 1 }
+          { h = $0; sub(/\r$/, "", h) }
+          crit && !done && h ~ /^## / { put(); print ""; crit = 0 }
+          h == "## Criteria" { crit = 1 }
+          { print }
+          END { if (!done) { if (!crit) print "\n## Criteria"; put() } }' "$tdir/acceptance.md" > "$mt.out" && cat "$mt.out" > "$tdir/acceptance.md" \
+          || { rm -f "$mt" "$mt.out"; echo "import-results: could not put the [manual] criteria back into $rel/acceptance.md" >&2; exit 1; }
+      fi
+      rm -f "$mt" "$mt.out"
+    fi
+    if [[ -n "$st" && "$st" != open ]]; then
+      set_field "$tdir/ticket.md" status open && set_or_add_field "$tdir/ticket.md" cloud_status "$st" \
+        || { echo "import-results: could not set $id to open" >&2; exit 1; }
+      canon_event ticket.status_changed tkt "$(dirname "$dir")" "ticket=$id" "from=$st" to=open
+      cst=" (cloud: $st)"; st=open
+    fi
+    mopen=true
+  fi
   # t-1cf5: an in_progress import would bind to this checkout and block its local close; the close happens in a
   # worktree at the PR head, where tkt start sets in_progress again. cloud_status keeps what the cloud left.
   if [[ "$st" == in_progress ]]; then
@@ -3840,7 +3879,8 @@ cmd_import_results() {
   fi
   read -r verdict graded < <(_eval_verdict_head "$tdir")
   echo "import-results: $n files into $rel/ ($kept local files kept in $rel/.before-import/)"
-  echo "  status: ${st:-unknown}$cst$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"
+  if $mopen; then echo "  status: open$cst; Manual: it stays open until you test the merged result here (sprint manual-qa $id, then sprint complete $id)"
+  else echo "  status: ${st:-unknown}$cst$([[ "$st" == closed ]] || echo '  (expected closed: the cloud sprint did not finish)')"; fi
   [[ "$verdict" == - ]] && verdict=""; [[ "$graded" == - ]] && graded=""
   echo "  evaluator: ${verdict:-no eval-report.md}  graded-head: ${graded:-none}"
   # t-b650: the cloud's evaluator run record (.claude/subagent-runs.jsonl, the harness transcript) cannot travel, so a ticket

@@ -500,6 +500,15 @@ git reset -q --hard "$BASE"; out="$(STUB_FF_FETCH_FAIL=1 ff_merge)"; assert_cont
 assert_eq "$BASE" "$(git rev-parse main)"
 git checkout -q -B side; git branch -qD main; out="$(ff_merge)"; assert_contains "$out" "Local main: none here; nothing to update"
 git checkout -q -B main "$BASE"
+# t-e790: a Manual ticket (sent with --manual-after-merge) is still open after its merge: merge-pr says how to test and close it, and
+# does not close it. Any other ticket gets no such line.
+out="$(ff_merge)"; [[ "$out" != *"is Manual and stays open"* ]] || fail "a non-Manual ticket got the Manual next step: $out"
+git reset -q --hard "$BASE"; cp "$f" "$W/f-before"
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+out="$(ff_merge)"
+assert_contains "$out" "next: $id is Manual and stays open: test the merged main here, record it (sprint manual-qa $id --by \"<you>\" --step \"<what you tested>|pass\"), then close it (sprint complete $id)"
+assert_grep '^status: open$' "$f"
+cp "$W/f-before" "$f"; git reset -q --hard "$BASE"
 
 # t-41ff: the PR carries files canon already wrote here (import-results): identical ones, this ticket's ticket.md (local
 # fields aside) and the audit log are set aside, main fast-forwards, and the local fields and log lines come back. Any
