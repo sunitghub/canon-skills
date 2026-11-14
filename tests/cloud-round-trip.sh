@@ -294,7 +294,12 @@ out="$("$TKT" import-results "$id" --pr 58 2>&1)" || fail "import-results of a M
 assert_grep '^manual: true$' ".tickets/$id/ticket.md"; assert_grep '^status: open$' ".tickets/$id/ticket.md"; assert_grep '^cloud_status: closed$' ".tickets/$id/ticket.md"
 assert_eq "- [ ] [manual] Looks right on a phone
 * [ ]  [Manual] Works offline" "$(awk '/^## Criteria$/ { c = 1; next } /^## / { c = 0 } c && tolower($0) ~ /\[manual\]/' ".tickets/$id/acceptance.md")"
-assert_contains "$out" "Manual: it stays open until you test the merged result here (sprint manual-qa $id, then sprint complete $id)"
+assert_contains "$out" "status: open (cloud: closed); Manual: it stays open until you test the merged result here (sprint manual-qa $id, then sprint complete $id)"
+# put back inside the cloud copy's own ## Criteria, before its next section: not a second ## Criteria at the end
+[[ "$(grep -c '^## Criteria$' ".tickets/$id/acceptance.md")" == 1 ]] || fail "the [manual] criteria went under a second ## Criteria"
+assert_eq "* [ ]  [Manual] Works offline
+
+## Test Plan" "$(grep -B2 -m1 '^## Test Plan$' ".tickets/$id/acceptance.md")"
 [[ "$out" != *"expected closed"* ]] || fail "a Manual import reads as an unfinished cloud sprint: $out"
 [[ "$out" != *"next: tkt land"* ]] || fail "a Manual import whose cloud copy closed was sent to tkt land, not Check & merge: $out"
 cp "$W/closed-ticket.md" ".tickets/$id/ticket.md"; cp "$W/closed-acc.md" ".tickets/$id/acceptance.md"

@@ -736,6 +736,12 @@ assert_eq "$((blocks + 1))" "$(grep -c '^## ' "$gt")"
 before="$(sig)"; out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "second tkt merged failed: $out"
 assert_contains "$out" "already has merged:"
 [[ "$(sig)" == "$before" && "$(grep -c '^## ' "$gt")" == "$((blocks + 1))" ]] || fail "a second tkt merged wrote again"
+[[ "$out" != *"is Manual and stays open"* ]] || fail "tkt merged gave a non-Manual ticket the Manual next step: $out"
+# t-e790: _record_merge (tkt merged, the poll) gives an open Manual ticket the same next step merge-pr does, and leaves it open
+cp "$f" "$W/f-before"; sed -i.bak -e '/^merged: /d' -e 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+out="$("$TKT" merged "$id" --pr 7 2>&1)" || fail "tkt merged of a Manual ticket failed: $out"
+assert_contains "$out" "next: $id is Manual and stays open: test the merged main here, record it (sprint manual-qa $id"
+assert_grep '^status: open$' "$f"; cp "$W/f-before" "$f"
 echo "tkt merged: records once, refuses without writing (t-7c89)"
 
 # t-7c89: each tkt merged refusal names its reason and writes nothing; a recorded merge writes exactly the fields merge-pr does.
