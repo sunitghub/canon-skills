@@ -471,9 +471,13 @@ func TestTierOptionsGroupsClaudeThenGPT(t *testing.T) {
 // note reads; the other steps check nothing. Protects GET /api/admin/model-tiers/options and Admin > Model tiers' note.
 func TestTierOptionsViewNamesChecks(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
-	got := map[string]string{}
+	got, roles := map[string]string{}, map[string]string{}
 	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
-		got[st["id"]] = st["checks"]
+		got[st["id"]], roles[st["id"]] = st["checks"], st["role"]
+	}
+	// the role Admin shows after each label: the spec check is advisory like the reviewer (t-9b13)
+	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
+		t.Errorf("steps[].role = %v, want %v", roles, want)
 	}
 	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "light": ""} // t-9b13: the spec check is compared with Plan
 	if fmt.Sprint(got) != fmt.Sprint(want) {

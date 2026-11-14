@@ -38,7 +38,8 @@ got="$(curl -s -H "$O" "$B/api/pipeline")"
 assert_eq "True" "$(printf '%s' "$got" | jget ok)"
 assert_eq "False" "$(printf '%s' "$got" | jget exists)"
 assert_eq "False" "$(printf '%s' "$got" | jget changed)"
-assert_eq "15" "$(printf '%s' "$got" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["nodes"]))')"
+# every node of the default (pipeline.sh resolve --full: the one list), so a new node needs no count edited here (t-9b13)
+assert_eq "$("$ROOT/tools/pipeline.sh" resolve --full | wc -l | tr -d ' ')" "$(printf '%s' "$got" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["nodes"]))')"
 [[ ! -e "$PROJECT/canon-config" ]] || fail "pipeline-api: a GET created canon-config"
 
 # ── the first change creates the file and says so once ──

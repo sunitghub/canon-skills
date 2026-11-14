@@ -676,6 +676,10 @@ func TestIntegrityAgentCards(t *testing.T) {
 			t.Errorf("agent %s step = %q %q, want %v", a.Name, a.Step, a.StepName, want)
 		}
 	}
+	// the page reads these JSON keys (static/cockpit-admin.js: a.step, a.step_label)
+	if b, _ := json.Marshal(r.Agents[2]); !strings.Contains(string(b), `"step":"speccheck","step_label":"Spec check"`) {
+		t.Errorf("agent JSON = %s", b)
+	}
 	rev, ev := r.Agents[0], r.Agents[1]
 	if rev.Name != "canon-reviewer" || rev.Role != "advisory" || ev.Role != "binding" || rev.Model != "claude-sonnet-5" || rev.Effort != "high" ||
 		rev.Tools != "Read, Grep, Bash" || rev.Writes != "report.md" || !rev.ReadOnly || rev.GradedBy != "skills/sprint/reference/review.md" ||

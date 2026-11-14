@@ -125,7 +125,7 @@ rm -rf "$mono"
 # project prefix by stripping one from the other, never matched, and passed the whole "/c/..." path as `:(exclude)/c/.../.tickets`,
 # which git.exe rejects: "Invalid path '/c'" at every Windows sprint close. The stub models both halves on any OS: it answers
 # `-C ... --show-toplevel` in Windows spelling (t-7301's stub) and, like git.exe, refuses a pathspec that is an absolute POSIX path.
-win="$(make_project)"; wgit="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+win="$(make_project)"; wgit="$(mktemp -d)"; REAL_GIT="$(command -v git)"; export REAL_GIT
 cat > "$wgit/git" <<'STUB'
 #!/bin/sh
 for a in "$@"; do
@@ -181,6 +181,9 @@ sd="$(mktemp -d)"; mkdir -p "$sd/.tickets/t-s"; spj="$(make_project)"
   "$TOOL" post "$ss" >/dev/null || fail "the spec check's own report must not count as a difference"
   "$TOOL" pre "$ss" --role speccheck >/dev/null 2>&1
   echo '- [ ] a criterion the checker added' >> .tickets/t-s/acceptance.md
+  out="$(run_fail "$TOOL" post "$ss")"; assert_contains "$out" "acceptance.md or plan.md changed during the spec check"
+  "$TOOL" pre "$ss" --role speccheck >/dev/null 2>&1
+  echo '## Approach rewritten by the checker' >> .tickets/t-s/plan.md
   out="$(run_fail "$TOOL" post "$ss")"; assert_contains "$out" "acceptance.md or plan.md changed during the spec check"
   "$TOOL" pre "$ss" --role reviewer >/dev/null 2>&1
   echo '- [x] ticked by the person' >> .tickets/t-s/plan.md
