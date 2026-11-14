@@ -167,5 +167,10 @@ grep -qi 'git init' <<<"$ps1_code" && fail "folder-guard: install.ps1 still tell
 [[ "$(grep -v '^[[:space:]]*#' "$ROOT/install.ps1" | grep -c 'Next: open a terminal in your project folder (for example \$HOME\\projects\\demo')" == 2 ]] || fail "folder-guard: install.ps1 must print the next step in both its bootstrap and its file ending"
 awk '/^[[:space:]]*#/{next} /^if [(][$]Bootstrap[)] [{]/{b=1; f=0} b&&/Next: open a terminal/{f=1} b&&/canon installed successfully/{ok=f} b&&/^  return/{b=0} END{exit !ok}' "$ROOT/install.ps1" || fail "folder-guard: the bootstrap ending of install.ps1 does not print the next step before it returns"
 
+# t-c8c6: the bash guard reads a C: form through canon_path_key, so a doubled separator is one: C:\\Windows is a system folder and C:\\ a drive
+# root (the old hand-written conversion let both through). Bash only: the Go guard (folderguard.go) gets the same rule in t-9d04, so these
+# rows are not in the shared corpus yet.
+assert_eq "a system folder" "$(why 'C:\\Windows' "$HOME")"; assert_eq "the root of a drive" "$(why 'C:\\' "$HOME")"
+assert_eq "a system folder" "$(why 'c://windows//System32' "$HOME")"
 [[ ${#absent[@]} -eq 0 ]] || echo "folder-guard: not on this machine, so not checked: ${absent[*]}"
 echo "folder-guard: ok"

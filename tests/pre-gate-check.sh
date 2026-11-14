@@ -320,6 +320,7 @@ p="$1"
 case "$p" in [A-Za-z]:*) echo drive ;; esac
 # [A-Za-z]: in a comment
 echo "$(cygpath -w "$p")"
+u="$(cygpath -u "$p")"; echo "$u"
 SH
 cat > tools/bin/tool <<'SH'
 #!/usr/bin/env bash
@@ -330,7 +331,7 @@ for f in tools/platform-lib.sh tests/t.sh docs/x.md; do printf '#!/usr/bin/env b
 commit
 run "$ID"; [[ "$code" == 0 ]] || fail "pre-gate-check: path forms changed the exit code ($code): $out"
 assert_contains "$out" "| path forms (advisory): tools/a.sh:3 tools/bin/tool:2" "pre-gate-check: a drive pattern and a cygpath compare are named by file:line"
-[[ "$out" != *"tools/a.sh:4"* && "$out" != *"tools/a.sh:5"* && "$out" != *"platform-lib.sh:"* && "$out" != *"tests/t.sh:"* && "$out" != *"docs/x.md:"* ]] || fail "pre-gate-check: a comment, a conversion, an owner, a test or a doc was named: $out"
+[[ "$out" != *"tools/a.sh:4"* && "$out" != *"tools/a.sh:5"* && "$out" != *"tools/a.sh:6"* && "$out" != *"platform-lib.sh:"* && "$out" != *"tests/t.sh:"* && "$out" != *"docs/x.md:"* ]] || fail "pre-gate-check: a comment, a conversion (cygpath -w, an assignment from cygpath -u), an owner, a test or a doc was named: $out"
 reset; printf '#!/usr/bin/env bash\ntrue\n' > tools/x.sh; commit
 run "$ID"; assert_contains "$out" "| path forms (advisory): none" "pre-gate-check: no path rule written reads none"
 reset

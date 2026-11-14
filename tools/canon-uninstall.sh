@@ -198,6 +198,7 @@ projects_union() {
   [ -n "$raw" ] || return 0
   # t-c8c6: one project, one entry, by canon's key (C:\x\p, C:/x/p and /c/x/p are one folder even without cygpath), case folded on Windows only
   local win=0; _is_windows && win=1
+  # shellcheck disable=SC2154  # canon_awk_pkey comes from platform-lib.sh, sourced at the top
   printf '%s\n' "$raw" | while IFS= read -r p; do normalize_path "$p"; done \
     | LC_ALL=C awk -v win="$win" "$canon_awk_pkey"'{ k = pkey($0); if (win) k = tolower(k); if (!seen[k]++) print }' | sort
 }

@@ -77,8 +77,8 @@ while IFS=$'\t' read -r input key note; do [[ -z "$input" || "$input" == \#* ]] 
 same=0 diff=0
 for ((i = 0; i < ${#ins[@]}; i++)); do for ((j = i + 1; j < ${#ins[@]}; j++)); do
   [[ "${keys[$i]}" == "${keys[$j]}" || "$j" == $((i + 1)) ]] || continue   # every same-key pair, and each row against the next (one awk pair each)
-  if canon_same_folder "${ins[$i]}" "${ins[$j]}"; then got=same; else got=diff; fi
-  if [[ "${keys[$i]}" == "${keys[$j]}" ]]; then want=same; same=$((same + 1)); else want=diff; diff=$((diff + 1)); fi
+  if canon_same_folder "${ins[$i]}" "${ins[$j]}"; then got="same"; else got="diff"; fi
+  if [[ "${keys[$i]}" == "${keys[$j]}" ]]; then want="same"; same=$((same + 1)); else want="diff"; diff=$((diff + 1)); fi
   [[ "$got" == "$want" ]] || fail "path-forms: canon_same_folder '${ins[$i]}' '${ins[$j]}' gave $got, want $want"
 done; done
 [[ "$same" -ge 5 && "$diff" -ge 20 ]] || fail "path-forms: the pair check ran $same same / $diff different pairs, too few"

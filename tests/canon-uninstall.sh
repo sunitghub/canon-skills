@@ -58,7 +58,7 @@ STUBS="$WORK/stubs"; mkdir -p "$STUBS"
 run() { # <home> <install> args...
   local h="$1" inst="$2"; shift 2
   set +e
-  out="$(HOME="$h" STUB_LOG="$WORK/stub.log" CANON_COCKPIT_PORT=1 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?
+  out="$(HOME="$h" STUB_LOG="$WORK/stub.log" CANON_COCKPIT_PORT=1 CANON_HOME='' "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?
   set -e
 }
 : > "$WORK/stub.log"
@@ -113,7 +113,7 @@ run "$h" "$inst" --yes --keep-data; [[ "$rc" == 0 && ! -e "$inst" && -f "$h/.can
 
 # ── the safety rule: a git clone with doubtful state is never deleted, even with --yes; everything else is still cleaned ──────────────────────
 check_kept() { # <name> <why substring>   (uses $inst $h; the clone was altered by the caller)
-  local b a; b="$(digest "$inst")"
+  local b; b="$(digest "$inst")"
   run "$h" "$inst" --yes
   [[ "$rc" == 0 ]] || fail "$1: expected exit 0 with the install kept, got $rc: $out"
   assert_contains "$out" "KEEP: $2" ; assert_contains "$out" "rm -rf \"$inst\""; assert_contains "$out" "[kept]  $inst"
@@ -157,7 +157,7 @@ echo "curl $*" >> "$STUB_LOG"
 SH
 chmod +x "$STUBS/curl"
 inst="$WORK/i13"; h="$WORK/h13"; mk_install "$inst"; mk_home "$h" "$inst"; before="$(digest "$WORK/i13"; digest "$h")"
-runb() { set +e; out="$(PATH="$STUBS:$PATH" HOME="$h" STUB_LOG="$WORK/stub.log" STUB_BOARD=1 CANON_COCKPIT_PORT=1 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e; }
+runb() { set +e; out="$(PATH="$STUBS:$PATH" HOME="$h" STUB_LOG="$WORK/stub.log" STUB_BOARD=1 CANON_COCKPIT_PORT=1 CANON_HOME='' "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e; }
 : > "$WORK/stub.log"; runb --yes; assert_eq 1 "$rc"; assert_contains "$out" "cannot be identified as this install's Cockpit board"; assert_contains "$out" "Nothing was changed."
 assert_eq "$before" "$(digest "$WORK/i13"; digest "$h")"
 runb --dry-run; assert_eq 0 "$rc"; assert_contains "$out" "BLOCKED: something answers on port 1"
@@ -207,7 +207,7 @@ mk_live() { # <install> <state dir> <port> [daemon mode]  sets DPID BPID LPID (b
 alive() { kill -0 "$1" 2>/dev/null; }
 runl() { # <inst> <h> <port> <TMPDIR> args...  (a live-process run: real curl/ps/lsof, a throwaway tmpdir, a short stop wait)
   local inst="$1" h="$2" port="$3" t="$4"; shift 4
-  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=3 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e
+  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=3 CANON_HOME='' "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e
 }
 if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   BOARD="$(build_board "$WORK/board")"
@@ -251,7 +251,7 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   # 5. a daemon that ignores SIGTERM: reported by pid, nothing deleted, no SIGKILL
   inst="$WORK/L6"; h="$WORK/hL6"; t="$WORK/tL6"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"
   mk_live "$inst" "$t/canon-cockpit-board" "" ignore-term; before="$(digest "$inst"; digest "$h")"
-  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=1 CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=1 CANON_HOME='' "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   assert_eq 1 "$rc"; assert_contains "$out" "the Cockpit daemon (pid $DPID) did not exit within 1s; nothing was deleted"; alive "$DPID" || fail "no SIGKILL: the stuck daemon must still be there"
   assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill -9 "$DPID" 2>/dev/null || true
   # 6. another process from the install folder still blocks, and nothing is signalled before that refusal
@@ -261,7 +261,7 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   # 7. state-dir guards: a dir that is not named like a Cockpit state dir, or has no state file, is never removed
   inst="$WORK/L8"; h="$WORK/hL8"; t="$WORK/tL8"; mkdir -p "$t/canon-cockpit-board" "$WORK/odd-dir"; mk_install "$inst"; mk_home "$h" "$inst"
   echo x > "$t/canon-cockpit-board/unrelated.txt"; printf '{}' > "$WORK/odd-dir/daemon.json"
-  set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/odd-dir" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/odd-dir" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME='' "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   [[ "$rc" == 0 ]] || fail "state-dir guard run failed ($rc): $out"; [[ -f "$WORK/odd-dir/daemon.json" && -f "$t/canon-cockpit-board/unrelated.txt" ]] || fail "a misnamed or state-file-less dir was removed"
   assert_contains "$out" "not named like a Cockpit state dir"; assert_contains "$out" "no Cockpit state file in it"
   # 8. a recycled pid: the probe verified a pid, and by the time of the signal it belongs to something else (the prompt sits in between). stop_verified
@@ -306,13 +306,13 @@ PY
   inst="$WORK/L12"; h="$WORK/hL12"; t="$WORK/tL12"; mkdir -p "$t/canon-cockpit-board" "$WORK/f12/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"
   ( exec sleep 120 ) & o1=$!; ( exec sleep 120 ) & o2=$!; killlist+=("$o1" "$o2")
   printf '{"pid": "%s"}' "$o1" > "$WORK/f12/canon-cockpit-board/daemon.json"; printf '{"pid": "%s"}' "$o2" > "$t/canon-cockpit-board/daemon.json"
-  set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/f12/canon-cockpit-board" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/f12/canon-cockpit-board" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME='' "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   [[ "$rc" == 0 ]] || fail "two foreign state dirs run failed ($rc): $out"; [[ -f "$WORK/f12/canon-cockpit-board/daemon.json" && -f "$t/canon-cockpit-board/daemon.json" ]] || fail "both foreign-used state dirs must be kept"
   kill "$o1" "$o2" 2>/dev/null || true
   # 12. CANON_STOP_WAIT=08: a leading zero is invalid octal in $(( )) and used to skip the whole stop block silently, deleting the install with the
   #     Cockpit still running. It must stop the daemon (or refuse), never delete around a live process.
   inst="$WORK/L13"; h="$WORK/hL13"; t="$WORK/tL13"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; port="$(free_port)"; mk_live "$inst" "$t/canon-cockpit-board" "$port"
-  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=08 CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=08 CANON_HOME='' "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   [[ "$rc" == 0 ]] || fail "CANON_STOP_WAIT=08 broke the uninstall ($rc): $out"
   ! alive "$DPID" && ! alive "$BPID" || fail "CANON_STOP_WAIT=08 skipped part of the stop: the board is still running while the install was removed"
   # 13. the world changes while the confirmation prompt is open: a live session appears after the plan was printed. The prompt only exists on a
@@ -341,7 +341,7 @@ sys.stdout.write(buf.decode("utf-8", "replace")); sys.stdout.write("\nEXIT=%d\n"
 PY
   inst="$WORK/L14"; h="$WORK/hL14"; t="$WORK/tL14"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; mk_live "$inst" "$t/canon-cockpit-board" ""
   before="$(digest "$inst"; digest "$h")"
-  out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME= python3 "$WORK/ptydrive.py" "$inst/tools/canon" "$t/canon-cockpit-board" 2>&1)" || true
+  out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME='' python3 "$WORK/ptydrive.py" "$inst/tools/canon" "$t/canon-cockpit-board" 2>&1)" || true
   assert_contains "$out" "EXIT=1"; assert_contains "$out" "1 live agent session(s)"; alive "$DPID" || fail "a session that appeared during the prompt was ended without --force"
   assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill "$DPID" 2>/dev/null || true
   # 14. running INSIDE the Cockpit: this command's parent chain contains the daemon (a Scratch terminal is the daemon's child). Stopping the daemon would kill
@@ -358,7 +358,7 @@ while :; do sleep 0.2; done
 SH
   inst="$WORK/L15"; h="$WORK/hL15"; t="$WORK/tL15"; mkdir -p "$t/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$inst/tools/sprint-check-app"
   printf '{"sid": "x"}' > /dev/null
-  ( export HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME=; exec -a "$inst/tools/canon-go-bin/canon-go daemon" bash "$WORK/dstub2.sh" "$t/canon-cockpit-board" "$WORK/inside.out" "$inst/tools/canon" uninstall --yes --force ) & dp=$!; killlist+=("$dp")
+  ( pt="$(free_port)"; export HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$pt" CANON_STOP_WAIT=3 CANON_HOME=''; exec -a "$inst/tools/canon-go-bin/canon-go daemon" bash "$WORK/dstub2.sh" "$t/canon-cockpit-board" "$WORK/inside.out" "$inst/tools/canon" uninstall --yes --force ) & dp=$!; killlist+=("$dp")
   for _ in $(seq 1 100); do grep -q "EXIT=" "$WORK/inside.out" 2>/dev/null && break; sleep 0.1; done
   grep -q "EXIT=1" "$WORK/inside.out" || fail "uninstall run inside the Cockpit must refuse (exit 1): $(cat "$WORK/inside.out" 2>/dev/null)"
   grep -q "running inside the Cockpit" "$WORK/inside.out" || fail "the refusal must say it is running inside the Cockpit: $(cat "$WORK/inside.out")"
@@ -487,7 +487,7 @@ chmod +x "$STUBS/uname" "$STUBS/cygpath" "$STUBS/powershell.exe"
 # update guard (probe_daemon via pkg_running) on Windows.
 (
   export PATH="$STUBS:$PATH"; INSTALL="$WORK/i15"; PORT=1; HOME="$WORK/hx"; unset XDG_RUNTIME_DIR COCKPIT_STATE_DIR
-  la="$WORK/la15"; export LOCALAPPDATA="C:$(printf '%s' "$la" | tr '/' '\\')"; mkdir -p "$la/canon-cockpit"
+  la="$WORK/la15"; LOCALAPPDATA="C:$(printf '%s' "$la" | tr '/' '\\')"; export LOCALAPPDATA; mkdir -p "$la/canon-cockpit"
   source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
   dirs="$(cockpit_state_dirs)"   # captured, not piped into grep -q: under pipefail an early-exit grep fails the pipe
   grep -qxF "$la/canon-cockpit" <<<"$dirs" || fail "Windows: the state dirs must include %LOCALAPPDATA%/canon-cockpit, got: $(tr '\n' ' ' <<<"$dirs")"
@@ -506,7 +506,7 @@ chmod +x "$STUBS/uname" "$STUBS/cygpath" "$STUBS/powershell.exe"
 )
 inst="$WORK/i15"; h="$WORK/h15"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/p15" "$h"
 winentry="C:$(printf '%s' "$inst" | tr '/' '\\')\\tools"
-runw() { set +e; out="$(PATH="$STUBS:$PATH" HOME="$h" STUB_LOG="$WORK/stub.log" STUB_WINPATH="$winentry" STUB_PROCS="${PROCS:-}" STUB_PSARGS="$WORK/psargs" CANON_UNINSTALL_POWERSHELL="$STUBS/powershell.exe" CANON_COCKPIT_PORT=1 CANON_HOME= "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e; }
+runw() { set +e; out="$(PATH="$STUBS:$PATH" HOME="$h" STUB_LOG="$WORK/stub.log" STUB_WINPATH="$winentry" STUB_PROCS="${PROCS:-}" STUB_PSARGS="$WORK/psargs" CANON_UNINSTALL_POWERSHELL="$STUBS/powershell.exe" CANON_COCKPIT_PORT=1 CANON_HOME='' "$inst/tools/canon" uninstall "$@" </dev/null 2>&1)"; rc=$?; set -e; }
 # the same project registered in both spellings (skills.sh: /c/..., the Cockpit: C:\\... JSON-escaped) is one project, listed and cleaned once
 mkdir -p "$h/.canon/cockpit"; winp="C:$(printf '%s' "$WORK/p15" | tr '/' '\\')"
 winpu="$(printf '%s' "$winp" | tr 'a-z' 'A-Z')"   # Windows paths ignore case: C:\USERS\... is the same folder
