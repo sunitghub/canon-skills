@@ -125,6 +125,10 @@ signoff "Tier: normal"
 assert_eq "This session switches to the Build model (gpt-6, from Admin > Model tiers) when this turn ends: end your turn now." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=copilot "$SPRINT" approve "$id")")"
 signoff "Tier: normal | Build model: haiku"
 assert_eq "Build model: Pi has no /model, so this session keeps its model." "$(buildline "$(COCKPIT_TICKET="$id" COCKPIT_AGENT=pi "$SPRINT" approve "$id")")"
+# outside the Cockpit a pi run gets no line, and approve still succeeds
+signoff "Tier: normal | Build model: haiku"
+out="$(COCKPIT_TICKET='' COCKPIT_AGENT=pi "$SPRINT" approve "$id")" || fail "approve failed for pi"
+assert_eq "" "$(buildline "$out")"
 # a leading-dash value is never offered as a model; with no Admin pick there is no line at all
 printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
 signoff "Tier: normal | Build model: --dangerously-skip-permissions"

@@ -9204,9 +9204,20 @@ func restQuietWait(t *testing.T, quiet, wait time.Duration) {
 // buildSwitchSession starts a fake-agent session for t-ab12 with the given Sign-off line and an approved plan, and returns it.
 func buildSwitchSession(t *testing.T, tierLine string) (*server, *session, string) {
 	t.Helper()
+	s, se, dir, _ := buildSwitchSessionAs(t, tierLine, "")
+	return s, se, dir
+}
+
+// buildSwitchSessionAs is buildSwitchSession for an agent kind ("" = Claude Code; "copilot" runs the fake agent as copilot).
+func buildSwitchSessionAs(t *testing.T, tierLine, agent string) (s *server, se *session, dir, base string) {
+	t.Helper()
 	bin, argvFile, _ := fakeSprint(t)
+	if agent == "copilot" {
+		t.Setenv("COCKPIT_COPILOT_BIN", bin)
+		t.Setenv("COPILOT_HOME", t.TempDir())
+	}
 	root := t.TempDir()
-	dir := filepath.Join(root, ".tickets", "t-ab12")
+	dir = filepath.Join(root, ".tickets", "t-ab12")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -9214,14 +9225,13 @@ func buildSwitchSession(t *testing.T, tierLine string) (*server, *session, strin
 	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	s = newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
-	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", agent, bootTok)
 	resp.Body.Close()
 	waitFile(t, argvFile, 3*time.Second)
-	var se *session
 	s.mu.Lock()
 	for _, x := range s.sessions {
 		se = x
@@ -9231,7 +9241,7 @@ func buildSwitchSession(t *testing.T, tierLine string) (*server, *session, strin
 	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(approved), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return s, se, dir
+	return s, se, dir, ts.URL
 }
 
 // t-3425 (reviewer Act On 1): when the Build model is the one the session already runs on, sprint approve still told the agent to end
@@ -9305,4 +9315,97 @@ func TestSpawnOnBuildRecordsImplementStarted(t *testing.T) {
 	if !strings.Contains(string(b), `"kind":"implement.started"`) || !strings.Contains(string(b), `"source":"ticket Build model"`) {
 		t.Errorf("no implement.started at a Start on Build: %s", b)
 	}
+	// a Start before approval (on the Plan model) records none
+	killAllSessions(s)
+	if err := os.Remove(filepath.Join(home, "events", time.Now().UTC().Format("2006-01-02")+".jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte("# Plan\n\n## Sign-off\nTier: normal | Plan model: haiku\n\n- [ ] Plan approved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(argvFile)
+	resp = startSession(t, ts.URL, "t-ab12", bootTok)
+	resp.Body.Close()
+	waitFile(t, argvFile, 3*time.Second)
+	if b, _ := os.ReadFile(filepath.Join(home, "events", time.Now().UTC().Format("2006-01-02")+".jsonl")); strings.Contains(string(b), `"kind":"implement.started"`) {
+		t.Errorf("implement.started at a Start on the Plan model: %s", b)
+	}
+}
+
+// t-3425: the prod trigger — Claude Code's hook posts awaiting-input to /session/<id>/status when the turn ends, and that starts the
+// switch. Protects the Build switch end to end through handleStatus.
+func TestSwitchToBuildFromHookStatus(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	_, se, _, base := buildSwitchSessionAs(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "")
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+se.sid+"/status", strings.NewReader("awaiting-input"))
+	req.Header.Set("Authorization", "Bearer "+se.statusToken)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		out := string(se.buf)
+		se.mu.Unlock()
+		if strings.Contains(out, "continue the build") {
+			if !strings.Contains(out, "/model sonnet") {
+				t.Fatalf("continued without /model: %q", out)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("the hook's awaiting-input did not start the switch")
+}
+
+// t-3425: under Copilot CLI the switch types Copilot's own id (an alias is mapped, t-d8b0). Protects a copilot session at approval.
+func TestSwitchToBuildCopilotTypesCopilotID(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	s, se, _, _ := buildSwitchSessionAs(t, "Tier: normal | Plan model: sonnet | Build model: haiku", "copilot")
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	out := string(se.buf)
+	se.mu.Unlock()
+	if !strings.Contains(out, "/model claude-haiku-4.5") || strings.Contains(out, "/model haiku") {
+		t.Fatalf("copilot switch typed %q, want /model claude-haiku-4.5", out)
+	}
+}
+
+// t-3425: no Build model anywhere (sprint approve printed nothing): nothing is typed and the session keeps its model; a pi session
+// (no /model) is never switched, even with a Build model line; and a session not at the prompt is never typed into, even when the
+// model is already Build's. Protects live sessions at approval.
+func TestSwitchToBuildTypesNothing(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	check := func(name string, se *session, wantStage string) {
+		t.Helper()
+		se.mu.Lock()
+		out, stage := string(se.buf), se.stage
+		se.mu.Unlock()
+		if strings.Contains(out, "/model") || strings.Contains(out, "continue the build") || stage != wantStage {
+			t.Errorf("%s: stage %q (want %q), typed %q", name, stage, wantStage, out)
+		}
+	}
+	s, se, _ := buildSwitchSession(t, "Tier: normal | Plan model: haiku")
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	check("no Build model", se, "build")
+
+	s, se, _ = buildSwitchSession(t, "Tier: normal | Plan model: haiku | Build model: sonnet")
+	se.mu.Lock()
+	se.agent = "pi"
+	se.mu.Unlock()
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	check("pi", se, "plan")
+
+	s, se, _ = buildSwitchSession(t, "Tier: normal | Plan model: sonnet | Build model: sonnet")
+	se.setStatus("running")
+	s.switchToBuild(se)
+	check("same model, agent working", se, "plan")
 }

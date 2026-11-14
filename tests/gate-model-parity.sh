@@ -67,6 +67,10 @@ while IFS=$'\x1f' read -r name plan want_parse want_resolve want_status label; d
   # Optional per-case exit status (t-ef27): "rejected" and "valid, no model" both print
   # nothing, so only the exit code tells a valid `openai:<id>` from an invalid one.
   [[ -z "$want_status" ]] || ok "resolve status: $name" "$status" "$want_status"
+  # gate_model_resolve is sprint-headless's entry point: the gate label's resolver, same answer
+  if [[ "$label" == gate ]]; then
+    ok "gate_model_resolve: $name" "$(gate_model_resolve "$plan" 2>/dev/null || true)" "$want_resolve"
+  fi
   count=$((count + 1))
 done < "$TMP/records"
 
