@@ -209,6 +209,10 @@ func TestBelongsToWindowsPathForms(t *testing.T) {
 			t.Errorf("%q should belong to %q", p, root)
 		}
 	}
+	// t-9d04: only a key that starts with a drive is case-folded; a one-letter folder deeper in a POSIX path keeps its case
+	if belongsTo("/home/u/c/Proj", "/home/u/c/proj", nil) {
+		t.Errorf("a POSIX path with a one-letter folder inside was case-folded")
+	}
 	for _, p := range []string{`C:/Users/agentops/Documents/ToDo-App2`, `D:/Users/agentops/Documents/ToDo-App`, `C:/Users/agentops/Documents/ToDo-App-worktrees`, `/c/Users/agentops/Documents`} {
 		if belongsTo(p, root, nil) {
 			t.Errorf("%q must not belong to %q", p, root)

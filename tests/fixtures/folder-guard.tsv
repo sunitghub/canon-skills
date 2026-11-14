@@ -22,3 +22,5 @@ C:\Users\sam\proj	-	a user folder is fine
 /tmp/c:/windows/x	-	a drive-looking piece in the middle is not a drive
 /private/var/folders/x/T	-	a folder under /private/var is fine
 /usr/local/src/p	-	a subfolder of a unix system folder is fine
+/home/u/c/windows	-	a c/windows piece below the root is not the Windows folder
+/home/u/c/program files	-	a c/program files piece below the root is not Program Files
