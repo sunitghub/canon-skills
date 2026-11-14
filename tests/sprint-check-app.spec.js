@@ -14276,8 +14276,8 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
 // stubbed so these tests never write the real (possibly user-local) model-tiers.json.
 test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
-    defaults: { plan: { claude: 'm-sonnet', copilot: 'm-sonnet' }, build: { claude: 'm-sonnet', copilot: 'o-luna' },
-      reviewer: { claude: 'm-sonnet', copilot: 'o-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'm-sonnet' }, light: { claude: 'm-haiku', copilot: 'o-luna' } },
+    defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' },
+      reviewer: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, light: { claude: 'm-haiku', copilot: 'gpt-6-luna' } },
     models: {
       anthropic: [
         { id: 'm-sonnet', name: 'Sonnet Test', alias: 'sonnet', desc: 'Balanced.', reasoning: [], input_price: 3, output_price: 15 },
@@ -14286,8 +14286,23 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
       openai: [{ id: 'o-luna', name: 'Luna Test', desc: '', reasoning: [], input_price: 1, output_price: 2 }],
     },
   };
-  async function openModelTiers(page) {
-    const posts = [];
+  // t-aba6: the board serves each picker's options (from its validation rule); this stub is what it would answer for FIXTURE.
+  const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
+  const OPTIONS = {
+    ok: true,
+    steps: ['plan', 'build', 'reviewer', 'evaluator', 'light'].map(id => ({ id, label: id })),
+    agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
+    options: Object.fromEntries(['plan', 'build', 'reviewer', 'evaluator', 'light'].map(st => [st, {
+      claude: OPT(st === 'evaluator' ? [['m-sonnet', 'Sonnet Test']] : st === 'light' ? [['m-haiku', 'Haiku Test']] : [['m-sonnet', 'Sonnet Test'], ['m-haiku', 'Haiku Test']]),
+      copilot: OPT(st === 'evaluator' ? [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']] : st === 'light' ? [['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]
+        : [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]),
+    }])),
+  };
+  async function openModelTiers(page, copilot = { ok: true, source: 'fallback', read_at: '', models: [] }, readAnswer = null) {
+    const posts = [], reads = [];
+    await page.route('**/api/admin/model-tiers/options', route => route.fulfill({ json: OPTIONS }));
+    await page.route('**/api/admin/copilot-models', route => route.fulfill({ json: copilot }));
+    await page.route('**/api/admin/copilot-models/read', route => { reads.push(route.request().method()); return route.fulfill({ status: readAnswer && !readAnswer.ok ? 502 : 200, json: readAnswer || copilot }); });
     let current = JSON.parse(JSON.stringify(FIXTURE));
     await page.route('**/api/admin/model-tiers', async route => {
       if (route.request().method() === 'POST') {
@@ -14301,6 +14316,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     await expect(page.locator('.mt-card[data-id="m-sonnet"]')).toBeVisible();
+    posts.reads = reads;
     return posts;
   }
   const card = (page, id) => page.locator(`.mt-card[data-id="${id}"]`);
@@ -14309,13 +14325,36 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     const posts = await openModelTiers(page);
     await page.locator('#mt-step-reviewer select').selectOption('m-haiku');
     await expect.poll(() => posts.length).toBe(1);
-    expect(posts[0].defaults).toEqual({ ...FIXTURE.defaults, reviewer: { claude: 'm-haiku', copilot: 'o-luna' } });
+    expect(posts[0].defaults).toEqual({ ...FIXTURE.defaults, reviewer: { claude: 'm-haiku', copilot: 'gpt-6-luna' } });
     await expect(page.locator('#mt-step-reviewer select')).toHaveValue('m-haiku');
   });
 
   // t-8f6d + t-2cc8: one card per step for the chosen agent; Claude Code lists Anthropic models only, Copilot CLI Anthropic then OpenAI;
   // the binding Evaluator never offers a Haiku model; Simple / Light offers the cheap line; Plan and Build say they are not used yet; a
   // pick saves defaults.<step>.<agent>. Prod path: Admin > Model tiers, and every close reads what it saves.
+  // t-aba6: under Copilot CLI a button reads Copilot's own list (never by itself: a read leaves one empty Copilot session), says when it
+  // was read, and on a failure says why and keeps the list. Under Claude Code none of it shows. Prod path: Admin > Model tiers.
+  test('Read Copilot\'s models: the button, its note, the read time and a failed read (t-aba6)', async ({ page }) => {
+    const read = { ok: true, source: 'copilot', read_at: '2026-11-14T15:07:26Z', models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
+    let posts = await openModelTiers(page, { ok: true, source: 'fallback', read_at: '', models: [] }, read);
+    await expect(page.locator('#mt-copilot-read')).toBeHidden();               // Claude Code: nothing to read
+    await page.locator('#mt-agent').selectOption('copilot');
+    await expect(page.locator('#mt-copilot-read')).toBeVisible();
+    await expect(page.locator('#mt-cp-when')).toHaveText('A starter list (not read from Copilot yet)');
+    await expect(page.locator('#mt-cp-note')).toHaveText("Each read leaves one empty session in Copilot's own history; no model is called.");
+    expect(posts.reads).toEqual([]);                                         // never read by itself
+    await page.locator('#mt-cp-read').click();
+    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+    expect(posts.reads).toEqual(['POST']);
+    await expect(page.locator('#mt-cp-err')).toHaveCount(0);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    posts = await openModelTiers(page, read, { ok: false, error: 'Copilot refused: Authentication required', source: 'copilot', read_at: read.read_at, models: read.models });
+    await page.locator('#mt-agent').selectOption('copilot');
+    await page.locator('#mt-cp-read').click();
+    await expect(page.locator('#mt-cp-err')).toHaveText("Could not read Copilot's models: Copilot refused: Authentication required. The list below is kept.");
+    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+  });
+
   test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
@@ -14330,13 +14369,14 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await expect(page.locator('#mt-step-reviewer.mt-later')).toHaveCount(0);
     await expect(page.locator('#mt-step-plan .mt-used')).toHaveText('Recorded now; a later update starts this step on it.');
     await page.locator('#mt-agent').selectOption('copilot');
-    expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku', 'o-luna']);   // Copilot CLI: Anthropic then OpenAI
-    expect(await opts('evaluator')).toEqual(['m-sonnet', 'o-luna']);
-    await expect(page.locator('#mt-step-reviewer select')).toHaveValue('o-luna');
+    expect(await opts('reviewer')).toEqual(['claude-sonnet-5.5', 'claude-haiku-4.5', 'gpt-6-luna']);   // Copilot CLI: Copilot's own ids (t-aba6)
+    expect(await opts('evaluator')).toEqual(['claude-sonnet-5.5', 'gpt-6-luna']);
+    await expect(page.locator('#mt-step-reviewer select')).toHaveValue('gpt-6-luna');
     await expect(page.locator('#mt-step-reviewer optgroup')).toHaveCount(2);
-    await page.locator('#mt-step-evaluator select').selectOption('o-luna');
+    await expect(page.locator('#mt-step-reviewer option[value="claude-haiku-4.5"]')).toHaveText('Claude Haiku 4.5 \u00b7 0.33x');
+    await page.locator('#mt-step-evaluator select').selectOption('gpt-6-luna');
     await expect.poll(() => posts.length).toBe(1);
-    expect(posts[0].defaults.evaluator).toEqual({ claude: 'm-sonnet', copilot: 'o-luna' });
+    expect(posts[0].defaults.evaluator).toEqual({ claude: 'm-sonnet', copilot: 'gpt-6-luna' });
     await expect(page.locator('#mt-codex-note')).toContainText('.codex/agents/*.toml');
   });
 
@@ -15084,7 +15124,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       // the registry as one user's machine ended up: Sonnet 5 and Haiku 4.5 removed, taking the sonnet and haiku aliases with them
       const reg = JSON.parse(canonical);
       reg.models.anthropic = reg.models.anthropic.filter(m => !['claude-sonnet-5', 'claude-haiku-4-5-20251001'].includes(m.id));
-      for (const step of ['reviewer', 'evaluator']) reg.defaults[step] = { claude: 'claude-sonnet-5-5', copilot: 'claude-sonnet-5-5' };
+      for (const step of ['reviewer', 'evaluator']) reg.defaults[step].claude = 'claude-sonnet-5-5';   // a Copilot pick is Copilot's own id (t-aba6)
       expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: reg })).ok()).toBe(true);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');

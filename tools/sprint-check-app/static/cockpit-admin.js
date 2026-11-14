@@ -114,29 +114,25 @@ export async function loadAdmin(){
 // panel and the board's per-ticket Gate-model dropdown. t-8f6d + t-2cc8: one
 // default per step and agent, defaults.<step>.<agent> (the Go owner is
 // tierSteps/tierAgents in internal/board/modeltiers.go; this table mirrors it).
-let mtData=null, mtProvider='anthropic', mtAgent='claude';
+let mtData=null, mtProvider='anthropic', mtAgent='claude', mtCopilot={models:[],source:'fallback',read_at:''}, mtCopilotErr='', mtCopilotBusy=false, mtOpts={steps:[],agents:[],options:{}};
 const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
-const MT_AGENTS={claude:{label:'Claude Code',providers:['anthropic']},copilot:{label:'Copilot CLI',providers:['anthropic','openai']}};
-const MT_STEPS=[
-  {id:'plan',label:'Plan',used:'Research, acceptance criteria and the plan, before approval.',later:true},
-  {id:'build',label:'Build',used:'Implementation inside the approved plan.',later:true},
-  {id:'reviewer',label:'Reviewer (advisory)',used:'Used by: sprint complete step 2, the fresh reviewer.'},
-  {id:'evaluator',label:'Evaluator (binding)',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
-  {id:'light',label:'Simple / Light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}];
-const mtHaiku=m=>String(m.alias||'').toLowerCase()==='haiku'||String(m.id).toLowerCase().includes('haiku');   // mirrors haikuClass
-// The models a step's picker offers for the chosen agent: the agent's providers in order; the Evaluator never a Haiku model; Simple /
-// Light only the cheap line (Haiku, and GPT-6 Luna under Copilot). The current pick always stays in the list, so the select shows what is saved.
-function mtStepModels(step,agent,cur){
-  let out=[];
-  MT_AGENTS[agent].providers.forEach(prov=>mtActive(prov).forEach(m=>out.push({prov,m})));
-  if(step==='evaluator') out=out.filter(x=>!mtHaiku(x.m)||x.m.id===cur);   // a saved pick is always shown, never silently replaced
-  if(step==='light') out=out.filter(x=>mtHaiku(x.m)||/luna/i.test(x.m.id)||x.m.id===cur);
-  return out;
-}
+// t-aba6: the steps, the agents and what each picker offers come from the board (GET /api/admin/model-tiers/options, built from the
+// same rule a save is validated with): this file only renders them. MT_STEP_UI is the page's own wording per step.
+const MT_STEP_UI={
+  plan:{label:'Plan',used:'Research, acceptance criteria and the plan, before approval.',later:true},
+  build:{label:'Build',used:'Implementation inside the approved plan.',later:true},
+  reviewer:{label:'Reviewer (advisory)',used:'Used by: sprint complete step 2, the fresh reviewer.'},
+  evaluator:{label:'Evaluator (binding)',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
+  light:{label:'Simple / Light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}};
+const mtStepLabel=st=>(MT_STEP_UI[st.id]||{}).label||st.label;
+const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
+async function mtLoadOptions(){ try{ mtOpts=await (await fetch('/api/admin/model-tiers/options')).json(); }catch(e){} }
 
 async function mtLoad(){
   try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }
   catch(e){ mtData={defaults:{plan:{},build:{},reviewer:{},evaluator:{},light:{}},models:{anthropic:[],openai:[]}}; }
+  try{ mtCopilot=await (await fetch('/api/admin/copilot-models')).json(); }catch(e){}
+  await mtLoadOptions();
   mtRender();
 }
 
@@ -145,6 +141,7 @@ async function mtSave(){
     const r=await fetch('/api/admin/model-tiers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mtData)});
     const res=await r.json();
     if(!res.ok){ toast(res.error||"Couldn't save — reverting"); await mtLoad(); return false; }
+    await mtLoadOptions();   // a saved card (a new model, a legacy one) changes what the pickers offer
     return true;
   }catch(e){ toast("Couldn't reach the board"); await mtLoad(); return false; }
 }
@@ -164,18 +161,21 @@ function mtRender(){
   if(!mtData) return;
   // Defaults: one card per step, for the agent chosen above
   const agentSel=document.getElementById('mt-agent');
-  if(agentSel){ agentSel.value=mtAgent; agentSel.onchange=()=>{ mtAgent=agentSel.value; mtRender(); }; }
+  if(agentSel){
+    if((mtOpts.agents||[]).length) agentSel.innerHTML=mtOpts.agents.map(a=>`<option value="${escAttr(a.id)}">${esc(a.label)}</option>`).join('');   // the board names the agents
+    agentSel.value=mtAgent; agentSel.onchange=()=>{ mtAgent=agentSel.value; mtRender(); };
+  }
+  mtRenderCopilotRead();
   const box=document.getElementById('mt-defaults');
   if(box){
-    box.innerHTML=MT_STEPS.map(st=>{
-      const cur=(mtData.defaults[st.id]||{})[mtAgent]||'';
-      const list=mtStepModels(st.id,mtAgent,cur);
-      const groups=MT_AGENTS[mtAgent].providers.map(prov=>{
-        const opts=list.filter(x=>x.prov===prov).map(x=>`<option value="${escAttr(x.m.id)}"${x.m.id===cur?' selected':''}>${esc(x.m.name)}</option>`).join('');
-        return opts?(MT_AGENTS[mtAgent].providers.length>1?`<optgroup label="${escAttr(MT_PROVIDER_LABEL[prov])}">${opts}</optgroup>`:opts):'';
-      }).join('');
-      const later=st.later?'<div class="setting-d mt-used">Recorded now; a later update starts this step on it.</div>':'';
-      return `<div class="mt-default-card${st.later?' mt-later':''}" id="mt-step-${st.id}"><div class="setting-k">${esc(st.label)}</div><div class="setting-d">${esc(st.used)}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(st.label+' model for '+MT_AGENTS[mtAgent].label)}">${groups}</select><span class="mt-prov">${esc(MT_AGENTS[mtAgent].label)}</span></div></div>${later}</div>`;
+    box.innerHTML=(mtOpts.steps||[]).map(st=>{
+      const ui=MT_STEP_UI[st.id]||{}, cur=(mtData.defaults[st.id]||{})[mtAgent]||'';
+      const list=((mtOpts.options||{})[st.id]||{})[mtAgent]||[];
+      const groups=[...new Set(list.map(o=>o.group))];
+      const opt=o=>`<option value="${escAttr(o.id)}"${o.id===cur?' selected':''}>${esc(o.name+(o.usage?' \u00b7 '+o.usage:'')+(o.saved_only?' (saved, not offered)':''))}</option>`;
+      const body=groups.length>1?groups.map(g=>`<optgroup label="${escAttr(g)}">${list.filter(o=>o.group===g).map(opt).join('')}</optgroup>`).join(''):list.map(opt).join('');
+      const later=ui.later?'<div class="setting-d mt-used">Recorded now; a later update starts this step on it.</div>':'';
+      return `<div class="mt-default-card${ui.later?' mt-later':''}" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${later}</div>`;
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }
@@ -188,7 +188,7 @@ function mtRender(){
   // Card grid
   const grid=document.getElementById('mt-grid');
   const models=mtActive(mtProvider);
-  const defaultIds=new Set(MT_STEPS.flatMap(st=>Object.values(mtData.defaults[st.id]||{})));
+  const defaultIds=new Set(Object.values(mtData.defaults||{}).flatMap(per=>Object.values(per||{})));
   const hasAlias=MT_ALIAS_PROVIDERS.has(mtProvider);
   grid.innerHTML = models.map(m=>{
     const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
@@ -219,6 +219,30 @@ function mtRender(){
   }
   grid.querySelector('.mt-add-card').addEventListener('click',()=>mtAddModel());
   mtRenderSources(); mtRenderProposal(); mtRenderAlert(); mtRenderMove(); mtRenderLegacy();
+}
+
+// t-aba6: Read Copilot's models: a click runs `copilot --acp` once (no model call) and saves the list; each read leaves one empty session
+// in Copilot's own history (~/.copilot/session-state), so it never runs by itself.
+function mtRenderCopilotRead(){
+  const el=document.getElementById('mt-copilot-read'); if(!el) return;
+  el.hidden=mtAgent!=='copilot';
+  if(el.hidden){ el.innerHTML=''; return; }
+  const when=mtCopilot.source==='copilot'&&mtCopilot.read_at?`Copilot's list, read ${esc(String(mtCopilot.read_at).replace('T',' ').slice(0,16))} UTC`:'A starter list (not read from Copilot yet)';
+  const stale=mtCopilot.source==='copilot'&&mtCopilot.read_at&&(Date.now()-Date.parse(mtCopilot.read_at))>864e5?' \u00b7 more than a day old':'';
+  el.innerHTML=`<button type="button" class="b-neutral" id="mt-cp-read"${mtCopilotBusy?' disabled':''}>${mtCopilotBusy?'<span class="spin" aria-hidden="true"></span>Reading\u2026':'Read Copilot\u2019s models'}</button><span id="mt-cp-when">${when}${stale}</span><span id="mt-cp-note">Each read leaves one empty session in Copilot's own history; no model is called.</span>${mtCopilotErr?`<span class="mt-cp-err" role="alert" id="mt-cp-err">Could not read Copilot's models: ${esc(mtCopilotErr)}. The list below is kept.</span>`:''}`;
+  el.querySelector('#mt-cp-read').addEventListener('click',mtReadCopilot);
+}
+async function mtReadCopilot(){
+  if(mtCopilotBusy) return;
+  mtCopilotBusy=true; mtCopilotErr=''; mtRenderCopilotRead();
+  try{
+    const r=await (await fetch('/api/admin/copilot-models/read',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).json();
+    if(r.models) mtCopilot=r;
+    if(!r.ok) mtCopilotErr=r.error||'no answer';
+  }catch(e){ mtCopilotErr='the board could not be reached'; }
+  mtCopilotBusy=false;
+  try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }catch(e){}
+  mtRender();
 }
 
 function mtSwitchProvider(prov){ mtProvider=prov; mtEditing=null; mtMoving=null; mtRender(); }
@@ -300,7 +324,7 @@ const mtActive=prov=>(mtData.models[prov]||[]).filter(m=>!m.legacy);
 const mtLegacy=prov=>(mtData.models[prov]||[]).filter(m=>m.legacy);
 function mtHeld(prov,m){
   const held=[]; if(m.alias) held.push('the alias '+m.alias);
-  MT_STEPS.forEach(st=>Object.keys(MT_AGENTS).forEach(a=>{ if(((mtData.defaults[st.id]||{})[a])===m.id) held.push('the '+st.label.replace(/ \(.*\)$/,'')+' default for '+MT_AGENTS[a].label); }));
+  (mtOpts.steps||[]).forEach(st=>{ if(((mtData.defaults[st.id]||{}).claude)===m.id) held.push('the '+st.label+' default for '+mtAgentLabel('claude')); });   // registry moves touch Claude Code picks only (t-aba6)
   return held;
 }
 // The newest active Anthropic model of an alias's line (claude-<alias>-<version>), if none holds the alias yet.
