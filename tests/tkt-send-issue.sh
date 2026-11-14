@@ -199,7 +199,7 @@ printf '# Acceptance\n\nTicket: `%s`\n\n## Criteria\n- [ ] The list shows the ti
 out="$(run_fail "$TKT" send-issue "$idm" --dry-run 2>&1)"
 assert_contains "$out" "is a Manual ticket (manual: true): a person cannot test in the cloud"; assert_contains "$out" "tkt send-issue $idm --manual-after-merge"
 assert_contains "$(run_fail "$TKT" send-issue "$id2" --dry-run --manual-after-merge 2>&1)" "--manual-after-merge is for a Manual ticket; $id2 is not one"
-mt="$(cksum < ".tickets/$idm/ticket.md")"; ma="$(cksum < ".tickets/$idm/acceptance.md")"
+ma="$(cksum < ".tickets/$idm/acceptance.md")"   # ticket.md changes on a real send (github:, runs:); acceptance.md must not
 "$TKT" send-issue "$idm" --manual-after-merge > /dev/null 2>&1 || fail "send-issue --manual-after-merge failed"
 acc_part="$(awk '/^# Acceptance$/ { f = 1; next } /^# Plan$/ { f = 0 } f' "$STUB_BODY")"
 assert_contains "$acc_part" "The list shows the time"; [[ "$acc_part" != *"[manual]"* ]] || fail "a [manual] criterion went into the cloud copy's acceptance"

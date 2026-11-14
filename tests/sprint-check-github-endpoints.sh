@@ -55,6 +55,7 @@ expect_call() { # <name> <port> <response> <argv> [progress]
   assert_eq "true|0" "$(body "$3" | js '[j.ok,j.exit_code].join("|")')"
 }
 
+# shellcheck disable=SC2066  # one board (Go) since the Python one left; the loop keeps the per-server shape
 for P in "$GOP"; do
   srv=go; : > "$W/log"
   expect_call "$srv send-preview" "$P" "$(get "$P" /api/ticket/t-ab12/github/send-preview)" "send-issue t-ab12 --dry-run"
@@ -205,7 +206,7 @@ for P in "$GOP"; do
   [[ "$(js 'typeof j.elapsed' <<< "$seen")" == number ]] || fail "$srv: no elapsed while running"
   assert_eq "running" "$(body "$(post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}')" | js 'j.status')"
   touch "$W/release"
-  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == "done" ]] && break; sleep 0.1; done
   assert_eq "done|0|true" "$(js '[j.status,j.exit_code,j.output.includes("progress two")].join("|")' <<< "$s")"
   assert_eq "1" "$(grep -c 'merge t-ab12 --yes --pr 58' "$W/log")"   # one job, not two
   assert_eq "$PROJ | merge t-ab12 --yes --pr 58 | progress=5" "$(grep ' merge t-ab12' "$W/log")"
@@ -213,21 +214,21 @@ for P in "$GOP"; do
   rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
   for _ in $(seq 50); do [[ "$(body "$(get "$P" /api/ticket/t-ab12/github/merge)" | js 'j.output')" == *"progress one"* ]] && break; sleep 0.1; done
   post "$P" /api/ticket/t-ab12/github/merge-stop '{}' >/dev/null
-  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == "done" ]] && break; sleep 0.1; done
   assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
   # One 3 MB line with no newline: the job still ends (no reader stall), keeping only the 16 KB tail.
   post "$P" /api/ticket/t-ab12/github/merge '{"pr":99}' >/dev/null
-  for _ in $(seq 100); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  for _ in $(seq 100); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == "done" ]] && break; sleep 0.1; done
   assert_eq "done|0" "$(js '[j.status,j.exit_code].join("|")' <<< "$s")"
   [[ "$(js 'j.output.length' <<< "$s")" -le 16384 ]] || fail "$srv: the output tail is over 16 KB"
   # The time limit (6 s here, an hour by default): a job that never ends is stopped and reported done, not running.
   rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null
-  for _ in $(seq 120); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  for _ in $(seq 120); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == "done" ]] && break; sleep 0.1; done
   assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
   # t-718b: a stop sent right after a second start reaches the new job (Go cleared the old handle), and a write drops
   # the ticket's cached status.
   rm -f "$W/release"; post "$P" /api/ticket/t-ab12/github/merge '{"pr":58}' >/dev/null; post "$P" /api/ticket/t-ab12/github/merge-stop '{}' >/dev/null
-  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == done ]] && break; sleep 0.1; done
+  for _ in $(seq 50); do s="$(body "$(get "$P" /api/ticket/t-ab12/github/merge)")"; [[ "$(js 'j.status' <<< "$s")" == "done" ]] && break; sleep 0.1; done
   assert_eq "done|true" "$(js '[j.status, j.exit_code !== 0].join("|")' <<< "$s")"
   # github-status: the parsed stage, and a second call within 30 s is served from the cache (no second tkt run).
   : > "$W/log"
