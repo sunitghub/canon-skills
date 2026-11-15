@@ -352,7 +352,7 @@ closed_wt; b7="feat/c$n7"
 refuses "a committed HANDOFF.md turned into a symlink" "HANDOFF.md (symlink or submodule)" --yes
 # the names are whole repo-root paths: a nested HANDOFF.md or a look-alike name is not the close's doc; a delete inside the ticket's
 # own folder (tkt compact packs evidence) is still late
-for x in docs/HANDOFF.md HANDOFF.md.bak; do
+for x in docs/HANDOFF.md HANDOFF.md.bak DECISIONS-archive.md.bak; do
   closed_wt; b7="feat/c$n7"
   (cd "$WT" && mkdir -p docs && echo n > "$x" && git add "$x" ".tickets/$id" && git commit -qm "chore: close $id")
   refuses "a committed $x" "since then it changes $x" --yes
