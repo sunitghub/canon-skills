@@ -3567,7 +3567,6 @@ cmd_land() {
     fi
     if [[ "$whead" == "$lhead" || "$whead" == "$prhead" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
     elif [[ -z "$kept" ]]; then kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
-    wt_write_ok "$tdir/.land-head" "$tdir/.land-pr" "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land" || exit 1   # t-f7e6
     rm -f "$tdir/.land-head" "$tdir/.land-pr"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
     handoff_recent "$root"   # t-2db7
