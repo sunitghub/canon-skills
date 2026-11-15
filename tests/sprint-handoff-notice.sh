@@ -17,7 +17,8 @@ done
 run_notice() {   # <folder> [main checkout] [mark|stale <ticket dir>]: the notice text, and its exit status
   # project_root is the main checkout, worktree_root the folder being closed (a worktree sprint fills the worktree's own file); with no
   # second argument they are the same folder
-  ( cd "$1" && MAIN="${2:-$1}" && project_root() { echo "$MAIN"; } && worktree_root() { pwd; } && eval "$fn" \
+  # t-f7e6: _handoff_mark checks wt_write_ok (tools/platform-lib.sh, which tools/sprint loads); without it the write fails closed
+  ( source "$ROOT/tools/platform-lib.sh" && cd "$1" && MAIN="${2:-$1}" && project_root() { echo "$MAIN"; } && worktree_root() { pwd; } && eval "$fn" \
     && case "${3:-focus}" in mark) _handoff_mark "$4" ;; stale) _notice_handoff_stale "$4" ;; *) _notice_handoff_focus ;; esac; echo "rc=$?" )
 }
 NOTE='HANDOFF.md: Current Focus is empty; the wrapup step "refresh HANDOFF.md" fills it (this never blocks the close)'

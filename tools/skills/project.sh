@@ -24,24 +24,12 @@ _create_dir_link() {
 _read_dir_link() {
   local link="$1"
   if _is_windows; then
-    powershell.exe -NoProfile -Command \
-      "\$i=Get-Item -LiteralPath '$(cygpath -w "$link")' -EA SilentlyContinue; if(\$i){\$i.Target}" \
+    # t-f7e6: the path through an environment variable, never the command text (a ' in a folder name would run as PowerShell)
+    CANON_LINK_PATH="$(cygpath -w "$link")" powershell.exe -NoProfile -Command \
+      '$i=Get-Item -LiteralPath $env:CANON_LINK_PATH -EA SilentlyContinue; if($i){$i.Target}' \
       2>/dev/null | tr -d '\r\n' | cygpath -u -f - 2>/dev/null || true
   else
     readlink "$link"
-  fi
-}
-
-# True if path is a directory symlink (Unix) or junction (Windows).
-_is_dir_link() {
-  local link="$1"
-  if _is_windows; then
-    [ -d "$link" ] && \
-      powershell.exe -NoProfile -Command \
-        "\$i=Get-Item -LiteralPath '$(cygpath -w "$link")' -EA SilentlyContinue; if(\$i){(\$i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}" \
-        2>/dev/null | tr -d '\r\n' | grep -qi "true"
-  else
-    [ -L "$link" ]
   fi
 }
 
@@ -55,26 +43,7 @@ _remove_dir_link() {
   fi
 }
 
-# t-f5e4: a branch or cloud PR controls what is in a worktree, so a link planted at .claude, .agents or deeper must not carry a
-# write out of it. Same rule as the Go side (worktreelinks.go underLink / notRegular), held by tests/worktree-links-parity.sh.
-# _under_link <root> <path>: 0 when a folder from <root> down to <path>'s parent is a symlink/junction or not a folder
-# (canon then writes nothing below it). Stricter than resolving the path: a link that points back inside is refused too.
-_under_link() {
-  local root="${1%/}" rel part cur
-  rel="$(dirname "$2")"; rel="${rel#"$root"}"; rel="${rel#/}"
-  [ -n "$rel" ] || return 1
-  cur="$root"
-  while [ -n "$rel" ]; do
-    part="${rel%%/*}"; cur="$cur/$part"
-    case "$rel" in */*) rel="${rel#*/}" ;; *) rel="" ;; esac
-    [ -e "$cur" ] || [ -L "$cur" ] || return 1   # not there yet: mkdir makes a real folder
-    _is_dir_link "$cur" && return 0
-    [ -d "$cur" ] || return 0
-  done
-  return 1
-}
-# _not_regular <path>: 0 when <path> exists and is not a plain file (a symlink, even a dangling one, or a folder).
-_not_regular() { { [ -e "$1" ] || [ -L "$1" ]; } && { [ -L "$1" ] || [ ! -f "$1" ]; }; }
+# t-f5e4's _under_link / _not_regular and _is_dir_link live in tools/platform-lib.sh (t-f7e6: one copy for every writer).
 
 # t-f99b: the skill mirror (.claude/skills, .agents/skills) is a LOCAL link to
 # canon's skills — it must never be committed. On Windows a junction is

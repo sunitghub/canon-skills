@@ -321,6 +321,7 @@ extract_report() {
 # reviewer block to extract — skip it (a missing block here is expected, not a warning).
 if [[ "$BUGFIX" -eq 0 ]]; then
   if REVIEW_CONTENT="$(extract_report reviewer)"; then
+    wt_write_ok "$TDIR/review-notes.md" || exit 1   # t-f7e6
     printf '%s' "$REVIEW_CONTENT" > "$TDIR/review-notes.md"
   else
     echo "Warning: could not extract the reviewer's report from headless output — review-notes.md not persisted." >&2
@@ -328,6 +329,7 @@ if [[ "$BUGFIX" -eq 0 ]]; then
 fi
 
 if EVAL_CONTENT="$(extract_report evaluator)"; then
+  wt_write_ok "$TDIR/eval-report.md" || exit 1   # t-f7e6
   printf '%s' "$EVAL_CONTENT" > "$TDIR/eval-report.md"
 else
   echo "Warning: could not extract the evaluator's report from headless output — eval-report.md not persisted." >&2

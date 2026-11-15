@@ -16,7 +16,7 @@ tools/fetch-daemon.sh	want="$(manifest_lines | awk -v k="$key" -v t="$TARGET" '$
 tools/gate-snapshot.sh	field() { sed -n "s/^$2=//p" "$1" | head -1; }   # <file> <key>	sed -n prints only the one matching key line
 tools/gate-snapshot.sh	fails="$(sed -n 's/^eval_fail_count:[[:space:]]*//p' "$tdir/ticket.md" | head -1)"	sed -n prints only the one matching key line
 tools/skills/display.sh	first=$(printf '%s' "$desc" | fold -s -w "$desc_w" | head -1)	writer is one skill description, under 1 KB
-tools/skills/project.sh	2>/dev/null | tr -d '\r\n' | grep -qi "true"	powershell prints True or False (a few bytes)
+tools/platform-lib.sh	2>/dev/null | tr -d '\r\n' | grep -qi "true"	powershell prints True or False (a few bytes); _is_dir_link moved here from skills/project.sh (t-f7e6)
 tools/skills/project.sh	if [ -n "$(git -C "$project_dir" ls-files -- "$rel" 2>/dev/null | head -1)" ]; then	inside $(…) tested with -n: the pipeline status is ignored
 tools/skills/project.sh	if [ -n "$(git -C "$wt_dir" ls-files -- "$rel" 2>/dev/null | head -1)" ] && [ -f "$link/sprint/SKILL.md" ]; then	inside $(…) tested with -n: the pipeline status is ignored
 tools/skills/prompts.sh	if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; then return 0; fi	writer is $PATH, bounded by the environment size

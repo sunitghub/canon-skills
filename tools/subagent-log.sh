@@ -94,6 +94,7 @@ TIER="$(printf '%s' "$TIER" | tr '[:upper:]' '[:lower:]')"   # one spelling per 
 [[ -z "$AGENT_ID" ]] && exit 0
 
 LOG="$REPO_ROOT/.claude/subagent-runs.jsonl"
+wt_write_ok "$LOG" "${LOG}.tmp" || exit 1   # t-f7e6: a planted .claude or log link in a worktree
 mkdir -p "$(dirname "$LOG")"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

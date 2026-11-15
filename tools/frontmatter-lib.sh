@@ -6,6 +6,9 @@
 # Convention: route all frontmatter field mutations through these helpers
 # (get_field / set_field / set_or_add_field / remove_field) — never re-inline
 # the insert-before-second-`---` or strip-line awk in tkt/sprint (t-59e8).
+# t-f7e6: wt_write_ok (the worktree link check every writer makes) lives in platform-lib.sh; a caller that sources only this file gets it.
+# shellcheck source=platform-lib.sh
+declare -F wt_write_ok >/dev/null 2>&1 || source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"
 
 # get_field <file> <field> — read a frontmatter field's value. CRLF-tolerant:
 # the leading `sub(/\r$/, "")` strips a trailing CR from each line before the
@@ -23,8 +26,10 @@ get_field() {
   ' "$file"
 }
 
+# t-f7e6: each writer below checks the file and its .tmp first (a planted link in a worktree must not carry the write out).
 set_field() {
   local file="$1" field="$2" value="$3"
+  wt_write_ok "$file" "${file}.tmp" || return 1
   awk -v f="$field" -v v="$value" '
     /^---$/ { fm++; print; next }
     fm == 1 && match($0, "^" f ": ") { print f ": " v; next }
@@ -41,6 +46,7 @@ set_or_add_field() {
   if grep -qE "^${field}: " "$file"; then
     set_field "$file" "$field" "$value"
   else
+    wt_write_ok "$file" "${file}.tmp" || return 1
     awk -v f="$field" -v v="$value" '
       /^---$/ { c++; if (c == 2) { print f ": " v } print; next }
       { print }
@@ -53,6 +59,7 @@ set_or_add_field() {
 # fields whose default state is represented by the line's absence.
 remove_field() {
   local file="$1" field="$2"
+  wt_write_ok "$file" "${file}.tmp" || return 1
   awk -v f="$field" '
     /^---$/ { fm++; print; next }
     fm == 1 && match($0, "^" f ": ") { next }

@@ -436,6 +436,7 @@ extract_report() {
 }
 
 if EVAL_CONTENT="$(extract_report evaluator)"; then
+  wt_write_ok "$SPEC_DIR/eval-report.md" || exit 1   # t-f7e6
   printf '%s' "$EVAL_CONTENT" > "$SPEC_DIR/eval-report.md"
   echo "Eval report written to: $SPEC_DIR/eval-report.md" >&2
 else

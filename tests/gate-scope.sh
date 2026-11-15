@@ -128,11 +128,13 @@ grep -qx "project=$(basename "$proj")" "$f" || fail "pre did not record the proj
 grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P "$realhome/.canon" && pwd -P)\$" "$f" || fail "pre did not record the real home and canon home: $(cat "$f")"
 
 # the pi launch environment (scope CANON_HOME + TMPDIR, real HOME) and a bare TMPDIR change are still refused (reviewer t-b7df: the registry must not hide behind TMPDIR)
+# shellcheck disable=SC2046  # the .scope file holds KEY=VALUE words for env: split on purpose
 (env $(cat "$snap.scope") HOME="$realhome" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null) && fail "pi env with a real HOME must be refused"
 (HOME="$realhome" CANON_HOME="$realhome/.canon" TMPDIR="$scratch/other" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" 2>/dev/null) && fail "a changed TMPDIR must not hide the scope"
 
 # post ends the scope
 "$TOOL" post "$snap" >/dev/null
+[[ ! -e "$snap.scope" ]] || fail "post must remove the gate's .scope file"   # t-f7e6: that removal is now behind the worktree link check
 [[ ! -d "$scope" && ! -e "$snap.scope" ]] || fail "post must delete the scratch scope"
 HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" || fail "after post the real path must pass"
 
