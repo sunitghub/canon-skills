@@ -49,6 +49,8 @@ mkdir -p "$OUT/$id"; cp -R "$OUT/t-dir/." "$OUT/$id/"
 planted ".tickets/<id> linked out" - link ".tickets/$id" "$OUT/t-dir" -- "$TKT" start "$id"
 planted "ticket.md linked out" - link ".tickets/$id/ticket.md" "$OUT/file.txt" -- "$TKT" start "$id"
 planted "ticket.md.tmp dangling" 1 link ".tickets/$id/ticket.md.tmp" "$W/outnew" -- "$TKT" start "$id"
+planted "ticket.md.tmp dangling (remove_field: demo off)" 1 link ".tickets/$id/ticket.md.tmp" "$W/outnew" -- "$TKT" demo "$id" off
+planted "ticket.md.tmp dangling (set_or_add_field: demo on)" 1 link ".tickets/$id/ticket.md.tmp" "$W/outnew" -- "$TKT" demo "$id" on
 planted "ACTIVE linked out" 1 link ".tickets/ACTIVE" "$OUT/file.txt" -- "$TKT" start "$id"
 planted ".gitignore seed dangling (ensure_tickets_dir)" 1 link ".tickets/.gitignore" "$W/outnew" -- "$TKT" create "Another" -t task
 planted "create under a linked .tickets" 1 link .tickets "$OUT" -- "$TKT" create "Another" -t task
@@ -61,6 +63,8 @@ planted "evidence stamp under a linked ticket folder" - link ".tickets/$id" "$OU
 planted "gate snapshot under a linked ticket folder" 1 link ".tickets/$id" "$OUT/t-dir" -- "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$id/gate-snapshot.txt"
 planted ".claude linked out (subagent-log)" 1 link .claude "$OUT" -- "$ROOT/tools/subagent-log.sh" --agent-id a1 --agent-type reviewer --ticket "$id" --tokens 1 --minutes 1
 planted "subagent-runs.jsonl linked out" 1 now sh -c "mkdir -p '$WT/.claude'; ln -s '$OUT/file.txt' '$WT/.claude/subagent-runs.jsonl'" -- "$ROOT/tools/subagent-log.sh" --agent-id a1 --agent-type reviewer --ticket "$id" --tokens 1 --minutes 1
+planted "work-beat with a dangling ACTIVE.beat (best effort: exit 0)" 0 now sh -c "echo '$id' > '$WT/.tickets/ACTIVE'; ln -s '$W/outnew' '$WT/.tickets/ACTIVE.beat'" -- "$ROOT/tools/work-beat" touch
+planted "evidence stamp under a linked .tickets" 125 link .tickets "$OUT" -- "$ROOT/tools/evidence.sh" stamp "$id" test-sh -- true
 planted "work-beat under a linked .tickets (best effort: exit 0)" - link .tickets "$OUT" -- "$ROOT/tools/work-beat" touch
 
 # Fail closed: a shell that loads only frontmatter-lib.sh still refuses (it loads platform-lib.sh itself).
