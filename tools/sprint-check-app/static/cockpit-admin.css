@@ -3,6 +3,17 @@
   .mt-openai-note{margin:2px 2px 14px;max-width:440px;color:var(--text-muted);font-size:12px;line-height:1.5}
   /* t-864c (user): the Agent row and every step card read as one panel */
   .mt-panel{border:1px solid var(--border);border-radius:14px;padding:14px 14px 4px;margin:0 0 16px}
+  /* t-f5fa: the Preset row and its confirm box, at the top of the panel */
+  .mt-preset{margin:0 2px 12px}
+  .mt-preset-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .mt-preset-row select{border:1px solid var(--accent);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600}
+  .mt-preset-row .setting-d{margin:0;flex:1;min-width:180px}
+  .mt-preset-row input{border:1px solid var(--border-muted);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);min-width:200px}
+  .mt-preset-box{border:1px solid var(--accent);border-radius:12px;padding:12px;background:var(--panel)}
+  .mt-preset-rows,.mt-preset-notes{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--text-body)}
+  .mt-preset-rows b{color:var(--text);font-weight:600}
+  .mt-preset-notes{color:var(--warn)}
+  .mt-preset-actions{display:flex;gap:8px;justify-content:flex-end}
   /* each card spans four shared rows (label, use, picker, note), so the pickers of a row's cards sit on one line (t-864c) */
   .mt-defaults{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:auto;gap:12px;margin-bottom:14px}
   .mt-agent-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 2px 12px}

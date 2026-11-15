@@ -216,6 +216,11 @@ them. It writes `spec-review.md` (READY or GAPS) and its findings go in the brie
 `spec-check` node of the pipeline (Lite skips it; a project can switch it off) and runs on Admin's Spec check pick (a ticket's `Gate model:`
 first). It runs before approval, so it is left out of the pipeline `sprint approve` pins.
 
+**Presets (t-f5fa).** Admin > Model tiers opens with a Preset dropdown: Balanced, Economy, Max quality and Checker ≠ builder, then any
+you saved. A preset names a level per step (top, mid, cheap), filled with the newest model of its family (Opus, Sonnet, Haiku) for each
+agent Admin lists; a confirm box shows every change and every adjustment (a missing family, the evaluators never on Haiku) before anything
+is saved. "Save current as preset" keeps your exact picks.
+
 **Second evaluator (t-864c, opt-in).** Admin > Model tiers has a Second eval step, Off until you pick a model (never the Evaluator's). With
 a pick, a high-risk close (or any ticket whose Sign-off says `| Second eval: on`; `off` skips it) runs `canon-evaluator` once more on that
 model after the binding one passes, writing `eval-report-2.md`; `sprint eval-compare <id>` lists each criterion the two graded differently.

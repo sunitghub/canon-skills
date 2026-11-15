@@ -331,7 +331,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/projects":
 		sendJSON(w, projectsView())
 	case "/api/admin/model-tiers":
-		sendJSON(w, loadModelTiers())
+		doc := loadModelTiers()
+		delete(doc, "presets") // t-f5fa: canon's presets are read from the seed, never sent to be saved back into the person's file
+		sendJSON(w, doc)
 	case "/api/admin/copilot-models": // t-aba6: Copilot CLI's models (the last read, else the seed's fallback list)
 		sendJSON(w, copilotModelsView())
 	case "/api/admin/model-tiers/options": // t-aba6: each step picker's options per agent, from the validation rule (one owner)
@@ -5912,6 +5914,10 @@ func saveModelTiers(data map[string]any) map[string]any {
 			return map[string]any{"ok": false, "error": err.Error()}
 		}
 		return map[string]any{"ok": true}
+	}
+	delete(data, "presets") // t-f5fa: canon's presets live in the seed only
+	if why := common.MyPresetsProblem(data); why != "" {
+		return map[string]any{"ok": false, "error": "invalid model-tiers payload: " + why}
 	}
 	if !modelTiersValid(data) {
 		if why := common.TierDefaultsProblem(data); why != "" { // t-8f6d: name the default a person must change

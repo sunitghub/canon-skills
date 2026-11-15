@@ -173,6 +173,7 @@ function mtRender(){
     agentSel.value=mtAgent; agentSel.onchange=()=>{ mtAgent=agentSel.value; mtRender(); };
   }
   mtRenderCopilotRead();
+  mtRenderPresets();
   const box=document.getElementById('mt-defaults');
   if(box&&mtOptsErr){ box.innerHTML=`<div class="setting-d" role="alert" id="mt-opts-err">${esc(mtOptsErr)}</div>`; }
   else if(box){
@@ -234,6 +235,56 @@ function mtRender(){
 
 // t-aba6: Read Copilot's models: a click runs `copilot --acp` once (no model call) and saves the list; each read leaves one empty session
 // in Copilot's own history (~/.copilot/session-state), so it never runs by itself.
+// t-f5fa: presets. The board resolves every preset for the agents it lists (GET options .presets, common.ResolvePreset: the one owner of
+// the rule); this page compares, confirms and saves through the usual route. Nothing is saved until Apply.
+let mtPresetPend='', mtPresetSaving=false;
+const mtAgentsListed=()=>(mtOpts.agents||[]).map(a=>a.id);
+const mtModelName=(step,agent,id)=>id===''?'Off':((((mtOpts.options||{})[step]||{})[agent]||[]).find(o=>o.id===id)||{}).name||id;
+function mtPresetMatches(p){
+  return mtAgentsListed().every(ag=>Object.entries(p.picks||{}).every(([st,per])=>!(ag in per)||(((mtData.defaults[st]||{})[ag])||'')===per[ag]));
+}
+function mtRenderPresets(){
+  const el=document.getElementById('mt-preset'); if(!el) return;
+  const list=mtOpts.presets||[], cur=list.find(mtPresetMatches), shown=list.find(p=>p.id===mtPresetPend)||cur;
+  const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}</option>`;
+  const group=(src,label)=>{ const g=list.filter(p=>p.source===src); return g.length?`<optgroup label="${escAttr(label)}">${g.map(opt).join('')}</optgroup>`:''; };
+  let h=`<div class="mt-preset-row"><label class="setting-k" for="mt-preset-sel">Preset</label>
+    <select id="mt-preset-sel" aria-describedby="mt-preset-d"><option value=""${shown?'':' selected'}>Custom</option>${group('canon','canon')}${group('yours','Yours')}</select>
+    <span class="setting-d" id="mt-preset-d">${shown?esc(shown.desc||(shown.source==='yours'?'Your saved picks.':'')):'Your own picks: they match no preset.'}</span>
+    <button type="button" class="btn b-neutral" id="mt-preset-save">Save current as preset\u2026</button>${shown&&shown.source==='yours'&&!mtPresetPend?`<button type="button" class="btn b-danger" id="mt-preset-del">Delete</button>`:''}</div>`;
+  if(mtPresetSaving) h+=`<div class="mt-preset-row"><input type="text" id="mt-preset-name" maxlength="40" placeholder="Preset name" aria-label="Preset name"><button type="button" class="btn b-primary" id="mt-preset-name-ok">Save</button><button type="button" class="btn b-close" id="mt-preset-name-x">Cancel</button><span class="setting-d">Saves the current picks for ${esc(mtAgentsListed().map(mtAgentLabel).join(' and '))}.</span></div>`;
+  const pend=list.find(p=>p.id===mtPresetPend);
+  if(pend){
+    const rows=[];
+    for(const st of (mtOpts.steps||[])) for(const ag of mtAgentsListed()){
+      const to=((pend.picks||{})[st.id]||{})[ag]; if(to===undefined) continue;
+      const from=(mtData.defaults[st.id]||{})[ag]||'';
+      if(to!==from) rows.push(`<li><b>${esc(mtStepLabel(st))} \u00b7 ${esc(mtAgentLabel(ag))}</b> <span>${esc(mtModelName(st.id,ag,from))} \u2192 ${esc(mtModelName(st.id,ag,to))}</span></li>`);
+    }
+    h+=`<div class="mt-preset-box" id="mt-preset-box" role="dialog" aria-label="Apply ${escAttr(pend.name)}"><div class="setting-k">Apply ${esc(pend.name)}? ${rows.length} picker${rows.length===1?'':'s'} change</div>
+      ${rows.length?`<ul class="mt-preset-rows">${rows.join('')}</ul>`:'<div class="setting-d">Your picks already match.</div>'}
+      ${(pend.notes||[]).length?`<ul class="mt-preset-notes">${pend.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:''}
+      <div class="mt-preset-actions"><button type="button" class="btn b-close" id="mt-preset-cancel">Cancel</button><button type="button" class="btn b-primary" id="mt-preset-apply">Apply</button></div></div>`;
+  }
+  el.innerHTML=h;
+  el.querySelector('#mt-preset-sel').onchange=e=>{ mtPresetPend=e.target.value; mtRender(); };
+  el.querySelector('#mt-preset-save').onclick=()=>{ mtPresetSaving=true; mtRender(); const i=document.getElementById('mt-preset-name'); if(i) i.focus(); };
+  const del=el.querySelector('#mt-preset-del'); if(del) del.onclick=async()=>{ mtData.my_presets=(mtData.my_presets||[]).filter(p=>p.id!==shown.id); if(await mtSave()){ mtRender(); toast('Preset deleted'); } };
+  const ok=el.querySelector('#mt-preset-name-ok'); if(ok) ok.onclick=async()=>{
+    const name=document.getElementById('mt-preset-name').value.trim(); if(!name) return;
+    const picks={}; for(const st of (mtOpts.steps||[])){ picks[st.id]={}; for(const ag of mtAgentsListed()) picks[st.id][ag]=(mtData.defaults[st.id]||{})[ag]||''; }
+    mtData.my_presets=[...(mtData.my_presets||[]),{id:'p'+Date.now().toString(36),name,picks}];
+    if(await mtSave()){ mtPresetSaving=false; mtRender(); toast('Saved preset '+name); } else { mtData.my_presets=mtData.my_presets.slice(0,-1); }
+  };
+  const nx=el.querySelector('#mt-preset-name-x'); if(nx) nx.onclick=()=>{ mtPresetSaving=false; mtRender(); };
+  const c=el.querySelector('#mt-preset-cancel'); if(c) c.onclick=()=>{ mtPresetPend=''; mtRender(); };
+  const a=el.querySelector('#mt-preset-apply'); if(a) a.onclick=async()=>{
+    for(const [st,per] of Object.entries(pend.picks||{})) for(const ag of mtAgentsListed()) if(ag in per){ mtData.defaults[st]=mtData.defaults[st]||{}; mtData.defaults[st][ag]=per[ag]; }
+    mtPresetPend='';
+    if(await mtSave()){ mtRender(); toast('Applied '+pend.name); } else await mtLoad();
+  };
+}
+
 function mtRenderCopilotRead(){
   const el=document.getElementById('mt-copilot-read'); if(!el) return;
   el.hidden=mtAgent!=='copilot';
@@ -307,6 +358,7 @@ async function mtSetDefault(sel){
   const step=sel.dataset.step, agent=sel.dataset.agent;
   mtData.defaults[step]=mtData.defaults[step]||{};
   mtData.defaults[step][agent]=sel.value;
+  mtPresetPend='';   // t-f5fa: a hand edit leaves any preset being chosen (the dropdown then reads Custom unless the picks match one)
   if(await mtSave()){ mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick; mtSave reloads the lists (t-864c: Second eval leaves out the Evaluator's pick)
 }
 

@@ -3,6 +3,7 @@ package board
 import (
 	"encoding/json"
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -569,7 +570,7 @@ func TestSecondEvalStep(t *testing.T) {
 	if why := common.TierPickProblem(doc, "evaluator2", "claude", "claude-haiku-5-5"); !strings.Contains(why, "Haiku") {
 		t.Errorf("a Haiku Second eval was accepted: %q", why)
 	}
-	if why := common.TierPickProblem(doc, "evaluator2", "copilot", "claude-haiku-4.5"); !strings.Contains(why, "Haiku") {   // evaluator t-864c: the Copilot floor too
+	if why := common.TierPickProblem(doc, "evaluator2", "copilot", "claude-haiku-4.5"); !strings.Contains(why, "Haiku") { // evaluator t-864c: the Copilot floor too
 		t.Errorf("a Haiku Second eval was accepted for Copilot CLI: %q", why)
 	}
 	if why := common.TierPickProblem(doc, "evaluator", "claude", ""); why == "" {
@@ -667,5 +668,60 @@ func TestTierStepsNumberedInRunOrder(t *testing.T) {
 	}
 	if want := "1:plan 2:speccheck 3:build 4:reviewer 5:evaluator 6:evaluator2 :light"; strings.Join(got, " ") != want {
 		t.Errorf("steps = %q, want %q", strings.Join(got, " "), want)
+	}
+}
+
+// t-f5fa: canon's presets live in the seed only: GET /api/admin/model-tiers never sends them (also when no user file exists, so the
+// seed is the doc), a save drops them, and the options route serves them resolved with the person's own after. Protects every save from
+// Admin and the Preset dropdown.
+func TestPresetsNeverReachTheUserFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seedFile := filepath.Join(dir, "seed.json")
+	old, oldBin := modelTiersPath, copilotBin
+	modelTiersPath, copilotBin = seedFile, "canon-test-no-such-copilot"
+	defer func() { modelTiersPath, copilotBin = old, oldBin }()
+	doc := regDoc()
+	doc["presets"] = []any{map[string]any{"id": "balanced", "name": "Balanced", "tiers": map[string]any{"plan": "top", "speccheck": "mid", "build": "mid",
+		"reviewer": "mid", "evaluator": "mid", "evaluator2": "off", "light": "cheap"}}}
+	raw, _ := json.Marshal(doc)
+	if err := os.WriteFile(seedFile, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	get := func() map[string]any {
+		w := httptest.NewRecorder()
+		handleGet(w, httptest.NewRequest("GET", "/api/admin/model-tiers", nil))
+		var m map[string]any
+		_ = json.Unmarshal(w.Body.Bytes(), &m)
+		return m
+	}
+	page := get() // no user file: the seed is the doc
+	if _, has := page["presets"]; has {
+		t.Fatal("GET sent canon's presets, so a save would copy them into the user file")
+	}
+	page["presets"] = doc["presets"] // a page that sent them anyway
+	page["my_presets"] = []any{map[string]any{"id": "team", "name": "Team", "picks": map[string]any{"plan": map[string]any{"claude": "claude-sonnet-5-5"}}}}
+	if res := saveModelTiers(page); res["ok"] != true {
+		t.Fatalf("save: %v", res)
+	}
+	b, _ := os.ReadFile(modelTiersUserFile())
+	if strings.Contains(string(b), `"presets"`) || !strings.Contains(string(b), `"my_presets"`) {
+		t.Errorf("the user file = %s; want my_presets and no presets", b)
+	}
+	view := tierOptionsView()["presets"].([]map[string]any)
+	if len(view) != 2 || view[0]["source"] != "canon" || view[1]["source"] != "yours" || view[1]["name"] != "Team" {
+		t.Fatalf("presets = %v", view)
+	}
+	picks := view[0]["picks"].(map[string]map[string]string)
+	if picks["plan"]["claude"] != "claude-opus-5-5" || picks["light"]["claude"] == "" {
+		t.Errorf("Balanced resolved to %v", picks)
+	}
+	if _, ok := picks["plan"]["copilot"]; ok {
+		t.Error("Copilot CLI is not listed here, yet the preset resolved it")
+	}
+	page = get()
+	page["my_presets"] = []any{map[string]any{"id": "x", "name": "", "picks": map[string]any{}}}
+	if res := saveModelTiers(page); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "1-40 printable") {
+		t.Errorf("a preset with no name was saved: %v", res)
 	}
 }
