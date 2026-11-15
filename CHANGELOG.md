@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-11-15
+
+- Added: an optional **second evaluator** on another model. Admin > Model tiers has a **Second eval** step, Off until you pick a model (never the Evaluator's, never a Haiku model). With a pick, a high-risk close (or a ticket whose Sign-off says `| Second eval: on`; `off` skips it) runs `canon-evaluator` once more after the binding one passes, writing `eval-report-2.md`; `sprint eval-compare <id>` lists each criterion the two graded differently, and you decide. It never fails a close by itself; the binding gate still reads only `eval-report.md`. New commands: `sprint second-eval`, `sprint eval-compare`. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-864c).
+- Changed: Admin > Model tiers is one bordered panel; the cards are numbered in the order a sprint runs them (1. Plan … 6. Second eval) with their pickers aligned; Copilot CLI is listed only when it is installed (or you already saved a Copilot pick); Read Copilot's models is a standard button that turns green on hover; the daemon and sessions panels say less (t-864c).
+- Changed (events API): `eval.compared` {ticket, model, disagreements}; `gate.started` / `gate.finished` carry role `evaluator2` (t-864c).
+
 ## [0.57.0] - 2026-11-14
 
 - Added: a **Spec check** before you approve a plan. A fresh read-only agent (`canon-spec-checker`) grades `acceptance.md` and `plan.md`: is each criterion testable and covered by a Test Plan line, does any clause rest on something nothing enforces, does each decision in the ticket show up, can the plan deliver it. It writes `spec-review.md` (READY or GAPS) and its findings go in the brief; it never blocks. It is the `spec-check` node of the pipeline (Lite skips it; a project can switch it off), and tickets approved before this update still close. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-9b13).
