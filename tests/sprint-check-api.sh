@@ -828,9 +828,11 @@ SEED_TIERS="$ROOT/tools/sprint-check-app/model-tiers.json"
 seed_sha="$(shasum "$SEED_TIERS" | cut -d' ' -f1)"
 tiers_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$1" "$B/api/admin/model-tiers"; }
 tiers_json() { curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin), sort_keys=True))'; }
-seed_json="$(python3 -c 'import sys,json; print(json.dumps(json.load(open(sys.argv[1])), sort_keys=True))' "$SEED_TIERS")"
+# t-f5fa: GET never sends canon's presets (seed-only, so a save cannot copy them into the person's file): the seed without them
+seed_json="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); assert d.pop("presets"); print(json.dumps(d, sort_keys=True))' "$SEED_TIERS")"
 user_file="$GO_CANON/cockpit/model-tiers.json"
 [[ "$(tiers_json)" == "$seed_json" ]] || fail "sprint-check-api: GET without a data-dir copy is not the seed"
+[[ "$(tiers_json)" != *'"presets"'* ]] || fail "sprint-check-api: GET sent canon's presets"
 edited="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); d["models"]["anthropic"].append({"id":"probe-zz","alias":"probe-zz"}); print(json.dumps(d))' "$SEED_TIERS")"
 [[ "$(tiers_post "$edited")" == 200 ]] || fail "sprint-check-api: a valid model-tiers save was rejected"
 [[ -f "$user_file" ]] || fail "sprint-check-api: the save did not write $user_file"

@@ -14360,6 +14360,12 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '4' },
       { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '5' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '6' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
+    // t-f5fa: the board's resolved presets (common.ResolvePreset): one matching FIXTURE's picks, one that changes Build, with a note
+    presets: [
+      { id: 'current', name: 'Current', desc: 'What FIXTURE holds.', source: 'canon', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] },
+      { id: 'eco', name: 'Economy', desc: 'Haiku builds.', source: 'canon', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-haiku', copilot: 'claude-haiku-4.5' } },
+        notes: ['Copilot CLI · Plan: no opus model, so claude-sonnet-5.5'] },
+    ],
     // t-864c: the board's Second eval lists: Off first, never the Evaluator's pick (m-sonnet; claude-sonnet-5.5) or a Haiku model
     options: Object.fromEntries(['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'evaluator2', 'light'].map(st => st === 'evaluator2'
       ? [st, { claude: [{ id: '', name: 'Off', group: 'Off' }], copilot: [{ id: '', name: 'Off', group: 'Off' }, ...OPT([['gpt-6-luna', 'GPT-6 Luna', '1x']])] }] : [st, {
@@ -14453,6 +14459,90 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
       OPTIONS.options.plan.copilot.pop();
       FIXTURE.defaults.plan.copilot = 'claude-sonnet-5.5';
     }
+  });
+
+  // t-f5fa: the Preset dropdown: it names the preset the picks match (else Custom); choosing one shows every change for each listed agent
+  // and the board's notes, and saves nothing until Apply; Apply is one save; a hand edit can make it Custom; Save current as preset adds
+  // the exact picks to my_presets. Prod path: Admin > Model tiers, through POST /api/admin/model-tiers.
+  test('Model tiers presets: match, confirm with notes, Cancel, Apply, Custom, Save as preset (t-f5fa)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    const sel = page.locator('#mt-preset-sel');
+    await expect(sel).toHaveValue('current');                                   // FIXTURE's picks match it
+    await sel.selectOption('eco');
+    const box = page.locator('#mt-preset-box');
+    await expect(box.locator('.setting-k')).toHaveText('Apply Economy? 2 pickers change');
+    await expect(box.locator('.mt-preset-rows li')).toHaveText(['3. Build · Claude Code Sonnet Test → Haiku Test', '3. Build · Copilot CLI GPT-6 Luna · 1x → Claude Haiku 4.5'.replace(' · 1x', '')]);
+    await expect(box.locator('.mt-preset-notes li')).toHaveText(['Copilot CLI · Plan: no opus model, so claude-sonnet-5.5']);
+    expect(posts.length).toBe(0);                                                // nothing saved yet
+    await page.locator('#mt-preset-cancel').click();
+    await expect(box).toHaveCount(0); await expect(sel).toHaveValue('current'); expect(posts.length).toBe(0);
+    await sel.selectOption('eco'); await page.locator('#mt-preset-apply').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].defaults.build).toEqual({ claude: 'm-haiku', copilot: 'claude-haiku-4.5' });
+    await expect(sel).toHaveValue('eco');
+    // a hand edit of the OTHER agent's pick no longer matches either (every listed agent is compared)
+    await page.locator('#mt-agent').selectOption('copilot');
+    await page.locator('#mt-step-plan select').selectOption('gpt-6-luna');
+    await expect(sel).toHaveValue('');
+    await page.locator('#mt-step-plan select').selectOption('claude-sonnet-5.5');
+    await expect(sel).toHaveValue('eco');                                       // both match again; the one last applied stays named
+    await page.locator('#mt-agent').selectOption('claude');
+    await expect.poll(() => posts.length).toBe(3);
+    await page.locator('#mt-step-plan select').selectOption('m-haiku');           // a hand edit no preset holds
+    await expect(sel).toHaveValue('');
+    await expect(page.locator('#mt-preset-d')).toHaveText('Your own picks: they match no preset.');
+    await expect.poll(() => posts.length).toBe(4);
+    posts.length = 0;
+    await page.locator('#mt-preset-save').click(); await page.locator('#mt-preset-name').fill('Team default'); await page.locator('#mt-preset-name-ok').click();
+    await expect.poll(() => posts.length).toBe(1);
+    const mine = posts[0].my_presets;
+    expect(mine).toHaveLength(1); expect(mine[0].name).toBe('Team default');
+    expect(mine[0].picks.plan).toEqual({ claude: 'm-haiku', copilot: 'claude-sonnet-5.5' });
+    expect(posts[0].presets).toBeUndefined();                                   // canon's presets are never sent back
+  });
+
+  // t-f5fa reviewer Act On 1: a refused Save as preset (the board answers ok:false, e.g. a 21st preset) leaves every saved preset in
+  // place (the page reloads what the board holds; it once dropped the last saved one); Delete removes exactly the shown preset.
+  test('Model tiers presets: a refused save keeps your presets; Delete removes the shown one (t-f5fa)', async ({ page }) => {
+    const mine = [{ id: 'pa', name: 'Team A', picks: { plan: { claude: 'm-haiku' } } }, { id: 'pb', name: 'Team B', picks: { plan: { claude: 'm-sonnet' } } }];
+    FIXTURE.my_presets = mine;
+    OPTIONS.presets.push({ id: 'pb', name: 'Team B', source: 'yours', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] });
+    try {
+      const posts = await openModelTiers(page);
+      let reloads = 0;
+      await page.route('**/api/admin/model-tiers', async route => {
+        if (route.request().method() === 'POST') { posts.push(route.request().postDataJSON()); return route.fulfill({ status: 400, json: { ok: false, error: 'invalid model-tiers payload: my_presets holds 21 presets; at most 20' } }); }
+        reloads++; return route.fulfill({ json: JSON.parse(JSON.stringify(FIXTURE)) });
+      });
+      await page.locator('#mt-preset-save').click(); await page.locator('#mt-preset-name').fill('One more'); await page.locator('#mt-preset-name-ok').click();
+      await expect.poll(() => posts.length).toBe(1);
+      await expect.poll(() => reloads).toBe(1);                                    // the page read back what the board holds
+      await page.unroute('**/api/admin/model-tiers');
+      let saved = null;
+      await page.route('**/api/admin/model-tiers', async route => {
+        if (route.request().method() === 'POST') { saved = route.request().postDataJSON(); return route.fulfill({ json: { ok: true } }); }
+        return route.fulfill({ json: JSON.parse(JSON.stringify(FIXTURE)) });
+      });
+      await page.locator('#mt-step-light select').selectOption('m-haiku');      // any later save
+      await expect.poll(() => saved && saved.my_presets && saved.my_presets.map(p => p.id).join(' ')).toBe('pa pb');   // nothing lost
+      await page.locator('#mt-preset-sel').selectOption('pb'); await page.locator('#mt-preset-apply').click();
+      await expect(page.locator('#mt-preset-del')).toBeVisible();
+      saved = null; await page.locator('#mt-preset-del').click();
+      await expect.poll(() => saved && saved.my_presets && saved.my_presets.map(p => p.id).join(' ')).toBe('pa');
+    } finally { delete FIXTURE.my_presets; OPTIONS.presets.pop(); }
+  });
+
+  // t-f5fa (spec check 5): with Copilot CLI not listed (not installed), the box shows and Apply changes Claude Code only.
+  test('Model tiers presets: an agent Admin does not list is never shown or changed (t-f5fa)', async ({ page }) => {
+    const agents = OPTIONS.agents; OPTIONS.agents = [{ id: 'claude', label: 'Claude Code' }];
+    try {
+      const posts = await openModelTiers(page);
+      await page.locator('#mt-preset-sel').selectOption('eco');
+      await expect(page.locator('#mt-preset-box .mt-preset-rows li')).toHaveText(['3. Build · Claude Code Sonnet Test → Haiku Test']);
+      await page.locator('#mt-preset-apply').click();
+      await expect.poll(() => posts.length).toBe(1);
+      expect(posts[0].defaults.build).toEqual({ claude: 'm-haiku', copilot: 'gpt-6-luna' });   // Copilot's pick untouched
+    } finally { OPTIONS.agents = agents; }
   });
 
   // t-864c: the Second eval card is Off until picked, lists Off first and never the Evaluator's model; a pick reloads the lists, so its

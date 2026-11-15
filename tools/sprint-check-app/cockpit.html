@@ -112,6 +112,7 @@
             <div class="mt-wrap">
               <div class="slabel">Model Tiers</div>
               <section class="mt-panel" id="mt-panel" aria-label="The model for each step">
+              <div class="mt-preset" id="mt-preset"></div>
               <div class="mt-agent-row"><label class="setting-k" for="mt-agent">Agent</label>
                 <select id="mt-agent" aria-describedby="mt-agent-d"><option value="claude">Claude Code</option><option value="copilot">Copilot CLI</option></select>
                 <span class="setting-d" id="mt-agent-d">Each agent keeps its own model for every step. A ticket's own <code>Gate model:</code> (Plan tab) still wins for the gates (Spec check, Reviewer, Evaluator); it never sets the Second eval.</span></div>

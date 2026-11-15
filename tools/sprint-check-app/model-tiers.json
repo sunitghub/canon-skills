@@ -246,5 +246,63 @@
       "name": "GPT-5.3-Codex",
       "usage": "1x"
     }
+  ],
+  "presets": [
+    {
+      "id": "balanced",
+      "name": "Balanced",
+      "desc": "Opus plans, Sonnet builds and checks, Haiku for light work.",
+      "tiers": {
+        "plan": "top",
+        "speccheck": "mid",
+        "build": "mid",
+        "reviewer": "mid",
+        "evaluator": "mid",
+        "evaluator2": "off",
+        "light": "cheap"
+      }
+    },
+    {
+      "id": "economy",
+      "name": "Economy",
+      "desc": "Sonnet plans, Haiku builds; the checks stay on Sonnet.",
+      "tiers": {
+        "plan": "mid",
+        "speccheck": "mid",
+        "build": "cheap",
+        "reviewer": "mid",
+        "evaluator": "mid",
+        "evaluator2": "off",
+        "light": "cheap"
+      }
+    },
+    {
+      "id": "max",
+      "name": "Max quality",
+      "desc": "Opus everywhere but light work.",
+      "tiers": {
+        "plan": "top",
+        "speccheck": "top",
+        "build": "top",
+        "reviewer": "top",
+        "evaluator": "top",
+        "evaluator2": "off",
+        "light": "cheap"
+      }
+    },
+    {
+      "id": "checker-not-builder",
+      "name": "Checker ≠ builder",
+      "desc": "Build on Sonnet; the spec check, review and evaluation on Opus, and a second opinion on Sonnet.",
+      "tiers": {
+        "plan": "top",
+        "speccheck": "top",
+        "build": "mid",
+        "reviewer": "top",
+        "evaluator": "top",
+        "evaluator2": "mid",
+        "light": "cheap"
+      }
+    }
   ]
 }

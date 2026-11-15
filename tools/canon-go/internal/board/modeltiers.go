@@ -115,7 +115,52 @@ func tierOptionsView() map[string]any {
 		}
 		agents = append(agents, map[string]string{"id": a, "label": common.TierAgentLabel[a]})
 	}
-	return map[string]any{"ok": true, "steps": steps, "agents": agents, "registry_agent": common.RegistryAgent, "options": tierOptions(doc)}
+	return map[string]any{"ok": true, "steps": steps, "agents": agents, "registry_agent": common.RegistryAgent, "options": tierOptions(doc),
+		"presets": presetsView(doc, agents)}
+}
+
+// canonPresetIDs are the seed's preset ids: a person's preset may not reuse one (the dropdown and Delete key on the id).
+func canonPresetIDs() []string {
+	ids := []string{}
+	list, _ := common.LoadModelTiers("", modelTiersPath)["presets"].([]any)
+	for _, r := range list {
+		if p, _ := r.(map[string]any); p != nil {
+			if id, _ := p["id"].(string); id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
+}
+
+// presetsView (t-f5fa): canon's presets (read from the seed every time) then the person's `my_presets`, each resolved for the agents Admin
+// lists (common.ResolvePreset, the one owner of the rule): {id, name, desc, source, picks, notes}.
+func presetsView(doc map[string]any, agents []map[string]string) []map[string]any {
+	ids := []string{}
+	for _, a := range agents {
+		ids = append(ids, a["id"])
+	}
+	cp := map[string][]string{}
+	list, _ := savedCopilotModels(doc)
+	for _, m := range list.Models {
+		cp["copilot"] = append(cp["copilot"], m.ID)
+	}
+	out := []map[string]any{}
+	add := func(raw any, source string) {
+		items, _ := raw.([]any)
+		for _, r := range items {
+			p, _ := r.(map[string]any)
+			if p == nil {
+				continue
+			}
+			picks, notes := common.ResolvePreset(doc, p, ids, cp)
+			out = append(out, map[string]any{"id": p["id"], "name": p["name"], "desc": p["desc"], "source": source, "picks": picks, "notes": notes})
+		}
+	}
+	seed := common.LoadModelTiers("", modelTiersPath)
+	add(seed["presets"], "canon")
+	add(doc["my_presets"], "yours")
+	return out
 }
 
 // copilotAgentShown (t-864c, user): Admin lists Copilot CLI when `copilot` is on PATH, or when the person's own saved registry holds a
