@@ -4,86 +4,114 @@
     {
       "id": 1,
       "case_type": "control",
-      "prompt": "Run a context check. Assume ~/.claude/CLAUDE.md has two @-imports: AGENTS.md (80 lines) and standards/efficiency.md (120 lines). skills.sh status shows two registered skills: sprint (450 lines) and wrapup (90 lines). No context-findings.md exists yet.",
-      "expected_output": "The skill produces a size table listing each import file and its line count, states that line counts are a proxy rather than exact token counts, lists the registered skills and sizes, then flags any files where more than half the content is rarely relevant. It does not write to context-findings.md without asking.",
+      "prompt": "Run a context check. Assume ~/.claude/CLAUDE.md has two @-imports: AGENTS.md (80 lines) and standards/efficiency.md (120 lines). .claude/skills/ exists with two real subdirectories whose SKILL.md files are not symlinks: sprint (450 lines) and wrapup (90 lines); ./tools/skills.sh status lists both. No context-check-report.md exists yet. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "The skill produces a size table listing each import file and its line count, states that line counts are a proxy rather than exact token counts, lists the two project-local skills and their sizes, then flags any files where more than half the content is rarely relevant. It asks before writing the report and writes nothing first.",
       "expectations": [
         "Produces a size table with file names and line counts",
         "States that line counts are a proxy for context weight, not exact token counts",
-        "Lists registered skills and their sizes",
+        "Lists sprint and wrapup as project-local skills with their sizes",
         "Flags high-line-count files where less than half is usually relevant",
-        "Asks for confirmation before writing to context-findings.md"
+        "Asks 'Write context-check-report.md report? (y to confirm)' before writing anything"
       ]
     },
     {
       "id": 2,
       "case_type": "compliance",
-      "prompt": "Run a context check. No context-findings.md exists. ~/.claude/CLAUDE.md imports two files. Here is the relevant content of each:\n\nAGENTS.md (excerpt):\n```\n## Output Style\n- No sycophantic openers or closing fluff.\n- Short responses by default.\n```\n\nstandards/efficiency.md (excerpt):\n```\n## Output Style\n- No sycophantic openers or closing fluff.\n- Short responses by default.\n```\n\nThese two excerpts are the complete always-on content for this scenario. Audit them for cross-file redundancy and report your findings.",
-      "expected_output": "The skill identifies that 'No sycophantic openers or closing fluff' and 'Short responses by default' appear verbatim in both AGENTS.md and standards/efficiency.md, quotes both occurrences, then asks 'Append these to context-findings.md? (y to confirm)' without writing first.",
+      "prompt": "Run a context check. ~/.claude/CLAUDE.md imports two files. Here is the relevant content of each:\n\nAGENTS.md (excerpt):\n```\n## Output Style\n- No sycophantic openers or closing fluff.\n- Short responses by default.\n```\n\nstandards/efficiency.md (excerpt):\n```\n## Output Style\n- No sycophantic openers or closing fluff.\n- Short responses by default.\n```\n\nThese two excerpts are the complete always-on content for this scenario. Audit them for cross-file redundancy and report your findings. This is a self-contained scenario — do not read any files from the real filesystem.",
+      "expected_output": "The skill identifies that 'No sycophantic openers or closing fluff' and 'Short responses by default' appear verbatim in both AGENTS.md and standards/efficiency.md, quotes both occurrences, then asks for confirmation before writing the report.",
       "expectations": [
         "Identifies and reports the cross-file redundancy with quotes from both files",
-        "Asks 'Append these to context-findings.md? (y to confirm)' before writing",
-        "Does not write to context-findings.md without confirmation"
+        "Asks 'Write context-check-report.md report? (y to confirm)' before writing",
+        "Does not write context-check-report.md or .reports/context-check-history.json without confirmation"
       ]
     },
     {
       "id": 3,
       "case_type": "boundary",
-      "prompt": "Run a context check. context-findings.md already contains an entry dated 2026-06-10 flagging standards/efficiency.md as redundant with AGENTS.md. You find no new issues.",
-      "expected_output": "The skill skips the already-logged issue, finds no new issues, and stops without writing to context-findings.md.",
+      "prompt": "Run a context check. A context-check-report.md from an earlier run exists at the project root with the row `| AGENTS.md | issues found | redundant with standards/efficiency.md: both say 'Short responses by default.' |`. ~/.claude/CLAUDE.md still imports AGENTS.md and standards/efficiency.md, and both still contain the line '- Short responses by default.' under '## Output Style'. Nothing else has changed. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "The skill audits the current files and reports the redundancy again, quoting both occurrences, because the report is a point-in-time snapshot. It does not treat the earlier report as a list of issues to skip, and it asks before overwriting the report.",
       "expectations": [
-        "Skips the already-logged issue from context-findings.md",
-        "Reports no new findings",
-        "Does not write to context-findings.md",
-        "Stops after reporting no new issues"
+        "Reports the 'Short responses by default.' redundancy between AGENTS.md and standards/efficiency.md as a current finding",
+        "Does not skip or suppress the finding because the earlier report already lists it",
+        "Asks 'Write context-check-report.md report? (y to confirm)' before writing",
+        "States or implies that the report would be overwritten, not appended to"
       ]
     },
     {
       "id": 4,
       "case_type": "edge",
-      "prompt": "Run a context check. skills.sh is not on PATH and ./tools/skills.sh does not exist. ~/.claude/CLAUDE.md is absent. ~/.claude/settings.json is absent. No ~/.claude/projects/*/memory/ paths exist. No context-findings.md exists. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
-      "expected_output": "The skill skips the skills.sh step with an explicit note, explicitly reports that ~/.claude/CLAUDE.md, ~/.claude/settings.json, and memory paths are absent, continues with the project artifact checks, and completes normally.",
+      "prompt": "Run a context check. There is no .claude/skills/ directory in the current working directory. ~/.claude/CLAUDE.md is absent. ~/.claude/settings.json is absent. No ~/.claude/projects/*/memory/ paths exist. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "The skill notes that no .claude/skills/ directory was found, explicitly reports that ~/.claude/CLAUDE.md, ~/.claude/settings.json, and memory paths are absent, continues with the project artifact checks, and completes normally.",
       "expectations": [
-        "Skips skills.sh check and explicitly notes it is unavailable",
+        "Notes 'No `.claude/skills/` directory found' (or the same words) and continues",
         "Reports missing ~/.claude/CLAUDE.md without stopping",
         "Reports missing ~/.claude/settings.json without stopping",
         "Reports missing memory paths without stopping",
-        "Continues with remaining audit steps",
+        "Continues with the project artifact checks",
         "Does not error or stop because optional global artifacts are missing"
       ]
     },
     {
       "id": 5,
       "case_type": "over-caution",
-      "prompt": "Run a context check. No context-findings.md exists. ~/.claude/CLAUDE.md imports two files. Here is their complete content:\n\nAGENTS.md (18 lines):\n```\n# Agent Instructions\n\n## Workflow\n- Non-trivial work requires an open ticket before sprint start.\n- Trivial fixes (typo, single-line config) are exempt.\n- Surface tradeoffs; don't hide confusion.\n- If multiple interpretations exist, present them — don't pick silently.\n\n## Code Quality\n- No error handling for scenarios that can't happen.\n- Only validate at system boundaries (user input, external APIs).\n- No speculative abstractions.\n- No half-finished implementations.\n```\n\nstandards/git.md (14 lines):\n```\n# Git Standards\n\n## Commits\n- Imperative mood, 50-char target, 72-char hard limit, no trailing period.\n- Type prefix: feat, fix, refactor, perf, docs, test, chore.\n- Body required for breaking changes or non-obvious reasoning.\n\n## Branches\n- Pattern: feat/short-description or fix/short-description.\n- Never force-push main or master.\n- PRs: one concern per PR, title under 70 chars.\n```\n\nNo skills registered. No hooks in settings.json. Audit these two files and report your findings. This is a self-contained scenario — the content above is the complete always-on context; do not read any other files from the real filesystem.",
-      "expected_output": "The skill assesses both files in Step 6 and finds no size or relevance issues. In Step 8 it explicitly states 'no relevance concern' (or equivalent) for each file individually rather than silently skipping them. It reports no content findings and stops without asking to write to context-findings.md.",
+      "prompt": "Run a context check. ~/.claude/CLAUDE.md imports two files. Here is their complete content:\n\nAGENTS.md (18 lines):\n```\n# Agent Instructions\n\n## Workflow\n- Non-trivial work requires an open ticket before sprint start.\n- Trivial fixes (typo, single-line config) are exempt.\n- Surface tradeoffs; don't hide confusion.\n- If multiple interpretations exist, present them — don't pick silently.\n\n## Code Quality\n- No error handling for scenarios that can't happen.\n- Only validate at system boundaries (user input, external APIs).\n- No speculative abstractions.\n- No half-finished implementations.\n```\n\nstandards/git.md (14 lines):\n```\n# Git Standards\n\n## Commits\n- Imperative mood, 50-char target, 72-char hard limit, no trailing period.\n- Type prefix: feat, fix, refactor, perf, docs, test, chore.\n- Body required for breaking changes or non-obvious reasoning.\n\n## Branches\n- Pattern: feat/short-description or fix/short-description.\n- Never force-push main or master.\n- PRs: one concern per PR, title under 70 chars.\n```\n\nNo .claude/skills/ directory. No hooks in settings.json. No project-level .claude/ artifacts or CLAUDE.md. Audit these two files and report your findings. This is a self-contained scenario — the content above is the complete always-on context; do not read any other files from the real filesystem.",
+      "expected_output": "The skill finds no size or relevance issues. It explicitly states 'no relevance concern' (or equivalent) for each file individually rather than silently skipping them. It reports no content findings and stops before the write prompt.",
       "expectations": [
         "Explicitly states no relevance concern (or equivalent) for AGENTS.md",
         "Explicitly states no relevance concern (or equivalent) for standards/git.md",
         "Does not silently omit the per-file verdict for clean files",
-        "Does not write to or prompt about context-findings.md"
+        "Stops before the write prompt: does not ask to write the report and writes no file"
       ]
     },
     {
       "id": 6,
       "case_type": "compliance",
-      "prompt": "Run a context check. context-findings.md is 75 lines long and contains one finding dated 2025-10-01 plus one finding dated 2026-06-10. You find one new issue and the user confirms appending with 'y'.",
-      "expected_output": "The skill moves the entry older than 6 months to context-findings.archive.md before appending the new finding. It preserves the 2026-06-10 finding in context-findings.md and does not delete historical entries outright.",
+      "prompt": "Run a context check for the project at /work/app. ~/.claude/CLAUDE.md (6 lines) imports AGENTS.md (70 lines), and 50 of AGENTS.md's 70 lines are a one-time 'Initial setup' walkthrough used only when the repo was first cloned. No .claude/skills/ directory. ~/.claude/settings.json has no hooks. No memory paths. In the project: .claude/settings.json exists (12 lines, nothing to flag), .claude/settings.local.json is absent, CLAUDE.md is absent. No context-check-report.md exists and .reports/context-check-history.json does not exist: this is the project's first run. When you ask to write the report, the user answers 'y'. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem. Show the exact contents you write to each file.",
+      "expected_output": "The skill flags AGENTS.md for the one-time setup section, asks for confirmation, and on 'y' writes context-check-report.md as a File | Status | Details table with no Trend line (first run), using only the Status values clean, issues found, not present and skipped. It creates .reports/context-check-history.json with one entry under /work/app.",
       "expectations": [
-        "Archives entries older than 6 months into context-findings.archive.md",
-        "Does not delete historical entries outright",
-        "Keeps newer findings in context-findings.md",
-        "Appends only after the user confirms with y"
+        "Asks 'Write context-check-report.md report? (y to confirm)' and writes only after the 'y'",
+        "context-check-report.md is a markdown table with the header | File | Status | Details |",
+        "Every Status cell is exactly one of: clean, issues found, not present, skipped",
+        "AGENTS.md is 'issues found' and .claude/settings.local.json is 'not present'",
+        "The report has no '**Trend:**' line, because there is no earlier history entry",
+        ".reports/context-check-history.json holds one entry under the key /work/app with a timestamp, finding_count 1 and a file_count equal to the report's row count"
       ]
     },
     {
       "id": 7,
       "case_type": "compliance",
-      "prompt": "Run a context check. An imported file is 90 lines. The file includes a one-time onboarding section used only during project setup. No context-findings.md exists.",
+      "prompt": "Run a context check for the project at /work/app. .reports/context-check-history.json exists. Its /work/app key holds 20 entries, oldest first; the oldest has timestamp 2026-01-05T09:00:00Z and the last has timestamp 2026-11-01T09:00:00Z with finding_count 3. It also holds a /work/other key with 2 entries. This run finds exactly 1 issue: ~/.claude/CLAUDE.md imports AGENTS.md (90 lines), and its 60-line 'Release checklist' section is used only on release days. Everything else is clean or absent. When you ask to write the report, the user answers 'y'. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem. Show the exact first line of the report and describe the history file you write back.",
+      "expected_output": "After the 'y', the report's first line is '**Trend:** findings 3 → 1 (last run 2026-11-01T09:00:00Z)', before the table. The /work/app array gets the new entry appended and the oldest (2026-01-05T09:00:00Z) dropped, so it still has 20 entries; /work/other is left exactly as it was.",
+      "expectations": [
+        "Asks 'Write context-check-report.md report? (y to confirm)' and writes only after the 'y'",
+        "The report's first line is '**Trend:** findings 3 → 1 (last run 2026-11-01T09:00:00Z)', above the table",
+        "The /work/app array still holds exactly 20 entries after the write",
+        "The dropped entry is the oldest one (2026-01-05T09:00:00Z) and the new entry is last, with finding_count 1",
+        "The /work/other key and its 2 entries are not changed"
+      ]
+    },
+    {
+      "id": 8,
+      "case_type": "compliance",
+      "prompt": "Run a context check. An imported file is 90 lines. The file includes a one-time onboarding section used only during project setup. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
       "expected_output": "The skill flags the imported file only if it gives evidence: the file name, the 90-line count, and a short reason that the onboarding section is one-time or rarely needed in always-on context. It asks before writing.",
       "expectations": [
         "Includes file name and line count as evidence for the size finding",
         "Explains why the flagged content is rarely needed or one-time",
-        "Asks for confirmation before writing to context-findings.md"
+        "Asks 'Write context-check-report.md report? (y to confirm)' before writing"
+      ]
+    },
+    {
+      "id": 9,
+      "case_type": "compliance",
+      "prompt": "Run a context check. .claude/skills/ contains: `sprint`, a whole-directory symlink to /Users/dev/.canon/skills/sprint (its SKILL.md is 450 lines); and `deploy`, a real directory whose SKILL.md is a plain 40-line file (not a symlink). The output of `find .claude/skills -maxdepth 1 -mindepth 1 -type l` is `.claude/skills/sprint`; the output of `find .claude/skills -maxdepth 1 -mindepth 1 \\! -type l -type d` is `.claude/skills/deploy`, and `readlink .claude/skills/deploy/SKILL.md` prints nothing. deploy/SKILL.md says 'Run `scripts/deploy-check.sh` before every deploy.', and scripts/deploy-check.sh does not exist in the repo. ~/.claude/CLAUDE.md is absent. When you ask to write the report, the user answers 'y'. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem. Show the report rows you write for both skills.",
+      "expected_output": "The skill lists sprint as canon-managed with its symlink target and does not audit its content; it lists deploy as project-local with its size and audits it, reporting scripts/deploy-check.sh as a dead reference. On 'y' the report has a sprint row with Status skipped and the symlink target in Details, and a deploy row with Status issues found.",
+      "expectations": [
+        "Lists sprint under canon-managed with the target /Users/dev/.canon/skills/sprint, and does not audit its content",
+        "Lists deploy under project-local with its size, and audits its content",
+        "Asks 'Write context-check-report.md report? (y to confirm)' and writes only after the 'y'",
+        "The report's sprint row has Status 'skipped' and names /Users/dev/.canon/skills/sprint in Details",
+        "The report's deploy row has Status 'issues found'"
       ]
     }
   ]
