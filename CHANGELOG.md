@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.60.2] - 2026-11-15
+
 - Fixed: **Check & merge** for a worktree ticket no longer refuses a close in a project that tracks HANDOFF.md or DECISIONS.md. The close writes both after the evaluator grades (the Handoff narrative and the decision row), and the merge now takes them with the ticket's close record, naming them before it merges. Any other change after grading is still refused, and a merge from GitHub (Import results, merge-pr) still takes neither. A committed delete of LEARNINGS.md, HANDOFF.md or DECISIONS.md after grading is now refused (t-2a95).
 
 ## [0.60.1] - 2026-11-15
