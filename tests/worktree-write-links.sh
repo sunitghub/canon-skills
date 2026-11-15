@@ -18,6 +18,7 @@ echo base > f.txt; printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current
 git add f.txt HANDOFF.md; git commit -qm base
 id="$("$TKT" create "Planted" -t task)"
 printf '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [ ] Plan approved\n\n## Approach\nx\n' > ".tickets/$id/plan.md"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#21" } { print }' ".tickets/$id/ticket.md" > "$W/t.md" && mv "$W/t.md" ".tickets/$id/ticket.md"   # land needs it
 git add -f .tickets; git commit -qm "chore: ticket"
 WT="$W/wt"; git worktree add -q "$WT" -b feat/w
 OUT="$W/out"; mkdir -p "$OUT/t-dir"; git -C "$OUT" init -q   # outside the project, a git repository of its own
@@ -65,6 +66,17 @@ mkdir -p "$W/oldt/t-0ld1/evidence"; printf -- '---\nid: t-0ld1\nstatus: closed\n
 echo r > "$W/oldt/t-0ld1/evidence/board-spec-chromium-run1.json"; touch -t 202501010000 "$W/oldt/t-0ld1/ticket.md"
 planted "compact under a linked .tickets (reviewer: it deleted outside files)" 1 link .tickets "$W/oldt" -- "$TKT" compact --older-than 1
 [[ -f "$W/oldt/t-0ld1/evidence/board-spec-chromium-run1.json" ]] || fail "compact deleted an outside evidence file"
+# tkt land run inside this worktree (it tracks its own .tickets, so land's markers go into the worktree's ticket folder): a stub gh and
+# an origin with the PR head; evaluator attempt 3 found these markers written through a planted link
+git -C "$P" remote add origin https://github.com/acme/app.git; git init -q --bare "$W/origin.git"; git -C "$P" push -q "$W/origin.git" "HEAD:refs/pull/7/head"
+PRH="$(git -C "$P" rev-parse HEAD)"; mkdir -p "$W/lbin"; REAL_GIT="$(type -P git)"
+printf '#!/usr/bin/env bash\ncase "$1 $2" in "pr view") printf "OPEN\\t%%s\\tfalse\\tMERGEABLE\\tmain\\n" "%s" ;; *) exit 9 ;; esac\n' "$PRH" > "$W/lbin/gh"
+printf '#!/usr/bin/env bash\nif [[ " $* " == *" fetch "* ]]; then a=(); for x in "$@"; do [[ "$x" == origin ]] && x="%s"; a+=("$x"); done; set -- "${a[@]}"; fi\nexec "%s" "$@"\n' "$W/origin.git" "$REAL_GIT" > "$W/lbin/git"
+chmod +x "$W/lbin/gh" "$W/lbin/git"
+landrun() { PATH="$W/lbin:$PATH" "$TKT" land "$id" --pr 7; }
+planted "tkt land's .land-head linked out" 1 link ".tickets/$id/.land-head" "$OUT/file.txt" -- landrun
+planted "tkt land's .land-pr dangling" 1 link ".tickets/$id/.land-pr" "$W/outnew" -- landrun
+planted "tkt land's .cockpit-cwd dangling" 1 link ".tickets/$id/.cockpit-cwd" "$W/outnew" -- landrun
 planted "plan.md linked out (sprint approve)" 1 link ".tickets/$id/plan.md" "$OUT/plan.md" -- "$SPRINT" approve "$id"
 printf 'evaluator-run-id: 1-1\ngraded-head: x\n## Verdict\nfail: no\n' > "$OUT/eval.md"
 planted "ticket.md linked out (sprint eval-verdict)" 1 now sh -c "ln -sf '$OUT/eval.md' '$WT/.tickets/$id/eval-report.md'; rm '$WT/.tickets/$id/ticket.md'; ln -s '$OUT/file.txt' '$WT/.tickets/$id/ticket.md'" -- "$SPRINT" eval-verdict "$id"

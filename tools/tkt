@@ -3567,6 +3567,7 @@ cmd_land() {
     fi
     if [[ "$whead" == "$lhead" || "$whead" == "$prhead" ]]; then git -C "$root" branch -q -D "$branch" < /dev/null
     elif [[ -z "$kept" ]]; then kept="; $branch kept: it has commits beyond the PR head (push them to the PR branch, then git branch -D $branch)"; fi
+    wt_write_ok "$tdir/.land-head" "$tdir/.land-pr" "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land" || exit 1   # t-f7e6
     rm -f "$tdir/.land-head" "$tdir/.land-pr"
     if [[ -f "$tdir/.cockpit-cwd.before-land" ]]; then mv "$tdir/.cockpit-cwd.before-land" "$tdir/.cockpit-cwd"; else rm -f "$tdir/.cockpit-cwd"; fi
     handoff_recent "$root"   # t-2db7
@@ -3592,6 +3593,9 @@ cmd_land() {
   if ! $fix && [[ "$verdict" == pass && "$graded" != - && "$head" == "$graded"* ]]; then
     echo "land: $id already has a passing verdict on PR #$pr's head; nothing to close here: tkt merge-pr $id" >&2; exit 1
   fi
+  # t-f7e6 (evaluator, attempt 3): run inside a worktree that tracks its own .tickets, tdir is that worktree's folder: check the markers
+  # before anything is made (an earlier version of this branch wrongly assumed land always writes in the main checkout)
+  wt_write_ok "$tdir/.land-head" "$tdir/.land-pr" "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land" || exit 1
   [[ ! -e "$wt" ]] || { echo "land: $wt already exists; remove it (git worktree remove) or finish that close" >&2; exit 1; }
   git -C "$root" show-ref --verify --quiet "refs/heads/$branch" && { echo "land: branch $branch already exists" >&2; exit 1; }
   git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>/dev/null || { echo "land: could not fetch PR #$pr from origin" >&2; exit 1; }
