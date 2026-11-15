@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.60.3] - 2026-11-15
+
 - Fixed: `tkt land` now names what its worktree lacks for a test run (the `ln -s` for `node_modules`, `CANON_TICKETS_DIR` when the worktree has no `.tickets/`), and canon's own board-spec runner stops with that fix in one line instead of reporting about ten false failures there; it also copies `CANON_TICKETS_DIR`'s tickets when set. Test suites that pin TMPDIR now keep their temporary folders inside it on macOS too; the close checklist says to take the post-gate snapshot before committing fixes (t-fff4).
 
 ## [0.60.2] - 2026-11-15
