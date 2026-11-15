@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-11-15
+
 - Added: **presets** in Admin > Model tiers. A Preset dropdown at the top of the panel fills every step in one go: Balanced, Economy, Max quality, Checker ≠ builder, then any you saved with "Save current as preset…". Each level (top, mid, cheap) becomes the newest Opus, Sonnet or Haiku model for each agent Admin lists; a confirm box shows every change and adjustment before anything is saved. The dropdown reads Custom when your picks match no preset. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-f5fa).
 
 ## [0.58.0] - 2026-11-15
