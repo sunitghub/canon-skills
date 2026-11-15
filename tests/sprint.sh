@@ -1684,6 +1684,11 @@ fr_project="$(make_project)"
   "$TKT" close "$fid" --no-sprint >/dev/null
   fr_ticket late; fr_report "$head1"
   echo '| row |' >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "learnings"
+  echo 'narrative' > HANDOFF.md; echo '| d |' > DECISIONS.md; echo '| a |' > DECISIONS-archive.md   # t-2a95: the close's own docs (MERGE_SAFE_CLOSE_ALT)
+  git add -f HANDOFF.md DECISIONS.md DECISIONS-archive.md; git commit -qm "close docs"
+  mkdir -p docs; echo n > docs/HANDOFF.md; git add docs/HANDOFF.md; git commit -qm "a nested HANDOFF.md"   # not the close's doc: refused
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "docs/HANDOFF.md"
+  git reset -q --hard HEAD~1
   echo 'zz' > dist/a.zip; git add dist; git commit -qm "hook artifacts"
   echo 'scratch' > untracked-scratch.txt
   assert_contains "$(fr_complete)" "Sprint completed: $fid"

@@ -387,7 +387,9 @@ sprint agent without leaving the browser — no second terminal.
   same **Check & merge** a ticket out on GitHub gets, with the same dialog: the checks that run none of the branch's
   code, then **Run tests & merge** (or **Merge (no tests)** when the project has no `scripts/test.sh`), progress with
   **Stop**, then **Merged** or **Not merged** and why. It runs `tkt merge <id>`, which refuses, changing nothing, when the
-  evaluator did not pass on the branch's head (late docs after it are allowed), the worktree has uncommitted changes, the
+  evaluator did not pass on the branch's head (late docs after it are allowed: the ticket's folder, LEARNINGS.md and, since
+  0.60.2 (`t-2a95`), the HANDOFF.md and DECISIONS.md the close itself writes, committed or not; a merge from GitHub still
+  takes only the first two), the worktree has other uncommitted changes, the
   branch is already in main, or the merge conflicts (the files are named, and the way out: merge main into the branch in
   the worktree, reopen, close again). Since 0.45.0 (`t-e1a2`) the branch merges into the project's **default branch**
   (origin/HEAD, else `main` or `master`), whatever branch the main checkout is on: the report says `merge: into main`, and
