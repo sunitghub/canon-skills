@@ -16,7 +16,7 @@ id="$("$SPRINT" start "Second opinion" | awk '/Sprint started:/ { print $3 }')"
 t=".tickets/$id"
 signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [x] Plan approved\n\n## Approach\nx\n' "$1" > "$t/plan.md"; }
 reg() { mkdir -p "$CANON_HOME/cockpit"; printf '%s' "$1" > "$CANON_HOME/cockpit/model-tiers.json"; }
-second() { COCKPIT_AGENT="${2:-claude}" "$SPRINT" second-eval "$id" 2>&1; }
+second() { COCKPIT_AGENT="${2:-claude}" "$SPRINT" second-eval "$id" 2>&1 || echo "EXIT $?"; }   # a skip or a model always exits 0
 
 # 1. sprint second-eval: Off by default (the seed has no pick), so it never runs until a model is picked
 signoff "Tier: high-risk | Risk: x"
@@ -40,8 +40,8 @@ signoff "Tier: high-risk | Risk: x | Gate model: opus"
 assert_eq "skip: the ticket's Gate model already put the binding evaluator on opus" "$(second)"
 
 # 2. sprint eval-compare: rows matched by their first cell; a different status, and a row only one side has, are disagreements
-report() {   # report <file> <criterion 1 status> <criterion 2 status> [extra criterion row]
-  printf 'evaluator-run-id: 1-1\ngraded-head: abc\n\n# Eval Report\n\nModel: %s\n\n## Criteria\n\n| Criterion | Status | Evidence |\n|---|---|---|\n| One works | %s | a.sh:1 |\n| Two works | %s | b.sh:2 |\n%s\n## Test Plan\n\n| Item | Status | Notes |\n|---|---|---|\n| run the test | pass | ok |\n\n## Verdict\n\npass: fine\n' "$1" "$3" "$4" "${5:-}" > "$t/$2"
+report() {   # report <model> <file> <criterion 1 status> <criterion 2 status> [extra criterion row] [test plan status]
+  printf 'evaluator-run-id: 1-1\ngraded-head: abc\n\n# Eval Report\n\nModel: %s\n\n## Criteria\n\n| Criterion | Status | Evidence |\n|---|---|---|\n| One works | %s | a.sh:1 |\n| Two works | %s | b.sh:2 |\n%s\n## Test Plan\n\n| Item | Status | Notes |\n|---|---|---|\n| run the test | %s | ok |\n\n## Verdict\n\npass: fine\n' "$1" "$3" "$4" "${5:-}" "${6:-pass}" > "$t/$2"
 }
 report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass
 rc=0; out="$("$SPRINT" eval-compare "$id" 2>&1)" || rc=$?
@@ -63,9 +63,24 @@ out="$("$SPRINT" eval-compare "$id")"
 assert_contains "$out" 'Criteria: `a | b` and x'; assert_contains "$out" ': binding pass, second fail'   # one cell, not split at either pipe
 assert_contains "$out" "Disagreements: 1"
 report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass   # back to the plain binding report for the sections below
+# the Test Plan table is compared too, and a row only the binding report has is a difference as well
+report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass "| Old criterion | pass | x |"
+report "opus (claude-opus-5-5)" eval-report-2.md pass pass "" not-run
+out="$("$SPRINT" eval-compare "$id")"
+assert_contains "$out" "Test Plan: run the test: binding pass, second not-run"
+assert_contains "$out" "Criteria: Old criterion: only in eval-report.md (pass)"
+assert_contains "$out" "Disagreements: 2"
+report "sonnet (claude-sonnet-5-5)" eval-report.md pass pass
 printf '# nothing here\n' > "$t/eval-report-2.md"
 rc=0; out="$("$SPRINT" eval-compare "$id" 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "eval-report-2.md has no Criteria or Test Plan rows"
+# the binding report missing or empty is said the same way, never compared as zero rows
+cp "$t/eval-report.md" "$t/binding.bak"; report "opus (claude-opus-5-5)" eval-report-2.md pass pass
+rm "$t/eval-report.md"; rc=0; out="$("$SPRINT" eval-compare "$id" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "eval-report.md not found"
+printf 'pass: no tables\n' > "$t/eval-report.md"; rc=0; out="$("$SPRINT" eval-compare "$id" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "eval-report.md has no Criteria or Test Plan rows"
+mv "$t/binding.bak" "$t/eval-report.md"; printf '# nothing here\n' > "$t/eval-report-2.md"
 
 # 3. sprint complete's Wrapup Gates check: with eval-report-2.md, the second-eval row must carry the count; without it, nothing changes
 gates() { ( eval "$(sed -n '/^_acceptance_section()/,/^}/p;/^_eval_rows()/,/^}/p;/^_eval_compare()/,/^}/p;/^_gate_wrapup_gates()/,/^}/p' "$SPRINT")"; _gate_wrapup_gates "$id" "$t/acceptance.md" 2>&1 ); }
@@ -80,13 +95,16 @@ acc "| second-eval | ran | opus; Disagreements: 1; criterion 2: the user kept th
 gates >/dev/null || fail "the right second-eval row was refused"
 acc "| second-eval | ran | opus; Disagreements: 12; none |"
 gates >/dev/null && fail "Disagreements: 12 passed for a count of 1"
+printf '# nothing here\n' > "$t/eval-report-2.md"; acc "| second-eval | ran | Disagreements: 0 |"
+out="$(gates)" && fail "an unreadable eval-report-2.md was accepted at close"
+assert_contains "$out" "cannot read the reports"
 rm "$t/eval-report-2.md"; acc ""
 gates >/dev/null || fail "a close without a second evaluator now needs a second-eval row"
 
 # 4. the binding evaluator's report checks never read eval-report-2.md: a failing or malformed one changes nothing there
 # every function tools/sprint defines, with the libraries it sources (reviewer t-864c: one function alone ran with undefined helpers, so
 # both runs printed "command not found" and matched; the check below fails if any helper is missing)
-binding() { ( SCRIPT_DIR="$ROOT/tools"; source "$ROOT/tools/ticket-root.sh"; source "$ROOT/tools/platform-lib.sh"
+binding() { ( export SCRIPT_DIR="$ROOT/tools"; source "$ROOT/tools/ticket-root.sh"; source "$ROOT/tools/platform-lib.sh"
   eval "$(awk '/^[A-Za-z_][A-Za-z0-9_]*\(\) \{/,/^}/' "$SPRINT")"; _gate_eval_report "$id" "$t" 2>&1; echo "rc=$?" ) }
 printf 'evaluator-run-id: 1-1\n' > "$t/eval-report.md"
 before="$(binding)"

@@ -80,7 +80,7 @@ gate_report() {
 # gate_verdict <role> <report file> — the evaluators' `pass:`/`fail:`/… line; the others' first word under `## Verdict`
 gate_verdict() {
   case "$1" in
-    evaluator|evaluator2) sed -nE 's/^(pass|fail|partial|not-run):.*/\1/p' "$2" | head -1 ;;
+    evaluator|evaluator2) awk 'match($0, /^(pass|fail|partial|not-run):/) { print substr($0, 1, RLENGTH - 1); exit }' "$2" ;;
     *) awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$2" | tr -d '*' ;;
   esac
 }

@@ -409,7 +409,7 @@ _gate_wrapup_gates() {
   if [[ -f "$tdir2/eval-report-2.md" ]]; then
     cmp="$(_eval_compare "$tdir2")" || { echo "Sprint $id cannot close: sprint eval-compare $id cannot read the reports: $cmp."; return 1; }
     n="$(printf '%s\n' "$cmp" | sed -n 's/^Disagreements: //p')"
-    if ! printf '%s\n' "$data_rows" | grep -E '^\|[[:space:]]*second-eval[[:space:]]*\|[[:space:]]*ran[[:space:]]*\|' | grep -qE "Disagreements: $n([^0-9]|$)"; then
+    if ! awk -v n="$n" '/^\|[[:space:]]*second-eval[[:space:]]*\|[[:space:]]*ran[[:space:]]*\|/ && match($0, "Disagreements: " n "([^0-9]|$)") { f = 1 } END { exit !f }' <<< "$data_rows"; then
       echo "Sprint $id cannot close: eval-report-2.md exists, so ## Wrapup Gates needs the row | second-eval | ran | … Disagreements: $n … | (from sprint eval-compare $id; show them to the user first). An eval-report-2.md left from an earlier run that this close did not dispatch: delete it."
       return 1
     fi
@@ -1717,7 +1717,7 @@ cmd_eval_compare() {
   if (( rc )); then echo "Sprint $id: $out." >&2; exit 1; fi
   printf '%s\n' "$out"
   n="$(printf '%s\n' "$out" | sed -n 's/^Disagreements: //p')"
-  m="$(sed -n 's/^Model:[[:space:]]*//p' "$tdir/eval-report-2.md" | head -1 | tr -d '\r\n' | LC_ALL=C tr -c 'A-Za-z0-9._:/ ()-' '?' | cut -c1-80)"
+  m="$(awk 'sub(/^Model:[[:space:]]*/, "") { printf "%s", $0; exit }' "$tdir/eval-report-2.md" | tr -d '\r' | LC_ALL=C tr -c 'A-Za-z0-9._:/ ()-' '?' | cut -c1-80)"
   canon_event eval.compared sprint "$(project_root)" "ticket=$id" "model=$m" "disagreements=$n"
 }
 
