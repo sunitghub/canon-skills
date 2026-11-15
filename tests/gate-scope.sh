@@ -133,6 +133,7 @@ grep -q "^home=$(cd -P "$realhome" && pwd -P)\$" "$f" && grep -q "^canon=$(cd -P
 
 # post ends the scope
 "$TOOL" post "$snap" >/dev/null
+[[ ! -e "$snap.scope" ]] || fail "post must remove the gate's .scope file"   # t-f7e6: that removal is now behind the worktree link check
 [[ ! -d "$scope" && ! -e "$snap.scope" ]] || fail "post must delete the scratch scope"
 HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_guard x' _ "$ROOT/tools/gate-scope-lib.sh" || fail "after post the real path must pass"
 
