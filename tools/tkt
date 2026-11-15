@@ -2384,7 +2384,8 @@ _merge_branch() {
   [[ -z "$(get_field "$src/ticket.md" merged)" ]] || _mb_no "$id is already merged ($(get_field "$src/ticket.md" merged))"
   # t-a01e: in a project that tracks .tickets/, nothing else commits the close record (the closed ticket.md, eval-report.md, summary,
   # evidence). When it is the worktree's only change (nothing staged, every change a plain file that is a local late doc by
-  # late_doc_path: under .tickets/<id>/, or t-2a95's tracked root docs the close writes, HANDOFF.md and DECISIONS.md; .cockpit-* markers
+  # late_doc_path: under .tickets/<id>/, or a tracked root doc the close writes: LEARNINGS.md and its archive, and (t-2a95) HANDOFF.md,
+  # DECISIONS.md and its archive; .cockpit-* markers
   # and files untracked elsewhere skipped), rec lists it and --yes commits it on the branch before the merge reads the head: late docs to the graded head.
   # The audit log is never in it (append-only, it has its own rule in late_docs_delta).
   local rec=() ln p

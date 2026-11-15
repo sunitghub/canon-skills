@@ -298,7 +298,7 @@ id="$id_s"; f="$f_s"; WT="$WT_s"; cd "$P"
 # a deleted one, a symlink, an agent doc (AGENTS.md, CLAUDE.md, PROMOTED.md) or code beside them is still refused.
 P7="$W/close-docs"; mkdir "$P7"; cd "$P7"; git init -q
 mkdir -p scripts; printf '#!/usr/bin/env bash\ntouch "$STUB_W/ran"\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
-for d in HANDOFF DECISIONS AGENTS CLAUDE PROMOTED; do echo "# $d" > "$d.md"; done
+for d in HANDOFF DECISIONS LEARNINGS AGENTS CLAUDE PROMOTED; do echo "# $d" > "$d.md"; done
 echo base > base.txt; git add -A; git commit -qm base
 n7=0
 closed_wt() {   # closed_wt: a ticket tracked on main, worked and closed in its own worktree; sets id f WT G
@@ -314,6 +314,7 @@ closed_wt() {   # closed_wt: a ticket tracked on main, worked and closed in its 
 }
 closed_wt; b7="feat/c$n7"
 echo "refreshed narrative" >> "$WT/HANDOFF.md"; echo "| 2026-11-15 | a row | x |" >> "$WT/DECISIONS.md"   # the close's own docs, uncommitted
+echo "| row |" >> "$WT/LEARNINGS.md"   # the learnings sweep's row rides too (reviewer t-2a95: every local late doc)
 echo "# archive" > "$WT/DECISIONS-archive.md"                                                            # untracked: not part of what merges
 for x in base.txt AGENTS.md CLAUDE.md PROMOTED.md; do
   echo more >> "$WT/$x"; refuses "a close record next to an edited $x" "no passing evaluator verdict" --yes; git -C "$WT" checkout -q -- "$x"
@@ -325,14 +326,14 @@ echo x > "$WT/.tickets/$id/.x"   # a dotfile the merge's late-doc rule refuses: 
 refuses "a dotfile in the ticket's folder" "no passing evaluator verdict" --yes
 rm "$WT/.tickets/$id/.x"
 out="$("$TKT" merge "$id" --check < /dev/null 2>&1)" || fail "merge --check refused a close record with HANDOFF.md and DECISIONS.md: $out"
-assert_eq "merge: will first commit $id's close record on $b7: .tickets/$id/ticket.md, DECISIONS.md, HANDOFF.md, .tickets/$id/eval-report.md, .tickets/$id/summary.md" \
+assert_eq "merge: will first commit $id's close record on $b7: .tickets/$id/ticket.md, DECISIONS.md, HANDOFF.md, LEARNINGS.md, .tickets/$id/eval-report.md, .tickets/$id/summary.md" \
   "$(grep 'will first commit' <<< "$out")"
 out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "merge --yes refused the close's own docs: $out"
 assert_contains "$out" "graded-head plus late docs only: "
 assert_contains "$(grep 'late docs only' <<< "$out")" "HANDOFF.md"; assert_contains "$(grep 'late docs only' <<< "$out")" "DECISIONS.md"
 assert_contains "$out" "Merged $b7 into main ("
 assert_eq "$G" "$(git rev-parse "$b7^")"
-assert_eq "$(printf '%s\n' ".tickets/$id/eval-report.md" ".tickets/$id/summary.md" ".tickets/$id/ticket.md" DECISIONS.md HANDOFF.md | sort)" \
+assert_eq "$(printf '%s\n' ".tickets/$id/eval-report.md" ".tickets/$id/summary.md" ".tickets/$id/ticket.md" DECISIONS.md HANDOFF.md LEARNINGS.md | sort)" \
   "$(git diff-tree --no-commit-id --name-only -r "$b7" | sort)"
 assert_grep '^refreshed narrative$' HANDOFF.md
 [[ -z "$(git -C "$WT" ls-files -- DECISIONS-archive.md)" ]] || fail "an untracked root DECISIONS-archive.md was committed"
@@ -346,6 +347,9 @@ echo "merge: a committed close with HANDOFF.md merges"
 closed_wt; b7="feat/c$n7"
 (cd "$WT" && git rm -q HANDOFF.md && git add ".tickets/$id" && git commit -qm "chore: close $id")
 refuses "a committed HANDOFF.md delete" "is not the commit the evaluator graded" --yes
+closed_wt; b7="feat/c$n7"
+(cd "$WT" && git rm -q HANDOFF.md && ln -s AGENTS.md HANDOFF.md && git add HANDOFF.md ".tickets/$id" && git commit -qm "chore: close $id")
+refuses "a committed HANDOFF.md turned into a symlink" "HANDOFF.md (symlink or submodule)" --yes
 cd "$P"; id="$id_s"; f="$f_s"; WT="$WT_s"
 
 # runs: github goes to merge-pr, unchanged.
