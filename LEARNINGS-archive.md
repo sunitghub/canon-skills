@@ -1,2 +1,5 @@
 
 | 2026-11-06 | [t-df13](.tickets/t-df13/learnings.md) | Changing user-facing text: grep tests/ and docs/ for the old strings first; scripts/test.sh does not run the board spec, so a second spec pinning the old tooltip passed until the evaluator ran it | `dismissed (covered: standards/efficiency-notes.md)` |
+| 2026-11-06 | [t-e28c](.tickets/t-e28c/learnings.md) | Copy a user's own numbering into the criterion verbatim: the ticket said the click was step 0, the user had said step 1, and a correct doc failed the evaluator on the gap | `dismissed` |
+| 2026-11-06 | [t-1148](.tickets/t-1148/learnings.md) | A poll that writes must be tested with two parallel runs (a sequential second run is stopped by the outer check and cannot kill a record-twice mutant); a state that reads a clock needs an injectable one | `dismissed` |
+| 2026-11-06 | [t-e7fb](.tickets/t-e7fb/learnings.md) | Advice a refusal prints must be a command that works (git pull could not, so users moved files by hand and lost github.md); changing output text means grepping the board for code that matches it | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md` |
