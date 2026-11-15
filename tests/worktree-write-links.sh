@@ -98,6 +98,9 @@ wid="$(cd "$W/wtu" && "$TKT" create "From the worktree" -t task)" || fail "a wor
 [[ -f "$U/real/$wid/ticket.md" && -n "$uid" ]] || fail "the worktree's write did not reach the main checkout's linked .tickets"
 echo "worktree-write-links: plain worktree, CANON_TICKETS_DIR and the person's own links still work"
 
+# A bare call under set -e at the worktree's top returns 0 for a plain path (git's empty --show-prefix line made read return 1 there)
+reset_wt; r="$(cd "$WT" && bash -c 'set -e; source "$1/tools/platform-lib.sh"; wt_write_ok f.txt; echo passed' _ "$ROOT" 2>&1)" || true
+assert_eq passed "$r"
 # The PowerShell link checks take the path from the environment, never pasted into the command (a ' in a name ran as PowerShell).
 ! grep -rn "LiteralPath '\$(cygpath" "$ROOT/tools" || fail "a PowerShell link check pastes the path into its command again"
 # One copy of the rule.
