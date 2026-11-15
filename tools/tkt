@@ -46,6 +46,7 @@ active_file() {
 ensure_tickets_dir() {
   local dir
   dir="$(tickets_dir)"
+  wt_write_ok "$dir/.gitignore" || exit 1   # t-f7e6: a planted .tickets (or .gitignore) link in a worktree
   mkdir -p "$dir"
   # t-2f53: seed a .tickets/.gitignore (if absent) so canon's own per-machine
   # runtime files never get tracked in projects that DO track .tickets/. In
@@ -130,6 +131,7 @@ get_title() {
 set_active() {
   local id="$1" file
   file="$(active_file)"
+  wt_write_ok "$file" || return 1   # t-f7e6
   printf "%s\n" "$id" > "$file"
   "$SCRIPT_DIR/work-beat" touch || true   # t-187e: an agent just took this ticket
 }
@@ -293,6 +295,7 @@ cmd_create() {
     [[ ! -e "$ticket_dir" && ! -f "$dir/$id.md" ]] && break
   done
 
+  wt_write_ok "$file" || exit 1   # t-f7e6
   mkdir -p "$ticket_dir"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
@@ -346,7 +349,7 @@ cmd_set_status() {
     # dir to hold a binding, same guard as _ticket_cwd_binding's read side).
     if [[ "$(basename "$file")" == "ticket.md" ]]; then
       local tdir="$(dirname "$file")"
-      [[ -f "$tdir/.cockpit-cwd" ]] || printf '%s\n' "$(worktree_root)" > "$tdir/.cockpit-cwd"
+      [[ -f "$tdir/.cockpit-cwd" ]] || { wt_write_ok "$tdir/.cockpit-cwd" || exit 1; printf '%s\n' "$(worktree_root)" > "$tdir/.cockpit-cwd"; }
     fi
   else
     clear_active_if "$id"
@@ -860,6 +863,7 @@ cmd_learn() {
   local summary="$tdir/summary.md"
   local evalr="$tdir/eval-report.md"
   local out="$tdir/learnings.md"
+  wt_write_ok "$out" || exit 1   # t-f7e6
 
   # Deviations = plan-vs-actual rows whose status is NOT "delivered".
   # Rows look like: | <item> | delivered|waived|deferred|partial | <notes> |
@@ -1100,7 +1104,8 @@ cmd_compact() {
     if (( pack > 0 )); then
       if $dry; then
         b_after="$(cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf - --null -T - | wc -c | tr -d ' ')"
-      elif (cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf evidence.tgz.tmp --null -T - 2>"$tmp/err") \
+      elif wt_write_ok "$t/evidence.tgz.tmp" && wt_write_ok "$t/evidence.tgz" \
+           && (cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf evidence.tgz.tmp --null -T - 2>"$tmp/err") \
            && (cd "$t" && tar -tzf evidence.tgz.tmp | sort) | cmp -s - <(sort "$tmp/pack") \
            && mv "$t/evidence.tgz.tmp" "$t/evidence.tgz"; then
         b_after="$(wc -c < "$t/evidence.tgz" | tr -d ' ')"
@@ -1200,13 +1205,11 @@ _repo_visibility() {
 
 # _safe_ticket_path <tickets dir> <path>: refuse a path that is, or goes through, a symlink (t-554c). A cloned repo can
 # commit .tickets/<id>/plan.md as a link to a workflow or a dotfile; importing issue text through it would write there.
+# t-f7e6: the shared rule (platform-lib.sh) instead of its own walk, plus the worktree check every writer makes.
 _safe_ticket_path() {
   local base="$1" p="$2"
-  while [[ "$p" == "$base"/* ]]; do
-    [[ -L "$p" ]] && { echo "refusing to write through a symlink: ${p#"$base"/}" >&2; return 1; }
-    p="$(dirname "$p")"
-  done
-  return 0
+  if [[ -L "$p" ]] || _under_link "$base" "$p"; then echo "refusing to write through a symlink: ${p#"$base"/}" >&2; return 1; fi
+  wt_write_ok "$p"
 }
 
 # _gh_trail <ticket dir> <kind> <line>... (t-1dec): appends a dated "## <UTC time> — <kind>" block of plain lines to
@@ -1216,7 +1219,7 @@ _gh_trail() {
   local f="$1/github.md" kind="$2" block
   shift 2
   block="$(printf '\n## %s — %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind"; printf '%s\n' "$@")"
-  if [[ -L "$f" ]] || ! { { [[ -s "$f" ]] || printf '# GitHub\n'; printf '%s\n' "$block"; } >> "$f"; } 2>/dev/null; then
+  if ! wt_write_ok "$f" || [[ -L "$f" ]] || ! { { [[ -s "$f" ]] || printf '# GitHub\n'; printf '%s\n' "$block"; } >> "$f"; } 2>/dev/null; then
     echo "warning: could not write the GitHub trail ($f)" >&2
   fi
   return 0
@@ -3595,6 +3598,7 @@ cmd_land() {
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
   # t-74d8: the close runs in this worktree, and its gates need canon's agents (and skills) there; best effort, never fails land
   [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true
+  local mk; for mk in .land-head .land-pr .cockpit-cwd .cockpit-cwd.before-land; do wt_write_ok "$tdir/$mk" || exit 1; done   # t-f7e6
   printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
@@ -3655,6 +3659,7 @@ _export_machine_log() {
   local line head
   line="$(machine_line)" && [[ -n "$line" ]] || return 0
   head="$(git -C "$1" rev-parse HEAD 2>/dev/null)" || head=unknown
+  wt_write_ok "$2/evidence/cloud/machine.log" || return 0   # t-f7e6
   mkdir -p "$2/evidence/cloud" || return 0
   printf 'HEAD %s %s\n$ canon-go machine\n# on %s; bash %s.%s.%s\n%s\nexit 0\n' "$head" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$line" \
     "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" "$line" > "$2/evidence/cloud/machine.log" || true

@@ -8,6 +8,70 @@ _is_windows() {
   return 1
 }
 
+# True if path is a directory symlink (Unix) or junction (Windows).
+_is_dir_link() {
+  local link="$1"
+  if _is_windows; then
+    [ -d "$link" ] && \
+      powershell.exe -NoProfile -Command \
+        "\$i=Get-Item -LiteralPath '$(cygpath -w "$link")' -EA SilentlyContinue; if(\$i){(\$i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}" \
+        2>/dev/null | tr -d '\r\n' | grep -qi "true"
+  else
+    [ -L "$link" ]
+  fi
+}
+
+# t-f5e4: a branch or cloud PR controls what is in a worktree, so a link planted at .claude, .agents or deeper must not carry a
+# write out of it. Same rule as the Go side (worktreelinks.go underLink / notRegular), held by tests/worktree-links-parity.sh.
+# _under_link <root> <path>: 0 when a folder from <root> down to <path>'s parent is a symlink/junction or not a folder
+# (canon then writes nothing below it). Stricter than resolving the path: a link that points back inside is refused too.
+_under_link() {
+  local root="${1%/}" rel part cur
+  rel="$(dirname "$2")"; rel="${rel#"$root"}"; rel="${rel#/}"
+  [ -n "$rel" ] || return 1
+  cur="$root"
+  while [ -n "$rel" ]; do
+    part="${rel%%/*}"; cur="$cur/$part"
+    case "$rel" in */*) rel="${rel#*/}" ;; *) rel="" ;; esac
+    [ -e "$cur" ] || [ -L "$cur" ] || return 1   # not there yet: mkdir makes a real folder
+    _is_dir_link "$cur" && return 0
+    [ -d "$cur" ] || return 0
+  done
+  return 1
+}
+# _not_regular <path>: 0 when <path> exists and is not a plain file (a symlink, even a dangling one, or a folder).
+_not_regular() { { [ -e "$1" ] || [ -L "$1" ]; } && { [ -L "$1" ] || [ ! -f "$1" ]; }; }
+
+# wt_write_ok <path> — t-f7e6: the check every bash writer into .tickets/ or .claude/ makes first. In a linked worktree a branch or cloud
+# PR controls the tree, so a write is refused (one line on stderr, return 1) when a folder from the worktree's top down to <path> is a
+# link or junction (.tickets itself included) or <path> exists and is not a plain file. A path outside that worktree (CANON_TICKETS_DIR
+# naming the main checkout's tickets) and any write in a main checkout pass: a person's own links there are theirs (user, 2026-11-15).
+# The worktree is asked of git from $PWD, once per folder, never from <path>'s folder: from there git follows the planted link and can
+# answer for an outside repository. Call it as `wt_write_ok "$f" || <refuse>`, so a caller without this file (127) refuses too.
+_WT_ASKED="" _WT_TOP_P="" _WT_TOP_L=""
+_wt_top() {
+  [[ "$_WT_ASKED" == "$PWD" ]] && return 0
+  _WT_ASKED="$PWD"; _WT_TOP_P=""; _WT_TOP_L=""
+  local out top gd cdir pre
+  out="$(git -C "$PWD" rev-parse --show-toplevel --absolute-git-dir --git-common-dir --show-prefix 2>/dev/null)" || return 0
+  { read -r top; read -r gd; read -r cdir; read -r pre; } <<< "$out"
+  cdir="$(cd "$PWD" && cd "$cdir" 2>/dev/null && pwd -P)" && gd="$(cd "$gd" 2>/dev/null && pwd -P)" || return 0
+  [[ "$gd" != "$cdir" ]] || return 0   # the main checkout: its git dir is the common one
+  _WT_TOP_P="$(cd "$top" && pwd -P)"
+  pre="${pre%/}"; _WT_TOP_L="$PWD"; [[ -z "$pre" ]] || _WT_TOP_L="${PWD%/"$pre"}"
+}
+wt_write_ok() {
+  local p="$1" top
+  case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
+  _wt_top
+  if [[ -n "$_WT_TOP_P" && "$p" == "$_WT_TOP_P/"* ]]; then top="$_WT_TOP_P"
+  elif [[ -n "$_WT_TOP_L" && "$p" == "$_WT_TOP_L/"* ]]; then top="$_WT_TOP_L"
+  else return 0; fi
+  if _not_regular "$p"; then echo "canon: refusing to write $1: it is a link or not a plain file in this worktree (t-f7e6)" >&2; return 1; fi
+  if _under_link "$top" "$p"; then echo "canon: refusing to write $1: a folder on its path is a link or junction in this worktree (t-f7e6)" >&2; return 1; fi
+  return 0
+}
+
 # utf8_locale — a UTF-8 locale to run ps under (the current one if it is UTF-8), or nothing and 1 when the machine has none (t-50f7).
 # Under the C locale ps escapes the bytes of a non-ASCII path in a command line (macOS: M-CM-), so matching a process to an install folder
 # by its path would silently miss; with a UTF-8 locale it prints them as they are.

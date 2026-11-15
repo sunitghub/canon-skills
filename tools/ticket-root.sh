@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# t-f7e6: wt_write_ok (the worktree link check every writer makes) lives in platform-lib.sh; a caller that sources only this file gets it.
+# shellcheck source=platform-lib.sh
+declare -F wt_write_ok >/dev/null 2>&1 || source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"
+
 # _worktree_main_tickets <dir> — t-6be7: when <dir> is a linked worktree (its .git is a FILE: "gitdir: <repo>/.git/worktrees/<name>"),
 # the main checkout's .tickets path; nothing otherwise. One owner of the pointer rules, shared by tickets_dir and `sprint eval-verdict`.
 _worktree_main_tickets() {
@@ -274,6 +278,8 @@ copy_ticket_back() {
   [[ -d "$main/$id" ]] || return 0
   [[ "$(cd "$own" && pwd -P)" != "$(cd "$main" && pwd -P)" ]] || return 0
   git -C "$proj" check-ignore -q .tickets 2>/dev/null || return 0
+  # t-f7e6: the source is the worktree's copy, which its branch controls: a linked .tickets or ticket folder there would copy outside files in
+  wt_write_ok "$own/$id/ticket.md" || { echo "warning: did not copy $id back to $main/$id" >&2; return 0; }
   old="$(mktemp)" || return 0
   cp "$main/$id/ticket.md" "$old" 2>/dev/null || : > "$old"
   if ! { (cd "$own/$id" && find . -type f ! -name '.cockpit-*' -print0) \

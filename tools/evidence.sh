@@ -216,6 +216,7 @@ if [[ "$mode" == stamp ]]; then
   log="$edir/$name.log"
   [[ ! -L "$log" ]] || refuse "$log is a symlink"
   [[ ! -e "$log" || -f "$log" ]] || refuse "$log is not a plain file"
+  wt_write_ok "$log" || refuse "a link or junction is on the path to $log in this worktree (t-f7e6)"
   if tracked_dirty; then refuse "tracked files differ from HEAD: commit first, because a stamp names the commit that was tested"; fi
   head_sha="$(git -C "$root" rev-parse HEAD)"
   # t-c923: advisory, stderr only, never in the log: the stamp, the exit code and the event are the same with or without it.

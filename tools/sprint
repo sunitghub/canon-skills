@@ -89,6 +89,7 @@ cmd_start() {
   # separate write needed here.
   "$TKT_BIN" start "$id" >/dev/null
   tdir="$(ticket_dir_for "$id")"
+  wt_write_ok "$tdir/acceptance.md" && wt_write_ok "$tdir/plan.md" || exit 1   # t-f7e6
   mkdir -p "$tdir"
 
   [[ -f "$tdir/acceptance.md" ]] || cat > "$tdir/acceptance.md" <<EOF
@@ -603,7 +604,7 @@ cmd_approve() {
     insign && /^[[:space:]]*Approved:[[:space:]]*sha256:/ { next }
     insign && /^[[:space:]]*Pipeline:[[:space:]]*sha256:/ { next }
     insign && !done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print line; if (pline != "") print pline; done=1; next }
-    { print }' "$plan" > "$tmp" && cat "$tmp" > "$plan"
+    { print }' "$plan" > "$tmp" && { wt_write_ok "$plan" || { rm -f "$tmp"; exit 1; }; } && cat "$tmp" > "$plan"   # t-f7e6
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
   _build_model_line "$plan"
@@ -1386,6 +1387,7 @@ cmd_manual_qa() {
   [[ ! -L "$edir" ]] || { echo "sprint manual-qa: $edir is a symlink: refused" >&2; exit 1; }
   target="$edir/manual-qa.md"
   [[ ! -L "$target" && ( ! -e "$target" || -f "$target" ) ]] || { echo "sprint manual-qa: $target is not a plain file: refused" >&2; exit 1; }
+  wt_write_ok "$target" && wt_write_ok "$edir/.manual-qa.$$" || exit 1   # t-f7e6: the folders above the ticket folder too
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"
   sha="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || sha=unknown
   when="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -1620,6 +1622,7 @@ cmd_relay_report() {
     echo "relay-report: no $role transcript for $id (a Plan or canon-$role dispatch in the last 3 hours that read $proto and returned a report starting '$marker'). Dispatch the $role again." >&2
     exit 1
   fi
+  wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
   printf '%s\n' "$report" > "$tdir/$dest"
   echo "relay-report: wrote $tdir/$dest from $found ($(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "${found%.jsonl}.meta.json" | head -1))"
 }

@@ -98,6 +98,7 @@ if [[ "$mode" == pre ]]; then
   if [[ -n "$stash" ]] && ! git -C "$root" rev-parse --verify -q "${stash}^{commit}" >/dev/null 2>&1; then stash=""; stash_note="not available (unmerged paths or a stash error): resolve or commit first"; fi
   # t-9b13: the spec check grades acceptance.md and plan.md, which live under .tickets/ (left out above, where reports are written): their
   # digest is recorded so post can say if the gate changed what it grades
+  wt_write_ok "$file" && wt_write_ok "$file.scope" || exit 1   # t-f7e6
   { snapshot; echo "stash=${stash:-none}"; [[ "$role" != speccheck ]] || echo "specdocs=$(spec_docs)"; } > "$file"
   echo "gate-snapshot: pre recorded in $file (branch $(field "$file" branch) at $(field "$file" head | cut -c1-7))."
   if [[ -n "$stash" ]]; then
