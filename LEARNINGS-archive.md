@@ -1,2 +1,2 @@
 
-| 2026-11-06 | [t-e566](.tickets/t-e566/learnings.md) | A criterion that needs a machine you cannot reach (the Windows VM) fails the evaluator as not-run: plan it as another ticket's checklist item; xterm.js cancels Ctrl+V so the browser never pastes | `promoted → skills/sprint/reference/start-checklist.md` |
+| 2026-11-06 | [t-df13](.tickets/t-df13/learnings.md) | Changing user-facing text: grep tests/ and docs/ for the old strings first; scripts/test.sh does not run the board spec, so a second spec pinning the old tooltip passed until the evaluator ran it | `dismissed (covered: standards/efficiency-notes.md)` |
