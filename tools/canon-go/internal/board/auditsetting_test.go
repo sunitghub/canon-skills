@@ -370,3 +370,28 @@ func TestModelTiersFirstSaveAfterMigrationLogsOnlyTheChange(t *testing.T) {
 		t.Errorf("line = %v", d)
 	}
 }
+
+// t-f5fa reviewer: on a seed-only install the doc Admin shows comes from the seed, which holds canon's presets; a save drops them. The first
+// save that changes nothing must log nothing (the dropped presets are not a change). Protects the setting.changed audit (events API).
+func TestModelTiersSaveFromSeedLogsNoPresetChange(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	s := regDoc()
+	s["presets"] = []any{map[string]any{"id": "balanced", "name": "Balanced", "tiers": map[string]any{"plan": "top"}}}
+	raw, _ := json.Marshal(s)
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := loadModelTiers()
+	delete(doc, "presets") // what GET sends
+	if res := auditTiers(clickReq(), "save", func() map[string]any { return saveModelTiers(doc) }); res["ok"] != true {
+		t.Fatalf("save: %v", res)
+	}
+	if got := settingEvents(t, dir); len(got) != 0 {
+		t.Errorf("an unchanged first save logged %v", got)
+	}
+}

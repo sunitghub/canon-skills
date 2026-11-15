@@ -119,6 +119,20 @@ func tierOptionsView() map[string]any {
 		"presets": presetsView(doc, agents)}
 }
 
+// canonPresetIDs are the seed's preset ids: a person's preset may not reuse one (the dropdown and Delete key on the id).
+func canonPresetIDs() []string {
+	ids := []string{}
+	list, _ := common.LoadModelTiers("", modelTiersPath)["presets"].([]any)
+	for _, r := range list {
+		if p, _ := r.(map[string]any); p != nil {
+			if id, _ := p["id"].(string); id != "" {
+				ids = append(ids, id)
+			}
+		}
+	}
+	return ids
+}
+
 // presetsView (t-f5fa): canon's presets (read from the seed every time) then the person's `my_presets`, each resolved for the agents Admin
 // lists (common.ResolvePreset, the one owner of the rule): {id, name, desc, source, picks, notes}.
 func presetsView(doc map[string]any, agents []map[string]string) []map[string]any {

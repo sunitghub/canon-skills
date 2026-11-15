@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Added: **presets** in Admin > Model tiers. A Preset dropdown at the top of the panel fills every step in one go: Balanced, Economy, Max quality, Checker ≠ builder, then any you saved with "Save current as preset…". Each level (top, mid, cheap) becomes the newest Opus, Sonnet or Haiku model for each agent Admin lists; a confirm box shows every change and adjustment before anything is saved. The dropdown reads Custom when your picks match no preset. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-f5fa).
+
 ## [0.58.0] - 2026-11-15
 
 - Added: an optional **second evaluator** on another model. Admin > Model tiers has a **Second eval** step, Off until you pick a model (never the Evaluator's, never a Haiku model). With a pick, a high-risk close (or a ticket whose Sign-off says `| Second eval: on`; `off` skips it) runs `canon-evaluator` once more after the binding one passes, writing `eval-report-2.md`; `sprint eval-compare <id>` lists each criterion the two graded differently, and you decide. It never fails a close by itself; the binding gate still reads only `eval-report.md`. New commands: `sprint second-eval`, `sprint eval-compare`. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-864c).

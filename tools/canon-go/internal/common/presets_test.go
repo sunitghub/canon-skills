@@ -57,6 +57,15 @@ func TestResolvePresetTiers(t *testing.T) {
 			t.Errorf("notes lack %q:\n%s", n, text)
 		}
 	}
+	if got := newestOf([]string{"claude-opus-4-5-20251101", "claude-opus-4-5"}, "opus", func(string) bool { return true }); got != "claude-opus-4-5" {
+		t.Errorf("a version tie went to %s; want the shorter id, whatever the order", got)
+	}
+	if got := newestOf([]string{"claude-opus-4-5", "claude-opus-4-5-20251101"}, "opus", func(string) bool { return true }); got != "claude-opus-4-5" {
+		t.Errorf("a version tie (other order) went to %s", got)
+	}
+	if modelVersion("") != nil || modelVersion("claude-opus") != nil {
+		t.Error("a short id has a version")
+	}
 	if strings.Contains(text, "claude-opus-6-0") || picks["plan"]["claude"] == "claude-opus-6-0" {
 		t.Error("a legacy model was picked")
 	}
@@ -89,8 +98,18 @@ func TestMyPresetsProblem(t *testing.T) {
 	doc := presetDoc()
 	ok := []any{map[string]any{"id": "team", "name": "Team default", "picks": map[string]any{"plan": map[string]any{"claude": "claude-opus-5-5"}, "evaluator2": map[string]any{"claude": ""}}}}
 	doc["my_presets"] = ok
-	if why := MyPresetsProblem(doc); why != "" {
+	if why := MyPresetsProblem(doc, []string{"balanced"}); why != "" {
 		t.Fatalf("a good preset was refused: %s", why)
+	}
+	// reviewer t-f5fa: a pick of a model the registry no longer offers (legacy, removed, a Haiku evaluator) is shape-valid: the save
+	// stays possible, and applying the preset keeps the current pick with a note
+	doc["my_presets"] = []any{map[string]any{"id": "old", "name": "Old", "picks": map[string]any{"evaluator": map[string]any{"claude": "claude-haiku-5-5"}, "build": map[string]any{"claude": "claude-retired-1"}}}}
+	if why := MyPresetsProblem(doc, nil); why != "" {
+		t.Errorf("a preset naming a retired model blocked the save: %s", why)
+	}
+	picks, notes := ResolvePreset(presetDoc(), doc["my_presets"].([]any)[0].(map[string]any), []string{"claude"}, nil)
+	if picks["evaluator"]["claude"] != "claude-sonnet-5" || picks["build"]["claude"] != "claude-sonnet-5" || len(notes) != 2 {
+		t.Errorf("applying it = %v %v, want the current picks kept, noted", picks, notes)
 	}
 	for name, bad := range map[string]any{
 		"no name":      []any{map[string]any{"id": "x", "name": "", "picks": map[string]any{}}},
@@ -98,11 +117,14 @@ func TestMyPresetsProblem(t *testing.T) {
 		"long name":    []any{map[string]any{"id": "x", "name": strings.Repeat("n", 41), "picks": map[string]any{}}},
 		"bad id":       []any{map[string]any{"id": "../x", "name": "n", "picks": map[string]any{}}},
 		"unknown step": []any{map[string]any{"id": "x", "name": "n", "picks": map[string]any{"deploy": map[string]any{"claude": "claude-opus-5-5"}}}},
-		"haiku eval":   []any{map[string]any{"id": "x", "name": "n", "picks": map[string]any{"evaluator": map[string]any{"claude": "claude-haiku-5-5"}}}},
+		"not an id":    []any{map[string]any{"id": "x", "name": "n", "picks": map[string]any{"evaluator": map[string]any{"claude": "--dangerous"}}}},
+		"no picks":     []any{map[string]any{"id": "x", "name": "n"}},
+		"canon id":     []any{map[string]any{"id": "balanced", "name": "n", "picks": map[string]any{}}},
+		"duplicate id": []any{map[string]any{"id": "x", "name": "a", "picks": map[string]any{}}, map[string]any{"id": "x", "name": "b", "picks": map[string]any{}}},
 		"not a list":   map[string]any{},
 	} {
 		doc["my_presets"] = bad
-		if MyPresetsProblem(doc) == "" {
+		if MyPresetsProblem(doc, []string{"balanced"}) == "" {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -111,7 +133,7 @@ func TestMyPresetsProblem(t *testing.T) {
 		many = append(many, ok[0])
 	}
 	doc["my_presets"] = many
-	if MyPresetsProblem(doc) == "" {
+	if MyPresetsProblem(doc, []string{"balanced"}) == "" {
 		t.Error("21 presets were accepted")
 	}
 }

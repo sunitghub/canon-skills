@@ -237,7 +237,7 @@ function mtRender(){
 // in Copilot's own history (~/.copilot/session-state), so it never runs by itself.
 // t-f5fa: presets. The board resolves every preset for the agents it lists (GET options .presets, common.ResolvePreset: the one owner of
 // the rule); this page compares, confirms and saves through the usual route. Nothing is saved until Apply.
-let mtPresetPend='', mtPresetSaving=false;
+let mtPresetPend='', mtPresetSaving=false, mtPresetLast='';   // Last: the preset last applied, named while the picks still match it
 const mtAgentsListed=()=>(mtOpts.agents||[]).map(a=>a.id);
 const mtModelName=(step,agent,id)=>id===''?'Off':((((mtOpts.options||{})[step]||{})[agent]||[]).find(o=>o.id===id)||{}).name||id;
 function mtPresetMatches(p){
@@ -245,7 +245,7 @@ function mtPresetMatches(p){
 }
 function mtRenderPresets(){
   const el=document.getElementById('mt-preset'); if(!el) return;
-  const list=mtOpts.presets||[], cur=list.find(mtPresetMatches), shown=list.find(p=>p.id===mtPresetPend)||cur;
+  const list=mtOpts.presets||[], last=list.find(p=>p.id===mtPresetLast&&mtPresetMatches(p)), cur=last||list.find(mtPresetMatches), shown=list.find(p=>p.id===mtPresetPend)||cur;
   const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}</option>`;
   const group=(src,label)=>{ const g=list.filter(p=>p.source===src); return g.length?`<optgroup label="${escAttr(label)}">${g.map(opt).join('')}</optgroup>`:''; };
   let h=`<div class="mt-preset-row"><label class="setting-k" for="mt-preset-sel">Preset</label>
@@ -269,19 +269,20 @@ function mtRenderPresets(){
   el.innerHTML=h;
   el.querySelector('#mt-preset-sel').onchange=e=>{ mtPresetPend=e.target.value; mtRender(); };
   el.querySelector('#mt-preset-save').onclick=()=>{ mtPresetSaving=true; mtRender(); const i=document.getElementById('mt-preset-name'); if(i) i.focus(); };
-  const del=el.querySelector('#mt-preset-del'); if(del) del.onclick=async()=>{ mtData.my_presets=(mtData.my_presets||[]).filter(p=>p.id!==shown.id); if(await mtSave()){ mtRender(); toast('Preset deleted'); } };
+  const del=el.querySelector('#mt-preset-del'); if(del) del.onclick=async()=>{ mtData.my_presets=(mtData.my_presets||[]).filter(p=>p.id!==shown.id); if(await mtSave()) toast('Preset deleted'); mtRender(); };
   const ok=el.querySelector('#mt-preset-name-ok'); if(ok) ok.onclick=async()=>{
     const name=document.getElementById('mt-preset-name').value.trim(); if(!name) return;
     const picks={}; for(const st of (mtOpts.steps||[])){ picks[st.id]={}; for(const ag of mtAgentsListed()) picks[st.id][ag]=(mtData.defaults[st.id]||{})[ag]||''; }
     mtData.my_presets=[...(mtData.my_presets||[]),{id:'p'+Date.now().toString(36),name,picks}];
-    if(await mtSave()){ mtPresetSaving=false; mtRender(); toast('Saved preset '+name); } else { mtData.my_presets=mtData.my_presets.slice(0,-1); }
+    if(await mtSave()){ mtPresetSaving=false; mtRender(); toast('Saved preset '+name); } else mtRender();   // a refused save: mtSave already reloaded what the board holds
   };
   const nx=el.querySelector('#mt-preset-name-x'); if(nx) nx.onclick=()=>{ mtPresetSaving=false; mtRender(); };
   const c=el.querySelector('#mt-preset-cancel'); if(c) c.onclick=()=>{ mtPresetPend=''; mtRender(); };
   const a=el.querySelector('#mt-preset-apply'); if(a) a.onclick=async()=>{
     for(const [st,per] of Object.entries(pend.picks||{})) for(const ag of mtAgentsListed()) if(ag in per){ mtData.defaults[st]=mtData.defaults[st]||{}; mtData.defaults[st][ag]=per[ag]; }
-    mtPresetPend='';
-    if(await mtSave()){ mtRender(); toast('Applied '+pend.name); } else await mtLoad();
+    mtPresetPend=''; mtPresetLast=pend.id;
+    if(await mtSave()) toast('Applied '+pend.name);
+    mtRender();   // a refused save: mtSave already reloaded the saved picks
   };
 }
 

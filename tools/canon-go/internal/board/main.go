@@ -1897,6 +1897,7 @@ func tierDefaults(doc map[string]any) map[string]string {
 // the first save after an update logs only what the person changed.
 func auditTiers(r *http.Request, action string, run func() map[string]any) map[string]any {
 	before := loadModelTiers()
+	delete(before, "presets") // t-f5fa: canon's presets (seed-only) are never part of a save, so never a change in the audit
 	beforeRaw, _ := json.Marshal(before)
 	res := run()
 	ok, _ := res["ok"].(bool)
@@ -5916,7 +5917,7 @@ func saveModelTiers(data map[string]any) map[string]any {
 		return map[string]any{"ok": true}
 	}
 	delete(data, "presets") // t-f5fa: canon's presets live in the seed only
-	if why := common.MyPresetsProblem(data); why != "" {
+	if why := common.MyPresetsProblem(data, canonPresetIDs()); why != "" {
 		return map[string]any{"ok": false, "error": "invalid model-tiers payload: " + why}
 	}
 	if !modelTiersValid(data) {

@@ -14485,7 +14485,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-step-plan select').selectOption('gpt-6-luna');
     await expect(sel).toHaveValue('');
     await page.locator('#mt-step-plan select').selectOption('claude-sonnet-5.5');
-    await expect(sel).toHaveValue('current');                                   // both match again; the dropdown names the first
+    await expect(sel).toHaveValue('eco');                                       // both match again; the one last applied stays named
     await page.locator('#mt-agent').selectOption('claude');
     await expect.poll(() => posts.length).toBe(3);
     await page.locator('#mt-step-plan select').selectOption('m-haiku');           // a hand edit no preset holds
@@ -14499,6 +14499,37 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(mine).toHaveLength(1); expect(mine[0].name).toBe('Team default');
     expect(mine[0].picks.plan).toEqual({ claude: 'm-haiku', copilot: 'claude-sonnet-5.5' });
     expect(posts[0].presets).toBeUndefined();                                   // canon's presets are never sent back
+  });
+
+  // t-f5fa reviewer Act On 1: a refused Save as preset (the board answers ok:false, e.g. a 21st preset) leaves every saved preset in
+  // place (the page reloads what the board holds; it once dropped the last saved one); Delete removes exactly the shown preset.
+  test('Model tiers presets: a refused save keeps your presets; Delete removes the shown one (t-f5fa)', async ({ page }) => {
+    const mine = [{ id: 'pa', name: 'Team A', picks: { plan: { claude: 'm-haiku' } } }, { id: 'pb', name: 'Team B', picks: { plan: { claude: 'm-sonnet' } } }];
+    FIXTURE.my_presets = mine;
+    OPTIONS.presets.push({ id: 'pb', name: 'Team B', source: 'yours', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] });
+    try {
+      const posts = await openModelTiers(page);
+      let reloads = 0;
+      await page.route('**/api/admin/model-tiers', async route => {
+        if (route.request().method() === 'POST') { posts.push(route.request().postDataJSON()); return route.fulfill({ status: 400, json: { ok: false, error: 'invalid model-tiers payload: my_presets holds 21 presets; at most 20' } }); }
+        reloads++; return route.fulfill({ json: JSON.parse(JSON.stringify(FIXTURE)) });
+      });
+      await page.locator('#mt-preset-save').click(); await page.locator('#mt-preset-name').fill('One more'); await page.locator('#mt-preset-name-ok').click();
+      await expect.poll(() => posts.length).toBe(1);
+      await expect.poll(() => reloads).toBe(1);                                    // the page read back what the board holds
+      await page.unroute('**/api/admin/model-tiers');
+      let saved = null;
+      await page.route('**/api/admin/model-tiers', async route => {
+        if (route.request().method() === 'POST') { saved = route.request().postDataJSON(); return route.fulfill({ json: { ok: true } }); }
+        return route.fulfill({ json: JSON.parse(JSON.stringify(FIXTURE)) });
+      });
+      await page.locator('#mt-step-light select').selectOption('m-haiku');      // any later save
+      await expect.poll(() => saved && saved.my_presets && saved.my_presets.map(p => p.id).join(' ')).toBe('pa pb');   // nothing lost
+      await page.locator('#mt-preset-sel').selectOption('pb'); await page.locator('#mt-preset-apply').click();
+      await expect(page.locator('#mt-preset-del')).toBeVisible();
+      saved = null; await page.locator('#mt-preset-del').click();
+      await expect.poll(() => saved && saved.my_presets && saved.my_presets.map(p => p.id).join(' ')).toBe('pa');
+    } finally { delete FIXTURE.my_presets; OPTIONS.presets.pop(); }
   });
 
   // t-f5fa (spec check 5): with Copilot CLI not listed (not installed), the box shows and Apply changes Claude Code only.
