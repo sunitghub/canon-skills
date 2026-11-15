@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-11-15
+
 - Fixed: the Send panel's **Commit and push** no longer stops at "Run git pull first" when origin has commits your branch lacks: it brings them in first (a fast-forward, or one merge commit when both sides have new commits; the same rules as Finish > Push), shows that merge before you confirm, then commits and pushes, so the send can go on without a terminal. If origin moves again before you confirm, nothing happens and it asks you to look again. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon). A force-pushed origin or a conflict in your own file is still refused, with nothing changed (t-420c).
 
 ## [0.59.0] - 2026-11-15
