@@ -1,7 +1,8 @@
 import { state } from './board-core.js';
 import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
-import { showToast } from './board-render.js';
-import { activeIframe, activeTabId, cockpitState, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
+import { findTicketById, showToast } from './board-render.js';
+import { paneHostId, paneTabId } from './board-pane.js';
+import { activeIframe, activeTabId, cockpitState, cockpitTabs, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
 import { withBusy } from './busy.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
 import { bindGithubPickerRows, ghClosingHere, ghRailShown, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
@@ -627,23 +628,29 @@ export function formatStateAsParagraphs(bullet, t) {
   return sentences.map(s => `<p>${md(s, t.id)}</p>`).join('');
 }
 
+// t-3786: the GitHub panel is one element shared by every tab, so each tab change (a switch, a close) shows the active tab's own: its
+// panel, with its terminal hidden, or none. A Terminal pane beside a session tab (t-ccf5) leaves the panel to its host: there the panel
+// is the host's half of the split, and only the pane's own iframe is shown. A call for a tab no longer active (a late answer of an
+// earlier switch) changes nothing.
+export async function syncGithubPanel(t) {
+  if (!t || activeTabId !== t.id) return;
+  const hostId = paneTabId() === t.id ? paneHostId() : '';
+  const tab = hostId ? cockpitTabs[hostId] : cockpitState, owner = hostId ? findTicketById(hostId) : t;
+  if (!ghRailShown(tab, owner)) { hideGithubPanel(); return; }
+  if (!hostId) {
+    const iframe = activeIframe();
+    if (iframe) iframe.style.visibility = 'hidden';
+    setTermMessage('');
+  }
+  await showGithubPanel(owner, tab);
+}
+
 // t-cd06: a fresh OPEN start gates the terminal behind an explicit WORKTREE
 // row pick (cockpitState.worktreeCwd === null means nothing picked yet) — the
 // terminal is where the daemon's own Start control lives, so not mounting it
 // yet is what "Run sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
-// t-3786: the GitHub panel is one element shared by every tab, so each tab change (a switch, a close) shows the active tab's own: its
-// panel, with its terminal hidden, or none. A call for a tab no longer active (a late answer of an earlier switch) changes nothing.
-export async function syncGithubPanel(t) {
-  if (!t || activeTabId !== t.id) return;
-  if (!ghRailShown(cockpitState, t)) { hideGithubPanel(); return; }
-  const iframe = activeIframe();
-  if (iframe) iframe.style.visibility = 'hidden';
-  setTermMessage('');
-  await showGithubPanel(t, cockpitState);
-}
-
 export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (t.scratch) { hideGithubPanel(); await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout

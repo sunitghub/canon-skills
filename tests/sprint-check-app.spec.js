@@ -19075,6 +19075,25 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-panel')).toBeHidden();
   });
 
+  // Reviewer t-3786: beside a session tab, a Terminal pane's tab is active when it has the keys; the panel stays its host's half of the split.
+  test('switching to a Terminal pane beside a GitHub tab keeps the host\'s panel, and the pane shows (t-3786)', async ({ page }) => {
+    const { a, o, open } = await paneSetup(page);
+    await open(a);
+    await shows(page, a, `preview of ${a}`);
+    await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
+    await page.evaluate(async () => { await (await import('/static/board-cockpit.js')).openTerminalPane('beside', { fresh: true }); });
+    const pane = await page.evaluate(async () => (await import('/static/board-pane.js')).paneTabId());
+    await open(o);   // another tab's panel, then back to the pane tab: the panel is the host's again
+    await expect(page.locator('#ck-gh-panel')).toContainText(`${o} is out on GitHub`);
+    await open(a); await open(pane);
+    await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill.active')).toHaveAttribute('data-tab-id', pane);
+    await expect(page.locator('#ck-gh-panel')).toBeVisible();
+    await expect(page.locator('#ck-gh-panel')).toContainText(`preview of ${a}`);
+    await expect(page.locator('#ck-term iframe.ck-pane2')).toBeVisible();
+    await open(a);
+    await shows(page, a, `preview of ${a}`);
+  });
+
   test('one rule says a tab\'s rail is the GitHub panel: ghRailShown, read by the mount and the Terminal pane (t-3786)', () => {
     const src = f => fs.readFileSync(path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static', f), 'utf8');
     const rule = /ghPick\s*\|\|\s*\(\s*ghOut\(/;   // the inline copy the predicate replaced
