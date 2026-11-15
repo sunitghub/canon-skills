@@ -14,7 +14,8 @@ git config --global init.defaultBranch main; git config --global user.name t; gi
 
 # A project that tracks .tickets/: its worktree has its own real copy, the layout where .tickets and .claude are written in the worktree.
 P="$W/project"; mkdir -p "$P"; cd "$P"; git init -q
-echo base > f.txt; git add f.txt; git commit -qm base
+echo base > f.txt; printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nx\n<!-- canon:handoff:END -->\n' > HANDOFF.md
+git add f.txt HANDOFF.md; git commit -qm base
 id="$("$TKT" create "Planted" -t task)"
 printf '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [ ] Plan approved\n\n## Approach\nx\n' > ".tickets/$id/plan.md"
 git add -f .tickets; git commit -qm "chore: ticket"
@@ -75,6 +76,10 @@ planted "work-beat with a dangling ACTIVE.beat (best effort: exit 0)" 0 now sh -
 echo beat > "$OUT/ACTIVE.beat"
 planted "work-beat clear under a linked .tickets (evaluator: it removed an outside file)" 0 link .tickets "$OUT" -- "$ROOT/tools/work-beat" clear
 [[ -f "$OUT/ACTIVE.beat" ]] || fail "work-beat clear removed the outside ACTIVE.beat"
+plan_ok; cp "$OUT/plan.md" "$W/plan.ok"
+planted "the approve-time handoff marker linked out (sprint approve)" 0 now sh -c "cp '$W/plan.ok' '$WT/.tickets/$id/plan.md'; ln -s '$OUT/file.txt' '$WT/.tickets/$id/.cockpit-handoff-at-approve'" -- "$SPRINT" approve "$id"
+planted "gate snapshot post removing a linked .scope" 0 now sh -c "cd '$WT' && '$ROOT/tools/gate-snapshot.sh' pre '.tickets/$id/gate-snapshot.txt' >/dev/null 2>&1; rm -f '$WT/.tickets/$id/gate-snapshot.txt.scope'; ln -s '$OUT/file.txt' '$WT/.tickets/$id/gate-snapshot.txt.scope'" -- "$ROOT/tools/gate-snapshot.sh" post ".tickets/$id/gate-snapshot.txt"
+[[ -f "$OUT/file.txt" ]] || fail "gate-snapshot post removed an outside file"
 planted "evidence stamp under a linked .tickets" 125 link .tickets "$OUT" -- "$ROOT/tools/evidence.sh" stamp "$id" test-sh -- true
 planted "work-beat under a linked .tickets (best effort: exit 0)" - link .tickets "$OUT" -- "$ROOT/tools/work-beat" touch
 
@@ -113,6 +118,8 @@ reset_wt; r="$(cd "$WT" && bash -c 'set -e; source "$1/tools/platform-lib.sh"; w
 assert_eq passed "$r"
 # The PowerShell link checks take the path from the environment, never pasted into the command (a ' in a name ran as PowerShell).
 ! grep -rn "LiteralPath '\$(cygpath" "$ROOT/tools" || fail "a PowerShell link check pastes the path into its command again"
+# One copy of the rule, and no writer keeps its own link walk (the old _safe_ticket_path loop).
+! grep -rn 'while \[\[ "\$p" == "\$base"/\* \]\]' "$ROOT/tools" || fail "a writer walks for links on its own again"
 # One copy of the rule.
 for fn in _is_dir_link _under_link _not_regular wt_write_ok; do
   n="$(grep -rhE "^${fn}\(\)" "$ROOT/tools" | wc -l | tr -d ' ')"; assert_eq 1 "$n"

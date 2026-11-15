@@ -1033,7 +1033,7 @@ _handoff_sum() {
 # t-10ac: what the Handoff narrative read when the plan was approved, kept beside the ticket (nothing when there is no narrative).
 _handoff_mark() {
   local hs; hs="$(_handoff_sum)"
-  [[ -z "$hs" ]] || printf '%s\n' "$hs" > "$1/.cockpit-handoff-at-approve" 2>/dev/null || true
+  [[ -z "$hs" ]] || ! wt_write_ok "$1/.cockpit-handoff-at-approve" || printf '%s\n' "$hs" > "$1/.cockpit-handoff-at-approve" 2>/dev/null || true   # t-f7e6 (evaluator)
   return 0
 }
 # _notice_handoff_focus — t-eecb: one line, never a refusal, when this project's HANDOFF.md has a Current Focus section with no text:

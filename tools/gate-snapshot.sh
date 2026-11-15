@@ -117,7 +117,7 @@ if [[ "$mode" == pre ]]; then
   exit 0
 fi
 
-if [[ "$mode" == post ]]; then gate_scope_remove "$file" || true; rm -f "$file.scope"; fi   # t-b7df: the gate is over, its scope ends
+if [[ "$mode" == post ]]; then gate_scope_remove "$file" || true; ! wt_write_ok "$file.scope" || rm -f "$file.scope"; fi   # t-f7e6 (evaluator): the removal too   # t-b7df: the gate is over, its scope ends
 if [[ ! -f "$file" ]]; then
   echo "gate-snapshot: no pre snapshot at $file — run 'gate-snapshot.sh pre $file' before the dispatch." >&2
   exit 1
