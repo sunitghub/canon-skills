@@ -9,6 +9,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 W="$(cd "$(command mktemp -d "${TMPDIR:-/tmp}/wt-write-links.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" CANON_HOME="$W/home/.canon" TMPDIR="$W/tmp"; mkdir -p "$HOME" "$TMPDIR"
+unset CANON_TICKETS_DIR   # a stamp exports it (the checklist's recipe): the writers here must resolve the worktree's own tickets
 git config --global init.defaultBranch main; git config --global user.name t; git config --global user.email t@e
 
 # A project that tracks .tickets/: its worktree has its own real copy, the layout where .tickets and .claude are written in the worktree.
