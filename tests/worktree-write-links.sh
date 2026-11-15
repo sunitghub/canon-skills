@@ -22,7 +22,7 @@ OUT="$W/out"; mkdir -p "$OUT/t-dir"; git -C "$OUT" init -q   # outside the proje
 cp -R "$WT/.tickets/$id/." "$OUT/t-dir/"; cp -R "$WT/.tickets/." "$OUT/"; echo outside > "$OUT/file.txt"
 outsig() { (cd "$OUT" && find . -path ./.git -prune -o -print | LC_ALL=C sort | while IFS= read -r f; do [[ -f "$f" ]] && cksum < "$f" | tr '\n' ' '; echo "$f"; done); }
 reset_wt() { git -C "$WT" checkout -qf feat/w -- . 2>/dev/null; git -C "$WT" reset -q --hard; git -C "$WT" clean -qfdx; rm -rf "$WT/.claude"; }
-link() { rm -rf "$WT/$1"; ln -s "$2" "$WT/$1"; }
+link() { rm -rf "${WT:?}/${1:?}"; ln -s "$2" "$WT/$1"; }
 
 # planted <label> <expected exit> <plant command> -- <command run in the worktree...>: refuses with the line, outside unchanged, nothing new.
 # An expected exit of "-": the command never reaches a write (tkt finds tickets with `find`, which does not enter a linked start folder;
