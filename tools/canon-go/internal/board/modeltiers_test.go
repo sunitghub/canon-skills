@@ -569,6 +569,9 @@ func TestSecondEvalStep(t *testing.T) {
 	if why := common.TierPickProblem(doc, "evaluator2", "claude", "claude-haiku-5-5"); !strings.Contains(why, "Haiku") {
 		t.Errorf("a Haiku Second eval was accepted: %q", why)
 	}
+	if why := common.TierPickProblem(doc, "evaluator2", "copilot", "claude-haiku-4.5"); !strings.Contains(why, "Haiku") {   // evaluator t-864c: the Copilot floor too
+		t.Errorf("a Haiku Second eval was accepted for Copilot CLI: %q", why)
+	}
 	if why := common.TierPickProblem(doc, "evaluator", "claude", ""); why == "" {
 		t.Error("an empty pick was accepted for a step that is not optional")
 	}
