@@ -4995,7 +4995,7 @@ func issueNumbers(v any) (string, bool) {
 	return strings.Join(parts, ","), true
 }
 
-// commitPushArgs builds `tkt commit-push <id> [--file P]... [--message M]` from a browser payload (t-32f9). A path is never
+// commitPushArgs builds `tkt commit-push <id> [--file P]... [--message M] [--expect-origin SHA]` from a browser payload (t-32f9). A path is never
 // empty, absolute, an option (leading -), above the checkout (a .. segment) or carrying NUL or a line break; at most 500 of
 // them. tkt then accepts only paths its own --dry-run lists. false means a bad request: nothing runs.
 func commitPushArgs(id string, payload map[string]any) ([]string, bool) {
@@ -5026,8 +5026,18 @@ func commitPushArgs(id string, payload map[string]any) ([]string, bool) {
 		}
 		args = append(args, "--message", msg)
 	}
+	// t-420c: origin's tip as the preview showed it; tkt refuses when origin moved since (what the confirm covered)
+	if v, present := payload["origin"]; present {
+		sha, isStr := v.(string)
+		if !isStr || !commitIDRe.MatchString(sha) {
+			return nil, false
+		}
+		args = append(args, "--expect-origin", sha)
+	}
 	return args, true
 }
+
+var commitIDRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // prArg: nil slice + true for no PR, ["--pr", n] for digits, false for anything else (the caller answers 400).
 func prArg(v any) ([]string, bool) {

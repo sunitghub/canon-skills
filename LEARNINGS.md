@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-15-2026 03:52
+learnings-sweep last run: 11-15-2026 05:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-15 | [t-420c](.tickets/t-420c/learnings.md) | A preview that a later run acts on must pin what it showed (origin's tip): the run fetched again after the confirm and could push a merge nobody saw; and a refusal changing a shared message needs a grep of every parser, spec and test that reads it | UNPROMOTED |
 | 2026-11-15 | [t-f5fa](.tickets/t-f5fa/learnings.md) | A save-time check of saved user data against the live registry blocks unrelated writes once the registry moves (retire refused): check shape at save, validity at use; and an undo branch after a helper that already reloaded state deletes real data | UNPROMOTED |
 | 2026-11-15 | [t-864c](.tickets/t-864c/learnings.md) | A UI spec that mocks the save route never reaches the server validator (Off after a pick was refused); a closed "exactly" list in a criterion must be amended when a reviewer fix adds a case; a survivor inside a ||/&& condition is behaviour, not text. | UNPROMOTED |
 | 2026-11-14 | [t-9b13](.tickets/t-9b13/learnings.md) | A new gate role at a new point in the sprint breaks readers that take the first gate.started as the start of the gates phase (token-spend); and a Go in-memory migration does not reach a protocol that reads the registry file: each new Admin step needs its fallback in the protocol text. | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-15-2026 03:52
 | 2026-11-07 | [t-f183](.tickets/t-f183/learnings.md) | A badge that hangs outside its icon box is clipped by any ancestor with overflow:hidden (Admin's `.s1` cut 3.5 px): measure the badge inside every place the icon renders (rail, Admin table, stopped list), and assert its bounding box lies inside the cell, not only that it exists. | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 | 2026-11-07 | [t-a4f8](.tickets/t-a4f8/learnings.md) | A spec that polls for "the text changed" passes on a re-render too: to prove a tick, plant stale text and assert it is rewritten within less than the re-poll, and run a revert mutant; a cache needs a planted-sentinel test (kept while unchanged, dropped when it grows), and a rule that must not count (a pre-refusal is not a try) needs a sequence where the count would show (two refusals, then one failed prompt). | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-07 | [t-15d0](.tickets/t-15d0/learnings.md) | A panel laid over a view (fixed overlay) must shrink the view it covers, or its scroll areas end under it and a list that fits the full height has nothing to scroll; reproduce a "platform" bug in the other engine at a smaller window before blaming the platform, and measure the box the user sees (#board/#header edges), not the wrapper's own width (the reviewer caught the assertion that passed on the broken layout). | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-07 | [t-4456](.tickets/t-4456/learnings.md) | A second animation on an element that already animates (card-in on first render) loses on equal specificity when its sheet loads later, and a resend loop in the spec hides it: put the old class back in the test; read the evidence result before saying the suite passed | `promoted → tools/sprint-check-app/CLAUDE.md` |
 <!-- canon:learnings:END -->

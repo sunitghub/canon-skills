@@ -82,6 +82,7 @@ git remote set-url origin "$W/nowhere.git"; refuses "could not reach origin" --f
 printf '#!/bin/sh\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
 rc=0; out="$("$TKT" commit-push "$id" --file a.txt --message "chore: x" 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "git could not commit (a hook may have refused it); nothing pushed. The files are staged"
+[[ "$out" != *"The merge of"* ]] || fail "a commit refused with no merge named one: $out"
 assert_eq "$(git --git-dir="$W/origin.git" rev-parse main)" "$(git rev-parse HEAD)"; rm .git/hooks/pre-commit; git reset -q -- a.txt
 
 # Commit two of the files: exactly those land, the staged b.txt stays staged and out of the commit; the push is plain.
@@ -103,10 +104,91 @@ git commit -qm "local only" -- b.txt; out="$("$TKT" commit-push "$id")"; assert_
 [[ "$out" != *"to undo"* && "$out" != *committed* ]] || fail "a push with nothing committed named a commit or an undo: $out"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
 
-# Origin has a commit this branch lacks: refused before anything is committed.
-C="$W/other-clone"; git clone -q "$W/origin.git" "$C" 2>/dev/null; (cd "$C" && echo theirs > c.txt && git add c.txt && git commit -qm theirs && git push -q origin HEAD:main)
-refuses "origin/main has commits this branch lacks; nothing changed. Run git pull first" --file newdir/two.txt --message "chore: x"
-git pull -q --no-rebase origin main
+# t-420c: origin has commits this branch lacks. Only behind: the dry run lists them, the run brings them in (a fast-forward), then
+# commits and pushes. Diverged: merged in first (t-dde9's rules, one merge commit), then committed and pushed, so send-issue's
+# check (no commit on no branch of origin) passes. Every refusal changes nothing and names the way on. Prod path: the Send panel's
+# Commit and push (commit-push-preview, commit-push) and its preview.
+C="$W/other-clone"; git clone -q "$W/origin.git" "$C" 2>/dev/null
+theirs() { (cd "$C" && git pull -q --no-rebase origin main && printf '%s\n' "$2" > "$1" && git add "$1" && git commit -qm "theirs: $1" && git push -q origin HEAD:main); }
+old_text() { [[ "$1" != *"Run git pull first"* && "$1" != *"The PR is merged on GitHub"* ]] || fail "an old message: $1"; }
+theirs c.txt theirs
+before="$(sig)"; out="$("$TKT" commit-push "$id" --dry-run)"
+assert_contains "$out" "merge: origin/main has 1 commit(s) main lacks: Commit and push first brings them into main (a fast-forward):"
+assert_contains "$out" "theirs: c.txt"; assert_eq "$before" "$(sig)"
+echo nb > newdir/behind.txt; out="$("$TKT" commit-push "$id" --file newdir/behind.txt --message "chore: behind")"; assert_contains "$out" "pushed main to origin"; old_text "$out"
+assert_eq "$(git rev-parse HEAD^)" "$(git --git-dir="$W/origin.git" rev-parse main^)"   # the file commit sits on origin's commit
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"; assert_eq "theirs" "$(cat c.txt)"
+
+# Diverged: a local commit and one of origin's. The dry run counts the local commit, names the merge and origin's commit, changes nothing.
+git commit -qm "mine: d" --allow-empty; theirs e.txt e-theirs
+before="$(sig)"; out="$("$TKT" commit-push "$id" --dry-run)"
+assert_contains "$out" "branch: main -> origin/main (1 commit(s) to push)"
+assert_contains "$out" "merge: origin/main has 1 commit(s) main lacks: Commit and push first merges origin/main into main here (a merge commit, never a rebase or force):"
+assert_contains "$out" "theirs: e.txt"; assert_eq "$before" "$(sig)"
+otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"; assert_contains "$out" "origin: $otip_seen"
+# reviewer t-420c: origin moves after the preview: with the previewed tip the run refuses and changes nothing (what the confirm showed
+# is not what would be merged); a malformed tip is refused; with the current tip it goes on
+theirs e2.txt e2-theirs
+refuses "origin/main moved since the preview (now " --expect-origin "$otip_seen"; old_text "$out"; assert_contains "$out" "then Commit and push again"
+refuses "--expect-origin needs a full commit id" --expect-origin abc1234
+refuses "--expect-origin needs a full commit id" --expect-origin "x$otip_seen"; refuses "--expect-origin needs a full commit id" --expect-origin "${otip_seen}0"
+otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"
+# without --file (a diverged branch always has something to push): one merge commit, parents local then origin, then pushed
+lold="$(git rev-parse HEAD)"; oold="$(git --git-dir="$W/origin.git" rev-parse main)"
+out="$("$TKT" commit-push "$id" --expect-origin "$otip_seen")"; old_text "$out"; assert_contains "$out" "merged origin/main ("; assert_contains "$out" "pushed main to origin"
+assert_eq "Merge origin/main into main" "$(git log -1 --format=%s)"; assert_eq "$lold $oold" "$(git log -1 --format=%P)"
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
+assert_eq 0 "$(git rev-list --count HEAD --not --remotes=origin)"   # what send-issue checks before it sends ("on no branch of origin")
+# with --file: merged, then the file committed on the merge, then pushed
+git commit -qm "mine: f" --allow-empty; theirs f.txt f-theirs; echo n3 > newdir/three.txt
+out="$("$TKT" commit-push "$id" --file newdir/three.txt --message "chore: diverged")"; old_text "$out"
+assert_eq "chore: diverged" "$(git log -1 --format=%s)"; assert_eq "Merge origin/main into main" "$(git log -1 --format=%s HEAD^)"
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
+
+# A hook refusing the file commit after the merge: the merge stays here, unpushed, and the message says so with its undo
+git commit -qm "mine: hk" --allow-empty; theirs hk.txt hk-theirs; echo n5 > newdir/five.txt
+printf '#!/bin/sh\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
+ob="$(git --git-dir="$W/origin.git" rev-parse main)"; rc=0; out="$("$TKT" commit-push "$id" --file newdir/five.txt --message "chore: x" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "The merge of origin/main stays here, not pushed (undo it: git reset --keep HEAD^)"
+assert_eq "$ob" "$(git --git-dir="$W/origin.git" rev-parse main)"; assert_eq "Merge origin/main into main" "$(git log -1 --format=%s)"
+rm .git/hooks/pre-commit; git reset -q -- newdir/five.txt; git push -q origin HEAD:main
+
+# Refusals, each changing nothing (refuses checks HEAD, the index, the files and origin) and ending with the way on.
+# a conflict in a person's file: named
+echo n4 > newdir/four.txt; echo mine > g.txt; git add g.txt; git commit -qm "mine: g"; theirs g.txt g-theirs
+refuses "conflicts in: g.txt" --file newdir/four.txt --message "chore: x"; old_text "$out"; assert_contains "$out" "then Commit and push again"
+assert_contains "$out" "Merge it by hand in $P: git merge origin/main"
+assert_contains "$out" "commit-push: origin/main has commits main lacks and they could not be merged here (above); nothing committed or pushed. Fix that, then Commit and push again"   # the checkout it ran in, not "the main checkout"
+git reset -q --hard HEAD^; git pull -q --no-rebase origin main
+# a file the merge changes that is edited here (uncommitted): named
+git commit -qm "mine: h" --allow-empty; theirs h.txt h-theirs; echo h-here > h.txt
+refuses "origin/main could not be merged into local main:" --file newdir/four.txt --message "chore: x"; old_text "$out"
+assert_contains "$out" "h.txt"; assert_contains "$out" "Commit and push again"
+rm h.txt; git pull -q --no-rebase origin main; git push -q origin HEAD:main
+# origin rewritten (force-pushed after this checkout fetched it): the dry run says it will refuse, the run refuses
+theirs i.txt i-theirs; git fetch -q origin "+refs/heads/main:refs/remotes/origin/main"
+(cd "$C" && git reset -q --hard HEAD^ && echo j > j.txt && git add j.txt && git commit -qm "theirs: j" && "$REAL_GIT" push -q -f origin HEAD:main)   # the rewrite under test, outside the push log the never-forced check reads
+git commit -qm "mine: k" --allow-empty
+git fetch -q origin "+refs/heads/main:refs/remotes/origin/main"
+before="$(sig)"; out="$("$TKT" commit-push "$id" --dry-run)"
+assert_contains "$out" "merge: origin/main was rewritten (force-pushed: commits it had are gone): Commit and push will refuse; nothing is merged or pushed. Look at origin/main first"
+assert_eq "$before" "$(sig)"
+refuses "origin/main was rewritten (force-pushed: commits it had are gone): nothing merged, committed or pushed. Look at origin/main first, then Commit and push again" --file newdir/four.txt --message "chore: x"
+old_text "$out"
+git merge -q --no-edit origin/main; git push -q origin HEAD:main; (cd "$C" && git fetch -q origin && git reset -q --hard origin/main)
+
+# canon's own docs conflicting (both sides added a LEARNINGS.md row): resolved, both kept, pushed
+learn() { printf '# Learnings\n\nlearnings-sweep last run: %s\n\n<!-- canon:learnings:BEGIN -->\n| Date | Ticket | Finding | Status |\n|---|---|---|---|\n' "$1"; shift; printf '%s\n' "$@"; printf '<!-- canon:learnings:END -->\n'; }
+row() { printf '| %s | [%s](.tickets/%s/learnings.md) | finding of %s | UNPROMOTED |' "$1" "$2" "$2" "$2"; }
+learn "11-01-2026 09:00" "$(row 2026-11-01 t-0001)" > LEARNINGS.md; git add LEARNINGS.md; git commit -qm learnings; git push -q origin HEAD:main
+learn "11-13-2026 10:00" "$(row 2026-11-13 t-aaaa)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md; git commit -qam "mine: row"
+(cd "$C" && git pull -q --no-rebase origin main && learn "11-13-2026 11:00" "$(row 2026-11-13 t-bbbb)" "$(row 2026-11-01 t-0001)" > LEARNINGS.md && git commit -qam "theirs: row" && git push -q origin HEAD:main)
+out="$("$TKT" commit-push "$id")"; assert_contains "$out" "conflicted only in canon's own docs (LEARNINGS.md): resolved, both sides kept"
+assert_grep t-aaaa LEARNINGS.md; assert_grep t-bbbb LEARNINGS.md; assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
+
+# One owner (criterion 5): the rewritten-origin check and the merge are called only from the two shared helpers and _ff_local_base.
+calls="$(awk '/^[_a-z]+\(\) *\{/ { f = $1 } /^[[:space:]]*#/ { next } /_origin_rewritten "|_merge_origin_into_base "/ { print f }' "$TKT" | sort -u | paste -sd' ' -)"
+assert_eq "_ff_local_base() _merge_origin_before_push() _origin_merge_preview()" "$calls"
 
 # Detached HEAD: refused.
 git checkout -q --detach; refuses "is not on a branch (detached HEAD)" --file newdir/two.txt --message "chore: x"; git checkout -q main
@@ -117,6 +199,15 @@ out="$("$TKT" commit-push "$id" --dry-run)"; [[ "$out" != *"file:"* ]] || fail "
 echo wt > "$W/wt/w.txt"
 out="$("$TKT" commit-push "$id" --dry-run)"; assert_contains "$out" "commit-push: $id in $W/wt"; assert_contains "$out" "branch: wt-branch -> origin/wt-branch (new on origin)"
 grep -qxF "file: ?? w.txt" <<< "$out" || fail "the bound worktree's file is not listed: $out"
+# t-420c: the worktree's own branch, diverged from origin's: merged and pushed in the worktree, the main checkout untouched
+git -C "$W/wt" push -q origin wt-branch; git -C "$W/wt" commit -qm "wt: mine" --allow-empty
+(cd "$C" && git fetch -q origin && git checkout -q -b wt-branch origin/wt-branch && echo x > wtx.txt && git add wtx.txt && git commit -qm "theirs: wtx" && git push -q origin wt-branch && git checkout -q main)
+mainsig="$(git rev-parse HEAD) $(git status --porcelain=v1 -uall | cksum)"
+out="$("$TKT" commit-push "$id" --dry-run)"; assert_contains "$out" "merge: origin/wt-branch has 1 commit(s) wt-branch lacks: Commit and push first merges"
+out="$("$TKT" commit-push "$id")"; assert_contains "$out" "pushed wt-branch to origin"
+assert_eq "Merge origin/wt-branch into wt-branch" "$(git -C "$W/wt" log -1 --format=%s)"; assert_eq "x" "$(cat "$W/wt/wtx.txt")"
+assert_eq "$(git -C "$W/wt" rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse wt-branch)"
+assert_eq "$mainsig" "$(git rev-parse HEAD) $(git status --porcelain=v1 -uall | cksum)"
 rm ".tickets/$id/.cockpit-cwd"; git worktree remove --force "$W/wt"; git branch -q -D wt-branch
 
 # A branch origin does not have yet: pushed with -u, tracking origin/<branch>.

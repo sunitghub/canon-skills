@@ -130,6 +130,8 @@ printf '%s\n' "$WT2" > ".tickets/$id2/.cockpit-cwd"
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$(git -C "$WT2" rev-parse HEAD)" > ".tickets/$id2/eval-report.md"
 TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id2" >/dev/null
 "$TKT" merge "$id2" --yes < /dev/null >/dev/null 2>&1 || fail "second merge failed"
+# t-420c: main only ahead of origin (the merge here, nothing new there): the preview names no merge (the shared helper says nothing)
+out="$("$TKT" finish "$id2" --check --fetch < /dev/null 2>&1)"; [[ "$out" != *"lacks:"* ]] || fail "a merge was promised with origin behind main: $out"
 git clone -q "$W/origin.git" "$W/other" && (cd "$W/other" && echo z > z.txt && git add z.txt && git commit -qm "someone else" && git push -q origin main)
 OLD_ORIGIN="$(git -C "$W/origin.git" rev-parse main)"
 # An origin ref never fetched is said, not shown as "0 commits".
@@ -252,6 +254,7 @@ mkmerge() {
 mkmerge code base.txt here-code
 (cd "$C3" && echo cloud-code > base.txt && git add -A && git commit -qm "cloud code" && git push -q origin main)
 refuse_merge "a conflict in a code file" "conflicts in: base.txt"
+assert_contains "$out" "origin/main has commits main lacks and they could not be merged here (above); nothing pushed"   # t-420c: Push stops at the helper's refusal
 # A force-pushed origin (commits it had are gone) is never merged into: that would bring back what was removed.
 mkmerge force f.txt here; git fetch -q origin
 (cd "$C3" && git reset -q --hard HEAD~1 && echo r > r.txt && git add -A && git commit -qm "rewritten" && git push -qf origin main)

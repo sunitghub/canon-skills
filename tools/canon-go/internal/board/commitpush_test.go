@@ -18,6 +18,8 @@ func TestCommitPushArgs(t *testing.T) {
 		{"files and message", map[string]any{"files": []any{"a.txt", "dir/b c.txt"}, "message": "chore: t-ab12 work"},
 			[]string{"commit-push", "t-ab12", "--file", "a.txt", "--file", "dir/b c.txt", "--message", "chore: t-ab12 work"}},
 		{"a dotted name is not ..", map[string]any{"files": []any{"..x/a", "a..b"}}, []string{"commit-push", "t-ab12", "--file", "..x/a", "--file", "a..b"}},
+		// t-420c: origin's tip as previewed, so tkt refuses when origin moved since the confirm's preview
+		{"origin tip", map[string]any{"origin": strings.Repeat("ab", 20)}, []string{"commit-push", "t-ab12", "--expect-origin", strings.Repeat("ab", 20)}},
 		{"an empty message is tkt's to refuse", map[string]any{"files": []any{"a"}, "message": ""}, []string{"commit-push", "t-ab12", "--file", "a", "--message", ""}},
 	}
 	for _, c := range ok {
@@ -37,6 +39,11 @@ func TestCommitPushArgs(t *testing.T) {
 		t.Error("a 4096-byte path was refused")
 	}
 	bad := map[string]map[string]any{
+		"origin short":         {"origin": "abc1234"},
+		"origin prefixed":      {"origin": "x" + strings.Repeat("ab", 20)},
+		"origin too long":      {"origin": strings.Repeat("ab", 20) + "0"},
+		"origin an option":     {"origin": "--force"},
+		"origin not text":      {"origin": 7},
 		"files not a list":     {"files": "a.txt"},
 		"a file not a string":  {"files": []any{1.0}},
 		"empty path":           {"files": []any{""}},

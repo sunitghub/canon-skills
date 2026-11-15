@@ -2628,19 +2628,7 @@ cmd_finish() {
       fi
       if ! $on_origin; then
         # t-dde9: origin moved on too (a cloud PR merged there): a push would be refused, so Push first merges origin's into $into here.
-        if git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}" >/dev/null 2>&1 \
-           && ! git -C "$root" merge-base --is-ancestor "refs/remotes/origin/$into" "refs/heads/$into" 2>/dev/null \
-           && ! git -C "$root" merge-base --is-ancestor "refs/heads/$into" "refs/remotes/origin/$into" 2>/dev/null; then
-          # t-67f5: a force-pushed origin is never merged into (--push refuses), so say so here rather than promise the merge
-          if _origin_rewritten "$root" "$into"; then
-            echo "finish: push: origin/$into was rewritten (force-pushed: commits it had are gone): Push will refuse; nothing is merged or pushed. Look at origin/$into first"
-          else
-            ahead="$(git -C "$root" log --format='  %h %s' "refs/heads/$into..refs/remotes/origin/$into" 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177')" \
-              || _fin_no "git could not list origin's new commits"
-            echo "finish: push: origin/$into has $(printf '%s\n' "$ahead" | grep -c .) commit(s) $into lacks: Push first merges origin/$into into $into here (a merge commit, never a rebase or force):"
-            printf '%s\n' "$ahead" | sed -n '1,20p'
-          fi
-        fi
+        _origin_merge_preview "$root" "$into" "finish: push:" Push || _fin_no "git could not list origin's new commits"
         rp="$(_merge_record_paths "$root" "$tdir" "$into" | paste -sd, - | sed 's/,/, /g')"
         [[ -z "$rp" ]] || echo "finish: push: also commits canon's merge record first: $rp"
       fi
@@ -2654,15 +2642,12 @@ cmd_finish() {
       $on_origin && { echo "finish: $into is already on origin; nothing to push"; return 0; }
       _commit_merge_record "$root" "$tdir" "$into" "$id"   # t-27bc
       # t-dde9: origin's $into moved on meanwhile (a cloud PR merged there): merge it into $into here first, so the push is a fast-forward.
-      local otip lold
-      if git -C "$root" fetch -q origin "+refs/heads/$into:refs/remotes/origin/$into" < /dev/null 2>/dev/null \
-         && otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$into^{commit}")" \
-         && ! git -C "$root" merge-base --is-ancestor "$otip" "refs/heads/$into" 2>/dev/null; then
-        lold="$(git -C "$root" rev-parse -q --verify "refs/heads/$into")" || _fin_no "git could not read $into"
-        ! _origin_rewritten "$root" "$into" || _fin_no "origin/$into was rewritten (force-pushed: commits it had are gone); look at it first, nothing merged or pushed"
-        _merge_origin_into_base "$root" "$into" "$id" "$lold" "$otip" "Push again" || _fin_no "origin/$into has commits $into lacks and they could not be merged here (above); nothing pushed"
-        handoff_recent "$root"
-      fi
+      local lold mrc=0
+      lold="$(git -C "$root" rev-parse -q --verify "refs/heads/$into")" || _fin_no "git could not read $into"
+      _merge_origin_before_push "$root" "$into" "$id" "Push again" || mrc=$?
+      [[ $mrc != 2 ]] || _fin_no "origin/$into was rewritten (force-pushed: commits it had are gone); look at it first, nothing merged or pushed"
+      [[ $mrc == 0 ]] || _fin_no "origin/$into has commits $into lacks and they could not be merged here (above); nothing pushed"
+      [[ "$(git -C "$root" rev-parse -q --verify "refs/heads/$into")" == "$lold" ]] || handoff_recent "$root"
       local pout; pout="$(LC_ALL=C git -C "$root" push origin "refs/heads/$into:refs/heads/$into" < /dev/null 2>&1)" \
         || { printf '%s\n' "$pout" >&2; _fin_no "git push origin $into was refused or failed (not forced); if origin moved again meanwhile, Push again"; }
       printf '%s\n' "$pout"
@@ -2864,7 +2849,7 @@ _merge_origin_into_base() {
       cf="$(git -C "$t/w" -c core.quotepath=off diff --name-only --diff-filter=U < /dev/null 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177' | paste -sd, - | sed 's/,/, /g')"
       rm -rf "$t"
       echo "Local $b: has commits origin/$b lacks, and merging origin/$b conflicts in: ${cf:-files git did not name}; left at ${old:0:8}, nothing changed."
-      echo "  Merge it by hand in the main checkout: git merge origin/$b, resolve those files, commit; then $retry"
+      echo "  Merge it by hand in $root: git merge origin/$b, resolve those files, commit; then $retry"
       return 1
     fi
   fi
@@ -2878,6 +2863,44 @@ _merge_origin_into_base() {
     || { echo "Local $b: git could not write the merge commit; left at ${old:0:8}"; return 1; }
   _advance_local "$root" "$b" "$id" "$old" "$new" "$retry" || return 1
   echo "Local $b: merged origin/$b (${onew:0:8}) into $b: ${old:0:8} -> ${new:0:8} (a merge commit; nothing rebased or forced)"
+}
+
+# _origin_merge_preview <root> <branch> <prefix> <action> — t-420c: what <action> (Finish's Push, the Send panel's Commit and push)
+# will do about origin's <branch>, read from refs/remotes/origin/<branch> as last fetched: nothing when <branch> holds origin's; when
+# <branch> is only behind, the commits it lacks (at most 20), brought in first as a fast-forward; when they have diverged, those commits
+# merged in first, or, origin having been rewritten (force-pushed, t-67f5), that <action> will refuse. Returns 1 only when git could not
+# list the commits.
+_origin_merge_preview() {
+  local root="$1" b="$2" pre="$3" act="$4" ahead
+  local how="merges origin/$b into $b here (a merge commit, never a rebase or force)"
+  git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b^{commit}" >/dev/null 2>&1 \
+    && ! git -C "$root" merge-base --is-ancestor "refs/remotes/origin/$b" "refs/heads/$b" 2>/dev/null || return 0
+  if git -C "$root" merge-base --is-ancestor "refs/heads/$b" "refs/remotes/origin/$b" 2>/dev/null; then how="brings them into $b (a fast-forward)"
+  elif _origin_rewritten "$root" "$b"; then
+    echo "$pre origin/$b was rewritten (force-pushed: commits it had are gone): $act will refuse; nothing is merged or pushed. Look at origin/$b first"
+    return 0
+  fi
+  ahead="$(git -C "$root" log --format='  %h %s' "refs/heads/$b..refs/remotes/origin/$b" 2>/dev/null | LC_ALL=C tr -d '\000-\010\013-\037\177')" || return 1
+  echo "$pre origin/$b has $(printf '%s\n' "$ahead" | grep -c .) commit(s) $b lacks: $act first $how:"
+  printf '%s\n' "$ahead" | sed -n '1,20p'
+}
+
+# _merge_origin_before_push <root> <branch> <id> <retry> [<expect>] — t-420c: before a push of <branch> (Finish's Push, commit-push), fetch
+# origin's into refs/remotes/origin/<branch> and, when they have diverged, merge it into <branch> (_merge_origin_into_base). <root> is
+# the checkout <branch> is checked out in, so _ff_here runs there. Returns 0 (nothing to merge, a failed fetch left to the push to
+# report, or merged), 2 when origin was rewritten (nothing changed), 3 when origin's tip is not <expect> (nothing changed), 1 when the
+# merge could not be made (the reason printed).
+_merge_origin_before_push() {
+  local root="$1" b="$2" id="$3" retry="$4" expect="${5:-}" otip lold
+  git -C "$root" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" < /dev/null 2>/dev/null \
+    && otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" || return 0
+  [[ -z "$expect" || "$expect" == "$otip" ]] || return 3
+  ! git -C "$root" merge-base --is-ancestor "$otip" "refs/heads/$b" 2>/dev/null || return 0
+  lold="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || return 1
+  ! _origin_rewritten "$root" "$b" || return 2
+  # _ff_here's refusal says what was being done (the default is merge-pr's "The PR is merged on GitHub, but …"); bash's dynamic scope
+  local FF_LEAD="origin/$b could not be merged into local $b:"
+  _merge_origin_into_base "$root" "$b" "$id" "$lold" "$otip" "$retry" || return 1
 }
 
 # _origin_rewritten <root> <branch> — t-dde9: true when refs/remotes/origin/<branch> lost commits at its last change (a force-push
@@ -2968,7 +2991,7 @@ _ff_here() {
   done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
   if [[ ${#differ[@]} -gt 0 ]]; then
     # t-e7fb: plain words. What is left (merged on GitHub, local branch behind), which files, and the steps that end it.
-    echo "The PR is merged on GitHub, but local $b was not updated: $([[ ${#differ[@]} == 1 ]] && echo "this file has" || echo "these ${#differ[@]} files have") changes here that the merge would overwrite:"
+    echo "${FF_LEAD:-The PR is merged on GitHub, but local $b was not updated:} $([[ ${#differ[@]} == 1 ]] && echo "this file has" || echo "these ${#differ[@]} files have") changes here that the merge would overwrite:"
     for p in "${differ[@]}"; do printf '  %s\n' "${p//[^[:print:]]/?}"; done
     echo "  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: $retry"
     echo "  (in the Cockpit Terminal, type su first)"
@@ -3295,23 +3318,26 @@ _cp_files() {
 
 # cmd_commit_push <id> [--dry-run] [--file <path>]... [--message <text>] — t-32f9: what the Send panel's "Commit and push" runs,
 # after its confirm. Commits exactly the named files (anything else already staged stays staged, uncommitted), then pushes the
-# ticket's branch to origin's branch of the same name: never forced, -u when origin has no such branch yet, refused when origin
-# has commits this branch lacks. Every --file must be one --dry-run lists. A push that fails keeps the commit and says so.
+# ticket's branch to origin's branch of the same name: never forced, -u when origin has no such branch yet. t-420c: when origin has
+# commits this branch lacks, it first merges them in (_merge_origin_before_push: t-dde9's rules, a merge commit, a rewritten origin or a
+# conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists. A push
+# that fails keeps the commit and says so.
 cmd_commit_push() {
-  local id="" dry=false msg="" msgset=false files=()
+  local id="" dry=false msg="" msgset=false files=() expect=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
       --file)    [[ $# -ge 2 ]] || { echo "commit-push: --file needs a path" >&2; exit 1; }; files+=("$2"); shift 2 ;;
       --message) [[ $# -ge 2 ]] || { echo "commit-push: --message needs a text" >&2; exit 1; }; msg="$2"; msgset=true; shift 2 ;;
+      --expect-origin) [[ $# -ge 2 && "$2" =~ ^[0-9a-f]{40}$ ]] || { echo "commit-push: --expect-origin needs a full commit id" >&2; exit 1; }; expect="$2"; shift 2 ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>] [--expect-origin <sha>]" >&2; exit 1; }
   # A path is a file name, never a pattern: a file named '*.txt' must commit that one file, not every .txt (t-41ff's rule).
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
-  local file root wt b list new=false ahead=0 base=""
+  local file root wt b list new=false ahead=0 diverged=false otip=""
   file="$(find_ticket "$id")"; id="$(get_field "$file" id)"
   root="$(dirname "$(tickets_dir)")"
   wt="$(_ticket_cwd_binding "$file")"; [[ -d "$wt" ]] || wt="$root"
@@ -3322,16 +3348,19 @@ cmd_commit_push() {
   if [[ $lrc == 2 ]]; then new=true
   elif [[ $lrc != 0 ]]; then echo "commit-push: could not reach origin (git ls-remote exit $lrc); nothing changed" >&2; exit 1
   else
-    git -C "$wt" fetch -q origin "refs/heads/$b" 2>/dev/null || { echo "commit-push: could not fetch origin/$b; nothing changed" >&2; exit 1; }
-    base="$(git -C "$wt" rev-parse FETCH_HEAD)" || exit 1
-    git -C "$wt" merge-base --is-ancestor "$base" HEAD \
-      || { echo "commit-push: origin/$b has commits this branch lacks; nothing changed. Run git pull first, then commit and push again." >&2; exit 1; }
-    ahead="$(git -C "$wt" rev-list --count "$base..HEAD")" || exit 1
+    git -C "$wt" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null || { echo "commit-push: could not fetch origin/$b; nothing changed" >&2; exit 1; }
+    otip="$(git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" || { echo "commit-push: could not read origin/$b; nothing changed" >&2; exit 1; }
+    # t-420c reviewer: the confirm covered origin as the preview saw it; origin moved since, so what would be merged and pushed was not shown
+    [[ -z "$expect" || "$expect" == "$otip" ]] \
+      || { echo "commit-push: origin/$b moved since the preview (now ${otip:0:8}); nothing changed. Look at the preview again, then Commit and push again" >&2; exit 1; }
+    git -C "$wt" merge-base --is-ancestor "refs/remotes/origin/$b" HEAD || diverged=true
+    ahead="$(git -C "$wt" rev-list --count "refs/remotes/origin/$b..HEAD")" || exit 1
   fi
   list="$(_cp_files "$wt" "$id")"
   if $dry; then
     echo "commit-push: $id in $wt"
-    if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; fi
+    if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; echo "origin: $otip"; fi
+    ! $diverged || _origin_merge_preview "$wt" "$b" "merge:" "Commit and push" || { echo "commit-push: git could not list origin's new commits" >&2; exit 1; }
     [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do
       printf 'file: %s %s\n' "$xy" "$p"
       # t-3741: when the file was last written (epoch seconds), so the form can leave a file changed moments ago unticked. GNU stat -c, BSD stat -f.
@@ -3354,11 +3383,17 @@ cmd_commit_push() {
   elif ! $new && [[ "$ahead" == 0 ]]; then
     echo "commit-push: nothing to commit (no --file) and nothing to push on $b; nothing changed" >&2; exit 1
   fi
-  local sha="" out=""   # set, not just declared: bash 5 leaves a bare `local sha` unset and set -u then stops the push path
+  local sha="" out="" mrc=0   # set, not just declared: bash 5 leaves a bare `local sha` unset and set -u then stops the push path
+  if $diverged; then
+    _merge_origin_before_push "$wt" "$b" "$id" "Commit and push again" "$otip" || mrc=$?
+    [[ $mrc != 3 ]] || { echo "commit-push: origin/$b moved while it was read; nothing changed. Look at the preview again, then Commit and push again" >&2; exit 1; }
+    [[ $mrc != 2 ]] || { echo "commit-push: origin/$b was rewritten (force-pushed: commits it had are gone): nothing merged, committed or pushed. Look at origin/$b first, then Commit and push again" >&2; exit 1; }
+    [[ $mrc == 0 ]] || { echo "commit-push: origin/$b has commits $b lacks and they could not be merged here (above); nothing committed or pushed. Fix that, then Commit and push again" >&2; exit 1; }
+  fi
   if [[ ${#files[@]} -gt 0 ]]; then
     # Only the named paths: --only commits their worktree state and leaves anything else in the index staged, not committed.
     out="$(git -C "$wt" add -A -- "${files[@]}" 2>&1 && git -C "$wt" commit -q --only -m "$msg" -- "${files[@]}" 2>&1)" \
-      || { echo "commit-push: git could not commit (a hook may have refused it); nothing pushed. The files are staged: git reset -- <file> unstages one. $out" >&2; exit 1; }
+      || { echo "commit-push: git could not commit (a hook may have refused it); nothing pushed.$($diverged && echo " The merge of origin/$b stays here, not pushed (undo it: git reset --keep HEAD^).") The files are staged: git reset -- <file> unstages one. $out" >&2; exit 1; }
     sha="$(git -C "$wt" rev-parse HEAD)"
     echo "commit-push: committed ${sha:0:8} ($(printf '%s\n' "${files[@]}" | grep -c .) file(s)): $msg"
   fi

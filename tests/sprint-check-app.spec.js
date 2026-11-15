@@ -17485,6 +17485,45 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(posts[1]).toEqual({ t: plain, body: {} });
   });
 
+  // t-420c: origin's branch has commits this one lacks: the form shows commit-push's merge line and origin's commits, and the confirm
+  // says the merge comes first; a rewritten (force-pushed) origin is shown and Commit and push waits. Prod path: the Send panel's
+  // Commit and push (commit-push-preview's dry run, then commit-push).
+  test('Send panel Commit and push shows the merge it makes first; a rewritten origin disables it (t-420c)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh42');
+    ghTicket(id);
+    let rewritten = false; const posts = [];
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'master', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: false, exit_code: 1, output: 'send-issue: 1 commit(s) in /w are on no branch of origin: the cloud session works from GitHub and will not see them.' }));
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: rewritten
+      ? `commit-push: ${id} in /w\nbranch: master -> origin/master (1 commit(s) to push)\nmerge: origin/master was rewritten (force-pushed: commits it had are gone): Commit and push will refuse; nothing is merged or pushed. Look at origin/master first\nfile:  M src/app.js`
+      : `commit-push: ${id} in /w\nbranch: master -> origin/master (1 commit(s) to push)\norigin: ${'ab'.repeat(20)}\nmerge: origin/master has 2 commit(s) master lacks: Commit and push first merges origin/master into master here (a merge commit, never a rebase or force):\n  abc1234 Fix the header\n  def5678 Merge pull request #7\nfile:  M src/app.js` }));
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => { posts.push(JSON.parse(r.request().postData() || '{}')); return json(r, { ok: true, exit_code: 0, output: 'commit-push: pushed master to origin' }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-cp-open').click();
+    const note = page.locator('#ck-gh-cp-merge');
+    await expect(note.locator('p')).toHaveText('origin/master has 2 commit(s) master lacks: Commit and push first merges origin/master into master here (a merge commit, never a rebase or force):');
+    await expect(note.locator('pre')).toHaveText('abc1234 Fix the header\ndef5678 Merge pull request #7');
+    await expect(page.locator('#ck-gh-cp-go')).toBeEnabled();
+    await page.locator('#ck-gh-cp-go').click();
+    await expect(page.locator('#gh-dialog-body')).toHaveText('Merges origin/master into master, then commits 1 file(s) on master, then pushes master to origin. Never forced.');
+    await page.locator('#gh-dialog-cancel').click();
+    expect(posts).toEqual([]);
+    // the confirmed POST carries origin's tip as previewed (reviewer t-420c: tkt refuses when origin moved since)
+    await page.locator('#ck-gh-cp-go').click(); await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({ files: ['src/app.js'], message: `chore: ${id} work for the cloud session`, origin: 'ab'.repeat(20) });
+    // a rewritten origin: the note says it will refuse, and the button waits
+    rewritten = true;
+    await page.locator('#ck-gh-cp-open').click();   // the panel ran the send preview again after the push
+    await expect(note.locator('p')).toHaveText('origin/master was rewritten (force-pushed: commits it had are gone): Commit and push will refuse; nothing is merged or pushed. Look at origin/master first');
+    await expect(note.locator('pre')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-cp-go')).toBeDisabled();
+  });
+
   // Prod path: the Send panel's Commit and push (t-32f9), shown for unpushed commits (a refusal) and uncommitted files (a warning).
   test('Send panel offers Commit and push for unpushed or uncommitted work; untracked unticked; nothing posts before the confirm (t-32f9)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
@@ -17528,6 +17567,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await page.locator('#ck-gh-cp-go').click();
     await expect(page.locator('#gh-dialog-title')).toHaveText(`Commit and push ${id}?`);
     await expect(page.locator('#gh-dialog-body')).toHaveText('Commits 1 file(s) on main, then pushes main to origin. Never forced.');
+    await expect(page.locator('#ck-gh-cp-merge')).toHaveCount(0);   // t-420c: no divergence, no merge note
     await expect(page.locator('#gh-dialog-pre')).toContainText('src/app.js');
     await expect(page.locator('#gh-dialog-pre')).not.toContainText('.env.local');
     await page.locator('#gh-dialog-cancel').click();
