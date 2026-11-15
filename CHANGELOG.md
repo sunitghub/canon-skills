@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: **Check & merge** for a worktree ticket no longer refuses a close in a project that tracks HANDOFF.md or DECISIONS.md. The close writes both after the evaluator grades (the Handoff narrative and the decision row), and the merge now takes them with the ticket's close record, naming them before it merges. Any other change after grading is still refused, and a merge from GitHub (Import results, merge-pr) still takes neither. A committed delete of LEARNINGS.md, HANDOFF.md or DECISIONS.md after grading is now refused (t-2a95).
+
 ## [0.60.1] - 2026-11-15
 
 - Fixed: closing or switching a Cockpit tab no longer leaves another ticket's GitHub panel on screen. The right side now always shows the active tab's own view: its terminal, or its own Send, Sent or out-on-GitHub panel, whichever way you switch (tab strip, the prefix keys, the Agents sidebar) and whichever tab comes next when one closes (t-3786).
