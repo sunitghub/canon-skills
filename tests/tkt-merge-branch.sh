@@ -350,6 +350,19 @@ refuses "a committed HANDOFF.md delete" "is not the commit the evaluator graded"
 closed_wt; b7="feat/c$n7"
 (cd "$WT" && git rm -q HANDOFF.md && ln -s AGENTS.md HANDOFF.md && git add HANDOFF.md ".tickets/$id" && git commit -qm "chore: close $id")
 refuses "a committed HANDOFF.md turned into a symlink" "HANDOFF.md (symlink or submodule)" --yes
+# the names are whole repo-root paths: a nested HANDOFF.md or a look-alike name is not the close's doc; a delete inside the ticket's
+# own folder (tkt compact packs evidence) is still late
+for x in docs/HANDOFF.md HANDOFF.md.bak; do
+  closed_wt; b7="feat/c$n7"
+  (cd "$WT" && mkdir -p docs && echo n > "$x" && git add "$x" ".tickets/$id" && git commit -qm "chore: close $id")
+  refuses "a committed $x" "since then it changes $x" --yes
+done
+closed_wt; b7="feat/c$n7"
+(cd "$WT" && echo e > ".tickets/$id/old.log" && git add ".tickets/$id" && git commit -qm "evidence")
+G="$(git -C "$WT" rev-parse HEAD)"; printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$G" > "$WT/.tickets/$id/eval-report.md"
+(cd "$WT" && git rm -q ".tickets/$id/old.log" && git add ".tickets/$id" && git commit -qm "compact")
+out="$("$TKT" merge "$id" --yes < /dev/null 2>&1)" || fail "a delete inside the ticket's folder was refused: $out"
+assert_contains "$out" "Merged $b7 into main ("
 cd "$P"; id="$id_s"; f="$f_s"; WT="$WT_s"
 
 # runs: github goes to merge-pr, unchanged.
