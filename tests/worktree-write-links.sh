@@ -74,6 +74,12 @@ planted "work-beat with a dangling ACTIVE.beat (best effort: exit 0)" 0 now sh -
 planted "evidence stamp under a linked .tickets" 125 link .tickets "$OUT" -- "$ROOT/tools/evidence.sh" stamp "$id" test-sh -- true
 planted "work-beat under a linked .tickets (best effort: exit 0)" - link .tickets "$OUT" -- "$ROOT/tools/work-beat" touch
 
+# The worktree reached through a symlinked path (a logical $PWD, as a shell opened through a link has): still refused, and outside unchanged
+reset_wt; link .tickets "$OUT"; ln -sfn "$WT" "$W/wtlink"; before="$(outsig)"
+rc=0; out="$(cd "$W/wtlink" && "$TKT" create "Through a link" -t task 2>&1)" || rc=$?
+[[ "$rc" == 1 && "$(outsig)" == "$before" ]] || fail "a write from a logical path into the worktree went through (rc $rc): $out"
+assert_contains "$out" "refusing to write"; rm "$W/wtlink"
+echo "worktree-write-links: refused from a logical path to the worktree"
 # Fail closed: a shell that loads only frontmatter-lib.sh still refuses (it loads platform-lib.sh itself).
 reset_wt; link ".tickets/$id/ticket.md" "$OUT/file.txt"; before="$(outsig)"
 rc=0; out="$(cd "$WT" && bash -c 'source "$1/tools/frontmatter-lib.sh"; set_field "$2" status closed' _ "$ROOT" ".tickets/$id/ticket.md" 2>&1)" || rc=$?
