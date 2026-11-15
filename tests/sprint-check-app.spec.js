@@ -19055,10 +19055,21 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   test('closing a tab hands the pane to the next tab: a ticket, one out on GitHub, one gone from the list, a scratch, none (t-3786)', async ({ page }) => {
     const { a, b, o, open } = await paneSetup(page);
     const close = id => page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${id}"]`).click();
+    const term = () => page.evaluate(async () => { const f = (await import('/static/board-cockpit.js')).activeIframe(); return f ? f.style.visibility : 'no iframe'; });
+    await page.route(`**/api/ticket/${a}/github/send`, r => json(r, { ok: true, exit_code: 0, output: `Sent ${a} as https://github.com/acme/app/issues/71` }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]));
+    await page.route('**/api/worktree-lock/**', r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', b, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
+    await open(b);
+    await page.locator('#ck-worktree .ck-worktree-row:not([data-github])').first().click();   // b runs here: its terminal mounts
+    await expect.poll(term).toBe('visible');
     await open(a);
-    await shows(page, a, `preview of ${a}`);
-    await close(a); await shows(page, o, `${o} is out on GitHub`);   // the next tab is the last one: out on GitHub, its own text
-    await close(o); await shows(page, b, null);                        // a plain ticket: the Send panel of a is gone with its tab
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-sent')).toBeVisible();
+    await close(a); await shows(page, o, `${o} is out on GitHub`);   // closed on its Sent panel; the next tab is out on GitHub: its own text
+    await expect(page.locator('#ck-gh-sent')).toHaveCount(0);
+    await close(o); await shows(page, b, null);                        // b: no panel of another ticket, its own terminal shown
+    await expect.poll(term).toBe('visible');
     await open(o);
     await page.evaluate(async tid => {   // b leaves the board's list while its tab is open
       const { state } = await import('/static/board-core.js');
