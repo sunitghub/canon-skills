@@ -46,6 +46,7 @@ async function expectRole(page, loc, role) {
   const hover = {
     // an outline role leaves the background to the button's own rule; only a filling role sets it
     'b-neutral': { color: await themeColor(page, '--text'), border: await themeColor(page, '--border-hover') },
+    'b-refresh': { color: await themeColor(page, '--col-done'), border: await themeColor(page, '--col-done') },   // t-864c: a refresh or read turns green
     'b-danger': { color: red, border: red },
     'b-close': { color: red, border: red },   // Close, Cancel, ✕: the same red outline
     'b-danger-main': { color: await themeColor(page, '--th-on-bad', '#fff'), border: red, fill: red },   // a main danger action fills red
@@ -6315,7 +6316,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       await page.evaluate(t => { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }, theme0);
       await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
-      await expect(page.locator('#ad-reaper')).toContainText('after 5m in a worktree and 30m in a project’s main checkout');
+      await expect(page.locator('#ad-reaper')).toHaveText('Idle sessions save & end after 5m (worktree) or 30m (main checkout). Activity resets the timer.');   // t-864c (user): tighter
       await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
       await expect(box.locator('button.ad-open')).toHaveText(['Answer', 'Answer', 'Open', 'Open', 'Open', 'Open']);
       await expect(box).not.toContainText('Save & End');
@@ -6368,7 +6369,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ag-list')).toHaveText('No agents running');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'sidebar-empty.png') });
-      await expect(page.locator('#ad-sessions')).toHaveText('No active agent sessions.');
+      await expect(page.locator('#ad-sessions')).toHaveText('No active sessions.');
       expect(errors).toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -7104,7 +7105,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(banner.locator('img')).toHaveCount(0);
       // Admin: the card is renamed and lists every stopped session, including the other project's and the unregistered one.
       await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
-      await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents & terminal sessions (all projects)' })).toBeVisible();
+      await expect(page.locator('#view-admin .slabel', { hasText: 'Sessions · all projects' })).toBeVisible();
       await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] .s3')).toHaveText('Can\u2019t resume: project is gone');
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="resume"]')).toHaveCount(0);
@@ -14343,7 +14344,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
 test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
     defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, speccheck: { claude: 'm-haiku', copilot: 'claude-sonnet-5.5' },
-      reviewer: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, light: { claude: 'm-haiku', copilot: 'gpt-6-luna' } },
+      reviewer: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, evaluator2: {}, light: { claude: 'm-haiku', copilot: 'gpt-6-luna' } },
     models: {
       anthropic: [
         { id: 'm-sonnet', name: 'Sonnet Test', alias: 'sonnet', desc: 'Balanced.', reasoning: [], input_price: 3, output_price: 15 },
@@ -14356,10 +14357,12 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: [{ id: 'plan', label: 'Plan' }, { id: 'build', label: 'Build' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build' },
-      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build' }, { id: 'light', label: 'Simple / Light work' }],
+    steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '4' },
+      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '5' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '6' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
-    options: Object.fromEntries(['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'light'].map(st => [st, {
+    // t-864c: the board's Second eval lists: Off first, never the Evaluator's pick (m-sonnet; claude-sonnet-5.5) or a Haiku model
+    options: Object.fromEntries(['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'evaluator2', 'light'].map(st => st === 'evaluator2'
+      ? [st, { claude: [{ id: '', name: 'Off', group: 'Off' }], copilot: [{ id: '', name: 'Off', group: 'Off' }, ...OPT([['gpt-6-luna', 'GPT-6 Luna', '1x']])] }] : [st, {
       claude: OPT(st === 'evaluator' ? [['m-sonnet', 'Sonnet Test']] : st === 'light' ? [['m-haiku', 'Haiku Test']] : [['m-sonnet', 'Sonnet Test'], ['m-haiku', 'Haiku Test']]),
       copilot: OPT(st === 'evaluator' ? [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']] : st === 'light' ? [['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]
         : [['claude-sonnet-5.5', 'Claude Sonnet 5.5', '1x'], ['claude-haiku-4.5', 'Claude Haiku 4.5', '0.33x'], ['gpt-6-luna', 'GPT-6 Luna', '1x']]),
@@ -14369,7 +14372,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     const posts = [], reads = [];
     // stateful, like the board: a successful read changes what the Copilot CLI pickers offer
     let options = JSON.parse(JSON.stringify(OPTIONS));
-    await page.route('**/api/admin/model-tiers/options', route => route.fulfill({ json: options }));
+    let optGets = 0;   // t-864c: a save reloads the lists
+    await page.route('**/api/admin/model-tiers/options', route => { optGets++; return route.fulfill({ json: options }); });
     await page.route('**/api/admin/copilot-models', route => route.fulfill({ json: copilot }));
     await page.route('**/api/admin/copilot-models/read', route => {
       reads.push(route.request().method());
@@ -14390,6 +14394,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#nav-admin').click();
     await expect(page.locator('.mt-card[data-id="m-sonnet"]')).toBeVisible();
     posts.reads = reads;
+    posts.optGets = () => optGets;
     return posts;
   }
   const card = (page, id) => page.locator(`.mt-card[data-id="${id}"]`);
@@ -14450,11 +14455,58 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     }
   });
 
+  // t-864c: the Second eval card is Off until picked, lists Off first and never the Evaluator's model; a pick reloads the lists, so its
+  // list follows an Evaluator change. Prod path: Admin > Model tiers, which sprint second-eval reads at every high-risk close.
+  test('Second eval: Off first, never the Evaluator\'s model, the lists reload after a pick (t-864c)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    const vals = async () => page.locator('#mt-step-evaluator2 select option').evaluateAll(o => o.map(x => [x.value, x.textContent]));
+    await expect(page.locator('#mt-step-evaluator2 select')).toHaveValue('');
+    expect(await vals()).toEqual([['', 'Off']]);                                      // Claude Code: sonnet is the Evaluator's, haiku the floor
+    expect(await page.locator('#mt-step-evaluator2 optgroup').count()).toBe(0);       // Off stands alone, not in a group named Off
+    await page.locator('#mt-agent').selectOption('copilot');
+    expect((await vals()).map(v => v[0])).toEqual(['', 'gpt-6-luna']);
+    const before = posts.optGets();
+    await page.locator('#mt-step-evaluator2 select').selectOption('gpt-6-luna');
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].defaults.evaluator2).toEqual({ copilot: 'gpt-6-luna' });
+    await expect.poll(() => posts.optGets()).toBeGreaterThan(before);                // the lists were read again after the save
+  });
+
+  // t-864c (user): the Agent picker and every card sit in one bordered panel, in both themes; the pickers of a row's cards line up.
+  test('Model tiers: one bordered panel, and the pickers of a row on one line (t-864c)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: false }) }));
+    await openModelTiers(page, { ok: true, source: 'fallback', read_at: '', models: [] });
+    // (user) the daemon panel's idle hint is one short line
+    await expect(page.locator('#ad-daemon-hint')).toHaveText('Daemon spawns lazily on first Start/Resume.');
+    // (user) Read Copilot's models is a canon secondary button: the .btn base (padding, radius) with the neutral role
+    await page.locator('#mt-agent').selectOption('copilot');
+    const btn = page.locator('#mt-cp-read');
+    await expect(btn).toHaveClass(/\bbtn\b/); await expect(btn).toHaveClass(/\bb-refresh\b/);
+    const st = await btn.evaluate(el => { const c = getComputedStyle(el); return [parseFloat(c.paddingLeft), parseFloat(c.borderTopLeftRadius)]; });
+    expect(st[0]).toBeGreaterThanOrEqual(10); expect(st[1]).toBeGreaterThanOrEqual(6);
+    // (user) it turns green on hover like the Sources refresh buttons: buttons.css .b-refresh, the one owner of that colour
+    await expectRole(page, btn, 'b-refresh');
+    await page.locator('#mt-agent').selectOption('claude');
+    const panel = page.locator('#mt-panel');
+    await expect(panel.locator('#mt-agent')).toHaveCount(1);
+    await expect(panel.locator('#mt-defaults .mt-default-card')).toHaveCount(7);
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme });
+      const b = await panel.evaluate(el => { const c = getComputedStyle(el); return [parseFloat(c.borderTopWidth), c.borderTopStyle, c.borderTopColor, getComputedStyle(document.body).backgroundColor]; });
+      expect(b[0]).toBeGreaterThan(0); expect(b[1]).toBe('solid'); expect(b[2]).not.toBe(b[3]);   // a visible frame against the page
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const top = async id => (await page.locator(`#mt-step-${id} select`).boundingBox()).y;
+    for (const [a, b] of [['plan', 'speccheck'], ['build', 'reviewer'], ['evaluator', 'evaluator2']]) {
+      expect(Math.abs(await top(a) - await top(b))).toBeLessThan(1);   // descriptions of different lengths, one line of pickers
+    }
+  });
+
   test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
-    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(6);
-    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['Plan', 'Build', 'Spec check (advisory)', 'Reviewer (advisory)', 'Evaluator (binding)', 'Simple / Light work']);
+    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(7);
+    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['1. Plan', '2. Spec check (advisory)', '3. Build', '4. Reviewer (advisory)', '5. Evaluator (binding)', '6. Second eval (advisory)', 'Simple / Light work']);   // t-864c (user): numbered in run order
     await expect(page.locator('#mt-agent')).toHaveValue('claude');
     expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
     expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
@@ -14727,7 +14779,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(light[0]).toBe(light[1]);
     expect(dark[0]).not.toBe(light[0]);
     // t-8f6d: one default card per step, each with one picker for the chosen agent (Claude Code first)
-    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(6);   // t-9b13: six steps
+    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(7);   // t-9b13: six steps; t-864c: the Second eval
     await expect(page.locator('#mt-agent option')).toHaveText(['Claude Code', 'Copilot CLI']);
     // Anthropic tab active by default with the 6 seeded models (t-99b2: the 5.5 models sit before their predecessors)
     await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
@@ -19828,7 +19880,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
 
   // ── t-e523: one rule per button role (static/buttons.css), and the GitHub dialog's log, progress line, size and closing ──
   // Prod path: every Close/Cancel/Stop on the board and the Cockpit shell, and the board's GitHub dialog.
-  const ROLES = ['b-neutral', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
+  const ROLES = ['b-neutral', 'b-refresh', 'b-close', 'b-danger', 'b-danger-main', 'b-accent', 'b-primary'];
   test('Close and Cancel show a red outline on hover, Stop fills red, in Canon Dark and Light (t-e523)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh-e523a');
     const { job, button } = await mergeFlow(page, id);

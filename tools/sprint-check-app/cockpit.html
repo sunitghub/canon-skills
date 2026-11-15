@@ -99,7 +99,7 @@
               <div class="tile"><div class="n b" id="ad-tile-active">—</div><div class="l">Active projects</div></div>
             </div>
             <div class="sessions">
-              <div class="slabel">Active &amp; stopped agents &amp; terminal sessions (all projects)</div>
+              <div class="slabel">Sessions &middot; all projects</div>
               <div class="ad-reaper" id="ad-reaper" hidden></div>
               <div id="ad-sessions"></div>
             </div>
@@ -111,12 +111,14 @@
             <div id="ad-panel-tiers" role="tabpanel" aria-labelledby="ad-tab-tiers">
             <div class="mt-wrap">
               <div class="slabel">Model Tiers</div>
+              <section class="mt-panel" id="mt-panel" aria-label="The model for each step">
               <div class="mt-agent-row"><label class="setting-k" for="mt-agent">Agent</label>
                 <select id="mt-agent" aria-describedby="mt-agent-d"><option value="claude">Claude Code</option><option value="copilot">Copilot CLI</option></select>
-                <span class="setting-d" id="mt-agent-d">Each agent keeps its own model for every step. A ticket's own <code>Gate model:</code> (Plan tab) still wins for both gates.</span></div>
+                <span class="setting-d" id="mt-agent-d">Each agent keeps its own model for every step. A ticket's own <code>Gate model:</code> (Plan tab) still wins for the gates (Spec check, Reviewer, Evaluator); it never sets the Second eval.</span></div>
               <div class="mt-copilot-read" id="mt-copilot-read" hidden></div>
               <div class="mt-defaults" id="mt-defaults"></div>
               <div class="mt-openai-note" id="mt-codex-note">Codex takes its model from <code>.codex/agents/*.toml</code>, not from here. Gate effort is <b>high</b>, set in canon's gate definitions (<code>agents/canon-reviewer.md</code>, <code>canon-evaluator.md</code>): a dispatch can pick the model but not the effort.</div>
+              </section>
               <div id="mt-sources"></div>
               <div id="mt-proposal"></div>
               <div id="mt-alias-alert"></div>

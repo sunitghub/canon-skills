@@ -20,6 +20,7 @@
       "claude": "claude-sonnet-5",
       "copilot": "claude-sonnet-5"
     },
+    "evaluator2": {},
     "light": {
       "claude": "claude-haiku-5-5",
       "copilot": "claude-haiku-5.5"

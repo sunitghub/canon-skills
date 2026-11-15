@@ -4,7 +4,7 @@
 #
 # Primary usage — explicit CLI call, made by the orchestrating agent right after
 # a reviewer/evaluator subagent completes (see skills/sprint/reference/complete.md):
-#   tools/subagent-log.sh --agent-id <id> [--agent-type reviewer|evaluator|speccheck]
+#   tools/subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES>]
 #     [--tokens N --minutes M --tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget] [--model <id>]
 # The cost fields (t-5ef3) come from the harness's hand-back for that run; each is written only when given,
 # so a row without them keeps the old shape. `sprint gate-cost` summarizes the rows that carry them.
@@ -39,7 +39,7 @@ MODEL_SET=0
 
 usage() {
   cat >&2 <<'EOF'
-Usage: subagent-log.sh --agent-id <id> [--agent-type reviewer|evaluator|speccheck]
+Usage: subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES>]
                        [--tokens N] [--minutes M] [--tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget]
                        [--model <id>]
 EOF
@@ -80,7 +80,7 @@ _bad() { echo "subagent-log.sh: $1" >&2; usage; exit 1; }
 # Given means non-empty: the id goes into the JSON line, so it must not carry a quote, space or brace.
 [[ $MODEL_SET -eq 0 || ( "$MODEL" =~ ^[A-Za-z0-9._:/-]+$ && ${#MODEL} -le 80 ) ]] || _bad "--model takes a model id ([A-Za-z0-9._:/-], at most 80 chars), got '$MODEL'"
 # t-0b61: a gate row logged before Claude Code's <usage> notice arrives has no tokens. Warn, never refuse.
-if [[ -z "$TOKENS" && -n "${CLAUDECODE:-}" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator || "$AGENT_TYPE" == speccheck ) ]]; then
+if [[ -z "$TOKENS" && -n "${CLAUDECODE:-}" ]] && gate_role_ok "$AGENT_TYPE"; then
   echo "subagent-log.sh: no --tokens: in Claude Code the totals come in the background task's <usage> notice; wait for it, then log (never guess a number)" >&2
 fi
 REPO_ROOT="$(project_root)"
@@ -121,15 +121,9 @@ fi
 
 # t-8854: a close gate's run is also a gate.finished event, with the verdict its own report states (unknown if none yet).
 # t-9b13: so is the spec check's at sprint start (spec-review.md, READY or GAPS). Observer-only: canon_event never fails and never prints.
-if [[ $SEEN -eq 0 && -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE" == evaluator || "$AGENT_TYPE" == speccheck ) ]]; then
-  _tdir="$REPO_ROOT/.tickets/$TICKET" _verdict=unknown
-  if [[ "$AGENT_TYPE" == reviewer && -f "$_tdir/review-notes.md" ]]; then
-    _verdict="$(awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$_tdir/review-notes.md" | tr -d '*')"
-  elif [[ "$AGENT_TYPE" == evaluator && -f "$_tdir/eval-report.md" ]]; then
-    _verdict="$(sed -nE 's/^(pass|fail|partial|not-run):.*/\1/p' "$_tdir/eval-report.md" | head -1)"
-  elif [[ "$AGENT_TYPE" == speccheck && -f "$_tdir/spec-review.md" ]]; then
-    _verdict="$(awk '/^## Verdict/ { on = 1; next } on && NF { print $1; exit }' "$_tdir/spec-review.md" | tr -d '*')"
-  fi
+if [[ $SEEN -eq 0 && -n "$TICKET" ]] && gate_role_ok "$AGENT_TYPE"; then
+  _tdir="$REPO_ROOT/.tickets/$TICKET" _verdict=unknown _rep="$REPO_ROOT/.tickets/$TICKET/$(gate_report "$AGENT_TYPE")"
+  [[ -f "$_rep" ]] && _verdict="$(gate_verdict "$AGENT_TYPE" "$_rep")"
   [[ "$_verdict" =~ ^(YES|NO|pass|fail|partial|not-run|READY|GAPS)$ ]] || _verdict=unknown
   # t-ff14: which agent really ran the evaluator (canon-evaluator, or a general-purpose/Plan fallback), from the harness's own
   # transcript holding its run-id (the agent id here), never from what the caller says. Absent when none is found.
@@ -141,7 +135,7 @@ if [[ $SEEN -eq 0 && -n "$TICKET" && ( "$AGENT_TYPE" == reviewer || "$AGENT_TYPE
     [[ -z "$_acts" ]] || _act="$(grep -cvE '^none([^[:alnum:]_]|$)' <<< "$_acts" || true)"
   fi
   _agent=""
-  if [[ "$AGENT_TYPE" == evaluator && -n "${CLAUDECODE:-}" ]]; then
+  if [[ ( "$AGENT_TYPE" == evaluator || "$AGENT_TYPE" == evaluator2 ) && -n "${CLAUDECODE:-}" ]]; then
     _cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
     _tx="$(find "$_cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec grep -lF -e "evaluator-run-id: $AGENT_ID" {} + 2>/dev/null | head -1 || true)"   # grep exits 1 on non-matching files
     [[ -n "$_tx" && -f "${_tx%.jsonl}.meta.json" ]] && _agent="$(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]{1,32})".*/\1/p' "${_tx%.jsonl}.meta.json" | head -1)"

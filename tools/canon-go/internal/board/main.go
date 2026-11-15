@@ -5889,12 +5889,15 @@ func modelTiersValid(data map[string]any) bool {
 			}
 		}
 	}
-	for _, perProviderRaw := range defaults {
+	for step, perProviderRaw := range defaults {
 		perProvider, ok := perProviderRaw.(map[string]any)
 		if !ok {
 			return false
 		}
 		for _, modelID := range perProvider {
+			if fmt.Sprint(modelID) == "" && common.TierStepOptional[step] { // t-864c: Off (no pick) on an optional step
+				continue
+			}
 			if !modelIDRe.MatchString(fmt.Sprint(modelID)) {
 				return false
 			}

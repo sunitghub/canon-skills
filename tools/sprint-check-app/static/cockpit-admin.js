@@ -14,7 +14,7 @@ export function renderAdminSessions(views){
   const needs=views.filter(v=>v.state==='needs-you').length;
   document.getElementById('ad-tile-agents').textContent=views.length;
   document.getElementById('ad-tile-needs').textContent=needs;
-  if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
+  if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active sessions.</div>'; return; }
   // The board holds no session token (t-391a): Answer/Open jumps to the session's tab, and Reap now / Kill go
   // through the daemon's /relay page (t-3c9a), never a token here.
   box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
@@ -92,13 +92,13 @@ export async function loadAdmin(){
   // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
   const rb=ck.running_build||{}, rp=document.getElementById('ad-reaper');
   rp.hidden=!(rb.idle_timeout_secs>0 && rb.idle_timeout_main_secs>0);
-  rp.textContent=rp.hidden?'':('Idle sessions auto-save & end after '+fmtUptime(rb.idle_timeout_secs)+' in a worktree and '+fmtUptime(rb.idle_timeout_main_secs)+' in a project\u2019s main checkout; any activity resets the timer, and a session that needs you is never ended.');
+  rp.textContent=rp.hidden?'':('Idle sessions save & end after '+fmtUptime(rb.idle_timeout_secs)+' (worktree) or '+fmtUptime(rb.idle_timeout_main_secs)+' (main checkout). Activity resets the timer.');   // t-864c (user): tighter
   // t-ade9: a per-state hint under the daemon panel \u2014 "Healthy" alone doesn't
   // say whether any agent is actually running, which reads as a contradiction
   // once you know the daemon spawns lazily on first Start/Resume.
   const hint=document.getElementById('ad-daemon-hint');
   if(!ck.running){
-    hint.textContent='No agents running in any project \u2014 the daemon spawns lazily on first Start/Resume.';
+    hint.textContent='Daemon spawns lazily on first Start/Resume.';   // t-864c (user): short, so the panel stays small
   } else if(sessions.length===0){
     hint.textContent='Daemon is idle \u2014 no agents currently running.';
   } else {
@@ -124,9 +124,10 @@ const MT_STEP_UI={
   speccheck:{used:'Used by: sprint start, before you approve: a fresh agent grades acceptance.md and plan.md. Advisory: it never blocks.'},
   reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
   evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
+  evaluator2:{used:'Used by: sprint complete, after the binding evaluator passes: a second opinion on another model, on high-risk tickets (or Second eval: on). Off until you pick one; never the Evaluator\'s model.'},
   light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
 const mtRegistryAgent=()=>mtOpts.registry_agent||'claude';   // whose picks are registry ids (the board's registryAgent): the registry cards' Default badge and Remove's holders
-const mtStepLabel=st=>st.label+(st.role?` (${st.role})`:'');
+const mtStepLabel=st=>(st.seq?st.seq+'. ':'')+st.label+(st.role?` (${st.role})`:'');   // t-864c (user): numbered in the order a sprint runs them
 const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
 let mtOptsErr='';
 async function mtLoadOptions(){
@@ -178,9 +179,10 @@ function mtRender(){
     box.innerHTML=(mtOpts.steps||[]).map(st=>{
       const ui=MT_STEP_UI[st.id]||{}, cur=(mtData.defaults[st.id]||{})[mtAgent]||'';
       const list=((mtOpts.options||{})[st.id]||{})[mtAgent]||[];
-      const groups=[...new Set(list.map(o=>o.group))];
+      const off=list.filter(o=>o.id===''), models=list.filter(o=>o.id!=='');   // t-864c: Off stands alone, above the model groups
+      const groups=[...new Set(models.map(o=>o.group))];
       const opt=o=>`<option value="${escAttr(o.id)}"${o.id===cur?' selected':''}>${esc(o.name+(o.usage?' \u00b7 '+o.usage:'')+(o.saved_only?' (saved, not offered)':''))}</option>`;
-      const body=groups.length>1?groups.map(g=>`<optgroup label="${escAttr(g)}">${list.filter(o=>o.group===g).map(opt).join('')}</optgroup>`).join(''):list.map(opt).join('');
+      const body=off.map(opt).join('')+(groups.length>1?groups.map(g=>`<optgroup label="${escAttr(g)}">${models.filter(o=>o.group===g).map(opt).join('')}</optgroup>`).join(''):models.map(opt).join(''));
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
       const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
@@ -238,7 +240,7 @@ function mtRenderCopilotRead(){
   if(el.hidden){ el.innerHTML=''; return; }
   const when=mtCopilot.source==='copilot'&&mtCopilot.read_at?`Copilot's list, read ${esc(String(mtCopilot.read_at).replace('T',' ').slice(0,16))} UTC`:'A starter list (not read from Copilot yet)';
   const stale=mtCopilot.source==='copilot'&&mtCopilot.read_at&&(Date.now()-Date.parse(mtCopilot.read_at))>864e5?' \u00b7 more than a day old':'';
-  el.innerHTML=`<button type="button" class="b-neutral" id="mt-cp-read"${mtCopilotBusy?' disabled':''}>${mtCopilotBusy?'<span class="spin" aria-hidden="true"></span>Reading\u2026':'Read Copilot\u2019s models'}</button><span id="mt-cp-when">${when}${stale}</span><span id="mt-cp-note">Each read leaves one empty session in Copilot's own history; no model is called.</span>${mtCopilotErr?`<span class="mt-cp-err" role="alert" id="mt-cp-err">Could not read Copilot's models: ${esc(mtCopilotErr)}. The list below is kept.</span>`:''}`;
+  el.innerHTML=`<button type="button" class="btn b-refresh" id="mt-cp-read"${mtCopilotBusy?' disabled':''}>${mtCopilotBusy?'<span class="spin" aria-hidden="true"></span>Reading\u2026':'Read Copilot\u2019s models'}</button><span id="mt-cp-when">${when}${stale}</span><span id="mt-cp-note">Each read leaves one empty session in Copilot's own history; no model is called.</span>${mtCopilotErr?`<span class="mt-cp-err" role="alert" id="mt-cp-err">Could not read Copilot's models: ${esc(mtCopilotErr)}. The list below is kept.</span>`:''}`;
   el.querySelector('#mt-cp-read').addEventListener('click',mtReadCopilot);
 }
 async function mtReadCopilot(){
@@ -305,7 +307,7 @@ async function mtSetDefault(sel){
   const step=sel.dataset.step, agent=sel.dataset.agent;
   mtData.defaults[step]=mtData.defaults[step]||{};
   mtData.defaults[step][agent]=sel.value;
-  if(await mtSave()){ mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick
+  if(await mtSave()){ mtRender(); toast('Default updated'); }   // t-3425: the same-model note follows the pick; mtSave reloads the lists (t-864c: Second eval leaves out the Evaluator's pick)
 }
 
 const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors main.go's modelIDRe
@@ -426,7 +428,7 @@ function mtRenderSources(){
   const el=document.getElementById('mt-sources'); if(!el) return;
   const srcs=mtData.sources||[];
   const row=(s,i)=>{ const st=mtStatus[i]||mtSaved(s); const cls=st.ok?'ok':(st.checked?'warn':'');
-    return `<div class="mt-src-row"><div><div class="mt-src-u">${esc(s.url)}</div><span class="mt-src-k">${esc(MT_SRC_KIND(s))}</span></div><span class="mt-tag ${cls}" title="${escAttr(st.title||st.status)}">${esc(st.status.length>34?st.status.slice(0,32)+'\u2026':st.status)}</span><button type="button" class="mt-src-rf b-neutral" data-i="${i}" aria-label="Refresh ${escAttr(s.url)}"${mtBusy?' disabled':''}>\u21bb</button><button type="button" class="mt-src-rm b-close" data-i="${i}" aria-label="Remove ${escAttr(s.url)}">\u2715</button></div>`; };
+    return `<div class="mt-src-row"><div><div class="mt-src-u">${esc(s.url)}</div><span class="mt-src-k">${esc(MT_SRC_KIND(s))}</span></div><span class="mt-tag ${cls}" title="${escAttr(st.title||st.status)}">${esc(st.status.length>34?st.status.slice(0,32)+'\u2026':st.status)}</span><button type="button" class="mt-src-rf b-refresh" data-i="${i}" aria-label="Refresh ${escAttr(s.url)}"${mtBusy?' disabled':''}>\u21bb</button><button type="button" class="mt-src-rm b-close" data-i="${i}" aria-label="Remove ${escAttr(s.url)}">\u2715</button></div>`; };
   el.innerHTML=`<div class="mt-sources"><header><h3>Sources</h3><span class="mt-tag">checked only when you press Refresh</span><button type="button" class="mt-rf-all b-primary"${mtBusy?' disabled':''}>${mtBusy?'<span class="spin" aria-hidden="true"></span>Checking\u2026':'\u21bb Refresh all'}</button></header>${srcs.map(row).join('')}<div class="mt-src-add"><input type="text" id="mt-src-url" placeholder="https://\u2026 a docs page that lists models and prices" aria-label="Source URL"><select id="mt-src-kind" aria-label="Source type"><option value="anthropic">Docs page \u00b7 Anthropic</option><option value="openai">Docs page \u00b7 OpenAI</option></select><button type="button" class="mt-src-addbtn b-neutral">+ Add source</button></div></div>`;
   el.querySelector('.mt-rf-all').addEventListener('click',()=>mtRefresh(-1));
   el.querySelectorAll('.mt-src-rf').forEach(b=>b.addEventListener('click',()=>mtRefresh(Number(b.dataset.i))));

@@ -454,6 +454,12 @@ refuses "a block change with a board that cannot strip it" "since then it change
   hb "$E" "$H" "$B" && fail "an END before its BEGIN passed the validator"
   hb "$B" "$H" && fail "a block with no END passed the validator"
   hb "$H" && fail "text with no markers passed the validator"
+  # t-864c: every gate role's line (platform-lib.sh GATE_ROLES: the spec check and the second evaluator too) is a canon line; another word is not
+  source "$ROOT/tools/platform-lib.sh"
+  for line in "- 11-05 21:36 · t-ab12 · speccheck GAPS (claude-sonnet-5)" "- 11-05 21:36 · t-ab12 · evaluator2 fail (claude-opus-5-5)" "- 11-05 21:36 · t-ab12 · reviewer YES"; do
+    hb "$B" "$H" "$line" "$E" || fail "the validator refused a gate line: $line"
+  done
+  hb "$B" "$H" "- 11-05 21:36 · t-ab12 · judge pass" "$E" && fail "a line for a role that is not a gate passed the validator"
   exit 0 ) || fail "the block validator check failed"
 echo "handoff block after grading: accepted alone, refused beside any other change, an old board refuses"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"; git push -qf origin "$PRHEAD:refs/pull/7/head"

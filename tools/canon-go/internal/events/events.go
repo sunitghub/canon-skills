@@ -75,6 +75,8 @@ var kinds = map[string][]field{
 	// wrapup.gate_started. gate names are the Wrapup Gates table rows (code-simplifier, doc-audit, ...).
 	"plan.written": {{"ticket", 64}, {"tier", 16}},
 	// t-3425: the session moved to the Build model (the Cockpit's switch at approval); tier is the stage ("build")
+	// t-864c: sprint eval-compare: the binding and second evaluators' grades compared; model = the second report's Model line
+	"eval.compared":        {{"ticket", 64}, {"model", 80}, {"disagreements", 6}},
 	"implement.started":    {{"ticket", 64}, {"session", 32}, {"agent", 32}, {"model", 80}, {"tier", 16}, {"source", 48}},
 	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
 	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},

@@ -655,6 +655,20 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    (advisory)` or `skipped | <reason>`). One pass; a second only if the first found a medium-or-higher
    defect you fixed.
 
+   **Second evaluator (advisory, opt-in, t-864c).** After the binding evaluator passes (and its row is written), run `sprint second-eval
+   <id>`. It prints `skip: <reason>` (no Second eval model in Admin > Model tiers for the agent: Off is the default; `Second eval: off` on
+   the Sign-off line; not high-risk without `Second eval: on`), or the model to use: never the Evaluator's (Admin refuses that pick) and
+   never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more exactly as the binding
+   evaluator (`gate-snapshot.sh pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
+   file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is `.tickets/<id>/eval-report-2.md` (eval.md: a named report file replaces `eval-report.md`
+   everywhere, so the binding report and its run-id are never touched); then `gate-snapshot.sh post …` and `subagent-log.sh --agent-id
+   <its run-id> --agent-type evaluator2` with the cost flags. Run `sprint eval-compare <id>`: it lists each Criteria or Test Plan row whose
+   grade differs (or that only one report has) and ends `Disagreements: <n>`. Show every difference to the user, who decides (fix it, or
+   keep the binding grade with a reason); a disagreement never fails the close by itself. Record `| second-eval | ran | <model>;
+   Disagreements: <n>; <what the user decided> |`: when `eval-report-2.md` exists, `sprint complete` refuses without that row and its
+   count. The binding gate reads only `eval-report.md`; a change you make for a disagreement is a tracked change after grading, so it
+   needs a fresh binding evaluator.
+
    **The report must be backed by a real transcript (`t-0231`).** `.claude/subagent-runs.jsonl` cannot prove a dispatch:
    `subagent-log.sh` writes whatever `--agent-id` it is given, so an agent that hand-writes `eval-report.md` can also log a
    fake run. Under Claude Code, `sprint complete` therefore also requires the harness's own transcript of the dispatch

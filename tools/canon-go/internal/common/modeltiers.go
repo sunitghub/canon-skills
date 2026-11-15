@@ -25,10 +25,10 @@ var ModelValueRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // (validation, the migration, retire/remove, the Refresh flag, the audit names and the Pipeline rows read it; static/cockpit-admin.js
 // mirrors it for the cards). A claude pick is an Anthropic model; a copilot pick is an Anthropic or an OpenAI model (Copilot CLI runs both).
 var (
-	TierSteps     = []string{"plan", "build", "speccheck", "reviewer", "evaluator", "light"}
+	TierSteps     = []string{"plan", "speccheck", "build", "reviewer", "evaluator", "evaluator2", "light"} // the order a sprint runs them (Admin numbers them so)
 	TierAgents    = []string{"claude", "copilot"}
-	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "speccheck": "Spec check", "reviewer": "Reviewer", "evaluator": "Evaluator", "light": "Simple / Light work"}
-	TierStepRole  = map[string]string{"speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding"} // shown after the label in Admin
+	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "speccheck": "Spec check", "reviewer": "Reviewer", "evaluator": "Evaluator", "evaluator2": "Second eval", "light": "Simple / Light work"}
+	TierStepRole  = map[string]string{"speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory"} // shown after the label in Admin
 	// TierStepChecks: the step whose work this one checks (t-3425): Admin notes a checker picked the same as the maker (never blocks).
 	// t-9b13: the spec check grades the plan, so it is compared with Plan.
 	TierStepChecks = map[string]string{"speccheck": "plan", "reviewer": "build", "evaluator": "build"}
@@ -37,6 +37,10 @@ var (
 	// TierStepFrom: a step added after a registry was saved starts from this step's picks (t-9b13: the spec check from the Reviewer's)
 	TierStepFrom   = map[string]string{"speccheck": "reviewer"}
 	TierAgentLabel = map[string]string{"claude": "Claude Code", "copilot": "Copilot CLI"}
+	// TierStepAnytime: a step used throughout a sprint, not at one point in it: Admin gives it no number (t-864c, user)
+	TierStepAnytime = map[string]bool{"light": true}
+	// TierStepOptional: a step whose "no pick" means Off (t-864c: the second evaluator runs only once a model is picked)
+	TierStepOptional = map[string]bool{"evaluator2": true}
 )
 
 // RegistryAgent is the agent whose picks are registry ids (models.anthropic): registry moves (retire, remove, the Refresh flag) touch
@@ -142,12 +146,23 @@ func MigrateTierDefaults(doc, seed map[string]any) bool {
 // (tierOptions), never whether a saved pick is valid: a pick from another account, or one Copilot later drops, stays saved and shown.
 // The binding evaluator is never a Haiku model under either agent (user, 2026-11-14).
 func TierPickProblem(doc map[string]any, step, agent, id string) string {
+	if id == "" && TierStepOptional[step] { // Off (t-864c)
+		return ""
+	}
+	// t-864c: the two evaluators never share a model for one agent (the second is a second opinion), whichever of the two is changed
+	if other := map[string]string{"evaluator2": "evaluator", "evaluator": "evaluator2"}[step]; other != "" {
+		defaults, _ := doc["defaults"].(map[string]any)
+		ev, _ := defaults[other].(map[string]any)
+		if cur, _ := ev[agent].(string); cur != "" && cur == id {
+			return "the same model as the " + TierStepLabel[other] + " default for " + TierAgentLabel[agent] + "; the two evaluators need different models (or set Second eval Off)"
+		}
+	}
 	if agent == "copilot" {
 		switch {
 		case !ModelIDRe.MatchString(id) || CopilotGroup(id) == "":
 			return id + " is not a Claude or GPT model id"
-		case step == "evaluator" && HaikuClass(id, nil):
-			return "the binding evaluator is never a Haiku model"
+		case (step == "evaluator" || step == "evaluator2") && HaikuClass(id, nil):
+			return map[string]string{"evaluator": "the binding evaluator", "evaluator2": "the Second eval"}[step] + " is never a Haiku model"
 		}
 		return ""
 	}
@@ -159,8 +174,8 @@ func TierPickProblem(doc map[string]any, step, agent, id string) string {
 		return id + " is legacy"
 	case prov != "anthropic":
 		return id + " is an " + map[string]string{"anthropic": "Anthropic", "openai": "OpenAI"}[prov] + " model, which " + TierAgentLabel[agent] + " cannot run"
-	case step == "evaluator" && HaikuClass(id, m):
-		return "the binding evaluator is never a Haiku model"
+	case (step == "evaluator" || step == "evaluator2") && HaikuClass(id, m):
+		return map[string]string{"evaluator": "the binding evaluator", "evaluator2": "the Second eval"}[step] + " is never a Haiku model"
 	}
 	return ""
 }

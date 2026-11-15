@@ -228,8 +228,9 @@ func TestMigrateTierDefaults(t *testing.T) {
 	want := map[string]map[string]string{
 		"plan": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "build": {"claude": "claude-sonnet-5-5", "copilot": "gpt-6-sol"},
 		"reviewer": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, "evaluator": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"},
-		"light":     {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
-		"speccheck": {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
+		"light":      {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
+		"speccheck":  {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
+		"evaluator2": {},                                                          // t-864c: Off (no pick) until one is chosen
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -476,10 +477,10 @@ func TestTierOptionsViewNamesChecks(t *testing.T) {
 		got[st["id"]], roles[st["id"]] = st["checks"], st["role"]
 	}
 	// the role Admin shows after each label: the spec check is advisory like the reviewer (t-9b13)
-	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
+	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
 		t.Errorf("steps[].role = %v, want %v", roles, want)
 	}
-	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "light": ""} // t-9b13: the spec check is compared with Plan
+	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "evaluator2": "", "light": ""} // t-9b13: the spec check is compared with Plan
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("steps[].checks = %v, want %v", got, want)
 	}
@@ -525,5 +526,146 @@ func TestFillNewStepsFromReviewer(t *testing.T) {
 	}
 	if got := common.AdminStageModel(common.LoadModelTiers(user, filepath.Join(dir, "none.json")), "speccheck", "claude"); got != "claude-opus-5-5" {
 		t.Errorf("loaded speccheck = %q, want the reviewer's claude-opus-5-5", got)
+	}
+}
+
+// t-864c: the Second eval step is Off until picked (a save with no pick is accepted), never the Evaluator's own pick for the agent and
+// never a Haiku model; its picker offers Off first and leaves those out; a registry saved before the step loads and saves with no pick.
+// Protects Admin > Model tiers saves and pickers.
+func TestSecondEvalStep(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	doc := regDoc()
+	d := doc["defaults"].(map[string]any)
+	delete(d, "evaluator2")
+	if why := common.TierDefaultsProblem(doc); why != "" {
+		t.Fatalf("a registry without evaluator2 was refused: %s", why)
+	}
+	d["evaluator2"] = map[string]any{"claude": "", "copilot": ""}
+	if why := common.TierDefaultsProblem(doc); why != "" {
+		t.Fatalf("Off (no pick) was refused: %s", why)
+	}
+	ev := d["evaluator"].(map[string]any)
+	for agent, id := range map[string]string{"claude": ev["claude"].(string), "copilot": ev["copilot"].(string)} {
+		if why := common.TierPickProblem(doc, "evaluator2", agent, id); !strings.Contains(why, "same model as the Evaluator") {
+			t.Errorf("%s: the Evaluator's own pick %s was accepted for Second eval (%q)", agent, id, why)
+		}
+		for _, o := range tierOptions(doc)["evaluator2"][agent] {
+			if o.ID == id {
+				t.Errorf("%s: the picker offers the Evaluator's pick %s", agent, id)
+			}
+		}
+		if first := tierOptions(doc)["evaluator2"][agent][0]; first.ID != "" || first.Name != "Off" {
+			t.Errorf("%s: the first option is %+v, want Off", agent, first)
+		}
+	}
+	// and the Evaluator's picker never offers the Second eval's model, so a pick there can never be refused for it (reviewer Consider)
+	d["evaluator2"] = map[string]any{"claude": "claude-opus-5-5"}
+	for _, o := range tierOptions(doc)["evaluator"]["claude"] {
+		if o.ID == "claude-opus-5-5" {
+			t.Error("the Evaluator's picker offers the Second eval's model")
+		}
+	}
+	d["evaluator2"] = map[string]any{"claude": "", "copilot": ""}
+	if why := common.TierPickProblem(doc, "evaluator2", "claude", "claude-haiku-5-5"); !strings.Contains(why, "Haiku") {
+		t.Errorf("a Haiku Second eval was accepted: %q", why)
+	}
+	if why := common.TierPickProblem(doc, "evaluator2", "copilot", "claude-haiku-4.5"); !strings.Contains(why, "Haiku") {   // evaluator t-864c: the Copilot floor too
+		t.Errorf("a Haiku Second eval was accepted for Copilot CLI: %q", why)
+	}
+	if why := common.TierPickProblem(doc, "evaluator", "claude", ""); why == "" {
+		t.Error("an empty pick was accepted for a step that is not optional")
+	}
+	// the one reader of a pick for a shell protocol: Off prints nothing
+	if got := common.AdminStageModel(doc, "evaluator2", "claude"); got != "" {
+		t.Errorf("AdminStageModel(evaluator2) with Off = %q", got)
+	}
+}
+
+// t-864c (user): Admin's Agent list offers Copilot CLI only when `copilot` is on PATH (checked on every options request, so one installed
+// later shows the next time Admin opens), or when the person's own saved registry holds a Copilot pick that differs from the seed's.
+// Protects GET /api/admin/model-tiers/options and the Agent dropdown.
+func TestCopilotAgentShownOnlyWhenFound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	seed := filepath.Join(t.TempDir(), "seed.json")
+	os.WriteFile(seed, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	old, oldBin := modelTiersPath, copilotBin
+	modelTiersPath, copilotBin = seed, "canon-test-no-such-copilot"
+	defer func() { modelTiersPath, copilotBin = old, oldBin }()
+	ids := func() string {
+		out := []string{}
+		for _, a := range tierOptionsView()["agents"].([]map[string]string) {
+			out = append(out, a["id"])
+		}
+		return strings.Join(out, " ")
+	}
+	if got := ids(); got != "claude" {
+		t.Errorf("no copilot on PATH and no saved file: agents = %q, want claude", got)
+	}
+	os.MkdirAll(filepath.Join(home, "cockpit"), 0o755)
+	user := filepath.Join(home, "cockpit", "model-tiers.json")
+	os.WriteFile(user, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"claude-sonnet-5"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	if got := ids(); got != "claude" {
+		t.Errorf("a saved file with the seed's own Copilot pick: agents = %q, want claude", got)
+	}
+	os.WriteFile(user, []byte(`{"defaults":{"reviewer":{"claude":"claude-sonnet-5","copilot":"gpt-6-luna"}},"models":{"anthropic":[{"id":"claude-sonnet-5"}]}}`), 0o644)
+	if got := ids(); got != "claude copilot" {
+		t.Errorf("a Copilot pick of the person's own: agents = %q, want both", got)
+	}
+	os.Remove(user)
+	bin := filepath.Join(t.TempDir(), "copilot")
+	os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755)
+	copilotBin = bin
+	if got := ids(); got != "claude copilot" {
+		t.Errorf("copilot found: agents = %q, want both", got)
+	}
+}
+
+// t-864c reviewer Act On 1: Off after a pick goes through the real save (the spec mocks the POST, so only this reaches the board's own
+// shape check, which once ran every pick through modelIDRe and refused ""). And the Evaluator can never be set to the Second eval's
+// model either. Protects POST /api/admin/model-tiers.
+func TestSaveSecondEvalOffAfterAPick(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := loadModelTiers()
+	defs := d["defaults"].(map[string]any)
+	defs["evaluator2"] = map[string]any{"claude": "claude-opus-5-5", "copilot": ""}
+	if res := saveModelTiers(d); res["ok"] != true {
+		t.Fatalf("a Second eval pick was refused: %v", res)
+	}
+	d = loadModelTiers()
+	d["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"] = ""
+	if res := saveModelTiers(d); res["ok"] != true {
+		t.Fatalf("Off after a pick was refused: %v", res)
+	}
+	if got := loadModelTiers()["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"]; got != "" {
+		t.Errorf("Off was not saved: %v", got)
+	}
+	d = loadModelTiers()
+	d["defaults"].(map[string]any)["evaluator2"].(map[string]any)["claude"] = "claude-opus-5-5"
+	d["defaults"].(map[string]any)["evaluator"].(map[string]any)["claude"] = "claude-opus-5-5"
+	if res := saveModelTiers(d); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "different models") {
+		t.Errorf("the Evaluator set to the Second eval's model was accepted: %v", res)
+	}
+}
+
+// t-864c (user): the options route lists the steps in the order a sprint runs them and numbers them (Simple / Light, used throughout,
+// has no number). Protects Admin > Model tiers' card order and labels.
+func TestTierStepsNumberedInRunOrder(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	got := []string{}
+	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
+		got = append(got, st["seq"]+":"+st["id"])
+	}
+	if want := "1:plan 2:speccheck 3:build 4:reviewer 5:evaluator 6:evaluator2 :light"; strings.Join(got, " ") != want {
+		t.Errorf("steps = %q, want %q", strings.Join(got, " "), want)
 	}
 }
