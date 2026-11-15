@@ -82,7 +82,7 @@ reset
 printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
 NOSC="$WORK/nosc"; mkdir -p "$NOSC"
 for c in bash git awk sed grep head tail paste dirname mktemp date uname rm mv chmod mkdir cat tr cut sort readlink wc env test; do
-  p="$(command -v "$c" 2>/dev/null || true)"; [[ -x "$p" ]] && ln -sf "$p" "$NOSC/$c"
+  p="$(type -P "$c" 2>/dev/null || true)"; [[ -x "$p" ]] && ln -sf "$p" "$NOSC/$c"   # type -P: helpers.sh's mktemp is a function (t-fff4)
 done
 set +e; out="$(cd "$R" && PATH="$NOSC" PRE_GATE_BASE="$BASE" "$NOSC/bash" "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code"

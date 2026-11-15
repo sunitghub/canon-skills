@@ -26,6 +26,7 @@ cat > "$WORK/bin/npx" <<'STUB'
 # npx playwright test ...: optionally leave a process behind in the copy, then write a report
 [ -n "${LEAK:-}" ] && { bash -c 'sleep 20; :' "spec-isolation-leakmark" "$PWD" >/dev/null 2>&1 & echo "$!" >> "$STATE/../leakpids"; }
 echo "$*" >> "$STATE/npx-args"
+ls .tickets > "$STATE/copy-tickets" 2>/dev/null || :   # t-fff4: what tickets the copy got
 echo '{"suites":[]}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"
 exit 0
 STUB
@@ -37,7 +38,7 @@ run() {   # run <name> <args...> [env via RUN_ENV]: sets out (stdout+stderr) and
   local name="$1"; shift
   rm -rf "$WORK/state"/*; mkdir -p "$WORK/out-$name"
   set +e
-  out="$(env STATE="$WORK/state" TMPDIR="$WORK" ML_LOADAVG_FILE="$WORK/loadavg" ML_WAIT_POLL=1 PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
+  out="$(env -u CANON_TICKETS_DIR STATE="$WORK/state" TMPDIR="$WORK" ML_LOADAVG_FILE="$WORK/loadavg" ML_WAIT_POLL=1 PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
   set -e
 }
 
@@ -86,7 +87,7 @@ assert_eq 2 "$rc"; assert_contains "$out" "still busy after 0s"; assert_contains
 run allowed --runs 1 --browsers chromium --no-guard --allow-busy
 assert_eq 0 "$rc"; assert_contains "$out" "WARNING: the machine is busy"   # still told, not blocked
 # t-43a2: without --runs a browser runs once and is repeated (to 3) only when the guard rejects its first report; --runs N is exactly N.
-nreports() { ls "$WORK/out-$1"/board-spec-"$2"-run*.json 2>/dev/null | wc -l | tr -d ' '; }
+nreports() { ls "$WORK/out-$1/board-spec-$2-run"*.json 2>/dev/null | wc -l | tr -d ' '; }
 echo "0.1 0.1 0.1 1/100 999" > "$WORK/loadavg"; RUN_ENV=""
 echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"   # a guard that passes
 run adaptive-clean --browsers chromium,webkit
@@ -119,4 +120,30 @@ run tags-user --runs 1 --browsers chromium,webkit --no-guard --grep 'popover|men
 ch="$(grep -- '--browser=chromium' "$A")"; wk="$(grep -- '--browser=webkit' "$A")"
 [[ "$ch" == *'--grep popover|menu' ]] || fail "run-board-spec: chromium lost the user --grep: $(cat "$A")"
 [[ "$wk" == *'--grep ^(?=.*@webkit)(?=.*(?:popover|menu))'* ]] || fail "run-board-spec: webkit --grep is not @webkit AND the user pattern: $(cat "$A")"
+# t-fff4: a checkout with no node_modules (a land or Cockpit worktree) is refused before any scratch folder exists, with the fix; a missing
+# tickets folder is said in one line and the run goes on; CANON_TICKETS_DIR's tickets are what the copy gets.
+mv "$FAKE/node_modules" "$WORK/nm-aside"
+scratch() { { ls -d "$WORK"/board-spec-* 2>/dev/null || :; } | wc -l | tr -d ' '; }   # the runner's scratch folders
+before="$(scratch)"
+RUN_ENV=""; run nonm --runs 1 --browsers chromium --no-guard
+assert_eq 2 "$rc"; assert_contains "$out" "run-board-spec: no node_modules in $FAKE: run npm ci"
+assert_eq "$before" "$(scratch)"
+git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base2; git -C "$FAKE" worktree add -q "$WORK/wt3" -b wt3
+mkdir -p "$WORK/wt3/tests"; cp "$FAKE/tests/"*.sh "$FAKE/tests/board-spec-guard.js" "$WORK/wt3/tests/"; mv "$WORK/nm-aside" "$FAKE/node_modules"
+set +e; out="$(env -u CANON_TICKETS_DIR TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" "(a linked worktree): ln -s '$FAKE/node_modules' '$(cd "$WORK/wt3" && pwd -P)/node_modules'"
+mv "$FAKE/node_modules" "$WORK/nm-aside"   # a worktree whose main checkout has none either: the general line, never a link to nothing
+set +e; out="$(env -u CANON_TICKETS_DIR TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" ": run npm ci"; [[ "$out" != *"ln -s"* ]] || fail "run-board-spec: named a node_modules the main checkout lacks: $out"
+mv "$WORK/nm-aside" "$FAKE/node_modules"
+git -C "$FAKE" worktree remove --force "$WORK/wt3"
+RUN_ENV=""; run notk --runs 1 --browsers chromium --no-guard
+assert_eq 0 "$rc"; assert_contains "$out" "run-board-spec: no tickets folder at $FAKE/.tickets: the specs that read named tickets will fail"
+mkdir -p "$WORK/main-tickets/t-ab12" "$FAKE/.tickets/t-old"   # the tree has a stale ticket of its own: the copy gets CANON_TICKETS_DIR's only
+RUN_ENV="CANON_TICKETS_DIR=$WORK/main-tickets"; run tkdir --runs 1 --browsers chromium --no-guard; RUN_ENV=""
+assert_eq 0 "$rc"; [[ "$out" != *"no tickets folder"* ]] || fail "run-board-spec: CANON_TICKETS_DIR's folder was reported missing: $out"
+assert_eq "t-ab12" "$(cat "$WORK/state/copy-tickets")"
+RUN_ENV="CANON_TICKETS_DIR=$WORK/no-such-tickets"; run tkgone --runs 1 --browsers chromium --no-guard; RUN_ENV=""   # named but missing: said, the run goes on
+assert_eq 0 "$rc"; assert_contains "$out" "run-board-spec: no tickets folder at $WORK/no-such-tickets"
+rm -rf "$FAKE/.tickets"
 echo "run-board-spec-isolation: ok"

@@ -2,6 +2,16 @@
 
 set -euo pipefail
 
+# t-fff4: a function named like the command, on purpose. macOS mktemp ignores TMPDIR for `mktemp -d` and bare `mktemp`, so a suite that
+# pins TMPDIR (hermetic runs, the evaluator's) still left folders under /var/folders/.../T. With TMPDIR set those two forms get a template
+# inside it (its trailing / dropped: a // path breaks Go path comparisons); any other arguments, or TMPDIR unset, run the real one. Only
+# this shell and its subshells see it: a tool run as a child process uses the real mktemp; a tool library a test sources gets it (as
+# GNU mktemp already behaves on Linux). A PATH builder must use `type -P`: `command -v mktemp` now prints the bare word.
+mktemp() {
+  if [[ -n "${TMPDIR:-}" && ( $# == 0 || ( $# == 1 && "$1" == -d ) ) ]]; then command mktemp "$@" "${TMPDIR%/}/canon-test.XXXXXX"
+  else command mktemp "$@"; fi
+}
+
 # -P (physical path) so this matches lsof's resolved cwd exactly — plain pwd
 # doesn't traverse a symlinked path component (t-2a71: sweep_stale_stub_processes
 # below compares against this as its default root).
@@ -19,10 +29,13 @@ unset CLAUDECODE
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
 export CLAUDE_CONFIG_DIR="/nonexistent-canon-test-claude-config"
 TOOLS_DIR="$ROOT/tools"
-TKT="$TOOLS_DIR/tkt"
-SPRINT="$TOOLS_DIR/sprint"
-SKILLS="$ROOT/tools/skills.sh"
-CANON_DEV="$ROOT/tools/canon-dev.sh"
+# shellcheck disable=SC2034  # read by the suites that source this file
+{
+  TKT="$TOOLS_DIR/tkt"
+  SPRINT="$TOOLS_DIR/sprint"
+  SKILLS="$ROOT/tools/skills.sh"
+  CANON_DEV="$ROOT/tools/canon-dev.sh"
+}
 
 # pid_alive <pid>: running. A zombie (killed but unreaped) is dead: where PID 1 never reaps orphans (a Claude cloud container's
 # process_api), `kill -0` still succeeds on one forever (t-90bc).

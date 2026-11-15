@@ -77,6 +77,9 @@ grep -q '^status: open' "$f" || fail "test setup: ticket not reopened"
 # Prepare.
 out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "sprint complete $id, then: tkt land $id --finish"
 [[ "$out" != *"push them to the PR branch yourself"* ]] || fail "plain land printed the --fix hint: $out"   # the hint is for --fix only
+# t-fff4: what a test run in the worktree lacks: .tickets/ is gitignored here, so the worktree has none; no node_modules anywhere, no line
+assert_contains "$out" "  tests: CANON_TICKETS_DIR='$P/.tickets' (the worktree has no .tickets/)"
+[[ "$out" != *"node_modules"* ]] || fail "land named a node_modules the main checkout does not have: $out"
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "worktree is not at the PR head"
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "land/$id" ]] || fail "worktree is not on land/$id"
 grep -q '^status: in_progress' "$f" || fail "ticket not in_progress"
@@ -125,7 +128,14 @@ id="$("$TKT" create "Second cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; 
 awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
 # A failing verdict on the PR head does not stop land: only a passing one does.
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
-"$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"
+# t-fff4: silent when the worktree has both: this PR head tracks node_modules/ and .tickets/ (the main checkout has them too)
+git checkout -q -B both "$PRHEAD"; mkdir -p node_modules .tickets/keep; echo k > node_modules/k; echo k > .tickets/keep/k
+git add -f node_modules/k .tickets/keep/k; git commit -qm "tracks both"; H2="$(git rev-parse HEAD)"; git push -qf origin "HEAD:refs/pull/7/head"
+git checkout -q main; mkdir -p "$P/node_modules"
+printf 'graded-head: %s\nfail: one criterion\n' "$H2" > ".tickets/$id/eval-report.md"
+out="$(STUB_HEAD="$H2" "$TKT" land "$id" < /dev/null 2>&1)" || fail "second land failed: $out"
+[[ "$out" != *"  tests: "* ]] || fail "land named what the worktree already has: $out"
+rmdir "$P/node_modules"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
 sed -i.bak 's/^status: .*/status: closed/' "$f"
 printf 'graded-head: %s\nfail: one criterion\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
@@ -147,7 +157,9 @@ refuses "--fix together with --finish" "use one" -- --fix --finish
 sed -i.bak 's/^status: closed/status: closed\nmerged: abc123/' "$f"; rm -f "$f.bak"
 refuses "--fix on a merged ticket" "already merged" -- --fix
 sed -i.bak '/^merged: /d' "$f"; rm -f "$f.bak"
+mkdir "$P/node_modules"   # t-fff4: now the main checkout has node_modules (gitignored in a real project) and the worktree will not
 out="$("$TKT" land "$id" --fix < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "push them to the PR branch yourself"
+assert_contains "$out" "  tests: ln -s '$P/node_modules' '$WT/node_modules'"; rmdir "$P/node_modules"
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "--fix worktree is not at the PR head"
 grep -q '^status: in_progress' "$f" || fail "--fix did not reopen the closed ticket"
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail "--fix: .cockpit-cwd is not the worktree"
