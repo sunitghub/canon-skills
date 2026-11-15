@@ -72,6 +72,9 @@ reset_wt; link ".tickets/$id/ticket.md" "$OUT/file.txt"; before="$(outsig)"
 rc=0; out="$(cd "$WT" && bash -c 'source "$1/tools/frontmatter-lib.sh"; set_field "$2" status closed' _ "$ROOT" ".tickets/$id/ticket.md" 2>&1)" || rc=$?
 [[ "$rc" != 0 && "$(outsig)" == "$before" ]] || fail "frontmatter-lib.sh alone wrote through a planted link (rc $rc): $out"
 echo "worktree-write-links: frontmatter-lib.sh alone refuses"
+# ...and still writes a plain ticket in a main checkout: it loads platform-lib.sh itself, so the check is there, not missing (127)
+rc=0; out="$(cd "$P" && bash -c 'source "$1/tools/frontmatter-lib.sh"; set_field "$2" priority 3' _ "$ROOT" ".tickets/$id/ticket.md" 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "frontmatter-lib.sh alone could not write a plain ticket (rc $rc): $out"; assert_grep '^priority: 3$' "$P/.tickets/$id/ticket.md"
 
 # Still works: the same worktree with no links, CANON_TICKETS_DIR naming the main checkout's tickets, a main checkout whose .tickets
 # is the person's own link, and a worktree without .tickets whose main .tickets is such a link.
