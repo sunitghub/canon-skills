@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.61.1] - 2026-11-15
+
+- Fixed: the `context-check` skill no longer reads `context-findings.md`, a file it stopped writing when it moved to `context-check-report.md`. Every run now reports every current issue, including ones an earlier run already reported; the report's `**Trend:**` line carries the history. A `context-findings.md` left in a project by an older version is ignored, and can be deleted. Its evals now cover the report table, the history file (first run, trend line, 20-entry cap) and canon-managed vs project-local skills (t-c02a).
+
 ## [0.61.0] - 2026-11-15
 
 - Security: in a linked worktree (a Cockpit or `tkt land` one), canon's shell tools no longer write through a link the branch planted. `tkt`, `sprint`, `evidence.sh`, `subagent-log.sh`, `gate-snapshot.sh` and the heartbeat refuse, with one line, a write when `.tickets`, a ticket folder, `.claude` or the file itself is a link or junction there; nothing outside the project is written. A main checkout's own links keep working. On Windows, the PowerShell link checks no longer paste a folder path into the command (a ' in a name could run as PowerShell). The Cockpit board and daemon follow in their own releases (t-f7e6).
