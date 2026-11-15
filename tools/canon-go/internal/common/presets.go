@@ -96,7 +96,7 @@ func PresetCandidates(doc map[string]any, agent string, copilotIDs []string) []s
 // ResolvePreset gives a preset's picks for the listed agents and the notes on what it adjusted. One rule decides what a step may take: the
 // save's own (TierPickProblem). A candidate is tried against the floors only (a doc without the two evaluators' picks, so their pairing
 // does not skip a family); then the preset is checked as a whole: a Second eval equal to the Evaluator becomes Off, and any pick the save
-// would refuse keeps the step's current pick, repeated until nothing changes (a kept pick can itself pair with the other evaluator).
+// would refuse keeps the step's current pick (Off for an optional step whose current pick is refused too).
 func ResolvePreset(doc, preset map[string]any, agents []string, copilotIDs map[string][]string) (map[string]map[string]string, []string) {
 	defaults, _ := doc["defaults"].(map[string]any)
 	cur := func(step, agent string) string {
@@ -182,26 +182,23 @@ func ResolvePreset(doc, preset map[string]any, agents []string, copilotIDs map[s
 	}
 	trial["defaults"] = td
 	set := func(step, agent, v string) { picks[step][agent] = v; td[step].(map[string]any)[agent] = v }
-	for changed, rounds := true, 0; changed && rounds < 4; rounds++ {
-		changed = false
-		for _, agent := range agents {
-			if e2 := picks["evaluator2"][agent]; e2 != "" && e2 == picks["evaluator"][agent] {
-				set("evaluator2", agent, "")
-				note(agent, "evaluator2", "the same model as the Evaluator, so Off")
-				changed = true
-			}
+	for _, agent := range agents {
+		if e2 := picks["evaluator2"][agent]; e2 != "" && e2 == picks["evaluator"][agent] {
+			set("evaluator2", agent, "")
+			note(agent, "evaluator2", "the same model as the Evaluator, so Off")
 		}
-		for _, step := range TierSteps {
-			for _, agent := range agents {
-				if why := TierPickProblem(trial, step, agent, picks[step][agent]); why != "" {
-					keep := cur(step, agent)
-					if keep == picks[step][agent] || TierPickProblem(trial, step, agent, keep) != "" {
-						keep = map[bool]string{true: "", false: keep}[TierStepOptional[step]]
-					}
-					note(agent, step, why+"; it keeps "+orOff(keep))
-					set(step, agent, keep)
-					changed = true
+	}
+	// one pass is enough: TierSteps checks the Evaluator before the Second eval (the only pick that depends on another), and a kept pick
+	// is checked again on the spot (else Off for an optional step)
+	for _, step := range TierSteps {
+		for _, agent := range agents {
+			if why := TierPickProblem(trial, step, agent, picks[step][agent]); why != "" {
+				keep := cur(step, agent)
+				if keep == picks[step][agent] || TierPickProblem(trial, step, agent, keep) != "" {
+					keep = map[bool]string{true: "", false: keep}[TierStepOptional[step]]
 				}
+				note(agent, step, why+"; it keeps "+orOff(keep))
+				set(step, agent, keep)
 			}
 		}
 	}

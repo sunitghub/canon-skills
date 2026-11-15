@@ -63,6 +63,9 @@ func TestResolvePresetTiers(t *testing.T) {
 	if got := newestOf([]string{"claude-opus-4-5", "claude-opus-4-5-20251101"}, "opus", func(string) bool { return true }); got != "claude-opus-4-5" {
 		t.Errorf("a version tie (other order) went to %s", got)
 	}
+	if got := newestOf([]string{"claude-opus-4-5", "claude-opus-5"}, "opus", func(string) bool { return true }); got != "claude-opus-5" {
+		t.Errorf("a one-number version lost to %s", got)
+	}
 	if modelVersion("") != nil || modelVersion("claude-opus") != nil {
 		t.Error("a short id has a version")
 	}
@@ -162,6 +165,64 @@ func TestSeedPresetsWellFormed(t *testing.T) {
 		}
 		if len(p["tiers"].(map[string]any)) != len(TierSteps) {
 			t.Errorf("preset %v does not name every step", p["id"])
+		}
+	}
+}
+
+// t-f5fa mutation triage: the cases the sweep showed untested. A current Second eval pick never makes a family unavailable to the
+// Evaluator (candidates are tried against the floors only); an "off" tier is Off whatever the current pick; a kept pick that pairs the two
+// evaluators is caught in a later round; an id that is not claude-<family>-… never counts as a family.
+func TestResolvePresetRounds(t *testing.T) {
+	doc := presetDoc()
+	doc["defaults"].(map[string]any)["evaluator2"] = map[string]any{"claude": "claude-sonnet-5-5"}
+	doc["models"].(map[string]any)["anthropic"] = append(doc["models"].(map[string]any)["anthropic"].([]any), map[string]any{"id": "acme-opus-99"})
+	picks, _ := ResolvePreset(doc, preset(map[string]string{"evaluator": "mid", "evaluator2": "off", "plan": "top"}), []string{"claude"}, nil)
+	if picks["evaluator"]["claude"] != "claude-sonnet-5-5" {
+		t.Errorf("evaluator = %q: the current Second eval pick took Sonnet away", picks["evaluator"]["claude"])
+	}
+	if v, ok := picks["evaluator2"]["claude"]; !ok || v != "" {
+		t.Errorf("an off tier = %q (set %v), want Off", v, ok)
+	}
+	if picks["plan"]["claude"] != "claude-opus-5-5" {
+		t.Errorf("plan = %q: a non-Claude id counted as Opus", picks["plan"]["claude"])
+	}
+	// round 2: the Evaluator's refused Haiku keeps its current Sonnet 5, which the Second eval also holds: Off on the next round
+	mine := map[string]any{"id": "m", "name": "M", "picks": map[string]any{"evaluator": map[string]any{"claude": "claude-haiku-5-5"}, "evaluator2": map[string]any{"claude": "claude-sonnet-5"}}}
+	picks, notes := ResolvePreset(presetDoc(), mine, []string{"claude"}, nil)
+	if picks["evaluator"]["claude"] != "claude-sonnet-5" || picks["evaluator2"]["claude"] != "" {
+		t.Errorf("a kept pick pairing the evaluators = %v %v", picks, notes)
+	}
+	// a refused Second eval with no current pick keeps Off, and says so
+	mine = map[string]any{"id": "m", "name": "M", "picks": map[string]any{"evaluator2": map[string]any{"claude": "claude-haiku-5-5"}}}
+	picks, notes = ResolvePreset(presetDoc(), mine, []string{"claude"}, nil)
+	if picks["evaluator2"]["claude"] != "" || !strings.Contains(strings.Join(notes, "\n"), "it keeps Off") {
+		t.Errorf("a Haiku Second eval = %q %v", picks["evaluator2"]["claude"], notes)
+	}
+}
+
+// t-f5fa mutation triage: MyPresetsProblem's edges: exactly 20 and a 40-character or 1-character name are fine; DEL is not printable; a
+// step must hold a map; an agent must be known.
+func TestMyPresetsProblemEdges(t *testing.T) {
+	doc := presetDoc()
+	p := func(id, name string, picks any) map[string]any {
+		return map[string]any{"id": id, "name": name, "picks": picks}
+	}
+	list := []any{p("a", strings.Repeat("n", 40), map[string]any{}), p("b", "n", map[string]any{})}
+	for i := 0; i < 18; i++ {
+		list = append(list, p("c"+string(rune('a'+i)), "x", map[string]any{}))
+	}
+	doc["my_presets"] = list
+	if why := MyPresetsProblem(doc, nil); why != "" {
+		t.Errorf("20 presets with 40- and 1-character names refused: %s", why)
+	}
+	for name, bad := range map[string]any{
+		"DEL":           p("x", "a\x7f", map[string]any{}),
+		"step not map":  p("x", "n", map[string]any{"plan": "claude-opus-5-5"}),
+		"unknown agent": p("x", "n", map[string]any{"plan": map[string]any{"gemini": "claude-opus-5-5"}}),
+	} {
+		doc["my_presets"] = []any{bad}
+		if MyPresetsProblem(doc, nil) == "" {
+			t.Errorf("%s: accepted", name)
 		}
 	}
 }

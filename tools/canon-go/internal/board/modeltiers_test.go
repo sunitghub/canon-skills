@@ -719,6 +719,14 @@ func TestPresetsNeverReachTheUserFile(t *testing.T) {
 	if _, ok := picks["plan"]["copilot"]; ok {
 		t.Error("Copilot CLI is not listed here, yet the preset resolved it")
 	}
+	if view[0]["id"] != "balanced" || view[1]["id"] != "team" || view[0]["notes"] == nil || tierOptionsView()["ok"] != true {
+		t.Errorf("the view lost a field: %v", view)
+	}
+	page = get()
+	page["my_presets"] = []any{map[string]any{"id": "balanced", "name": "Mine", "picks": map[string]any{}}}
+	if res := saveModelTiers(page); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "already used") {
+		t.Errorf("a preset reusing canon's id was saved: %v", res)
+	}
 	page = get()
 	page["my_presets"] = []any{map[string]any{"id": "x", "name": "", "picks": map[string]any{}}}
 	if res := saveModelTiers(page); res["ok"] == true || !strings.Contains(fmt.Sprint(res["error"]), "1-40 printable") {
