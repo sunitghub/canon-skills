@@ -1,10 +1,11 @@
 import { state } from './board-core.js';
 import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
-import { showToast } from './board-render.js';
-import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
+import { findTicketById, showToast } from './board-render.js';
+import { paneHostId, paneTabId } from './board-pane.js';
+import { activeIframe, activeTabId, cockpitState, cockpitTabs, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
 import { withBusy } from './busy.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
-import { bindGithubPickerRows, ghClosingHere, ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
+import { bindGithubPickerRows, ghClosingHere, ghRailShown, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
 
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
@@ -627,6 +628,23 @@ export function formatStateAsParagraphs(bullet, t) {
   return sentences.map(s => `<p>${md(s, t.id)}</p>`).join('');
 }
 
+// t-3786: the GitHub panel is one element shared by every tab, so each tab change (a switch, a close) shows the active tab's own: its
+// panel, with its terminal hidden, or none. A Terminal pane beside a session tab (t-ccf5) leaves the panel to its host: there the panel
+// is the host's half of the split, and only the pane's own iframe is shown. A call for a tab no longer active (a late answer of an
+// earlier switch) changes nothing.
+export async function syncGithubPanel(t) {
+  if (!t || activeTabId !== t.id) return;
+  const hostId = paneTabId() === t.id ? paneHostId() : '';
+  const tab = hostId ? cockpitTabs[hostId] : cockpitState, owner = hostId ? findTicketById(hostId) : t;
+  if (!ghRailShown(tab, owner)) { hideGithubPanel(); return; }
+  if (!hostId) {
+    const iframe = activeIframe();
+    if (iframe) iframe.style.visibility = 'hidden';
+    setTermMessage('');
+  }
+  await showGithubPanel(owner, tab);
+}
+
 // t-cd06: a fresh OPEN start gates the terminal behind an explicit WORKTREE
 // row pick (cockpitState.worktreeCwd === null means nothing picked yet) — the
 // terminal is where the daemon's own Start control lives, so not mounting it
@@ -636,14 +654,8 @@ export function formatStateAsParagraphs(bullet, t) {
 export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (t.scratch) { hideGithubPanel(); await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
-  // t-718b: a GitHub pick, or a ticket already out on GitHub, never mounts the terminal: the rail shows the GitHub panel.
-  // t-92f2: except one closing here, in the worktree tkt land made: its session runs there (the daemon reuses its .cockpit-cwd).
-  if (cockpitState.ghPick || (ghOut(t) && !ghClosingHere(t))) {
-    if (iframe) iframe.style.visibility = 'hidden';
-    setTermMessage('');
-    await showGithubPanel(t, cockpitState);
-    return;
-  }
+  // A rail that is the GitHub panel never mounts the terminal (ghRailShown).
+  if (ghRailShown(cockpitState, t)) { await syncGithubPanel(t); return; }
   hideGithubPanel();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';

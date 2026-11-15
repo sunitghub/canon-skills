@@ -6,7 +6,7 @@ import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
-import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree } from './board-worktree.js';
+import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
 // come through the message relay above. Ignored in fields and under a modal; a standalone board has no shell.
@@ -353,7 +353,7 @@ export async function openCockpit(id) {
     if (cockpitState.needsRemount) {
       cockpitState.needsRemount = false;
       await maybeMountCockpitTerminal(t);
-    }
+    } else await syncGithubPanel(t);   // t-3786: the shared GitHub panel follows the switch (this tab's own, or none)
     renderTabStrip();
     return;
   }

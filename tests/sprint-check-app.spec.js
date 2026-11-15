@@ -19003,6 +19003,131 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-sent')).toHaveCount(0);   // the first send finished, but not into this ticket's panel
   });
 
+  // t-3786. Protects: the Cockpit's one GitHub panel (Send, Sent, out on GitHub) follows the active tab on every switch (the strip, P n / b,
+  // a quick A → B → A, which the Agents sidebar's openCockpit shares) and every close (a next tab that is a ticket, out on GitHub, gone from
+  // the board's list, a scratch, or none): never another ticket's panel, never a hidden one the tab should show.
+  async function paneSetup(page) {
+    const [a, b, o] = ['gh40', 'gh41', 'gh42'].map(p => newTicketId(PROJECT_ROOT, p));
+    ghTicket(a); ghTicket(b); ghTicket(o, { github: 'acme/app#57' });
+    await routeStatus(page, o, { stage: 'sent' });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(/\/api\/ticket\/[^/]+\/github\/send-preview/, r => json(r, { ok: true, exit_code: 0, output: `repo: acme/app (PRIVATE)\npreview of ${r.request().url().split('/api/ticket/')[1].split('/')[0]}` }));
+    await openBoard(page, a);
+    await page.locator(`.card[data-id="${a}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-panel')).toContainText(`preview of ${a}`);
+    const open = id => page.evaluate(async tid => { await (await import('/static/board-cockpit-rail.js')).openCockpit(tid); }, id);
+    await open(b); await open(o);
+    return { a, b, o, open, panel: page.locator('#ck-gh-panel') };
+  }
+  const shows = async (page, id, text) => {   // the active tab is id, and the panel is its own (text) or hidden (null)
+    await expect(page.locator('#ck-id')).toContainText(id);
+    if (text === null) await expect(page.locator('#ck-gh-panel')).toBeHidden();
+    else { await expect(page.locator('#ck-gh-panel')).toBeVisible(); await expect(page.locator('#ck-gh-panel')).toContainText(text); }
+  };
+
+  test('switching tabs shows the active tab\'s own pane: the strip, P n / b, a quick A → B → A (t-3786)', async ({ page }) => {
+    const { a, b, o, panel } = await paneSetup(page);
+    await shows(page, o, `${o} is out on GitHub`);
+    await page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${a}"]`).click();
+    await shows(page, a, `preview of ${a}`);   // its own Send panel, not the out-on-GitHub text it was left on
+    const nav = act => page.evaluate(async x => { await (await import('/static/board-cockpit.js')).projectTabNav(x); }, act);
+    await nav('n'); await shows(page, b, null);   // a plain tab: its terminal side, no panel
+    await nav('n'); await shows(page, o, `${o} is out on GitHub`);
+    await nav('b'); await shows(page, b, null);
+    await nav('b'); await shows(page, a, `preview of ${a}`);
+    // o → b → a without waiting: o's rail answer is held until a is shown, and when it lands it changes nothing
+    let release; const held = new Promise(r => { release = r; });
+    await page.route(new RegExp(`/api/worktrees\\?ticket=${o}`), async r => { await held; await json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]); });
+    await page.evaluate(async ([x, y, z]) => {
+      const { openCockpit } = await import('/static/board-cockpit-rail.js');
+      window.__late = openCockpit(x); await openCockpit(y); await openCockpit(z);
+    }, [o, b, a]);
+    await shows(page, a, `preview of ${a}`);
+    release();
+    await page.evaluate(() => window.__late);
+    await expect(panel).toContainText(`preview of ${a}`);
+    await expect(panel).not.toContainText(o);
+  });
+
+  test('closing a tab hands the pane to the next tab: a ticket, one out on GitHub, one gone from the list, a scratch, none (t-3786)', async ({ page }) => {
+    const { a, b, o, open } = await paneSetup(page);
+    const close = id => page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${id}"]`).click();
+    const term = () => page.evaluate(async () => { const f = (await import('/static/board-cockpit.js')).activeIframe(); return f ? f.style.visibility : 'no iframe'; });
+    await page.route(`**/api/ticket/${a}/github/send`, r => json(r, { ok: true, exit_code: 0, output: `Sent ${a} as https://github.com/acme/app/issues/71` }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]));
+    await page.route('**/api/worktree-lock/**', r => json(r, { locked: false, cwd: null, main_dirty: false }));
+    fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', b, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
+    await open(b);
+    await page.locator('#ck-worktree .ck-worktree-row:not([data-github])').first().click();   // b runs here: its terminal mounts
+    await expect.poll(term).toBe('visible');
+    await open(a);
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-sent')).toBeVisible();
+    await close(a); await shows(page, o, `${o} is out on GitHub`);   // closed on its Sent panel; the next tab is out on GitHub: its own text
+    await expect(page.locator('#ck-gh-sent')).toHaveCount(0);
+    await close(o); await shows(page, b, null);                        // b: no panel of another ticket, its own terminal shown
+    await expect.poll(term).toBe('visible');
+    await open(o);
+    await page.evaluate(async tid => {   // b leaves the board's list while its tab is open
+      const { state } = await import('/static/board-core.js');
+      state.tickets = state.tickets.filter(x => x.id !== tid);
+    }, b);
+    await close(o);
+    await expect(page.locator('#ck-id')).toContainText(b);
+    await expect(page.locator('#ck-gh-panel')).toBeHidden();
+    await open(o);
+    await page.evaluate(async () => { await (await import('/static/board-cockpit.js')).openTerminalPane(); });   // a scratch tab, the last one
+    await open(o); await shows(page, o, `${o} is out on GitHub`);
+    await page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${o}"]`).click();   // the next tab is the scratch: no panel
+    await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill.active')).not.toHaveAttribute('data-tab-id', o);
+    await expect(page.locator('#ck-gh-panel')).toBeHidden();
+  });
+
+  // Reviewer t-3786: beside a session tab, a Terminal pane's tab is active when it has the keys; the panel stays its host's half of the split.
+  test('switching to a Terminal pane beside a GitHub tab keeps the host\'s panel, and the pane shows (t-3786)', async ({ page }) => {
+    const { a, o, open } = await paneSetup(page);
+    await open(a);
+    await shows(page, a, `preview of ${a}`);
+    await page.evaluate(async () => { (await import('/static/board-core.js')).state.isGitProject = true; });   // the fixture project is not a git repository
+    await page.evaluate(async () => { await (await import('/static/board-cockpit.js')).openTerminalPane('beside', { fresh: true }); });
+    const pane = await page.evaluate(async () => (await import('/static/board-pane.js')).paneTabId());
+    await open(o);   // another tab's panel, then back to the pane tab: the panel is the host's again
+    await expect(page.locator('#ck-gh-panel')).toContainText(`${o} is out on GitHub`);
+    await open(a); await open(pane);
+    await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill.active')).toHaveAttribute('data-tab-id', pane);
+    await expect(page.locator('#ck-gh-panel')).toBeVisible();
+    await expect(page.locator('#ck-gh-panel')).toContainText(`preview of ${a}`);
+    await expect(page.locator('#ck-term iframe.ck-pane2')).toBeVisible();
+    await open(a);
+    await shows(page, a, `preview of ${a}`);
+  });
+
+  test('one rule says a tab\'s rail is the GitHub panel: ghRailShown, read by the mount and the Terminal pane (t-3786)', () => {
+    const src = f => fs.readFileSync(path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static', f), 'utf8');
+    const rule = /ghPick\s*\|\|\s*\(\s*ghOut\(/;   // the inline copy the predicate replaced
+    for (const f of fs.readdirSync(path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static')).filter(f => f.endsWith('.js'))) {
+      const n = (src(f).match(new RegExp(rule.source, 'g')) || []).length;
+      expect([f, n]).toEqual([f, f === 'board-github.js' ? 1 : 0]);
+    }
+    for (const f of ['board-worktree.js', 'board-cockpit.js']) {
+      expect(src(f)).toMatch(/import \{[^}]*\bghRailShown\b[^}]*\} from '\.\/board-github\.js'/);
+      expect(src(f)).toMatch(/ghRailShown\(/);
+    }
+  });
+
+  test('the last tab closing takes the panel with it (t-3786)', async ({ page }) => {
+    const { a, b, o } = await paneSetup(page);
+    for (const id of [b, a]) await page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${id}"]`).click();
+    await shows(page, o, `${o} is out on GitHub`);
+    await page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${o}"]`).click();
+    await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+    await expect(page.locator('#ck-gh-panel')).toBeHidden();
+    await expect(page.locator('#ck-gh-panel')).toBeEmpty();
+  });
+
   test('a local place replaces a GitHub pick, and a GitHub pick stays unselected on re-render (t-718b)', async ({ page }) => {
     const plain = newTicketId(PROJECT_ROOT, 'gh28');
     ghTicket(plain);

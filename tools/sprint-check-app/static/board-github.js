@@ -27,6 +27,9 @@ export function wtFinish(t) { return t && !ghOut(t) && t.finish && (!t.finish.pu
 export function ghOut(t) { return !!(t && t.runs === 'github' && t.github && !t.merged); }
 // t-92f2: tkt land made its worktree and the close there has not happened yet: the card and the rail resume the session in it.
 export function ghClosingHere(t) { return ghOut(t) && !!stageOf(t).landed && t.status !== 'closed' && t.status !== 'cancelled'; }
+// t-3786: the one rule for "this tab's rail is the GitHub panel" (t-718b: a GitHub pick, or a ticket out on GitHub; t-92f2: not one
+// closing here, whose session runs in the worktree tkt land made).
+export function ghRailShown(tab, t) { return !!tab && !!t && !!(tab.ghPick || (ghOut(t) && !ghClosingHere(t))); }
 
 function ghParts(t) {
   const m = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#([0-9]+)$/.exec(String(t.github || ''));
