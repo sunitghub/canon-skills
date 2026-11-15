@@ -38,7 +38,7 @@ run() {   # run <name> <args...> [env via RUN_ENV]: sets out (stdout+stderr) and
   local name="$1"; shift
   rm -rf "$WORK/state"/*; mkdir -p "$WORK/out-$name"
   set +e
-  out="$(env STATE="$WORK/state" TMPDIR="$WORK" ML_LOADAVG_FILE="$WORK/loadavg" ML_WAIT_POLL=1 PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
+  out="$(env -u CANON_TICKETS_DIR STATE="$WORK/state" TMPDIR="$WORK" ML_LOADAVG_FILE="$WORK/loadavg" ML_WAIT_POLL=1 PATH="$WORK/bin:$PATH" ${RUN_ENV:-} bash "$FAKE/tests/run-board-spec.sh" --out "$WORK/out-$name" "$@" 2>&1)"; rc=$?
   set -e
 }
 
@@ -130,7 +130,7 @@ assert_eq 2 "$rc"; assert_contains "$out" "run-board-spec: no node_modules in $F
 assert_eq "$before" "$(scratch)"
 git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base2; git -C "$FAKE" worktree add -q "$WORK/wt3" -b wt3
 mkdir -p "$WORK/wt3/tests"; cp "$FAKE/tests/"*.sh "$FAKE/tests/board-spec-guard.js" "$WORK/wt3/tests/"; mv "$WORK/nm-aside" "$FAKE/node_modules"
-set +e; out="$(env TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
+set +e; out="$(env -u CANON_TICKETS_DIR TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "(a linked worktree): ln -s '$FAKE/node_modules' '$(cd "$WORK/wt3" && pwd -P)/node_modules'"
 git -C "$FAKE" worktree remove --force "$WORK/wt3"
 RUN_ENV=""; run notk --runs 1 --browsers chromium --no-guard
