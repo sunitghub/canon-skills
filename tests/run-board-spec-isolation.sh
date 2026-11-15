@@ -132,10 +132,18 @@ git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base2
 mkdir -p "$WORK/wt3/tests"; cp "$FAKE/tests/"*.sh "$FAKE/tests/board-spec-guard.js" "$WORK/wt3/tests/"; mv "$WORK/nm-aside" "$FAKE/node_modules"
 set +e; out="$(env -u CANON_TICKETS_DIR TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "(a linked worktree): ln -s '$FAKE/node_modules' '$(cd "$WORK/wt3" && pwd -P)/node_modules'"
+mv "$FAKE/node_modules" "$WORK/nm-aside"   # a worktree whose main checkout has none either: the general line, never a link to nothing
+set +e; out="$(env -u CANON_TICKETS_DIR TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" ": run npm ci"; [[ "$out" != *"ln -s"* ]] || fail "run-board-spec: named a node_modules the main checkout lacks: $out"
+mv "$WORK/nm-aside" "$FAKE/node_modules"
 git -C "$FAKE" worktree remove --force "$WORK/wt3"
 RUN_ENV=""; run notk --runs 1 --browsers chromium --no-guard
 assert_eq 0 "$rc"; assert_contains "$out" "run-board-spec: no tickets folder at $FAKE/.tickets: the specs that read named tickets will fail"
-mkdir -p "$WORK/main-tickets/t-ab12"; RUN_ENV="CANON_TICKETS_DIR=$WORK/main-tickets"; run tkdir --runs 1 --browsers chromium --no-guard; RUN_ENV=""
+mkdir -p "$WORK/main-tickets/t-ab12" "$FAKE/.tickets/t-old"   # the tree has a stale ticket of its own: the copy gets CANON_TICKETS_DIR's only
+RUN_ENV="CANON_TICKETS_DIR=$WORK/main-tickets"; run tkdir --runs 1 --browsers chromium --no-guard; RUN_ENV=""
 assert_eq 0 "$rc"; [[ "$out" != *"no tickets folder"* ]] || fail "run-board-spec: CANON_TICKETS_DIR's folder was reported missing: $out"
 assert_eq "t-ab12" "$(cat "$WORK/state/copy-tickets")"
+RUN_ENV="CANON_TICKETS_DIR=$WORK/no-such-tickets"; run tkgone --runs 1 --browsers chromium --no-guard; RUN_ENV=""   # named but missing: said, the run goes on
+assert_eq 0 "$rc"; assert_contains "$out" "run-board-spec: no tickets folder at $WORK/no-such-tickets"
+rm -rf "$FAKE/.tickets"
 echo "run-board-spec-isolation: ok"

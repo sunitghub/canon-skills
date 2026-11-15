@@ -12,7 +12,8 @@ for pin in "$W/a" "$W/b/"; do   # a TMPDIR with and without the trailing slash m
   f="$(TMPDIR="$pin" mktemp)"; [[ "$f" == "$base/"* && -f "$f" && "$f" != *//* ]] || fail "bare mktemp with TMPDIR=$pin made $f"
   p="$(TMPDIR="$pin" make_project)"; [[ "$p" == "$base/"* && -d "$p/.git" ]] || fail "make_project with TMPDIR=$pin made $p"
 done
-t="$(mktemp -d "$W/given.XXXXXX")"; [[ "$t" == "$W/given."* ]] || fail "a template was not passed through: $t"
+t="$(TMPDIR="$W/a" mktemp -d "$W/given.XXXXXX")"; [[ "$t" == "$W/given."* && -d "$t" && "$t" != *$'\n'* ]] || fail "a template was not passed through alone: $t"
+o="$(TMPDIR="$W/a" mktemp "$W/one.XXXXXX")"; [[ "$o" == "$W/one."* && -f "$o" && "$o" != *$'\n'* ]] || fail "a one-argument template was not passed through alone: $o"
 u="$(env -u TMPDIR bash -c 'source "$1"; mktemp -d' _ "$ROOT/tests/helpers.sh")"   # unset: the real mktemp, wherever it puts it
 [[ -d "$u" ]] || fail "mktemp -d with TMPDIR unset made nothing: $u"; rm -rf "$u"
 echo "test-helpers-tmpdir: ok"

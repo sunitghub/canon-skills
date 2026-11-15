@@ -128,7 +128,14 @@ id="$("$TKT" create "Second cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"; 
 awk '/^---$/ && ++n == 2 { print "github: acme/app#22" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
 # A failing verdict on the PR head does not stop land: only a passing one does.
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
-"$TKT" land "$id" < /dev/null >/dev/null 2>&1 || fail "second land failed"
+# t-fff4: silent when the worktree has both: this PR head tracks node_modules/ and .tickets/ (the main checkout has them too)
+git checkout -q -B both "$PRHEAD"; mkdir -p node_modules .tickets/keep; echo k > node_modules/k; echo k > .tickets/keep/k
+git add -f node_modules/k .tickets/keep/k; git commit -qm "tracks both"; H2="$(git rev-parse HEAD)"; git push -qf origin "HEAD:refs/pull/7/head"
+git checkout -q main; mkdir -p "$P/node_modules"
+printf 'graded-head: %s\nfail: one criterion\n' "$H2" > ".tickets/$id/eval-report.md"
+out="$(STUB_HEAD="$H2" "$TKT" land "$id" < /dev/null 2>&1)" || fail "second land failed: $out"
+[[ "$out" != *"  tests: "* ]] || fail "land named what the worktree already has: $out"
+rmdir "$P/node_modules"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
 sed -i.bak 's/^status: .*/status: closed/' "$f"
 printf 'graded-head: %s\nfail: one criterion\n' "$NEWHEAD" > ".tickets/$id/eval-report.md"
