@@ -87,7 +87,7 @@ assert_eq 2 "$rc"; assert_contains "$out" "still busy after 0s"; assert_contains
 run allowed --runs 1 --browsers chromium --no-guard --allow-busy
 assert_eq 0 "$rc"; assert_contains "$out" "WARNING: the machine is busy"   # still told, not blocked
 # t-43a2: without --runs a browser runs once and is repeated (to 3) only when the guard rejects its first report; --runs N is exactly N.
-nreports() { ls "$WORK/out-$1"/board-spec-"$2"-run*.json 2>/dev/null | wc -l | tr -d ' '; }
+nreports() { ls "$WORK/out-$1/board-spec-$2-run"*.json 2>/dev/null | wc -l | tr -d ' '; }
 echo "0.1 0.1 0.1 1/100 999" > "$WORK/loadavg"; RUN_ENV=""
 echo 'process.exit(0)' > "$FAKE/tests/board-spec-guard.js"   # a guard that passes
 run adaptive-clean --browsers chromium,webkit

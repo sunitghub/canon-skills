@@ -29,10 +29,13 @@ unset CLAUDECODE
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
 export CLAUDE_CONFIG_DIR="/nonexistent-canon-test-claude-config"
 TOOLS_DIR="$ROOT/tools"
-TKT="$TOOLS_DIR/tkt"
-SPRINT="$TOOLS_DIR/sprint"
-SKILLS="$ROOT/tools/skills.sh"
-CANON_DEV="$ROOT/tools/canon-dev.sh"
+# shellcheck disable=SC2034  # read by the suites that source this file
+{
+  TKT="$TOOLS_DIR/tkt"
+  SPRINT="$TOOLS_DIR/sprint"
+  SKILLS="$ROOT/tools/skills.sh"
+  CANON_DEV="$ROOT/tools/canon-dev.sh"
+}
 
 # pid_alive <pid>: running. A zombie (killed but unreaped) is dead: where PID 1 never reaps orphans (a Claude cloud container's
 # process_api), `kill -0` still succeeds on one forever (t-90bc).
