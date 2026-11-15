@@ -1,10 +1,10 @@
 import { state } from './board-core.js';
 import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
 import { showToast } from './board-render.js';
-import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
+import { activeIframe, activeTabId, cockpitState, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
 import { withBusy } from './busy.js';
 import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
-import { bindGithubPickerRows, ghClosingHere, ghOut, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
+import { bindGithubPickerRows, ghClosingHere, ghRailShown, githubPickerRowsHTML, hideGithubPanel, showGithubPanel } from './board-github.js';
 
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
@@ -633,17 +633,22 @@ export function formatStateAsParagraphs(bullet, t) {
 // yet is what "Run sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
+// t-3786: the GitHub panel is one element shared by every tab, so each tab change (a switch, a close) shows the active tab's own: its
+// panel, with its terminal hidden, or none. A call for a tab no longer active (a late answer of an earlier switch) changes nothing.
+export async function syncGithubPanel(t) {
+  if (!t || activeTabId !== t.id) return;
+  if (!ghRailShown(cockpitState, t)) { hideGithubPanel(); return; }
+  const iframe = activeIframe();
+  if (iframe) iframe.style.visibility = 'hidden';
+  setTermMessage('');
+  await showGithubPanel(t, cockpitState);
+}
+
 export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (t.scratch) { hideGithubPanel(); await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
-  // t-718b: a GitHub pick, or a ticket already out on GitHub, never mounts the terminal: the rail shows the GitHub panel.
-  // t-92f2: except one closing here, in the worktree tkt land made: its session runs there (the daemon reuses its .cockpit-cwd).
-  if (cockpitState.ghPick || (ghOut(t) && !ghClosingHere(t))) {
-    if (iframe) iframe.style.visibility = 'hidden';
-    setTermMessage('');
-    await showGithubPanel(t, cockpitState);
-    return;
-  }
+  // A rail that is the GitHub panel never mounts the terminal (ghRailShown).
+  if (ghRailShown(cockpitState, t)) { await syncGithubPanel(t); return; }
   hideGithubPanel();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';

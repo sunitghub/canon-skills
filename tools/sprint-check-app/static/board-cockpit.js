@@ -1,9 +1,9 @@
 import { SHELL_TAB, freshDaemonSessions, loadData, state } from './board-core.js';
 import { CK_SIGNAL_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, applyCardSessions, announceScratchTabs, ckRowState, findTicketById, finishAdopt, newScratchId, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
 import { closeCockpit, findLiveDaemonSession, openCockpit, openTicketWhenLoaded, renderCockpitRail, showTicketWhenLoaded, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
-import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
+import { applyActualWorkingCwd, maybeMountCockpitTerminal, syncGithubPanel } from './board-worktree.js';
 import { applyPane, clearPaneFor, paneHostId, paneRoom, paneTabId, setPane, shownIds } from './board-pane.js';
-import { ghClosingHere, ghOut } from './board-github.js';
+import { ghRailShown, hideGithubPanel } from './board-github.js';
 
 // ── Cockpit (t-ddc8): one-window mode ───────────────────────────────────────
 // Board↔cockpit switch. The board owns no PTY — it ensures the shipped
@@ -437,7 +437,7 @@ export async function openTerminalPane(placement, opts = {}) {
   // made active again, never remounted (a remount would reload its screen).
   if (placed && host && cockpitTabs[host]) {
     const ht = findTicketById(host);
-    if (cockpitTabs[host].ghPick || (ghOut(ht) && !ghClosingHere(ht))) cockpitTabs[host].needsRemount = true;
+    if (ghRailShown(cockpitTabs[host], ht)) cockpitTabs[host].needsRemount = true;
     await openCockpit(host);
   }
   if (placed && cockpitTabs[id] && cockpitTabs[id].iframeEl) cockpitTabs[id].iframeEl.focus();   // the pane takes the keyboard, as a Terminal tab does
@@ -491,15 +491,17 @@ export function unmountTab(id) {
       // topbar/rail labels (ck-id, worktree/plan/state panels) are
       // stale until re-rendered for the tab we just switched to.
       const nextTicket = findTicketById(nextId);
-      if (nextTicket) renderCockpitRail(nextTicket);
+      // t-3786: the GitHub panel is shared, so it follows the next tab too (its own, or none)
+      if (nextTicket) { renderCockpitRail(nextTicket); syncGithubPanel(nextTicket); }
       // The ticket vanished from state.tickets between that tab opening and
       // this switch (e.g. archived/deleted elsewhere while backgrounded) —
       // don't leave the previous tab's stale labels on screen.
-      else { document.getElementById('ck-id').textContent = nextId; }
+      else { document.getElementById('ck-id').textContent = nextId; hideGithubPanel(); }
       if (boardPane) closeCockpit();   // t-ccf5: the Board it sat under comes back whole; the other tabs stay open in the strip
     } else {
       activeTabId = null;
       cockpitState = null;
+      hideGithubPanel();   // t-3786: no tab, no panel
       document.getElementById('cockpit-overlay').classList.remove('open');
       stopCockpitPoll();
       renderSessionStateChip(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
