@@ -89,7 +89,7 @@ cmd_start() {
   # separate write needed here.
   "$TKT_BIN" start "$id" >/dev/null
   tdir="$(ticket_dir_for "$id")"
-  wt_write_ok "$tdir/acceptance.md" && wt_write_ok "$tdir/plan.md" || exit 1   # t-f7e6
+  wt_write_ok "$tdir/acceptance.md" "$tdir/plan.md" || exit 1   # t-f7e6
   mkdir -p "$tdir"
 
   [[ -f "$tdir/acceptance.md" ]] || cat > "$tdir/acceptance.md" <<EOF
@@ -1387,7 +1387,7 @@ cmd_manual_qa() {
   [[ ! -L "$edir" ]] || { echo "sprint manual-qa: $edir is a symlink: refused" >&2; exit 1; }
   target="$edir/manual-qa.md"
   [[ ! -L "$target" && ( ! -e "$target" || -f "$target" ) ]] || { echo "sprint manual-qa: $target is not a plain file: refused" >&2; exit 1; }
-  wt_write_ok "$target" && wt_write_ok "$edir/.manual-qa.$$" || exit 1   # t-f7e6: the folders above the ticket folder too
+  wt_write_ok "$target" "$edir/.manual-qa.$$" || exit 1   # t-f7e6: the folders above the ticket folder too
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"
   sha="$(git -C "$root" rev-parse HEAD 2>/dev/null)" || sha=unknown
   when="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

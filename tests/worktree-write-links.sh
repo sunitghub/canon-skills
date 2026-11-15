@@ -56,6 +56,13 @@ planted ".gitignore seed dangling (ensure_tickets_dir)" 1 link ".tickets/.gitign
 planted "create under a linked .tickets" 1 link .tickets "$OUT" -- "$TKT" create "Another" -t task
 planted ".cockpit-cwd marker linked out" - link ".tickets/$id/.cockpit-cwd" "$OUT/file.txt" -- "$TKT" land "$id" --pr 7
 plan_ok
+planted ".cockpit-cwd dangling (tkt start binds the worktree)" 1 link ".tickets/$id/.cockpit-cwd" "$W/outnew" -- "$TKT" start "$id"
+planted "learnings.md dangling (tkt learn)" 1 now sh -c "printf '# Summary\n| a | delivered | b |\n' > '$WT/.tickets/$id/summary.md'; ln -s '$W/outnew' '$WT/.tickets/$id/learnings.md'" -- "$TKT" learn "$id"
+planted "plan.md dangling (sprint start)" 1 now sh -c "rm '$WT/.tickets/$id/plan.md'; ln -s '$W/outnew' '$WT/.tickets/$id/plan.md'" -- "$SPRINT" start "$id"
+mkdir -p "$W/oldt/t-0ld1/evidence"; printf -- '---\nid: t-0ld1\nstatus: closed\n---\n# old\n' > "$W/oldt/t-0ld1/ticket.md"
+echo r > "$W/oldt/t-0ld1/evidence/board-spec-chromium-run1.json"; touch -t 202501010000 "$W/oldt/t-0ld1/ticket.md"
+planted "compact under a linked .tickets (reviewer: it deleted outside files)" 1 link .tickets "$W/oldt" -- "$TKT" compact --older-than 1
+[[ -f "$W/oldt/t-0ld1/evidence/board-spec-chromium-run1.json" ]] || fail "compact deleted an outside evidence file"
 planted "plan.md linked out (sprint approve)" 1 link ".tickets/$id/plan.md" "$OUT/plan.md" -- "$SPRINT" approve "$id"
 printf 'evaluator-run-id: 1-1\ngraded-head: x\n## Verdict\nfail: no\n' > "$OUT/eval.md"
 planted "ticket.md linked out (sprint eval-verdict)" 1 now sh -c "ln -sf '$OUT/eval.md' '$WT/.tickets/$id/eval-report.md'; rm '$WT/.tickets/$id/ticket.md'; ln -s '$OUT/file.txt' '$WT/.tickets/$id/ticket.md'" -- "$SPRINT" eval-verdict "$id"
@@ -91,6 +98,8 @@ wid="$(cd "$W/wtu" && "$TKT" create "From the worktree" -t task)" || fail "a wor
 [[ -f "$U/real/$wid/ticket.md" && -n "$uid" ]] || fail "the worktree's write did not reach the main checkout's linked .tickets"
 echo "worktree-write-links: plain worktree, CANON_TICKETS_DIR and the person's own links still work"
 
+# The PowerShell link checks take the path from the environment, never pasted into the command (a ' in a name ran as PowerShell).
+! grep -rn "LiteralPath '\$(cygpath" "$ROOT/tools" || fail "a PowerShell link check pastes the path into its command again"
 # One copy of the rule.
 for fn in _is_dir_link _under_link _not_regular wt_write_ok; do
   n="$(grep -rhE "^${fn}\(\)" "$ROOT/tools" | wc -l | tr -d ' ')"; assert_eq 1 "$n"

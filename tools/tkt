@@ -1070,6 +1070,8 @@ cmd_compact() {
     [[ "$st" == closed || "$st" == cancelled ]] || continue
     [[ -d "$t/evidence" && ! -L "$t/evidence" && ! -e "$t/evidence.tgz" ]] || continue
     [[ -n "$(find "$t/ticket.md" -mmin +$(( days * 1440 )))" ]] || continue
+    # t-f7e6: the deletes below follow a link planted at .tickets or the ticket folder in a worktree (reviewer: they removed outside files)
+    wt_write_ok "$t/evidence.tgz" "$t/evidence/x" || { failed=$((failed + 1)); continue; }
 
     # Cited paths, relative to evidence/: "<id>/evidence/..." anywhere above, or "evidence/..." in this ticket's own docs.
     { grep -o -E "(^|[^A-Za-z0-9_-])$id/evidence/$_compact_path_re" "$tmp/global" | sed "s#^.*$id/evidence/##" || true
@@ -1103,7 +1105,7 @@ cmd_compact() {
     if (( pack > 0 )); then
       if $dry; then
         b_after="$(cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf - --null -T - | wc -c | tr -d ' ')"
-      elif wt_write_ok "$t/evidence.tgz.tmp" && wt_write_ok "$t/evidence.tgz" \
+      elif wt_write_ok "$t/evidence.tgz.tmp" "$t/evidence.tgz" \
            && (cd "$t" && tr '\n' '\0' < "$tmp/pack" | tar -czf evidence.tgz.tmp --null -T - 2>"$tmp/err") \
            && (cd "$t" && tar -tzf evidence.tgz.tmp | sort) | cmp -s - <(sort "$tmp/pack") \
            && mv "$t/evidence.tgz.tmp" "$t/evidence.tgz"; then
@@ -3597,7 +3599,6 @@ cmd_land() {
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
   # t-74d8: the close runs in this worktree, and its gates need canon's agents (and skills) there; best effort, never fails land
   [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true
-  local mk; for mk in .land-head .land-pr .cockpit-cwd .cockpit-cwd.before-land; do wt_write_ok "$tdir/$mk" || exit 1; done   # t-f7e6
   printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
   printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"

@@ -29,7 +29,7 @@ get_field() {
 # t-f7e6: each writer below checks the file and its .tmp first (a planted link in a worktree must not carry the write out).
 set_field() {
   local file="$1" field="$2" value="$3"
-  wt_write_ok "$file" && wt_write_ok "${file}.tmp" || return 1
+  wt_write_ok "$file" "${file}.tmp" || return 1
   awk -v f="$field" -v v="$value" '
     /^---$/ { fm++; print; next }
     fm == 1 && match($0, "^" f ": ") { print f ": " v; next }
@@ -46,7 +46,7 @@ set_or_add_field() {
   if grep -qE "^${field}: " "$file"; then
     set_field "$file" "$field" "$value"
   else
-    wt_write_ok "$file" && wt_write_ok "${file}.tmp" || return 1
+    wt_write_ok "$file" "${file}.tmp" || return 1
     awk -v f="$field" -v v="$value" '
       /^---$/ { c++; if (c == 2) { print f ": " v } print; next }
       { print }
@@ -59,7 +59,7 @@ set_or_add_field() {
 # fields whose default state is represented by the line's absence.
 remove_field() {
   local file="$1" field="$2"
-  wt_write_ok "$file" && wt_write_ok "${file}.tmp" || return 1
+  wt_write_ok "$file" "${file}.tmp" || return 1
   awk -v f="$field" '
     /^---$/ { fm++; print; next }
     fm == 1 && match($0, "^" f ": ") { next }
