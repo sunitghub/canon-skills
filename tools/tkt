@@ -148,6 +148,7 @@ clear_active_if() {
   # in_progress at once (ACTIVE names one, this call closes the other) —
   # never reproducible before this ticket made that state possible.
   if [[ "$current" == "$id" ]]; then
+    wt_write_ok "$file" || return 1   # t-f7e6 (evaluator): a removal follows a planted .tickets link too
     rm -f "$file"
     "$SCRIPT_DIR/work-beat" clear || true   # t-187e
   fi

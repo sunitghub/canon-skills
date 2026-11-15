@@ -72,6 +72,9 @@ planted "gate snapshot under a linked ticket folder" 1 link ".tickets/$id" "$OUT
 planted ".claude linked out (subagent-log)" 1 link .claude "$OUT" -- "$ROOT/tools/subagent-log.sh" --agent-id a1 --agent-type reviewer --ticket "$id" --tokens 1 --minutes 1
 planted "subagent-runs.jsonl linked out" 1 now sh -c "mkdir -p '$WT/.claude'; ln -s '$OUT/file.txt' '$WT/.claude/subagent-runs.jsonl'" -- "$ROOT/tools/subagent-log.sh" --agent-id a1 --agent-type reviewer --ticket "$id" --tokens 1 --minutes 1
 planted "work-beat with a dangling ACTIVE.beat (best effort: exit 0)" 0 now sh -c "echo '$id' > '$WT/.tickets/ACTIVE'; ln -s '$W/outnew' '$WT/.tickets/ACTIVE.beat'" -- "$ROOT/tools/work-beat" touch
+echo beat > "$OUT/ACTIVE.beat"
+planted "work-beat clear under a linked .tickets (evaluator: it removed an outside file)" 0 link .tickets "$OUT" -- "$ROOT/tools/work-beat" clear
+[[ -f "$OUT/ACTIVE.beat" ]] || fail "work-beat clear removed the outside ACTIVE.beat"
 planted "evidence stamp under a linked .tickets" 125 link .tickets "$OUT" -- "$ROOT/tools/evidence.sh" stamp "$id" test-sh -- true
 planted "work-beat under a linked .tickets (best effort: exit 0)" - link .tickets "$OUT" -- "$ROOT/tools/work-beat" touch
 

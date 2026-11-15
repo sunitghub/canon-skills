@@ -39,7 +39,7 @@ case "${1:-}" in
     { printf 'ticket=%s\nts=%s\nhost=%s\npid=%s\n' "$id" "$(date +%s)" "$(hostname 2>/dev/null | tr -d '[:space:]')" "$(agent_pid)" > "$tmp" \
         && mv -f "$tmp" "$tdir/ACTIVE.beat"; } 2>/dev/null || rm -f "$tmp" 2>/dev/null
     ;;
-  clear) rm -f "$tdir/ACTIVE.beat" 2>/dev/null ;;
+  clear) wt_write_ok "$tdir/ACTIVE.beat" || exit 0; rm -f "$tdir/ACTIVE.beat" 2>/dev/null ;;   # t-f7e6 (evaluator): best effort, as touch
   *) echo "usage: work-beat touch|clear" >&2 ;;
 esac
 exit 0
