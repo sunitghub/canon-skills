@@ -131,6 +131,7 @@ otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"; assert_contains "$o
 theirs e2.txt e2-theirs
 refuses "origin/main moved since the preview (now " --expect-origin "$otip_seen"; old_text "$out"; assert_contains "$out" "then Commit and push again"
 refuses "--expect-origin needs a full commit id" --expect-origin abc1234
+refuses "--expect-origin needs a full commit id" --expect-origin "x$otip_seen"; refuses "--expect-origin needs a full commit id" --expect-origin "${otip_seen}0"
 otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"
 # without --file (a diverged branch always has something to push): one merge commit, parents local then origin, then pushed
 lold="$(git rev-parse HEAD)"; oold="$(git --git-dir="$W/origin.git" rev-parse main)"
@@ -156,7 +157,8 @@ rm .git/hooks/pre-commit; git reset -q -- newdir/five.txt; git push -q origin HE
 # a conflict in a person's file: named
 echo n4 > newdir/four.txt; echo mine > g.txt; git add g.txt; git commit -qm "mine: g"; theirs g.txt g-theirs
 refuses "conflicts in: g.txt" --file newdir/four.txt --message "chore: x"; old_text "$out"; assert_contains "$out" "then Commit and push again"
-assert_contains "$out" "Merge it by hand in $P: git merge origin/main"   # the checkout it ran in, not "the main checkout"
+assert_contains "$out" "Merge it by hand in $P: git merge origin/main"
+assert_contains "$out" "commit-push: origin/main has commits main lacks and they could not be merged here (above); nothing committed or pushed. Fix that, then Commit and push again"   # the checkout it ran in, not "the main checkout"
 git reset -q --hard HEAD^; git pull -q --no-rebase origin main
 # a file the merge changes that is edited here (uncommitted): named
 git commit -qm "mine: h" --allow-empty; theirs h.txt h-theirs; echo h-here > h.txt

@@ -39,9 +39,11 @@ func TestCommitPushArgs(t *testing.T) {
 		t.Error("a 4096-byte path was refused")
 	}
 	bad := map[string]map[string]any{
-		"origin short":     {"origin": "abc1234"},
-		"origin an option": {"origin": "--force"},
-		"origin not text":  {"origin": 7},
+		"origin short":         {"origin": "abc1234"},
+		"origin prefixed":      {"origin": "x" + strings.Repeat("ab", 20)},
+		"origin too long":      {"origin": strings.Repeat("ab", 20) + "0"},
+		"origin an option":     {"origin": "--force"},
+		"origin not text":      {"origin": 7},
 		"files not a list":     {"files": "a.txt"},
 		"a file not a string":  {"files": []any{1.0}},
 		"empty path":           {"files": []any{""}},
