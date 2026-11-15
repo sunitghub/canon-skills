@@ -350,6 +350,13 @@ rc=0; out="$(STUB_PR_FILES="LEARNINGS.md .claude/subagent-runs.jsonl" "$TKT" imp
 assert_contains "$out" "PR #58 head $STUB_PR_HEAD: graded-head plus late docs only: .claude/subagent-runs.jsonl, LEARNINGS.md"
 assert_contains "$out" "no re-grade needed"
 assert_grep "^runs: github$" ".tickets/$id/ticket.md"   # t-4b34: results coming back are the evidence; the card reaches Check & merge without a hand edit
+# t-2a95: a DECISIONS.md row after grading is a late doc only for a worktree branch merged here; on a PR it needs a re-grade.
+cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && git checkout -q -b decision sweep && printf '| row |\n' > DECISIONS.md && git add DECISIONS.md && git commit -qm decision \
+  && git push -qf origin "HEAD:refs/pull/58/head" && git checkout -q sweep && cd "$L"
+STUB_PR_HEAD="$(git -C "$X" rev-parse decision)"
+rc=0; out="$(STUB_PR_FILES="DECISIONS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "since then it changes: DECISIONS.md"
+git -C "$X" push -qf origin "sweep:refs/pull/58/head"
 # a plain ticket that was never sent (no github: line) coming back through import-results does not gain runs: github
 cd "$X" && pid="$("$TKT" create "plain, never sent" -t task)" && "$TKT" export "$pid" >/dev/null 2>&1; cd "$L"
 STUB_PR_HEAD="$(git -C "$X" rev-parse HEAD)" "$TKT" import-results "$pid" --pr 61 >/dev/null 2>&1 || true

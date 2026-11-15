@@ -83,6 +83,13 @@ worktree_root() {
 # names the files before it asks. The always-loaded and start-read docs (AGENTS.md, CLAUDE.md, PROMOTED.md, HANDOFF.md,
 # DECISIONS.md) and other tickets' folders are not here.
 MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
+# t-2a95: the docs the close itself writes that a LOCAL worktree merge (tkt merge, Check & merge) also takes as late: the wrapup's
+# HANDOFF.md narrative (written at complete.md step 1, before grading, but uncommitted, so past graded-head) and DECISIONS.md's row
+# (step 6, after grading). The close gate accepted them on this branch, and a close in the main checkout commits the same files to
+# main with no merge check at all. A cloud merge (merge-pr, import-results, github-status) never takes them: nobody here saw the
+# cloud's write (t-fdb1), so its HANDOFF.md passes only with the Recent block alone changed (t-dfaf). tools/sprint's close-time list
+# builds from this name.
+MERGE_SAFE_CLOSE_ALT='HANDOFF\.md$|DECISIONS\.md$|DECISIONS-archive\.md$'
 # The one other late file (t-75f5): the audit log the gates append to (subagent-log.sh). A cloud session commits it after its evaluator
 # graded, so without it every clean cloud run reads as new code. It is data, not instructions (no agent loads it), and it may only GROW:
 # a changed or removed line is a rewrite and needs a re-grade. Nothing else under .claude/ is late-safe. tools/sprint's close-time
@@ -116,19 +123,34 @@ _handoff_block_ok() {
   [[ -n "$ok" && "$ok" == "$total" ]]
 }
 
-# late_docs_delta <git-dir> <graded> <head> <ticket-id> — t-fdb1: prints the files changed from graded to head, one per line.
+# late_doc_path <path> <ticket-id> [local] — t-2a95: the one rule for which repo path is a late doc by its name: a file under
+# .tickets/<ticket-id>/ with no dotfile component, a merge-safe late doc (MERGE_SAFE_LATE_ALT) and, for a local merge, one the close
+# writes (MERGE_SAFE_CLOSE_ALT). Read by late_docs_delta and by tkt merge's close record, so what --yes commits the merge accepts.
+# The audit log (append-only) and HANDOFF.md's Recent block have their own content rules in late_docs_delta.
+late_doc_path() {
+  local alt="$MERGE_SAFE_LATE_ALT"; [[ "${3:-}" == local ]] && alt+="|$MERGE_SAFE_CLOSE_ALT"
+  [[ "$1" =~ ^($alt|\.tickets/$2/([^./][^/]*/)*[^./][^/]*$) ]]
+}
+
+# late_docs_delta <git-dir> <graded> <head> <ticket-id> [local] — t-fdb1: prints the files changed from graded to head, one per line.
 # Returns 0 when head descends from graded and every file is a merge-safe late doc, the audit log with lines only added, or sits in
 # .tickets/<ticket-id>/ (no dotfile component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
 # ones printed), 2 when graded is not an ancestor of head, the id is not a plain ticket id, or git cannot tell (prints the reason).
-# A rename counts both paths.
+# A rename counts both paths. `local` (tkt merge of a worktree branch) also takes the close's own docs (late_doc_path). A late doc at
+# the root that head deletes is not late in any mode: a delete is no close's write (t-2a95).
 late_docs_delta() {
-  local dir="$1" graded="$2" head="$3" id="$4" files other
+  local dir="$1" graded="$2" head="$3" id="$4" mode="${5:-}" files other p
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "not a ticket id: $id"; return 2; }
   git -C "$dir" merge-base --is-ancestor "$graded" "$head" 2>/dev/null \
     || { echo "graded-head ${graded:0:7} is not an ancestor of ${head:0:7}"; return 2; }
   files="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files from ${graded:0:7} to ${head:0:7}: $files"; return 2; }
-  other="$(printf '%s\n' "$files" | grep . | grep -vE "^($MERGE_SAFE_LATE_ALT|\\.tickets/$id/([^./][^/]*/)*[^./][^/]*$)" || true)"
+  other=""
+  while IFS= read -r p; do [[ -z "$p" ]] || late_doc_path "$p" "$id" "$mode" || other+="$p"$'\n'; done <<< "$files"
+  local gone; gone="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only --diff-filter=D "$graded" "$head" 2>&1)" \
+    || { echo "git could not list the files deleted from ${graded:0:7} to ${head:0:7}: $gone"; return 2; }
+  while IFS= read -r p; do [[ -n "$p" && "$p" != */* ]] && late_doc_path "$p" "$id" "$mode" && other+="$p (deleted)"$'\n'; done <<< "$gone"
+  other="$(printf '%s' "$other" | grep . || true)"
   # t-75f5: the audit log passes only when lines were added and none removed (a binary file shows "-"; a rewrite shows removals).
   if [[ $'\n'"$other"$'\n' == *$'\n'"$MERGE_SAFE_AUDIT_LOG"$'\n'* ]]; then
     local ns add del _rest kept="" ln grew=false

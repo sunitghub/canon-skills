@@ -2104,10 +2104,11 @@ _merge_core() {
   _mc_fetch || { echo "$label: could not fetch $base and $subj${fetch_from:+ from $fetch_from}: $err" >&2; _mc_refuse "could not fetch $base and the $kind${fetch_from:+ from $fetch_from}"; }
   [[ "$(git -C "$tmp/w" rev-parse o/cand)" == "$head" ]] || { echo "$label: $subj moved while checking it; run $label again" >&2; _mc_refuse "$kind moved while it was checked"; }
   # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
-  # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses.
+  # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses. A worktree branch closed here also takes the
+  # close's own docs (t-2a95, MERGE_SAFE_CLOSE_ALT); a PR never does.
   if [[ "$head" != "$graded"* ]]; then
-    local late lrc=0
-    late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id")" || lrc=$?
+    local late lrc=0 lmode=""; [[ "$kind" == branch ]] && lmode=local
+    late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id" $lmode)" || lrc=$?
     case "$lrc" in
       0) echo "$label: $subj head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
       1) echo "$label: $subj head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; _mc_refuse "$kind head $head is not the graded-head $graded and changes more than late docs" ;;
@@ -2382,20 +2383,21 @@ _merge_branch() {
   [[ -z "$(get_field "$file" merged)" ]] || _mb_no "$id is already merged ($(get_field "$file" merged))"
   [[ -z "$(get_field "$src/ticket.md" merged)" ]] || _mb_no "$id is already merged ($(get_field "$src/ticket.md" merged))"
   # t-a01e: in a project that tracks .tickets/, nothing else commits the close record (the closed ticket.md, eval-report.md, summary,
-  # evidence). When it is the worktree's only change (nothing staged, every change a plain file under .tickets/<id>/, .cockpit-* markers
+  # evidence). When it is the worktree's only change (nothing staged, every change a plain file that is a local late doc by
+  # late_doc_path: under .tickets/<id>/, or t-2a95's tracked root docs the close writes, HANDOFF.md and DECISIONS.md; .cockpit-* markers
   # and files untracked elsewhere skipped), rec lists it and --yes commits it on the branch before the merge reads the head: late docs to the graded head.
+  # The audit log is never in it (append-only, it has its own rule in late_docs_delta).
   local rec=() ln p
   if [[ "$src" != "$tdir" ]] && git -C "$wt" diff --cached --quiet < /dev/null 2>/dev/null; then
     while IFS= read -r -d '' ln; do
       p="${ln:3}"
       if [[ "$p" != ".tickets/$id/"* ]]; then
-        [[ "${ln:0:2}" == '??' ]] && continue   # untracked elsewhere: not part of what merges, as the dirty check below ignores it
-        rec=(); break
-      fi
-      if [[ "${p##*/}" == .cockpit-* ]]; then
+        [[ "${ln:0:2}" == '??' ]] && continue   # untracked elsewhere (a root HANDOFF.md too): not part of what merges, as the dirty check below ignores it
+      elif [[ "${p##*/}" == .cockpit-* ]]; then
         [[ "${ln:0:2}" == '??' ]] && continue   # an untracked marker is never committed; a tracked, edited one is a change the merge must refuse
         rec=(); break
       fi
+      late_doc_path "$p" "$id" local || { rec=(); break; }   # the merge's own rule, so what --yes commits is what it then accepts
       [[ -f "$wt/$p" && ! -L "$wt/$p" ]] || { rec=(); break; }
       rec+=("$p")
     done < <(git -C "$wt" status --porcelain=v1 -z --untracked-files=all < /dev/null 2>/dev/null || true)

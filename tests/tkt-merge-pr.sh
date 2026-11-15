@@ -359,6 +359,15 @@ AGENTREAD="$(past CLAUDE.md)"
 refuses "an agent-read late doc after grading" "since then it changes CLAUDE.md" STUB_HEAD="$AGENTREAD" -- --pr 7 --yes
 OTHER="$(past .tickets/t-0th3/plan.md)"
 refuses "another ticket's folder after grading" "since then it changes .tickets/t-0th3/plan.md" STUB_HEAD="$OTHER" -- --pr 7 --yes
+# t-2a95: the close's own docs are late only for a worktree branch merged here (tkt merge); a PR's DECISIONS.md is not, and a deleted
+# late doc is refused in every mode.
+DEC="$(past DECISIONS.md)"
+refuses "DECISIONS.md after grading on a PR" "since then it changes DECISIONS.md" STUB_HEAD="$DEC" -- --pr 7 --yes
+git checkout -q -B past "$PRHEAD"; echo r > LEARNINGS.md; git add -f LEARNINGS.md; git commit -qm "graded with learnings"; LG="$(git rev-parse HEAD)"
+git rm -q LEARNINGS.md; git commit -qm "learnings deleted"; git push -qf origin "HEAD:refs/pull/7/head"; LGONE="$(git rev-parse HEAD)"; git checkout -q main
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$LG"
+refuses "a deleted LEARNINGS.md after grading" "since then it changes LEARNINGS.md (deleted)" STUB_HEAD="$LGONE" -- --pr 7 --yes
+eval_ok "$PRHEAD"
 DOT="$(past ".tickets/$id/.cockpit-cwd")"
 refuses "a dotfile in the ticket's folder after grading" "since then it changes .tickets/$id/.cockpit-cwd" STUB_HEAD="$DOT" -- --pr 7 --yes
 git checkout -q -B past "$PRHEAD"; ln -s AGENTS.md LEARNINGS.md; git add LEARNINGS.md; git commit -qm "symlink after grading"

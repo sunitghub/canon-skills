@@ -1684,6 +1684,8 @@ fr_project="$(make_project)"
   "$TKT" close "$fid" --no-sprint >/dev/null
   fr_ticket late; fr_report "$head1"
   echo '| row |' >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "learnings"
+  echo 'narrative' > HANDOFF.md; echo '| d |' > DECISIONS.md; echo '| a |' > DECISIONS-archive.md   # t-2a95: the close's own docs (MERGE_SAFE_CLOSE_ALT)
+  git add -f HANDOFF.md DECISIONS.md DECISIONS-archive.md; git commit -qm "close docs"
   echo 'zz' > dist/a.zip; git add dist; git commit -qm "hook artifacts"
   echo 'scratch' > untracked-scratch.txt
   assert_contains "$(fr_complete)" "Sprint completed: $fid"

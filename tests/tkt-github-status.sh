@@ -122,6 +122,10 @@ git -C "$W/c" push -q origin "+$B3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "
 assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
 git -C "$W/c" push -q origin "+$N3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$N3" > "$W/prs"
 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-2a95: DECISIONS.md is a late doc only for a worktree branch merged here; on a PR head it is not (the board's poll stays narrow).
+git -C "$W/c" reset -q --hard "$G3"; echo "| row |" > "$W/c/DECISIONS.md"; git -C "$W/c" add DECISIONS.md; git -C "$W/c" commit -qm "a decision row"; D3="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "+$D3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$D3" > "$W/prs"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
 git push -q origin "HEAD:refs/heads/canon-results/$id"; assert_eq "results-ready|24|OPEN|true|pass|false" "$(st)"   # a results branch makes it importable, not merge-ready
 git push -q origin --delete "canon-results/$id"
 # A head that is not local and cannot be fetched exits 1, never a guessed stage.
