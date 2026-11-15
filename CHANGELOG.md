@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Fixed: the Send panel's **Commit and push** no longer stops at "Run git pull first" when origin has commits your branch lacks: it brings them in first (a fast-forward, or one merge commit when both sides have new commits; the same rules as Finish > Push), shows that merge before you confirm, then commits and pushes, so the send can go on without a terminal. A force-pushed origin or a conflict in your own file is still refused, with nothing changed (t-420c).
+
 ## [0.59.0] - 2026-11-15
 
 - Added: **presets** in Admin > Model tiers. A Preset dropdown at the top of the panel fills every step in one go: Balanced, Economy, Max quality, Checker ≠ builder, then any you saved with "Save current as preset…". Each level (top, mid, cheap) becomes the newest Opus, Sonnet or Haiku model for each agent Admin lists; a confirm box shows every change and adjustment before anything is saved. The dropdown reads Custom when your picks match no preset. The Cockpit daemon changed: restart it after updating (Admin › Restart Daemon) (t-f5fa).

@@ -866,6 +866,12 @@ async function showCommitPush(t, tab, gen) {
   const lines = String(pv.output || '').split(/\r?\n/);
   const branch = (lines.find(l => l.startsWith('branch: ')) || '').slice('branch: '.length);
   const name = branch.split(' ')[0];
+  // t-420c: origin has commits this branch lacks: the "merge:" line says Commit and push brings them in first (a merge commit or a
+  // fast-forward), and the commits follow, indented; a rewritten origin is refused, so the button waits.
+  const mi = lines.findIndex(l => l.startsWith('merge: '));
+  const merge = mi < 0 ? null : { text: lines[mi].slice('merge: '.length), commits: [] };
+  if (merge) for (let i = mi + 1; i < lines.length && /^  \S/.test(lines[i]); i++) merge.commits.push(lines[i].trim());
+  const rewritten = !!merge && / was rewritten \(force-pushed/.test(merge.text);
   // t-3741: "mtime: <epoch seconds> <path>" lines say when each file was last written (absent in an older tkt: nothing is recent).
   const mtimes = new Map(lines.map(l => /^mtime: (\d+) (.+)$/.exec(l)).filter(Boolean).map(m => [m[2], +m[1]]));
   const nowS = Date.now() / 1000;
@@ -879,11 +885,12 @@ async function showCommitPush(t, tab, gen) {
   const startTicked = f => !busy && !f.untracked && f.age === null;
   const ago = s => s < 60 ? s + 's' : Math.floor(s / 60) + 'm';
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
+      ${merge ? `<div class="ck-gh-note" id="ck-gh-cp-merge" role="note"><p>${esc(merge.text)}</p>${merge.commits.length ? `<pre class="ck-gh-pre">${esc(merge.commits.join('\n'))}</pre>` : ''}</div>` : ''}
       ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note"><strong>An agent session is working in this checkout:</strong> these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
       ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">tracked in git here: commit it so the cloud's copy matches the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
       <p class="ck-gh-cp-note" id="ck-gh-cp-note">This ticket's own files go in the issue below (Description, Acceptance, Plan, Research); the cloud session rebuilds <code>.tickets/${esc(t.id)}/</code> from it, so they are not committed here unless your project tracks them in git.</p>
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go">Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go"${rewritten ? ' disabled' : ''}>Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
       <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;
   document.getElementById('ck-gh-cp-cancel').addEventListener('click', () => {
     delete box.dataset.open;
@@ -897,7 +904,9 @@ async function showCommitPush(t, tab, gen) {
     if (chosen.length && !msg) { status.textContent = 'Write a commit message first.'; return; }
     const choice = await openDialog({
       title: `Commit and push ${t.id}?`,
-      body: chosen.length ? `Commits ${chosen.length} file(s) on ${name}, then pushes ${name} to origin. Never forced.` : `Pushes ${name} to origin. Never forced.`,
+      body: (merge && !rewritten ? `Merges origin/${name} into ${name}, then ` : '') + (chosen.length
+        ? `${merge && !rewritten ? 'commits' : 'Commits'} ${chosen.length} file(s) on ${name}, then pushes ${name} to origin. Never forced.`
+        : `${merge && !rewritten ? 'pushes' : 'Pushes'} ${name} to origin. Never forced.`),
       pre: chosen.length ? `${chosen.join('\n')}\n\nmessage: ${msg}` : '',
       ok: 'Commit and push', cancel: 'Cancel', escape: true,
     });
