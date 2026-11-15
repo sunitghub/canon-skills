@@ -77,6 +77,9 @@ grep -q '^status: open' "$f" || fail "test setup: ticket not reopened"
 # Prepare.
 out="$("$TKT" land "$id" < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "sprint complete $id, then: tkt land $id --finish"
 [[ "$out" != *"push them to the PR branch yourself"* ]] || fail "plain land printed the --fix hint: $out"   # the hint is for --fix only
+# t-fff4: what a test run in the worktree lacks: .tickets/ is gitignored here, so the worktree has none; no node_modules anywhere, no line
+assert_contains "$out" "  tests: CANON_TICKETS_DIR='$P/.tickets' (the worktree has no .tickets/)"
+[[ "$out" != *"node_modules"* ]] || fail "land named a node_modules the main checkout does not have: $out"
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "worktree is not at the PR head"
 [[ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" == "land/$id" ]] || fail "worktree is not on land/$id"
 grep -q '^status: in_progress' "$f" || fail "ticket not in_progress"
@@ -147,7 +150,9 @@ refuses "--fix together with --finish" "use one" -- --fix --finish
 sed -i.bak 's/^status: closed/status: closed\nmerged: abc123/' "$f"; rm -f "$f.bak"
 refuses "--fix on a merged ticket" "already merged" -- --fix
 sed -i.bak '/^merged: /d' "$f"; rm -f "$f.bak"
+mkdir "$P/node_modules"   # t-fff4: now the main checkout has node_modules (gitignored in a real project) and the worktree will not
 out="$("$TKT" land "$id" --fix < /dev/null 2>&1)"; assert_contains "$out" "worktree: $WT"; assert_contains "$out" "push them to the PR branch yourself"
+assert_contains "$out" "  tests: ln -s '$P/node_modules' '$WT/node_modules'"; rmdir "$P/node_modules"
 [[ "$(git -C "$WT" rev-parse HEAD)" == "$PRHEAD" ]] || fail "--fix worktree is not at the PR head"
 grep -q '^status: in_progress' "$f" || fail "--fix did not reopen the closed ticket"
 [[ "$(tr -d '[:space:]' < ".tickets/$id/.cockpit-cwd")" == "$WT" ]] || fail "--fix: .cockpit-cwd is not the worktree"

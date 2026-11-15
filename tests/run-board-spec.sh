@@ -53,6 +53,18 @@ done
 if [ -n "$BASE" ]; then
   BASE_SHA="$(git -C "$ROOT" rev-parse --short --verify "$BASE^{commit}" 2>/dev/null)" || { echo "run-board-spec: --base $BASE is not a commit" >&2; exit 2; }
 fi
+# t-fff4: a linked worktree (tkt land's, a Cockpit one) has no node_modules and often no .tickets/: the copy got a dangling node_modules
+# link ("0 tests") and the specs that read named tickets failed like regressions. Say what to do before any scratch folder exists.
+if [ ! -d "$ROOT/node_modules" ]; then
+  MAIN="$(cd "$ROOT" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && cd .. && pwd -P)" || MAIN=""
+  if [ -n "$MAIN" ] && [ "$MAIN" != "$ROOT" ] && [ -d "$MAIN/node_modules" ]; then
+    echo "run-board-spec: no node_modules in $ROOT (a linked worktree): ln -s '$MAIN/node_modules' '$ROOT/node_modules', then run again" >&2
+  else echo "run-board-spec: no node_modules in $ROOT: run npm ci, or link a checkout's (tools/sprint-check-app/CLAUDE.md, From a worktree)" >&2; fi
+  exit 2
+fi
+# The tickets the copies get: CANON_TICKETS_DIR's when set (a worktree or clone run against the main checkout's), else this tree's.
+TICKETS="${CANON_TICKETS_DIR:-$ROOT/.tickets}"
+[ -d "$TICKETS" ] || echo "run-board-spec: no tickets folder at $TICKETS: the specs that read named tickets will fail; set CANON_TICKETS_DIR=<main checkout>/.tickets" >&2
 TMP="${TMPDIR:-/tmp}"
 if [ -z "$OUT" ]; then OUT="$(mktemp -d "$TMP/board-spec-out.XXXXXX")"; else mkdir -p "$OUT"; fi
 OUT="$(cd "$OUT" && pwd -P)"
@@ -114,6 +126,7 @@ if [ -f "$COPY/.git" ]; then
   if [ -f "$GITDIR/index" ]; then cp "$GITDIR/index" "$COPY/.git/index"; fi
 fi
 rm -rf "$COPY/.git/worktrees"
+if [ "$TICKETS" != "$ROOT/.tickets" ] && [ -d "$TICKETS" ]; then rm -rf "$COPY/.tickets"; rsync -a "$TICKETS/" "$COPY/.tickets/"; fi
 ln -s "$ROOT/node_modules" "$COPY/node_modules"
 
 # Start the Go board from copy $1; sets STARTED_PORT and STARTED_PID. Called directly, never in $(...), so the PID it
@@ -228,7 +241,7 @@ classify() {
     BASE_COPY="$(cd "$BASE_COPY" && pwd -P)"
     echo "run-board-spec: classify: copying $BASE ($BASE_SHA) with the same .tickets to $BASE_COPY"
     git -C "$ROOT" archive "$BASE_SHA" | tar -x -C "$BASE_COPY"
-    rsync -a "$ROOT/.tickets/" "$BASE_COPY/.tickets/"
+    [ ! -d "$TICKETS" ] || rsync -a "$TICKETS/" "$BASE_COPY/.tickets/"
     ln -s "$ROOT/node_modules" "$BASE_COPY/node_modules"
     start_board "$BASE_COPY"; BASE_PORT="$STARTED_PORT"; BASE_PID="$STARTED_PID"
     wait_board "$BASE_PORT"

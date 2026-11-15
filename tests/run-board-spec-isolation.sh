@@ -26,6 +26,7 @@ cat > "$WORK/bin/npx" <<'STUB'
 # npx playwright test ...: optionally leave a process behind in the copy, then write a report
 [ -n "${LEAK:-}" ] && { bash -c 'sleep 20; :' "spec-isolation-leakmark" "$PWD" >/dev/null 2>&1 & echo "$!" >> "$STATE/../leakpids"; }
 echo "$*" >> "$STATE/npx-args"
+ls .tickets > "$STATE/copy-tickets" 2>/dev/null || :   # t-fff4: what tickets the copy got
 echo '{"suites":[]}' > "$PLAYWRIGHT_JSON_OUTPUT_NAME"
 exit 0
 STUB
@@ -119,4 +120,22 @@ run tags-user --runs 1 --browsers chromium,webkit --no-guard --grep 'popover|men
 ch="$(grep -- '--browser=chromium' "$A")"; wk="$(grep -- '--browser=webkit' "$A")"
 [[ "$ch" == *'--grep popover|menu' ]] || fail "run-board-spec: chromium lost the user --grep: $(cat "$A")"
 [[ "$wk" == *'--grep ^(?=.*@webkit)(?=.*(?:popover|menu))'* ]] || fail "run-board-spec: webkit --grep is not @webkit AND the user pattern: $(cat "$A")"
+# t-fff4: a checkout with no node_modules (a land or Cockpit worktree) is refused before any scratch folder exists, with the fix; a missing
+# tickets folder is said in one line and the run goes on; CANON_TICKETS_DIR's tickets are what the copy gets.
+mv "$FAKE/node_modules" "$WORK/nm-aside"
+scratch() { { ls -d "$WORK"/board-spec-* 2>/dev/null || :; } | wc -l | tr -d ' '; }   # the runner's scratch folders
+before="$(scratch)"
+RUN_ENV=""; run nonm --runs 1 --browsers chromium --no-guard
+assert_eq 2 "$rc"; assert_contains "$out" "run-board-spec: no node_modules in $FAKE: run npm ci"
+assert_eq "$before" "$(scratch)"
+git -C "$FAKE" -c user.name=t -c user.email=t@e commit -q --allow-empty -m base2; git -C "$FAKE" worktree add -q "$WORK/wt3" -b wt3
+mkdir -p "$WORK/wt3/tests"; cp "$FAKE/tests/"*.sh "$FAKE/tests/board-spec-guard.js" "$WORK/wt3/tests/"; mv "$WORK/nm-aside" "$FAKE/node_modules"
+set +e; out="$(env TMPDIR="$WORK" PATH="$WORK/bin:$PATH" bash "$WORK/wt3/tests/run-board-spec.sh" --runs 1 --browsers chromium --no-guard 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" "(a linked worktree): ln -s '$FAKE/node_modules' '$(cd "$WORK/wt3" && pwd -P)/node_modules'"
+git -C "$FAKE" worktree remove --force "$WORK/wt3"
+RUN_ENV=""; run notk --runs 1 --browsers chromium --no-guard
+assert_eq 0 "$rc"; assert_contains "$out" "run-board-spec: no tickets folder at $FAKE/.tickets: the specs that read named tickets will fail"
+mkdir -p "$WORK/main-tickets/t-ab12"; RUN_ENV="CANON_TICKETS_DIR=$WORK/main-tickets"; run tkdir --runs 1 --browsers chromium --no-guard; RUN_ENV=""
+assert_eq 0 "$rc"; [[ "$out" != *"no tickets folder"* ]] || fail "run-board-spec: CANON_TICKETS_DIR's folder was reported missing: $out"
+assert_eq "t-ab12" "$(cat "$WORK/state/copy-tickets")"
 echo "run-board-spec-isolation: ok"

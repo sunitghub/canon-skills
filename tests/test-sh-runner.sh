@@ -38,7 +38,7 @@ while IFS= read -r l; do grep -qxF "$l" <<< "$LIST" || fail "test.sh: LONGEST na
 # --- copies of the real runner with fake suites; go and node kept off PATH -----------------------------------------------------------
 mkdir -p "$WORK/bin"
 for b in bash sh python3 git sort head tail mktemp grep sed awk cat rm sleep dirname cut wc tr comm ps pgrep uniq basename env ls xargs date mv mkdir touch nproc sysctl pkill kill; do
-  p="$(command -v "$b" 2>/dev/null)" && ln -sf "$p" "$WORK/bin/$b"
+  p="$(type -P "$b" 2>/dev/null)" && ln -sf "$p" "$WORK/bin/$b"   # type -P: helpers.sh's mktemp is a function (t-fff4)
 done
 runner_copy() {   # runner_copy <dir> <suite...>: the real test.sh with its tests=( list replaced by the given suites
   local d="$1"; shift

@@ -3602,6 +3602,9 @@ cmd_land() {
   canon_event ticket.status_changed tkt "$root" "ticket=$id" from=open to=in_progress
   echo "land: $id at PR #$pr head ${head:0:8}"
   echo "  worktree: $wt (branch $branch)"
+  # t-fff4: what a test run there lacks that this checkout has (a board spec in it reported ten false failures); named, never made
+  [[ -d "$root/node_modules" && ! -e "$wt/node_modules" ]] && echo "  tests: ln -s '$root/node_modules' '$wt/node_modules'"
+  [[ -d "$root/.tickets" && ! -e "$wt/.tickets" ]] && echo "  tests: CANON_TICKETS_DIR='$root/.tickets' (the worktree has no .tickets/)"
   if [[ "$mg" == CONFLICTING ]]; then   # t-ca00: the PR conflicts with its base; merge it in before the gates
     echo "  next: in that worktree run git merge origin/$base, resolve the conflicting files, then run the evaluator and sprint complete $id, then: tkt land $id --finish"
   else echo "  next: in that worktree run the evaluator and sprint complete $id, then: tkt land $id --finish"; fi

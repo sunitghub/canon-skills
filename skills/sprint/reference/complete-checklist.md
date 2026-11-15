@@ -11,13 +11,13 @@ hidden: true
 Other cases: last table.
 
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
-Confirm to proceed." A broad "continue"/"finish" is not close approval.
+Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Steps
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
    refresh docs.
-   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero stops the close.
+   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero: stop.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
@@ -25,8 +25,8 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
      `code-reviewer` are separate.
    - No push to `origin/main` until both gates report.
 2. **Reviewer** (advisory). `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
-   `Agent` with `subagent_type: "canon-reviewer"`; after: `gate-snapshot.sh post …` (any difference: stop,
-   show the PRE recovery hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
+   `Agent` with `subagent_type: "canon-reviewer"`; after, before fix commits: `gate-snapshot.sh post …` (differs: stop,
+   show the PRE hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
@@ -38,7 +38,7 @@ Confirm to proceed." A broad "continue"/"finish" is not close approval.
      `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
      (canon: `scripts/test.sh`); re-stamp after tracked changes.
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
-   pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; snapshot post:
+   pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
      write a run-id yourself.
    - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
