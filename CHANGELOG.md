@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.60.1] - 2026-11-15
+
 - Fixed: closing or switching a Cockpit tab no longer leaves another ticket's GitHub panel on screen. The right side now always shows the active tab's own view: its terminal, or its own Send, Sent or out-on-GitHub panel, whichever way you switch (tab strip, the prefix keys, the Agents sidebar) and whichever tab comes next when one closes (t-3786).
 
 ## [0.60.0] - 2026-11-15
