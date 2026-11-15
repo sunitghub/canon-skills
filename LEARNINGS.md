@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-15-2026 05:00
+learnings-sweep last run: 11-15-2026 06:41
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-15 | [t-2a95](.tickets/t-2a95/learnings.md) | Before choosing among a ticket's suggested fixes, find the actual writer: the ticket blamed handoff_recent (main only) while the post-grade HANDOFF.md change was the wrapup narrative; and two allow-lists for one question (record vs merge) had already drifted, so one predicate both read | UNPROMOTED |
 | 2026-11-15 | [t-3786](.tickets/t-3786/learnings.md) | One DOM element shared by every tab is owned by the active tab only if every tab change syncs it; a Terminal pane's tab beside a session tab is the exception (the reviewer caught the blank host half). And a revert-proof copy without node_modules and .tickets fails every board-spec mutant: run a comment-only control first | UNPROMOTED |
 | 2026-11-15 | [t-420c](.tickets/t-420c/learnings.md) | A preview that a later run acts on must pin what it showed (origin's tip): the run fetched again after the confirm and could push a merge nobody saw; and a refusal changing a shared message needs a grep of every parser, spec and test that reads it | UNPROMOTED |
 | 2026-11-15 | [t-f5fa](.tickets/t-f5fa/learnings.md) | A save-time check of saved user data against the live registry blocks unrelated writes once the registry moves (retire refused): check shape at save, validity at use; and an undo branch after a helper that already reloaded state deletes real data | UNPROMOTED |
