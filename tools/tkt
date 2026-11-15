@@ -2885,15 +2885,17 @@ _origin_merge_preview() {
   printf '%s\n' "$ahead" | sed -n '1,20p'
 }
 
-# _merge_origin_before_push <root> <branch> <id> <retry> — t-420c: before a push of <branch> (Finish's Push, commit-push), fetch
+# _merge_origin_before_push <root> <branch> <id> <retry> [<expect>] — t-420c: before a push of <branch> (Finish's Push, commit-push), fetch
 # origin's into refs/remotes/origin/<branch> and, when they have diverged, merge it into <branch> (_merge_origin_into_base). <root> is
 # the checkout <branch> is checked out in, so _ff_here runs there. Returns 0 (nothing to merge, a failed fetch left to the push to
-# report, or merged), 2 when origin was rewritten (nothing changed), 1 when the merge could not be made (the reason printed).
+# report, or merged), 2 when origin was rewritten (nothing changed), 3 when origin's tip is not <expect> (nothing changed), 1 when the
+# merge could not be made (the reason printed).
 _merge_origin_before_push() {
-  local root="$1" b="$2" id="$3" retry="$4" otip lold
+  local root="$1" b="$2" id="$3" retry="$4" expect="${5:-}" otip lold
   git -C "$root" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" < /dev/null 2>/dev/null \
-    && otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" \
-    && ! git -C "$root" merge-base --is-ancestor "$otip" "refs/heads/$b" 2>/dev/null || return 0
+    && otip="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" || return 0
+  [[ -z "$expect" || "$expect" == "$otip" ]] || return 3
+  ! git -C "$root" merge-base --is-ancestor "$otip" "refs/heads/$b" 2>/dev/null || return 0
   lold="$(git -C "$root" rev-parse -q --verify "refs/heads/$b")" || return 1
   ! _origin_rewritten "$root" "$b" || return 2
   # _ff_here's refusal says what was being done (the default is merge-pr's "The PR is merged on GitHub, but …"); bash's dynamic scope
@@ -3321,20 +3323,21 @@ _cp_files() {
 # conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists. A push
 # that fails keeps the commit and says so.
 cmd_commit_push() {
-  local id="" dry=false msg="" msgset=false files=()
+  local id="" dry=false msg="" msgset=false files=() expect=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry=true; shift ;;
       --file)    [[ $# -ge 2 ]] || { echo "commit-push: --file needs a path" >&2; exit 1; }; files+=("$2"); shift 2 ;;
       --message) [[ $# -ge 2 ]] || { echo "commit-push: --message needs a text" >&2; exit 1; }; msg="$2"; msgset=true; shift 2 ;;
+      --expect-origin) [[ $# -ge 2 && "$2" =~ ^[0-9a-f]{40}$ ]] || { echo "commit-push: --expect-origin needs a full commit id" >&2; exit 1; }; expect="$2"; shift 2 ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$id" ]] && id="$1"; shift ;;
     esac
   done
-  [[ -n "$id" ]] || { echo "Usage: tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>] [--expect-origin <sha>]" >&2; exit 1; }
   # A path is a file name, never a pattern: a file named '*.txt' must commit that one file, not every .txt (t-41ff's rule).
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
-  local file root wt b list new=false ahead=0 diverged=false
+  local file root wt b list new=false ahead=0 diverged=false otip=""
   file="$(find_ticket "$id")"; id="$(get_field "$file" id)"
   root="$(dirname "$(tickets_dir)")"
   wt="$(_ticket_cwd_binding "$file")"; [[ -d "$wt" ]] || wt="$root"
@@ -3346,13 +3349,17 @@ cmd_commit_push() {
   elif [[ $lrc != 0 ]]; then echo "commit-push: could not reach origin (git ls-remote exit $lrc); nothing changed" >&2; exit 1
   else
     git -C "$wt" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null || { echo "commit-push: could not fetch origin/$b; nothing changed" >&2; exit 1; }
+    otip="$(git -C "$wt" rev-parse -q --verify "refs/remotes/origin/$b^{commit}")" || { echo "commit-push: could not read origin/$b; nothing changed" >&2; exit 1; }
+    # t-420c reviewer: the confirm covered origin as the preview saw it; origin moved since, so what would be merged and pushed was not shown
+    [[ -z "$expect" || "$expect" == "$otip" ]] \
+      || { echo "commit-push: origin/$b moved since the preview (now ${otip:0:8}); nothing changed. Look at the preview again, then Commit and push again" >&2; exit 1; }
     git -C "$wt" merge-base --is-ancestor "refs/remotes/origin/$b" HEAD || diverged=true
     ahead="$(git -C "$wt" rev-list --count "refs/remotes/origin/$b..HEAD")" || exit 1
   fi
   list="$(_cp_files "$wt" "$id")"
   if $dry; then
     echo "commit-push: $id in $wt"
-    if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; fi
+    if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; echo "origin: $otip"; fi
     ! $diverged || _origin_merge_preview "$wt" "$b" "merge:" "Commit and push" || { echo "commit-push: git could not list origin's new commits" >&2; exit 1; }
     [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do
       printf 'file: %s %s\n' "$xy" "$p"
@@ -3378,14 +3385,15 @@ cmd_commit_push() {
   fi
   local sha="" out="" mrc=0   # set, not just declared: bash 5 leaves a bare `local sha` unset and set -u then stops the push path
   if $diverged; then
-    _merge_origin_before_push "$wt" "$b" "$id" "Commit and push again" || mrc=$?
+    _merge_origin_before_push "$wt" "$b" "$id" "Commit and push again" "$otip" || mrc=$?
+    [[ $mrc != 3 ]] || { echo "commit-push: origin/$b moved while it was read; nothing changed. Look at the preview again, then Commit and push again" >&2; exit 1; }
     [[ $mrc != 2 ]] || { echo "commit-push: origin/$b was rewritten (force-pushed: commits it had are gone): nothing merged, committed or pushed. Look at origin/$b first, then Commit and push again" >&2; exit 1; }
     [[ $mrc == 0 ]] || { echo "commit-push: origin/$b has commits $b lacks and they could not be merged here (above); nothing committed or pushed. Fix that, then Commit and push again" >&2; exit 1; }
   fi
   if [[ ${#files[@]} -gt 0 ]]; then
     # Only the named paths: --only commits their worktree state and leaves anything else in the index staged, not committed.
     out="$(git -C "$wt" add -A -- "${files[@]}" 2>&1 && git -C "$wt" commit -q --only -m "$msg" -- "${files[@]}" 2>&1)" \
-      || { echo "commit-push: git could not commit (a hook may have refused it); nothing pushed. The files are staged: git reset -- <file> unstages one. $out" >&2; exit 1; }
+      || { echo "commit-push: git could not commit (a hook may have refused it); nothing pushed.$($diverged && echo " The merge of origin/$b stays here, not pushed (undo it: git reset --keep HEAD^).") The files are staged: git reset -- <file> unstages one. $out" >&2; exit 1; }
     sha="$(git -C "$wt" rev-parse HEAD)"
     echo "commit-push: committed ${sha:0:8} ($(printf '%s\n' "${files[@]}" | grep -c .) file(s)): $msg"
   fi

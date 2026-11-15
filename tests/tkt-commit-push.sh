@@ -82,6 +82,7 @@ git remote set-url origin "$W/nowhere.git"; refuses "could not reach origin" --f
 printf '#!/bin/sh\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
 rc=0; out="$("$TKT" commit-push "$id" --file a.txt --message "chore: x" 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "git could not commit (a hook may have refused it); nothing pushed. The files are staged"
+[[ "$out" != *"The merge of"* ]] || fail "a commit refused with no merge named one: $out"
 assert_eq "$(git --git-dir="$W/origin.git" rev-parse main)" "$(git rev-parse HEAD)"; rm .git/hooks/pre-commit; git reset -q -- a.txt
 
 # Commit two of the files: exactly those land, the staged b.txt stays staged and out of the commit; the push is plain.
@@ -124,9 +125,16 @@ before="$(sig)"; out="$("$TKT" commit-push "$id" --dry-run)"
 assert_contains "$out" "branch: main -> origin/main (1 commit(s) to push)"
 assert_contains "$out" "merge: origin/main has 1 commit(s) main lacks: Commit and push first merges origin/main into main here (a merge commit, never a rebase or force):"
 assert_contains "$out" "theirs: e.txt"; assert_eq "$before" "$(sig)"
+otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"; assert_contains "$out" "origin: $otip_seen"
+# reviewer t-420c: origin moves after the preview: with the previewed tip the run refuses and changes nothing (what the confirm showed
+# is not what would be merged); a malformed tip is refused; with the current tip it goes on
+theirs e2.txt e2-theirs
+refuses "origin/main moved since the preview (now " --expect-origin "$otip_seen"; old_text "$out"; assert_contains "$out" "then Commit and push again"
+refuses "--expect-origin needs a full commit id" --expect-origin abc1234
+otip_seen="$(git --git-dir="$W/origin.git" rev-parse main)"
 # without --file (a diverged branch always has something to push): one merge commit, parents local then origin, then pushed
 lold="$(git rev-parse HEAD)"; oold="$(git --git-dir="$W/origin.git" rev-parse main)"
-out="$("$TKT" commit-push "$id")"; old_text "$out"; assert_contains "$out" "merged origin/main ("; assert_contains "$out" "pushed main to origin"
+out="$("$TKT" commit-push "$id" --expect-origin "$otip_seen")"; old_text "$out"; assert_contains "$out" "merged origin/main ("; assert_contains "$out" "pushed main to origin"
 assert_eq "Merge origin/main into main" "$(git log -1 --format=%s)"; assert_eq "$lold $oold" "$(git log -1 --format=%P)"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
 assert_eq 0 "$(git rev-list --count HEAD --not --remotes=origin)"   # what send-issue checks before it sends ("on no branch of origin")
@@ -135,6 +143,14 @@ git commit -qm "mine: f" --allow-empty; theirs f.txt f-theirs; echo n3 > newdir/
 out="$("$TKT" commit-push "$id" --file newdir/three.txt --message "chore: diverged")"; old_text "$out"
 assert_eq "chore: diverged" "$(git log -1 --format=%s)"; assert_eq "Merge origin/main into main" "$(git log -1 --format=%s HEAD^)"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
+
+# A hook refusing the file commit after the merge: the merge stays here, unpushed, and the message says so with its undo
+git commit -qm "mine: hk" --allow-empty; theirs hk.txt hk-theirs; echo n5 > newdir/five.txt
+printf '#!/bin/sh\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
+ob="$(git --git-dir="$W/origin.git" rev-parse main)"; rc=0; out="$("$TKT" commit-push "$id" --file newdir/five.txt --message "chore: x" 2>&1)" || rc=$?
+assert_eq 1 "$rc"; assert_contains "$out" "The merge of origin/main stays here, not pushed (undo it: git reset --keep HEAD^)"
+assert_eq "$ob" "$(git --git-dir="$W/origin.git" rev-parse main)"; assert_eq "Merge origin/main into main" "$(git log -1 --format=%s)"
+rm .git/hooks/pre-commit; git reset -q -- newdir/five.txt; git push -q origin HEAD:main
 
 # Refusals, each changing nothing (refuses checks HEAD, the index, the files and origin) and ending with the way on.
 # a conflict in a person's file: named

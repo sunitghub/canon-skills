@@ -872,6 +872,8 @@ async function showCommitPush(t, tab, gen) {
   const merge = mi < 0 ? null : { text: lines[mi].slice('merge: '.length), commits: [] };
   if (merge) for (let i = mi + 1; i < lines.length && /^  \S/.test(lines[i]); i++) merge.commits.push(lines[i].trim());
   const rewritten = !!merge && / was rewritten \(force-pushed/.test(merge.text);
+  // t-420c: origin's tip as previewed goes back with the POST, so a push never carries a merge the form did not show
+  const originTip = ((lines.find(l => /^origin: [0-9a-f]{40}$/.test(l)) || '').slice('origin: '.length));
   // t-3741: "mtime: <epoch seconds> <path>" lines say when each file was last written (absent in an older tkt: nothing is recent).
   const mtimes = new Map(lines.map(l => /^mtime: (\d+) (.+)$/.exec(l)).filter(Boolean).map(m => [m[2], +m[1]]));
   const nowS = Date.now() / 1000;
@@ -913,7 +915,9 @@ async function showCommitPush(t, tab, gen) {
     if (!choice || !choice.ok || gen !== ghPanelGen) return;
     status.textContent = 'Committing and pushing…';
     let res;
-    try { res = await postJSON(ghApi(t.id, 'commit-push'), chosen.length ? { files: chosen, message: msg } : {}); }
+    const body = chosen.length ? { files: chosen, message: msg } : {};
+    if (originTip) body.origin = originTip;
+    try { res = await postJSON(ghApi(t.id, 'commit-push'), body); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
     if (gen !== ghPanelGen) return;
     if (!res.ok) {
