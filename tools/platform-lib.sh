@@ -12,9 +12,11 @@ _is_windows() {
 _is_dir_link() {
   local link="$1"
   if _is_windows; then
+    # t-f7e6: the path goes in through an environment variable, never into the command text: a folder name with a ' (a person's
+    # O'Brien, or a name a branch chose) would otherwise end the quoted string and run as PowerShell.
     [ -d "$link" ] && \
-      powershell.exe -NoProfile -Command \
-        "\$i=Get-Item -LiteralPath '$(cygpath -w "$link")' -EA SilentlyContinue; if(\$i){(\$i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}" \
+      CANON_LINK_PATH="$(cygpath -w "$link")" powershell.exe -NoProfile -Command \
+        '$i=Get-Item -LiteralPath $env:CANON_LINK_PATH -EA SilentlyContinue; if($i){($i.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0}' \
         2>/dev/null | tr -d '\r\n' | grep -qi "true"
   else
     [ -L "$link" ]

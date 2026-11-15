@@ -396,6 +396,12 @@ cd "$C"; rm -f ".tickets/$id/research.md" && ln -s "$W/outside.txt" ".tickets/$i
 rc=0; out="$("$TKT" import-issue 57 --body-file "$STUB_BODY" --force 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "import-issue through a symlink should be refused"; assert_contains "$out" "refusing to write through a symlink"
 assert_eq "outside" "$(cat "$W/outside.txt")"
+# t-f7e6: a linked FOLDER on the way (the ticket's .before-import) is refused too, by the shared rule (_under_link)
+rm -f ".tickets/$id/research.md"; printf 'an older research\n' > ".tickets/$id/research.md"; mkdir -p "$W/outdir"; rm -rf ".tickets/$id/.before-import"; ln -s "$W/outdir" ".tickets/$id/.before-import"
+rc=0; out="$("$TKT" import-issue 57 --body-file "$STUB_BODY" --force 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "import-issue through a linked folder should be refused"; assert_contains "$out" "refusing to write through a symlink: $id/.before-import/"
+[[ -z "$(ls -A "$W/outdir")" ]] || fail "import-issue wrote into a linked folder: $(ls -A "$W/outdir")"
+rm ".tickets/$id/.before-import"
 cd "$L"; rm -f ".tickets/$id/plan.md"; git --git-dir="$W/origin.git" branch -D "canon-results/$id" >/dev/null
 rc=0; out="$("$TKT" import-results ../etc 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a non-ticket id should be refused"; assert_contains "$out" "not a ticket id"

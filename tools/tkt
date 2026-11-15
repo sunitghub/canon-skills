@@ -295,7 +295,6 @@ cmd_create() {
     [[ ! -e "$ticket_dir" && ! -f "$dir/$id.md" ]] && break
   done
 
-  wt_write_ok "$file" || exit 1   # t-f7e6
   mkdir -p "$ticket_dir"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 

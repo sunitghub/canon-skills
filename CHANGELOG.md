@@ -6,6 +6,8 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- Security: in a linked worktree (a Cockpit or `tkt land` one), canon's shell tools no longer write through a link the branch planted. `tkt`, `sprint`, `evidence.sh`, `subagent-log.sh`, `gate-snapshot.sh` and the heartbeat refuse, with one line, a write when `.tickets`, a ticket folder, `.claude` or the file itself is a link or junction there; nothing outside the project is written. A main checkout's own links keep working. The Cockpit board and daemon follow in their own releases (t-f7e6).
+
 ## [0.60.3] - 2026-11-15
 
 - Fixed: `tkt land` now names what its worktree lacks for a test run (the `ln -s` for `node_modules`, `CANON_TICKETS_DIR` when the worktree has no `.tickets/`), and canon's own board-spec runner stops with that fix in one line instead of reporting about ten false failures there; it also copies `CANON_TICKETS_DIR`'s tickets when set. Test suites that pin TMPDIR now keep their temporary folders inside it on macOS too; the close checklist says to take the post-gate snapshot before committing fixes (t-fff4).

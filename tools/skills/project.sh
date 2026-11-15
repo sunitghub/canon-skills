@@ -24,8 +24,9 @@ _create_dir_link() {
 _read_dir_link() {
   local link="$1"
   if _is_windows; then
-    powershell.exe -NoProfile -Command \
-      "\$i=Get-Item -LiteralPath '$(cygpath -w "$link")' -EA SilentlyContinue; if(\$i){\$i.Target}" \
+    # t-f7e6: the path through an environment variable, never the command text (a ' in a folder name would run as PowerShell)
+    CANON_LINK_PATH="$(cygpath -w "$link")" powershell.exe -NoProfile -Command \
+      '$i=Get-Item -LiteralPath $env:CANON_LINK_PATH -EA SilentlyContinue; if($i){$i.Target}' \
       2>/dev/null | tr -d '\r\n' | cygpath -u -f - 2>/dev/null || true
   else
     readlink "$link"
