@@ -125,6 +125,29 @@ wid="$(cd "$W/wtu" && "$TKT" create "From the worktree" -t task)" || fail "a wor
 [[ -f "$U/real/$wid/ticket.md" && -n "$uid" ]] || fail "the worktree's write did not reach the main checkout's linked .tickets"
 echo "worktree-write-links: plain worktree, CANON_TICKETS_DIR and the person's own links still work"
 
+# The sweep (evaluator, attempt 3: every writer must remember its guard, so each attempt found a new one): every writing command, run
+# with each folder canon writes under planted as a link to an outside folder. A folder link catches a writer with no guard at all (or one
+# that writes before its first guard); a second write after a guarded one is stopped by that guard's refusal first, so those are the
+# planted file cases above (each found by an evaluator). The full name-by-name matrix (~460 runs, ~4 min) is too slow for the suite.
+sweep_cmds=("$TKT start $id" "$TKT reopen $id" "$TKT demo $id on" "$TKT demo $id off" "$TKT manual $id on" "$TKT gate $id on" "$TKT tags $id add x"
+  "$TKT learn $id" "$TKT compact --older-than 0" "$TKT create N -t task" "$SPRINT start $id" "$SPRINT approve $id" "$SPRINT eval-verdict $id"
+  "$ROOT/tools/work-beat touch" "$ROOT/tools/work-beat clear" "$ROOT/tools/gate-snapshot.sh pre .tickets/$id/gate-snapshot.txt"
+  "$ROOT/tools/gate-snapshot.sh post .tickets/$id/gate-snapshot.txt" "$ROOT/tools/evidence.sh stamp $id test-sh -- true"
+  "$ROOT/tools/subagent-log.sh --agent-id a --agent-type reviewer --ticket $id --tokens 1 --minutes 1" landrun)
+escaped=""; nsw=0
+for d in .tickets ".tickets/$id" ".tickets/$id/evidence" .claude; do
+  for c in "${sweep_cmds[@]}"; do
+    reset_wt; mkdir -p "$WT/.tickets/$id/evidence" "$WT/.claude"; echo "$id" > "$WT/.tickets/ACTIVE"
+    (cd "$WT" && "$ROOT/tools/gate-snapshot.sh" pre ".tickets/$id/gate-snapshot.txt" >/dev/null 2>&1) || true
+    rm -rf "$OUT/swept"; mkdir -p "$OUT/swept"; cp -R "$WT/$d/." "$OUT/swept/" 2>/dev/null || true
+    rm -rf "${WT:?}/${d:?}"; ln -s "$OUT/swept" "$WT/$d"; before="$(outsig)"
+    (cd "$WT" && eval "$c" >/dev/null 2>&1 < /dev/null) || true
+    nsw=$((nsw + 1)); [[ "$(outsig)" == "$before" ]] || escaped+="  $d linked: ${c#"$ROOT/tools/"}"$'\n'
+  done
+done
+rm -rf "$OUT/swept"
+[[ -z "$escaped" ]] || fail "these writes went outside the worktree through a planted folder link:"$'\n'"$escaped"
+echo "worktree-write-links: sweep: $nsw runs, nothing outside changed"
 # A bare call under set -e at the worktree's top returns 0 for a plain path (git's empty --show-prefix line made read return 1 there)
 reset_wt; r="$(cd "$WT" && bash -c 'set -e; source "$1/tools/platform-lib.sh"; wt_write_ok f.txt; echo passed' _ "$ROOT" 2>&1)" || true
 assert_eq passed "$r"
