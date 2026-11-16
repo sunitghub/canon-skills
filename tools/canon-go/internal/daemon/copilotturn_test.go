@@ -20,6 +20,7 @@ const (
 	evEnd       = `{"type":"assistant.turn_end","data":{"turnId":"0"}}`
 	evSubStart  = `{"type":"subagent.started","agentId":"a1","data":{}}`
 	evSubDone   = `{"type":"subagent.completed","agentId":"a1","data":{}}`
+	evSubFail   = `{"type":"subagent.failed","agentId":"a1","data":{}}`
 	evSubTurn   = `{"type":"assistant.turn_start","agentId":"a1","data":{}}`
 	evSubMsg    = `{"type":"assistant.message","agentId":"a1","data":{"toolRequests":[]}}`
 	evSubEnd    = `{"type":"assistant.turn_end","agentId":"a1","data":{}}`
@@ -76,6 +77,9 @@ func TestCopilotTurnStatuses(t *testing.T) {
 		{"main turn ends while a subagent runs", nl(evStart, evMsgNone, evSubStart, evEnd), []string{"running"}},
 		{"the subagent finishes after", nl(evStart, evMsgNone, evSubStart, evEnd, evSubDone), []string{"running", "awaiting-input"}},
 		{"a turn aborted after asking for tools", nl(evStart, evMsgTools, evEnd, evStart, evEnd), []string{"running", "running", "awaiting-input"}},
+		{"a subagent that failed counts as finished", nl(evStart, evMsgNone, evSubStart, evEnd, evSubFail), []string{"running", "awaiting-input"}},
+		{"a subagent finishing mid-turn ends nothing", nl(evStart, evMsgTools, evSubStart, evSubDone), []string{"running"}},
+		{"a stray subagent.completed never goes below zero", nl(evSubDone, evStart, evMsgNone, evEnd), []string{"running", "awaiting-input"}},
 		{"user.message and model_change change nothing", nl(evUser, evModel), nil},
 		{"a malformed line is skipped", nl(evStart, `{"type":"assistant.message","data":{"toolRequests":[`, evMsgNone, evEnd), []string{"running", "awaiting-input"}},
 	}
@@ -152,10 +156,24 @@ func TestCopilotEventsPathNeedsCanonsID(t *testing.T) {
 	if got := copilotEventsPath(home, "11111111-2222-4333-8444-555555555555"); got != filepath.Join(home, "session-state", "11111111-2222-4333-8444-555555555555", "events.jsonl") {
 		t.Fatalf("a canon id: %q", got)
 	}
-	for _, sid := range []string{"", "../../etc", "11111111-2222-4333-8444-555555555555/../x", "ABCDEF01-2222-4333-8444-555555555555"} {
+	for _, sid := range []string{"", "../../etc", "../11111111-2222-4333-8444-555555555555", "11111111-2222-4333-8444-555555555555x", "11111111-2222-4333-8444-555555555555/../x", "ABCDEF01-2222-4333-8444-555555555555"} {
 		if got := copilotEventsPath(home, sid); got != "" {
 			t.Fatalf("%q named %q", sid, got)
 		}
+	}
+}
+
+// t-c723: a log replaced or cut shorter than what was read starts over from its first byte.
+func TestCopilotTurnRestartsOnTruncatedLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "events.jsonl")
+	tr := &copilotTurn{}
+	appendLog(t, path, nl(evUser, evStart, evMsgTools, evEnd, evStart, evMsgTools, evEnd)...)
+	readAll(t, tr, path)
+	if err := os.WriteFile(path, []byte(evStart+"\n"+evMsgNone+"\n"+evEnd+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readAll(t, tr, path); !reflect.DeepEqual(got, []string{"running", "awaiting-input"}) {
+		t.Fatalf("after the log was cut: got %q", got)
 	}
 }
 

@@ -45,12 +45,31 @@ assert_eq "model: claude-haiku-5.5 (Admin Spec check default, copilot)" "$(COPIL
 assert_eq "model: opus (Admin Reviewer default, claude)" "$(COPILOT_CLI=0 gm reviewer)"            # only exactly 1 means Copilot
 assert_eq "none: omit model (pi has no Model tiers pick)" "$(COCKPIT_AGENT=pi gm reviewer)"
 assert_contains "$(gm bogus)" "Usage: sprint gate-model"
+assert_contains "$(gm reviewerx)" "EXIT 1"                                                          # the whole role, nothing around it
+assert_contains "$(gm xreviewer)" "EXIT 1"
+assert_contains "$("$SPRINT" gate-model "" reviewer 2>&1 || echo "EXIT $?")" "EXIT 1"
+assert_eq "Sprint t-zzzz: plan.md not found.
+EXIT 1" "$("$SPRINT" gate-model t-zzzz reviewer 2>&1 || echo "EXIT $?")"
 
 # the line gate-snapshot prints before each dispatch is the same resolution
 assert_eq "gate-snapshot: dispatch canon-reviewer with model: opus (Admin Reviewer default, claude)" "$(snap reviewer)"
 assert_eq "gate-snapshot: dispatch canon-evaluator with model: gpt-6-luna (Admin Evaluator default, copilot)" "$(COPILOT_CLI=1 snap evaluator)"
 assert_eq "gate-snapshot: dispatch canon-spec-checker with model: sonnet (Admin Spec check default, claude)" "$(snap speccheck)"
 assert_eq "" "$(snap evaluator2)"                                                                       # second-eval names its own model
+# no line, and pre still succeeds, for another role or a snapshot outside a ticket folder
+"$ROOT/tools/gate-snapshot.sh" pre "$t/gate-snapshot.txt" --role evaluator2 >/dev/null || fail "pre --role evaluator2 failed"
+"$ROOT/tools/gate-snapshot.sh" post "$t/gate-snapshot.txt" >/dev/null
+mkdir -p "$W/loose/.tickets/notes"; printf '# Plan\n' > "$W/loose/plan.md"; cp "$W/loose/plan.md" "$W/loose/.tickets/notes/"
+for f in "$W/loose/gate-snapshot.txt" "$W/loose/.tickets/notes/gate-snapshot.txt"; do
+  out="$("$ROOT/tools/gate-snapshot.sh" pre "$f" --role reviewer)" || fail "pre outside a ticket failed: $f"
+  "$ROOT/tools/gate-snapshot.sh" post "$f" >/dev/null
+  [[ "$f" == */notes/* ]] && continue                                                                   # .tickets/<name> with a plan.md is a ticket
+  assert_eq "" "$(grep dispatch <<<"$out" || true)"
+done
+rm -f "$W/loose/plan.md"; mkdir -p "$W/loose/.tickets/t-ab99"
+out="$("$ROOT/tools/gate-snapshot.sh" pre "$W/loose/.tickets/t-ab99/gate-snapshot.txt" --role reviewer)" || fail "pre in a folder with no plan.md failed"
+"$ROOT/tools/gate-snapshot.sh" post "$W/loose/.tickets/t-ab99/gate-snapshot.txt" >/dev/null
+assert_eq "" "$(grep dispatch <<<"$out" || true)"
 # a failed lookup is said, not silent: gate-snapshot beside a sprint that fails
 mkdir "$W/tools"; for f in "$ROOT"/tools/*; do ln -s "$f" "$W/tools/"; done
 rm "$W/tools/sprint" "$W/tools/gate-snapshot.sh"; cp "$ROOT/tools/gate-snapshot.sh" "$W/tools/"
@@ -67,16 +86,20 @@ assert_eq "model: gpt-6-terra (Admin Spec check default, copilot)" "$(COPILOT_CL
 assert_eq "gate-snapshot: dispatch canon-evaluator: none: omit model (Admin's Evaluator pick haiku is a Haiku model; the binding evaluator never runs on Haiku outside Lite)" "$(snap evaluator)"
 reg '{"defaults":{},'"$MODELS"'}'
 assert_eq "none: omit model (no Admin Reviewer default for claude)" "$(gm reviewer)"
+# an Agent-tool alias must be the whole pick, not a part of it
+reg '{"defaults":{"reviewer":{"claude":"my-opus"},"evaluator":{"claude":"sonnet-legacy"}},"models":{"anthropic":[{"id":"my-opus"},{"id":"sonnet-legacy"}]}}'
+assert_eq "none: omit model (Admin's Reviewer pick my-opus has no alias the Agent tool takes)" "$(gm reviewer)"
+assert_eq "none: omit model (Admin's Evaluator pick sonnet-legacy has no alias the Agent tool takes)" "$(gm evaluator)"
 
 # 3. the ticket's own rule wins: a Gate model line (any value), or a Lite ticket's evaluator
 reg '{"defaults":{"reviewer":{"claude":"claude-opus-5-5"},"evaluator":{"claude":"claude-sonnet-5-5"}},'"$MODELS"'}'
 signoff "Tier: normal | Risk: x | Gate model: haiku"
-assert_contains "$(gm reviewer)" "ticket rule: the ticket's Gate model line"
+assert_eq "ticket rule: the ticket's Gate model line — complete.md \"Model tier for gates\"" "$(gm reviewer)"
 signoff "Tier: normal | Risk: x | Gate model: session"
-assert_contains "$(gm evaluator)" "ticket rule: the ticket's Gate model line"
+assert_eq "ticket rule: the ticket's Gate model line — complete.md \"Model tier for gates\"" "$(gm evaluator)"
 signoff "Tier: normal | Risk: x"
 awk 'NR==1 { print; print "demo: true"; next } 1' "$t/ticket.md" > "$t/ticket.tmp" && mv "$t/ticket.tmp" "$t/ticket.md"
-assert_contains "$(gm evaluator)" "ticket rule: Lite (demo: true) evaluator"
+assert_eq "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier for gates\"" "$(gm evaluator)"
 assert_eq "model: opus (Admin Reviewer default, claude)" "$(gm reviewer)"                           # Lite changes only the evaluator
 
 # 4. complete-checklist.md tells the agent to pass the printed model, inside its cap
@@ -95,6 +118,7 @@ for bad in "verdict: pass — all criteria met" "**pass:** all met" "## pass" "P
   assert_contains "$out" "must start the line with \`pass: <one-line summary>\`"
   assert_eq 1 "$(count)"
 done
+verdict "Everything should pass"; assert_eq 0 "$rc"; assert_eq 2 "$(count)"               # no verdict-like line: counted as before
 verdict "pass: all met"; assert_eq 0 "$rc"; assert_eq 0 "$(count)"
 verdict "fail: x"; assert_eq 0 "$rc"; assert_eq 1 "$(count)"
 assert_contains "$(cat "$ROOT/agents/canon-evaluator.md")" "starts the line with \`pass:\` or \`fail:\`"
