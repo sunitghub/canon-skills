@@ -7,7 +7,21 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 W="$(cd "$(command mktemp -d "${TMPDIR:-/tmp}/wt-write-links.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$W"' EXIT
+# t-c206: the sweep runs gate-snapshot.sh pre ~80 times; unpinned, each scope went to the real /tmp registry (a parallel suite's
+# uninstall, and the user's own canon update for 2 h, then refused) and its dir to the system temp folder (macOS `mktemp -d`
+# ignores TMPDIR), so the trap removes every dir its own registry recorded and fails if one survives.
+REG="$W/registry"; export CANON_GATE_SCOPE_DIR="$REG"
+scope_cleanup() {
+  local f d left=""
+  for f in "$CANON_GATE_SCOPE_DIR"/*; do
+    [[ -f "$f" ]] || continue
+    d="$(sed -n 's/^dir=//p' "$f")"; [[ "$d" == /*/* ]] || continue
+    rm -rf "$d"; [[ ! -e "$d" ]] || left+=" $d"
+  done
+  rm -rf "$W"
+  [[ -z "$left" ]] || { echo "FAIL: worktree-write-links left gate scope dirs:$left" >&2; exit 1; }
+}
+trap scope_cleanup EXIT
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" CANON_HOME="$W/home/.canon" TMPDIR="$W/tmp"; mkdir -p "$HOME" "$TMPDIR"
 unset CANON_TICKETS_DIR   # a stamp exports it (the checklist's recipe): the writers here must resolve the worktree's own tickets
 git config --global init.defaultBranch main; git config --global user.name t; git config --global user.email t@e
@@ -159,4 +173,14 @@ assert_eq passed "$r"
 for fn in _is_dir_link _under_link _not_regular wt_write_ok; do
   n="$(grep -rhE "^${fn}\(\)" "$ROOT/tools" | wc -l | tr -d ' ')"; assert_eq 1 "$n"
 done
+# t-c206: the scopes went to the pinned registry, and the real one holds nothing of ours (only our own records are checked: a real
+# gate or a parallel suite may add or prune others meanwhile).
+ls "$REG"/* >/dev/null 2>&1 || fail "no gate scope landed in the pinned registry (CANON_GATE_SCOPE_DIR not used)"
+ours="$(cd "$REG" && sed -n 's/^dir=//p' ./* | sort -u)"
+for f in "/tmp/canon-gate-scope-$(id -u)"/*; do
+  [[ -f "$f" ]] || continue
+  ! grep -qxF "home=$HOME" "$f" || fail "a scope of this test is in the real registry: $f"
+  d="$(sed -n 's/^dir=//p' "$f")"; [[ -z "$d" ]] || ! grep -qxF -- "$d" <<< "$ours" || fail "a scope dir of this test is in the real registry: $f"
+done
+echo "worktree-write-links: gate scopes stayed in the pinned registry"
 echo "worktree-write-links: ok"
