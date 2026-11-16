@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.61.3] - 2026-11-16
+
+- Fixed: a project that got canon's skills before version history was turned on no longer saves canon's skill folders (`.claude/skills`, `.agents/skills`) in its first commit or first snapshot. Turn on git and Save a first snapshot now add canon's ignore lines when those folders exist, and the snapshot refuses, saying why, while one of them is still not ignored. A failed Turn on git puts your `.gitignore` back exactly as it was; a `.gitignore` that is a link, a FIFO or unreadable is never changed (t-d8af).
+- Fixed: canon's lines added to `.gitignore`, `AGENTS.md`, `.gitattributes` and `.tickets/.gitignore` always start on a new line, also when the file ends without a newline or in NUL bytes (seen on Windows after a crash); before, the first line could be glued to the last one and ignored (t-d8af).
+- The board and the Cockpit daemon changed: after `canon update`, restart the daemon (Admin > Restart Daemon).
+
 ## [0.61.2] - 2026-11-16
 
 - Fixed: `context-doctor` prints no Summary table and no lean/trim/overloaded verdict for a repo with no agent context; before, it could report `lean` for a repo it never audited. Its evals now cover the `--model 4|5` modes, the model-agnostic checks (checkpoint/pause, progress-claim grounding) and the Claude 5 checks, including an Opus 5 target (t-7e8c).
