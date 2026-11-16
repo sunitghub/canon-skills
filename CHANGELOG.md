@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.63.1] - 2026-11-16
+
+- Security: the CI gate workflow that **Set up CI gate** writes now pins Node **22.23.5**, a security release of Node 22 (it pinned 22.23.4). A project that already set up the CI gate keeps its own copy of the workflow: re-run **Set up CI gate**, or change `node-version: 22.23.4` to `22.23.5` in `.github/workflows/` yourself (t-d600).
+- Changed: `scripts/release.sh` (maintainers) runs `scripts/check-vendored.sh` first and refuses when a pinned dependency has a security release waiting, or when that lookup cannot answer; `CANON_RELEASE_SKIP_VENDORED=<reason>` skips it (t-d600).
+
 ## [0.63.0] - 2026-11-16
 
 - Fixed: a Manual ticket sent to GitHub with `--manual-after-merge` now reaches **Check & merge** on its card after Import results. Before, the card stopped at "results ready" and offered Continue here, because the check for "the graded commit plus close docs" ran only for a closed ticket (t-788f).
