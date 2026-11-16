@@ -51,6 +51,12 @@ assert_eq "gate-snapshot: dispatch canon-reviewer with model: opus (Admin Review
 assert_eq "gate-snapshot: dispatch canon-evaluator with model: gpt-6-luna (Admin Evaluator default, copilot)" "$(COPILOT_CLI=1 snap evaluator)"
 assert_eq "gate-snapshot: dispatch canon-spec-checker with model: sonnet (Admin Spec check default, claude)" "$(snap speccheck)"
 assert_eq "" "$(snap evaluator2)"                                                                       # second-eval names its own model
+# a failed lookup is said, not silent: gate-snapshot beside a sprint that fails
+mkdir "$W/tools"; for f in "$ROOT"/tools/*; do ln -s "$f" "$W/tools/"; done
+rm "$W/tools/sprint" "$W/tools/gate-snapshot.sh"; cp "$ROOT/tools/gate-snapshot.sh" "$W/tools/"
+printf '#!/usr/bin/env bash\necho "registry unreadable" >&2; exit 1\n' > "$W/tools/sprint"; chmod +x "$W/tools/sprint"
+out="$("$W/tools/gate-snapshot.sh" pre "$t/gate-snapshot.txt" --role reviewer | grep dispatch || true)"; "$ROOT/tools/gate-snapshot.sh" post "$t/gate-snapshot.txt" >/dev/null
+assert_eq "gate-snapshot: dispatch canon-reviewer: no model line (sprint gate-model failed: registry unreadable); look it up as complete.md \"Model tier for gates\" says" "$out"
 
 # 2. complete.md's fail-safes: a Haiku evaluator pick, a Claude pick with no Agent-tool alias, no pick, no speccheck default
 reg '{"defaults":{"reviewer":{"claude":"claude-mythos-1","copilot":"gpt-6-terra"},"evaluator":{"claude":"claude-haiku-5-5","copilot":"claude-haiku-5.5"}},'"$MODELS"'}'

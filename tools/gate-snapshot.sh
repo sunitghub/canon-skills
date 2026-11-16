@@ -100,8 +100,12 @@ print_gate_model() {
   tdir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)" || return 0
   id="$(basename "$tdir")"
   [[ "$(basename "$(dirname "$tdir")")" == .tickets && -f "$tdir/plan.md" ]] || return 0
-  line="$("$SCRIPT_DIR/sprint" gate-model "$id" "$role" 2>/dev/null)" || return 0
   agent="canon-$role"; [[ "$role" != speccheck ]] || agent=canon-spec-checker
+  # a failed lookup is said, never silent: silence leaves the agent on the unaided lookup that floored the Copilot gates
+  line="$("$SCRIPT_DIR/sprint" gate-model "$id" "$role" 2>&1)" || {
+    echo "gate-snapshot: dispatch $agent: no model line (sprint gate-model failed: ${line%%$'\n'*}); look it up as complete.md \"Model tier for gates\" says"
+    return 0
+  }
   case "$line" in
     "model: "*) echo "gate-snapshot: dispatch $agent with $line" ;;
     ?*) echo "gate-snapshot: dispatch $agent: $line" ;;
