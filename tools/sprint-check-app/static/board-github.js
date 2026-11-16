@@ -72,6 +72,13 @@ function cloudWorking(st) {
   const at = Date.parse(st.started);
   return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
 }
+// t-a7e0: a session was launched (the trail's newest event is the launch) and has not pushed yet, within the same hour: starting.
+// The Cloud row reads the same rule from the board (remoteAgents, cloudStartingWindow).
+function cloudStarting(st) {
+  if (st.stage !== 'sent' || !st.launched || st.launched !== st.started) return false;
+  const at = Date.parse(st.launched);
+  return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
+}
 // t-1148: a ticket closed here whose only trace on GitHub is a branch or a send has nothing running there (the Cloud row says the same).
 const closedHere = (t, st) => t.status === 'closed' && (st.stage === 'branch' || st.stage === 'sent');
 // t-2560: on Windows To Claude Cloud copies the command; the message walks through the Terminal and su (t-df13).
@@ -99,6 +106,7 @@ export function ghChipHTML(t) {
   const p = ghParts(t), st = stageOf(t), n = p ? `GitHub #${p.issue}` : 'GitHub';
   let text = n, title = String(t.github);
   if (closedHere(t, st)) { text += ' · closed here'; title = `Closed here; nothing is open on GitHub (tkt take-back ${t.id} clears this)`; }   // t-1148
+  else if (st.stage === 'sent' && cloudStarting(st)) { text += ' · starting'; title = 'A cloud session was launched; it has not pushed its branch yet'; }   // t-a7e0
   else if (st.stage === 'sent') text += ' · sent';
   else if (st.stage === 'pr-open' && st.land && !st.close_here) { text += `${prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open'} · imported, sprint did not finish`; title = `Results are imported but the cloud sprint did not finish: Continue here (tkt land ${t.id})`; }   // t-b99b
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
