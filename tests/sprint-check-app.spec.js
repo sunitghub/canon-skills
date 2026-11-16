@@ -17412,7 +17412,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // t-a811: a click (or Enter) on a card's id copies it, says Copied, and never opens the card; the menu's Copy ID is still there.
-  test('clicking a card id copies it without opening the card (t-a811)', async ({ page }) => {
+  test('clicking a card id copies it without opening the card (t-a811) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gcp');
     ghTicket(id);
     await page.addInitScript(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
@@ -18870,11 +18870,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-gh-count')).not.toHaveText('Checks · checking…');
   });
 
-  // Prod path: Factory › GitHub (t-d287): the doctor's repo-setup group renders as sub-steps 2.1, 2.2, 2.3, each with its own Copy,
-  // a satisfied one shows no command, and the header counts the required checks and says the optional one apart.
   // t-a811: Factory › GitHub's workflow is a looping flowchart: Next lights each box in turn and wraps Merge → Send, Back goes the other
   // way, All steps shows the list, and Play moves one stage every 5 s (counting down) until any other control stops it.
-  test('Factory GitHub workflow: a looping flowchart with Next, Back, All steps and Play (t-a811)', async ({ page }) => {
+  test('Factory GitHub workflow: a looping flowchart with Next, Back, All steps and Play (t-a811) @webkit', async ({ page }) => {
     const projects = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }];
     await page.route('**/api/projects', r => json(r, projects));
     await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [], cloud: { domains: [], setup_script: '' } } }));
@@ -18917,6 +18915,8 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(await page.locator('#fac-gh .gh-card').first().evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   });
 
+  // Prod path: Factory › GitHub (t-d287): the doctor's repo-setup group renders as sub-steps 2.1, 2.2, 2.3, each with its own Copy,
+  // a satisfied one shows no command, and the header counts the required checks and says the optional one apart.
   test('Factory GitHub numbers step 2 as sub-steps with a Copy each, hides a satisfied one, and counts required checks only (t-d287) @webkit', async ({ page }) => {
     const projects = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }];
     const G = 'repo-setup';

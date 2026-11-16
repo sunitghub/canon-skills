@@ -155,7 +155,6 @@ function facTab(which){
   if(which==='pipe') loadPipeline(true);   // t-c543: Admin's model and the file are read again on every visit
 }
 
-// t-9641: factory's load-time code, run once at the end.
 // t-a811: Factory › GitHub's workflow as a looping flowchart: one box lit, its text below, Next/Back, and Play (one stage every
 // FLOW_STEP_MS, looping) that any other control stops. The step text comes from the list (#gh-steps), which stays in the DOM.
 export const FLOW_STEP_MS=5000;
@@ -167,7 +166,11 @@ function flowRender(){
   flow.innerHTML=steps.map((li,i)=>`<span class="gh-flow-box${i===flowAt?' on':''}" data-i="${i}"><b>${esc((li.querySelector('b')||li).textContent.replace(/\.$/,''))}</b></span>`+(i<steps.length-1?'<span class="gh-flow-arrow">&rarr;</span>':'')).join('')
     +'<span class="gh-flow-loop" title="and back to the first step">&#8635; back to '+esc((steps[0].querySelector('b')||steps[0]).textContent.replace(/\.$/,''))+'</span>';
   note.innerHTML=`<span class="gh-flow-n">${flowAt+1} of ${steps.length}</span> `+steps[flowAt].innerHTML;
-  const play=document.getElementById('gh-flow-play');
+  flowPlayLabel();
+}
+// the Play button's own label: the tick changes only this, so the aria-live step note is not re-announced every second
+function flowPlayLabel(){
+  const play=document.getElementById('gh-flow-play'); if(!play) return;
   play.textContent=flowPlay ? `❚❚ Pause · ${flowLeft}s` : '▶ Play'; play.setAttribute('aria-pressed',String(!!flowPlay));
 }
 export function flowGo(d){ const n=flowSteps().length; if(!n) return; flowAt=((flowAt+d)%n+n)%n; flowRender(); }
@@ -175,7 +178,10 @@ function flowStop(){ if(flowPlay){ clearInterval(flowPlay); flowPlay=0; } flowRe
 function flowToggle(){
   if(flowPlay){ flowStop(); return; }
   flowLeft=FLOW_STEP_MS/1000;
-  flowPlay=setInterval(()=>{ flowLeft--; if(flowLeft<=0){ flowLeft=FLOW_STEP_MS/1000; flowGo(1); } else flowRender(); },1000);
+  flowPlay=setInterval(()=>{
+    if(!document.getElementById('gh-flow')?.offsetParent){ flowStop(); return; }   // the Factory tab left: Play stops, it never runs unseen
+    flowLeft--; if(flowLeft<=0){ flowLeft=FLOW_STEP_MS/1000; flowGo(1); } else flowPlayLabel();
+  },1000);
   flowRender();
 }
 function initFlow(){
@@ -188,6 +194,7 @@ function initFlow(){
   flowRender();
 }
 
+// t-9641: factory's load-time code, run once at the end.
 export function initFactory(){
 document.addEventListener('DOMContentLoaded',()=>{
   initFlow();

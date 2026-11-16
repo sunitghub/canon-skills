@@ -269,3 +269,5 @@
   /* t-a811: which steps run in your own session and which in a fresh subagent */
   .mt-runs{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--border-hover);border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.03em;color:var(--text-muted);vertical-align:1px}
   .mt-runs.sub{border-color:var(--accent);color:var(--accent)}
+  .mt-card-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .mt-card-h .mt-runs{margin-left:0}

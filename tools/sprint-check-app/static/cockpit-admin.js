@@ -187,7 +187,7 @@ function mtRender(){
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
       const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
-      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}${ui.runs?` <span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
+      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }
