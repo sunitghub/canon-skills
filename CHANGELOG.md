@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-11-16
+
+- Fixed: a Manual ticket sent to GitHub with `--manual-after-merge` now reaches **Check & merge** on its card after Import results. Before, the card stopped at "results ready" and offered Continue here, because the check for "the graded commit plus close docs" ran only for a closed ticket (t-788f).
+- New: after the merge, such a ticket's card offers **Test & close** instead of ▶ Start: a form for who tested it and each step with Pass or Fail. **Record and close** records the test (`sprint manual-qa`) and, when every step passed, closes the ticket. A failed step is recorded and the ticket stays open (t-788f).
+- Fixed: `sprint complete <id>` closes that ticket on your recorded test. Before, it ignored the id and said "No active sprint". It closes only when the merge is in your checkout, the merged PR head is the graded commit plus close docs, the cloud's evaluator passed, nothing but `[manual]` criteria is unchecked and your test record is fresh with every step passing; it ticks the `[manual]` criteria, citing the record. Anything else is refused and changes nothing. `sprint complete <other id>` while another sprint is active now refuses instead of closing the active sprint (t-788f).
+- The board and the Cockpit daemon changed: after `canon update`, restart the daemon (Admin > Restart Daemon).
+
 ## [0.62.1] - 2026-11-16
 
 - Fixed: a Cockpit session in a worktree now switches to the Build model after `sprint approve`, and a session started or resumed after the approval starts on the Build model. In a project that tracks `.tickets/` in git, the worktree has its own copy of the ticket, and `sprint approve` pins the plan there; the daemon read the main checkout's copy, saw no approval and never typed `/model`. It now reads the ticket's `plan.md` and `ticket.md` from the worktree the ticket is bound to (a worktree git knows about, with no links), else from the main checkout (t-874a).
