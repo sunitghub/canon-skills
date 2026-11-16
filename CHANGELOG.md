@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-11-16
+
+- Fixed: a Copilot CLI session in the Cockpit now switches to the Build model after `sprint approve`. The daemon reads Copilot's own session log (`~/.copilot/session-state/<id>/events.jsonl`, read-only), sees when Copilot's turn ends, then types `/model <build>` and the continue line, as it already did for Claude Code. Before, the session stayed on the Plan model (t-c723).
+- Fixed: the close gates run on Admin's model under Copilot CLI too. `gate-snapshot.sh pre` now prints the model to dispatch each gate (reviewer, evaluator, spec check) with, e.g. `gate-snapshot: dispatch canon-evaluator with model: claude-sonnet-5.5 (Admin Evaluator default, copilot)`, and the close checklist says to pass it. Before, Copilot ran the gates on the agent file's floor model (`claude-sonnet-5`). New: `sprint gate-model <id> <reviewer|evaluator|speccheck>` prints the same line (t-c723).
+- Changed: `sprint eval-verdict` refuses an eval report whose verdict line has another shape (`verdict: pass`, `**pass:**`, a heading) and leaves the fail count alone; the evaluator agent is told to start that line with `pass:` or `fail:` (t-c723).
+- The Cockpit daemon changed: after `canon update`, restart the daemon (Admin > Restart Daemon).
+
 ## [0.61.4] - 2026-11-16
 
 - Changed: the `> Platforms:` line canon writes into each project's `AGENTS.md` now tells agents to run canon's commands (`sprint`, `tkt`, `skills`, `canon`) exactly as written, never piped into `head`, `Select-Object`, a pager or a filter, because their output is the next step. On Windows they run from any shell, PowerShell included, through their `.cmd` shims, which start Git Bash; `.sh` scripts still need Git Bash. The old "never PowerShell or cmd" wording is gone. Projects pick up the new line on their next `canon update` or `skills.sh refresh` (t-fcb1).
