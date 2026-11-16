@@ -1655,7 +1655,7 @@ _gate_agent() {
 #   ticket rule: <why> — complete.md "Model tier for gates"   (a Gate model: line, or a Lite evaluator: the agent applies that rule)
 #   none: omit model (<why>)                                    (the agent file's floor)
 # The fail-safes are complete.md's: a Haiku evaluator pick and a Claude pick with no Agent-tool alias are omitted; the spec checker
-# falls back to the reviewer pick when the registry has no speccheck default; pi has no pick.
+# gets the reviewer pick when the registry has no speccheck default (the loader fills it, as Admin shows); pi has no pick.
 cmd_gate_model() {
   local id="${1:-}" role="${2:-}" tdir plan agent m label
   [[ -n "$id" && "$role" =~ ^(reviewer|evaluator|speccheck)$ ]] || { echo "Usage: sprint gate-model <ticket-id> <reviewer|evaluator|speccheck>" >&2; exit 1; }
@@ -1671,7 +1671,6 @@ cmd_gate_model() {
   agent="$(_gate_agent)"
   [[ "$agent" == claude || "$agent" == copilot ]] || { echo "none: omit model ($agent has no Model tiers pick)"; return 0; }
   m="$(_admin_stage_model "$role" "$agent")"
-  [[ -n "$m" || "$role" != speccheck ]] || m="$(_admin_stage_model reviewer "$agent")"
   [[ -n "$m" ]] || { echo "none: omit model (no Admin $label default for $agent)"; return 0; }
   if [[ "$role" == evaluator && "$(printf '%s' "$m" | tr 'A-Z' 'a-z')" == *haiku* ]]; then
     echo "none: omit model (Admin's Evaluator pick $m is a Haiku model; the binding evaluator never runs on Haiku outside Lite)"; return 0

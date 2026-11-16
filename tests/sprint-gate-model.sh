@@ -53,11 +53,11 @@ assert_eq "gate-snapshot: dispatch canon-spec-checker with model: sonnet (Admin 
 assert_eq "" "$(snap evaluator2)"                                                                       # second-eval names its own model
 
 # 2. complete.md's fail-safes: a Haiku evaluator pick, a Claude pick with no Agent-tool alias, no pick, no speccheck default
-reg '{"defaults":{"reviewer":{"claude":"claude-mythos-1","copilot":"claude-sonnet-5.5"},"evaluator":{"claude":"claude-haiku-5-5","copilot":"claude-haiku-5.5"}},'"$MODELS"'}'
+reg '{"defaults":{"reviewer":{"claude":"claude-mythos-1","copilot":"gpt-6-terra"},"evaluator":{"claude":"claude-haiku-5-5","copilot":"claude-haiku-5.5"}},'"$MODELS"'}'
 assert_contains "$(gm evaluator)" "none: omit model (Admin's Evaluator pick haiku is a Haiku model"
 assert_contains "$(COPILOT_CLI=1 gm evaluator)" "none: omit model (Admin's Evaluator pick claude-haiku-5.5 is a Haiku model"
 assert_eq "none: omit model (Admin's Reviewer pick claude-mythos-1 has no alias the Agent tool takes)" "$(gm reviewer)"
-assert_eq "model: claude-sonnet-5.5 (Admin Spec check default, copilot)" "$(COPILOT_CLI=1 gm speccheck)"   # no speccheck: the reviewer pick
+assert_eq "model: gpt-6-terra (Admin Spec check default, copilot)" "$(COPILOT_CLI=1 gm speccheck)"   # no speccheck: the reviewer pick (the loader fills it)
 assert_eq "gate-snapshot: dispatch canon-evaluator: none: omit model (Admin's Evaluator pick haiku is a Haiku model; the binding evaluator never runs on Haiku outside Lite)" "$(snap evaluator)"
 reg '{"defaults":{},'"$MODELS"'}'
 assert_eq "none: omit model (no Admin Reviewer default for claude)" "$(gm reviewer)"
