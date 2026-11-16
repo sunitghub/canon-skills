@@ -155,9 +155,49 @@ function facTab(which){
   if(which==='pipe') loadPipeline(true);   // t-c543: Admin's model and the file are read again on every visit
 }
 
+// t-a811: Factory › GitHub's workflow as a looping flowchart: one box lit, its text below, Next/Back, and Play (one stage every
+// FLOW_STEP_MS, looping) that any other control stops. The step text comes from the list (#gh-steps), which stays in the DOM.
+export const FLOW_STEP_MS=5000;
+let flowAt=0, flowPlay=0, flowLeft=0;
+function flowSteps(){ return [...document.querySelectorAll('#gh-steps > li')]; }
+function flowRender(){
+  const steps=flowSteps(), flow=document.getElementById('gh-flow'), note=document.getElementById('gh-flow-note');
+  if(!steps.length || !flow || !note) return;
+  flow.innerHTML=steps.map((li,i)=>`<span class="gh-flow-box${i===flowAt?' on':''}" data-i="${i}"><b>${esc((li.querySelector('b')||li).textContent.replace(/\.$/,''))}</b></span>`+(i<steps.length-1?'<span class="gh-flow-arrow">&rarr;</span>':'')).join('')
+    +'<span class="gh-flow-loop" title="and back to the first step">&#8635; back to '+esc((steps[0].querySelector('b')||steps[0]).textContent.replace(/\.$/,''))+'</span>';
+  note.innerHTML=`<span class="gh-flow-n">${flowAt+1} of ${steps.length}</span> `+steps[flowAt].innerHTML;
+  flowPlayLabel();
+}
+// the Play button's own label: the tick changes only this, so the aria-live step note is not re-announced every second
+function flowPlayLabel(){
+  const play=document.getElementById('gh-flow-play'); if(!play) return;
+  play.textContent=flowPlay ? `❚❚ Pause · ${flowLeft}s` : '▶ Play'; play.setAttribute('aria-pressed',String(!!flowPlay));
+}
+export function flowGo(d){ const n=flowSteps().length; if(!n) return; flowAt=((flowAt+d)%n+n)%n; flowRender(); }
+function flowStop(){ if(flowPlay){ clearInterval(flowPlay); flowPlay=0; } flowRender(); }
+function flowToggle(){
+  if(flowPlay){ flowStop(); return; }
+  flowLeft=FLOW_STEP_MS/1000;
+  flowPlay=setInterval(()=>{
+    if(!document.getElementById('gh-flow')?.offsetParent){ flowStop(); return; }   // the Factory tab left: Play stops, it never runs unseen
+    flowLeft--; if(flowLeft<=0){ flowLeft=FLOW_STEP_MS/1000; flowGo(1); } else flowPlayLabel();
+  },1000);
+  flowRender();
+}
+function initFlow(){
+  const by=id=>document.getElementById(id);
+  if(!by('gh-flow')) return;
+  by('gh-flow-next').addEventListener('click',()=>{ flowStop(); flowGo(1); });
+  by('gh-flow-back').addEventListener('click',()=>{ flowStop(); flowGo(-1); });
+  by('gh-flow-play').addEventListener('click',flowToggle);
+  by('gh-flow-all').addEventListener('click',()=>{ flowStop(); const ol=by('gh-steps'), open=ol.hidden; ol.hidden=!open; by('gh-flow-all').setAttribute('aria-expanded',String(open)); by('gh-flow-all').textContent=open?'Hide steps':'All steps'; });
+  flowRender();
+}
+
 // t-9641: factory's load-time code, run once at the end.
 export function initFactory(){
 document.addEventListener('DOMContentLoaded',()=>{
+  initFlow();
   document.querySelectorAll('[data-fac-tab]').forEach(t=>{
     t.addEventListener('click',()=>facTab(t.dataset.facTab));
     t.addEventListener('keydown',e=>{   // Left and Right walk the tabs in order and wrap (t-3a58: three of them now)

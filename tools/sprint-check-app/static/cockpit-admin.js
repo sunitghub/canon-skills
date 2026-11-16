@@ -117,15 +117,15 @@ export async function loadAdmin(){
 // options, internal/board/modeltiers.go tierOptions); this file renders them.
 let mtData=null, mtProvider='anthropic', mtAgent='claude', mtCopilot={models:[],source:'fallback',read_at:''}, mtCopilotErr='', mtCopilotBusy=false, mtOpts={steps:[],agents:[],options:{}};
 const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
-// MT_STEP_UI is this page's own wording per step (where it is used); names and roles are the board's.
+// MT_STEP_UI is this page's own wording per step (where it is used, and t-a811's runs tag: your session, fresh subagent or light work); names and roles are the board's.
 const MT_STEP_UI={
-  plan:{used:'Used by: a Cockpit session until its plan is approved (research, acceptance criteria, the plan).'},
-  build:{used:'Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).'},
-  speccheck:{used:'Used by: sprint start, before you approve: a fresh agent grades acceptance.md and plan.md. Advisory: it never blocks.'},
-  reviewer:{used:'Used by: sprint complete step 2, the fresh reviewer.'},
-  evaluator:{used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
-  evaluator2:{used:'Used by: sprint complete, after the binding evaluator passes: a second opinion on another model, on high-risk tickets (or Second eval: on). Off until you pick one; never the Evaluator\'s model.'},
-  light:{used:'Used by: explore and orient, light implement steps, Factory Build.'}};
+  plan:{runs:'your session',used:'Used by: a Cockpit session until its plan is approved (research, acceptance criteria, the plan).'},
+  build:{runs:'your session',used:'Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).'},
+  speccheck:{runs:'fresh subagent',used:'Used by: sprint start, before you approve: a fresh agent grades acceptance.md and plan.md. Advisory: it never blocks.'},
+  reviewer:{runs:'fresh subagent',used:'Used by: sprint complete step 2, the fresh reviewer.'},
+  evaluator:{runs:'fresh subagent',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},
+  evaluator2:{runs:'fresh subagent',used:'Used by: sprint complete, after the binding evaluator passes: a second opinion on another model, on high-risk tickets (or Second eval: on). Off until you pick one; never the Evaluator\'s model.'},
+  light:{runs:'light work',used:'Used by: explore and orient, light implement steps, Factory Build.'}};
 const mtRegistryAgent=()=>mtOpts.registry_agent||'claude';   // whose picks are registry ids (the board's registryAgent): the registry cards' Default badge and Remove's holders
 const mtStepLabel=st=>(st.seq?st.seq+'. ':'')+st.label+(st.role?` (${st.role})`:'');   // t-864c (user): numbered in the order a sprint runs them
 const mtAgentLabel=id=>((mtOpts.agents||[]).find(a=>a.id===id)||{}).label||id;
@@ -187,7 +187,7 @@ function mtRender(){
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
       const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
-      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="setting-k">${esc(mtStepLabel(st))}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
+      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }

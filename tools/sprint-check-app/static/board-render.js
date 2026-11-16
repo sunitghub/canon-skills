@@ -545,6 +545,17 @@ export function renderBoard() {
       }).catch(() => closeMenu(true));
     });
   }
+  // t-a811: a click (or Enter/Space) on a card's id copies it. It is a button, and the card's own open handlers ignore buttons
+  // (`e.target.closest('… button …')` below), so it never opens the card.
+  board.querySelectorAll('.card-id[data-copy-id]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.copyId;
+      navigator.clipboard.writeText(id).then(() => {
+        btn.textContent = 'Copied'; btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = id; btn.classList.remove('copied'); }, 1200);
+      }).catch(() => { btn.title = 'Copy was blocked: use the card menu, Copy ID'; });
+    });
+  });
   board.querySelectorAll('.card-menu-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -824,7 +835,7 @@ function cardHTML(t, idx, inNow) {
     <div class="card${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${inNow && t.status === 'closed' ? ' card-now-done' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
-        <span class="card-id">${esc(t.id)}</span>
+        <button type="button" class="card-id" data-copy-id="${esc(t.id)}" title="Copy ${esc(t.id)}" aria-label="Copy ticket id ${esc(t.id)}">${esc(t.id)}</button>
         ${inNow ? `<span class="card-status-chip st-${esc(effectiveStatus(t))}">${esc(statusChipLabel(effectiveStatus(t)))}</span>` : ''}
         <button class="card-menu-btn" type="button" data-id="${esc(t.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Card menu for ${esc(t.id)}" title="Copy ID, copy folder path, open">⋯</button>
         ${typeBadge(t.type)}
@@ -857,7 +868,8 @@ function cardHTML(t, idx, inNow) {
 function cardTicketId(el) {
   const attr = el?.getAttribute('data-id') || el?.dataset?.id || '';
   if (attr) return attr;
-  const label = el?.querySelector('.card-id')?.textContent?.trim() || '';
+  const idEl = el?.querySelector('.card-id');
+  const label = (idEl?.dataset?.copyId || idEl?.textContent || '').trim();   // t-a811: the id button may briefly read "Copied"
   return label.replace(/^"|"$/g, '');
 }
 

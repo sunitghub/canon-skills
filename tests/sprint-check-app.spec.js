@@ -14502,6 +14502,16 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   // pick saves defaults.<step>.<agent>. Prod path: Admin > Model tiers, and every close reads what it saves.
   // t-aba6: under Copilot CLI a button reads Copilot's own list (never by itself: a read leaves one empty Copilot session), says when it
   // was read, and on a failure says why and keeps the list. Under Claude Code none of it shows. Prod path: Admin > Model tiers.
+  // t-a811: each step card says whether it runs in your own session or in a fresh subagent, for both agents.
+  test('Model tiers step cards say your session or fresh subagent (t-a811)', async ({ page }) => {
+    await openModelTiers(page);
+    const want = { plan: 'your session', build: 'your session', speccheck: 'fresh subagent', reviewer: 'fresh subagent', evaluator: 'fresh subagent', evaluator2: 'fresh subagent', light: 'light work' };
+    for (const agent of ['claude', 'copilot']) {
+      if (agent === 'copilot') await page.locator('#mt-agent').selectOption('copilot');
+      for (const [step, tag] of Object.entries(want)) await expect(page.locator(`#mt-step-${step} .mt-runs`)).toHaveText(tag);
+    }
+  });
+
   test('Read Copilot\'s models: the button, its note, the read time and a failed read (t-aba6)', async ({ page }) => {
     // read an hour ago, from the real clock: a fixed date turned into "more than a day old" a day after it was written (t-788f)
     const readAt = new Date(Date.now() - 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
@@ -17401,6 +17411,25 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     }
   });
 
+  // t-a811: a click (or Enter) on a card's id copies it, says Copied, and never opens the card; the menu's Copy ID is still there.
+  test('clicking a card id copies it without opening the card (t-a811) @webkit', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gcp');
+    ghTicket(id);
+    await page.addInitScript(() => { window.__copied = []; navigator.clipboard.writeText = t => { window.__copied.push(t); return Promise.resolve(); }; });
+    await openBoard(page, id);
+    const idBtn = page.locator(`.card[data-id="${id}"] .card-id`);
+    await idBtn.click();
+    await expect.poll(() => page.evaluate(() => window.__copied)).toEqual([id]);
+    await expect(idBtn).toHaveText('Copied');
+    await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+    await expect(idBtn).toHaveText(id, { timeout: 3000 });
+    await idBtn.focus(); await page.keyboard.press('Enter');
+    await expect.poll(() => page.evaluate(() => window.__copied)).toEqual([id, id]);
+    await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+    await page.locator(`.card[data-id="${id}"] .card-menu-btn`).click();
+    await expect(page.locator('[data-act="id"]')).toHaveText('Copy ID');
+  });
+
   test('a ticket only linked to an issue (synced or imported) stays a local Open ticket with Start (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh0');
     ghTicket(id, { github: 'acme/app#57', runs: '' });
@@ -17502,7 +17531,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(topSteps.nth(0)).toContainText('One time only: in claude.ai/code create an environment named canon');
       await expect(topSteps.nth(0)).toContainText('Copy domains, Copy setup script');
       await expect(topSteps.nth(0)).toContainText('tkt cloud-env');
-      await expect(topSteps.nth(1)).toContainText('Start a Claude cloud session on the canon environment and type:');
+      await expect(topSteps.nth(1)).toContainText('Start a Claude cloud session on the canon environment, one of:');   // t-a811: the three ways are step 2's
       await expect(topSteps.nth(1).locator('#ck-gh-prompt')).toHaveCount(1);
       await expect(topSteps.nth(0)).toContainText('Allow package managers ticked');
       await expect(topSteps.nth(2)).toContainText('The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check & merge.');
@@ -17512,7 +17541,10 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await expect(hint).toHaveCount(3);
       await expect(hint.nth(0)).toContainText(`To Claude Cloud: runs canon's command tkt send-issue ${id} --launch`);
       await expect(hint.nth(1)).toContainText("Copy command: copies the claude --cloud '…' command");
-      await expect(hint.nth(2)).toContainText('Copy prompt: copies the text above, for claude.ai/code');
+      await expect(hint.nth(2)).toContainText('Copy prompt: copies the text below, for claude.ai/code');
+      // t-a811: the buttons sit inside step 2, and nothing after the list reads as a step
+      for (const b of ['#ck-gh-to-cloud', '#ck-gh-copy-cmd', '#ck-gh-copy']) await expect(topSteps.nth(1).locator(b)).toHaveCount(1);
+      expect(await page.locator('#ck-gh-sent .ck-gh-steps').evaluate(ol => { let n = ol.nextElementSibling, bad = 0; while (n) { if (n.matches('.ck-gh-actions, ol, ul') || n.querySelector('button')) bad++; n = n.nextElementSibling; } return bad; })).toBe(0);
       const copy = page.locator('#ck-gh-copy');
       const bg0 = await copy.evaluate(e => getComputedStyle(e).backgroundColor);
       await copy.hover();
@@ -18836,6 +18868,51 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#fac-gh-recheck')).toBeEnabled();
     await expect(page.locator('#fac-gh-recheck')).not.toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('#fac-gh-count')).not.toHaveText('Checks · checking…');
+  });
+
+  // t-a811: Factory › GitHub's workflow is a looping flowchart: Next lights each box in turn and wraps Merge → Send, Back goes the other
+  // way, All steps shows the list, and Play moves one stage every 5 s (counting down) until any other control stops it.
+  test('Factory GitHub workflow: a looping flowchart with Next, Back, All steps and Play (t-a811) @webkit', async ({ page }) => {
+    const projects = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }];
+    await page.route('**/api/projects', r => json(r, projects));
+    await page.route('**/api/github/doctor**', r => json(r, { ok: true, exit_code: 0, output: '', doctor: { checks: [], cloud: { domains: [], setup_script: '' } } }));
+    await page.clock.install({ time: new Date('2026-11-17T10:00:00Z') });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => { const m = await import('/static/cockpit-tabs.js'); await m.openProject('proj-a', 'proj-a'); });
+    await page.locator('#nav-factory').click();
+    const lit = page.locator('#gh-flow .gh-flow-box.on'), note = page.locator('#gh-flow-note'), next = page.locator('#gh-flow-next');
+    const order = ['Send', 'Work', 'Guard', 'Return', 'Merge'];
+    await expect(page.locator('#gh-flow .gh-flow-box')).toHaveText(order);
+    await expect(page.locator('#gh-flow')).toHaveAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 5; i++) {
+      await expect(lit).toHaveText(order[i]);
+      await expect(note).toContainText(`${i + 1} of 5`);
+      await expect(note).toContainText(order[i] + '.');
+      await next.click();
+    }
+    await expect(lit).toHaveText('Send');                                         // wrapped from Merge
+    await page.locator('#gh-flow-back').click();
+    await expect(lit).toHaveText('Merge');                                        // and back the other way
+    await expect(page.locator('#gh-steps')).toBeHidden();
+    await page.locator('#gh-flow-all').click();
+    await expect(page.locator('#gh-steps > li')).toHaveCount(5);
+    await expect(page.locator('#gh-steps')).toBeVisible();
+    await page.locator('#gh-flow-all').click();
+    // Play: one stage per 5 s, counting down, looping; Next stops it
+    const play = page.locator('#gh-flow-play');
+    await play.click();
+    await expect(play).toHaveText('❚❚ Pause · 5s');
+    await page.clock.runFor(1000); await expect(play).toHaveText('❚❚ Pause · 4s');
+    await page.clock.runFor(4000); await expect(lit).toHaveText('Send');      // Merge → Send after 5 s
+    await page.clock.runFor(5000); await expect(lit).toHaveText('Work');
+    await next.click();
+    await expect(play).toHaveText('▶ Play');
+    await expect(lit).toHaveText('Guard');
+    await page.clock.runFor(10000); await expect(lit).toHaveText('Guard');   // stopped: nothing moves
+    // narrow: the chart wraps, no sideways scroll
+    await page.setViewportSize({ width: 380, height: 900 });
+    expect(await page.locator('#fac-gh .gh-card').first().evaluate(e => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
   });
 
   // Prod path: Factory › GitHub (t-d287): the doctor's repo-setup group renders as sub-steps 2.1, 2.2, 2.3, each with its own Copy,

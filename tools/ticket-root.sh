@@ -303,7 +303,7 @@ copy_ticket_back() {
 # numbered: "<n>\t<text>" (n counted among all criteria), as `sprint check-evidence` lists them. Reads at most 256 KiB, CRs dropped.
 manual_criteria() {
   [[ -f "$1" && ! -L "$1" ]] || return 0
-  head -c 262144 -- "$1" | LC_ALL=C tr -d '\r' | awk -v mode="$2" '
+  head -c 262144 -- "$1" | LC_ALL=C tr -d '\r' | LC_ALL=C awk -v mode="$2" '
     /^[[:space:]]*```/ { fence = !fence; if (mode == "strip") print; next }
     fence { if (mode == "strip") print; next }
     /^##[[:space:]]/ { inc = ($0 ~ /^##[[:space:]]+Criteria[[:space:]]*$/); if (mode == "strip") print; next }
