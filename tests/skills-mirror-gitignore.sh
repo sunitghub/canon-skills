@@ -157,7 +157,7 @@ rm -rf "$SYM" "$RD" "$RP" "$NN" "$E2E" "$E2E_HOME"
 for f in 'x\0\0' 'x' ''; do
   ND="$(mktemp -d)"; git -C "$ND" init -q; mkdir -p "$ND/.claude/skills"; printf "$f" > "$ND/.gitignore"
   _ensure_mirror_gitignored "$ND" >/dev/null
-  git -C "$ND" check-ignore -q -- .claude/skills || fail "after a .gitignore of '$f', .claude/skills is not ignored: $(od -c "$ND/.gitignore" | head -3)"
+  git -C "$ND" check-ignore -q -- .claude/skills || fail "after a .gitignore of '$f', .claude/skills is not ignored: $(od -c "$ND/.gitignore")"
   _ensure_mirror_gitignored "$ND" >/dev/null   # a second run adds nothing (has_line reads past the NUL bytes)
   [ "$(LC_ALL=C grep -acxF /.claude/skills "$ND/.gitignore")" = 1 ] || fail "a second run duplicated canon's line after a .gitignore of '$f'"
   rm -rf "$ND"
@@ -165,7 +165,7 @@ done
 # the other two callers on a NUL-ended file: _ensure_agents_link_gitignored's line and ensure_blank_sep's separator start on a new line
 ND="$(mktemp -d)"; git -C "$ND" init -q; printf 'x\0\0' > "$ND/.gitignore"
 _ensure_agents_link_gitignored "$ND" >/dev/null
-git -C "$ND" check-ignore -q -- .claude/agents || fail "after a NUL-ended .gitignore, /.claude/agents is not ignored: $(od -c "$ND/.gitignore" | head -3)"
+git -C "$ND" check-ignore -q -- .claude/agents || fail "after a NUL-ended .gitignore, /.claude/agents is not ignored: $(od -c "$ND/.gitignore")"
 printf 'x\0' > "$ND/blk"; ensure_blank_sep "$ND/blk"
 [ "$(od -An -c "$ND/blk" | tr -d ' \n')" = 'x\0\n\n' ] || fail "ensure_blank_sep on a NUL-ended file: $(od -c "$ND/blk")"
 rm -rf "$ND"

@@ -383,7 +383,7 @@ check_mirror() {
   # 1. Turn on git with the mirror already there and the user's own .gitignore (no final newline): canon's lines are whole lines after the user's bytes
   new_dir; proj="$NEW_DIR"; printf 'mine' > "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"
   r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "200" "${r%% *}"
-  [[ "$(head -2 "$proj/.gitignore")" == $'mine\n/.claude/skills' ]] || fail "$kind: canon's first line is not on its own line: $(head -2 "$proj/.gitignore" | od -c | head -2)"
+  [[ "$(head -2 "$proj/.gitignore")" == $'mine\n/.claude/skills' ]] || fail "$kind: canon's first line is not on its own line: $(od -c "$proj/.gitignore")"
   for l in /.agents/skills /.claude/agents /.claude/subagent-runs.jsonl '/.tickets/*/gate-snapshot.txt*' /.claude/settings.local.json; do
     grep -qxF -- "$l" "$proj/.gitignore" || fail "$kind: Turn on git did not write $l"
   done
