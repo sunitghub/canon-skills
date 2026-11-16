@@ -9,8 +9,10 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 use_fresh_board "$(mktemp -d)"
 
+# its own Admin registry: the full run shares one CANON_HOME across parallel suites, and sprint-gate-model writes model-tiers.json too
+CANON_HOME="$(mktemp -d)"; export CANON_HOME
 project="$(make_project)"
-trap 'rm -rf "$project"' EXIT
+trap 'rm -rf "$project" "$CANON_HOME"' EXIT
 cd "$project"
 id="$("$SPRINT" start "Second opinion" | awk '/Sprint started:/ { print $3 }')"
 t=".tickets/$id"

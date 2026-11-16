@@ -12,6 +12,8 @@ use_fresh_board "$(mktemp -d)"
 W="$(mktemp -d)"
 # gate-snapshot.sh pre registers a gate scope: pinned to this test's own registry (t-c206), every dir it recorded removed on exit
 export CANON_GATE_SCOPE_DIR="$W/registry"
+# its own Admin registry: the full run shares one CANON_HOME across parallel suites, and sprint-second-eval writes model-tiers.json too
+export CANON_HOME="$W/canon-home"
 project="$(make_project)"
 cleanup() {
   local f d
