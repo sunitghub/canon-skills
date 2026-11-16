@@ -13,6 +13,7 @@ W="$(cd "$(mktemp -d)" && pwd -P)"
 CANON_HOME="$W/canon-home"; export CANON_HOME
 trap 'rm -rf "$W"' EXIT
 use_fresh_board "$W/board"   # the close's events go through the board binary (built before HOME moves)
+unset CANON_TICKETS_DIR COCKPIT_AGENT   # the full run's stamp sets CANON_TICKETS_DIR for canon's own .tickets: this project's must be read
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config"; mkdir -p "$HOME"
 git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch main
 P="$W/p"; mkdir "$P"; cd "$P"; git init -q
@@ -97,7 +98,7 @@ assert_contains "$out" "Sprint completed: $id (manual-after-merge"
 assert_grep '^status: closed$' "$f"
 assert_grep "^- \[x\] \[manual\] The file opens in a spreadsheet — manual-qa.md [0-9-]*$" "$t/acceptance.md"
 assert_eq 2 "$(events)"
-cat "$CANON_HOME"/events/*.jsonl | grep '"kind":"close.confirmed"' | grep -q '"tier":"manual-merged"' || fail "close.confirmed has no tier manual-merged"
+grep -h '"kind":"close.confirmed"' "$CANON_HOME"/events/*.jsonl | grep '"tier":"manual-merged"' >/dev/null || fail "close.confirmed has no tier manual-merged"
 assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"   # the active sprint is untouched
 
 echo "sprint-manual-merged: ok"

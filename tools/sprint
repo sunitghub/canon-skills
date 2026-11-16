@@ -1353,7 +1353,7 @@ _manual_merged_problem() {
   (( rc == 0 )) || { echo "the merged PR head ${ph:0:7} is not the graded ${graded:0:7} plus late docs only: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-200)"; return; }
   [[ ! -f "$tdir/acceptance.md" ]] || wt_write_ok "$tdir/acceptance.md" \
     || { echo "acceptance.md cannot be written here (a link), so its [manual] criteria cannot be ticked"; return; }
-  if grep -E '^[[:space:]]*[-*] \[ \]' "$tdir/acceptance.md" 2>/dev/null | grep -qviE '\[manual\]'; then
+  if awk 'tolower($0) ~ /^[[:space:]]*[-*] \[ \]/ && tolower($0) !~ /\[manual\]/ { f = 1 } END { exit !f }' "$tdir/acceptance.md" 2>/dev/null; then
     echo "acceptance.md has unchecked items other than [manual] criteria"; return
   fi
   _manual_qa_state "$id"
