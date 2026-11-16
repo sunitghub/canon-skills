@@ -9580,3 +9580,15 @@ func TestPlanReadersFallBackToMain(t *testing.T) {
 		})
 	}
 }
+
+// t-874a (sweep): a bound worktree whose ticket.md has no status line reports main's status, not "".
+func TestTicketStatusFallsBackWhenTheWorktreeCopyHasNone(t *testing.T) {
+	root, wt := boundTicketFixture(t, "in_progress", "open")
+	if err := os.WriteFile(filepath.Join(wt, ".tickets", "t-ab12", "ticket.md"), []byte("---\nid: t-ab12\n---\n# test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	if got := s.ticketStatusIn(root, "t-ab12"); got != "in_progress" {
+		t.Fatalf("got %q, want main's in_progress", got)
+	}
+}
