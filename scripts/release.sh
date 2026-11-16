@@ -5,6 +5,8 @@
 # getcanon.dev/releases.txt (t-34f1). docs/releasing.md has the whole pipeline.
 #   scripts/release.sh              tag, push that one tag, create the GitHub release
 #   scripts/release.sh --dry-run    check everything and print what it would do; creates and pushes nothing
+#   Both run scripts/check-vendored.sh first and refuse on a security advisory or a failed lookup (t-d600);
+#   CANON_RELEASE_SKIP_VENDORED=<reason> skips that check, printing the reason.
 # It refuses, changing nothing, unless: VERSION is X.Y.Z; CHANGELOG.md has a `## [X.Y.Z] - YYYY-MM-DD` section with content; VERSION
 # and CHANGELOG.md match HEAD; HEAD is main and equals public/main (the tag names what consumers get); the tag is on neither side.
 set -euo pipefail
@@ -53,9 +55,26 @@ remote_tag="$(git_ ls-remote --tags "$REMOTE" "refs/tags/$tag")" || die "cannot 
 [ -z "$remote_tag" ] || die "tag $tag already exists on $REMOTE"
 if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || die "gh is required (gh auth login)"; fi
 
+# t-d600: a release never ships a pin with a known security fix waiting (0.62.0 and 0.62.1 shipped Node 22.23.4 five days after
+# 22.23.5, because the scheduled check runs weekly). The check's own exit codes: 1 an advisory, 2 it could not answer. A newer
+# version that is not a security release passes. CANON_RELEASE_SKIP_VENDORED=<reason> skips it, saying so.
+vcheck="${RELEASE_VENDORED_CHECK:-$REPO_ROOT/scripts/check-vendored.sh}"
+if [ -n "${CANON_RELEASE_SKIP_VENDORED:-}" ]; then
+  echo "release: vendored check skipped: $CANON_RELEASE_SKIP_VENDORED"
+else
+  vrc=0; vout="$(bash "$vcheck" 2>&1)" || vrc=$?
+  if [ "$vrc" = 1 ]; then
+    die "a pinned dependency has a security release waiting; bump it first (nothing was tagged):
+$(printf '%s\n' "$vout" | grep '^- ADVISORY:' || printf '%s\n' "$vout" | tail -5)"
+  elif [ "$vrc" != 0 ]; then
+    die "the vendored check could not answer (exit $vrc), so the pins are unchecked; fix the lookup or set CANON_RELEASE_SKIP_VENDORED=<reason> (nothing was tagged):
+$(printf '%s\n' "$vout" | tail -5)"
+  fi
+fi
+
 if [ "$dry" = 1 ]; then
   # t-2af0: the integrity list is built the same way from HEAD, so a path it refuses shows here and not after the tag is pushed.
-  dry_dir="$(mktemp -d)"; il_line="$(bash "$REPO_ROOT/scripts/integrity-list.sh" "$tag" "$dry_dir" HEAD)" || { rm -rf "$dry_dir"; die "the integrity list cannot be built from HEAD; nothing was done"; }
+  dry_dir="$(mktemp -d)"; bash "$REPO_ROOT/scripts/integrity-list.sh" "$tag" "$dry_dir" HEAD >/dev/null || { rm -rf "$dry_dir"; die "the integrity list cannot be built from HEAD; nothing was done"; }
   echo "release: dry run: integrity-$version.json would list $(grep -c '^"[^"]*": "[0-9a-f]\{64\}"' "$dry_dir/integrity-$version.json") entries and be pinned in integrity.txt"; rm -rf "$dry_dir"
   echo "release: dry run — would tag $tag at $(git_ rev-parse --short HEAD), push only refs/tags/$tag to $REMOTE, and create the GitHub release on $RELEASE_REPO with canon-$version.zip attached and these notes:"
   printf '%s\n' "$notes"
