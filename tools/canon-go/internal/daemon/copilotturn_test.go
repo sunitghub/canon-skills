@@ -177,6 +177,20 @@ func TestCopilotTurnRestartsOnTruncatedLog(t *testing.T) {
 	}
 }
 
+// t-c723: the watcher ends with its session, so no poll outlives a Copilot session.
+func TestCopilotWatcherEndsWithSession(t *testing.T) {
+	copilotPollFast(t)
+	se := &session{done: make(chan struct{})}
+	close(se.done)
+	ended := make(chan struct{})
+	go func() { (&server{}).watchCopilotTurns(se, filepath.Join(t.TempDir(), "events.jsonl"), 0); close(ended) }()
+	select {
+	case <-ended:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the watcher kept polling after its session ended")
+	}
+}
+
 func copilotPollFast(t *testing.T) {
 	old := copilotTurnPoll
 	copilotTurnPoll = 20 * time.Millisecond
