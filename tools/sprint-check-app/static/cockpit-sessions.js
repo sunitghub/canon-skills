@@ -308,9 +308,10 @@ function syncSharedWarnings(views){
 // The board server owns the state (/api/remote-agents, project-scoped, an empty 304 when nothing changed, never waiting on GitHub); the
 // shell only asks. One answer per open project is kept: a failed poll keeps it. A hidden page does not poll.
 const CLOUD_POLL_MS=60000, CLOUD_FAST_MS=5000, CLOUD_FAST_MAX=12;   // fast while a row's status is still loading on the server
-const CLOUD_STATES={sent:'st-idle',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle',unfinished:'st-idle'};   // the row's colour class; the two pills carry their own accent
+const CLOUD_STATES={sent:'st-idle',starting:'st-working',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle',unfinished:'st-idle'};   // the row's colour class; the two pills carry their own accent
 const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,since,pending}], at}
 let cloudTimer=0, cloudFast=0;
+let cloudNextAt=0, cloudInflight=false;   // t-a7e0: when the next poll is due, and whether one is running (the row's "next look" line)
 // The bare GitHub mark (Octicons mark-github, MIT, (c) GitHub): currentColor, no disc, centred in the 18px icon slot.
 function markGitHub(){
   return '<svg class="ag-mark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>';
@@ -318,13 +319,15 @@ function markGitHub(){
 function cloudRow(pid,r){
   if(!r || typeof r!=='object' || !TICKET_ID_RE.test(String(r.id||'')) || !Object.prototype.hasOwnProperty.call(CLOUD_STATES,r.state)) return null;
   const since=typeof r.since==='string' ? Date.parse(r.since) : NaN;   // the server's newest activity; the age is read at render time, so a repeat poll's body is unchanged (an empty 304)
-  return { pid, id:r.id, title:String(r.title||'').slice(0,200), state:r.state, issue:/^\d{1,7}$/.test(String(r.issue||''))?String(r.issue):'', since:isNaN(since)?null:since, pending:r.pending===true };
+  const checked=typeof r.checked==='string' ? Date.parse(r.checked) : NaN;   // t-a7e0: the server's last real GitHub read for this ticket
+  return { pid, id:r.id, title:String(r.title||'').slice(0,200), state:r.state, issue:/^\d{1,7}$/.test(String(r.issue||''))?String(r.issue):'', since:isNaN(since)?null:since, pending:r.pending===true, checked:isNaN(checked)?null:checked };
 }
 async function pollCloud(){
   cloudTimer=0;
   if(document.hidden){ scheduleCloud(CLOUD_POLL_MS); return; }
   const ids=openTabs.map(t=>t.id).filter(id=>getProjects().some(p=>p.id===id));
   let pending=false;
+  cloudInflight=true; cloudTipTick();
   await Promise.all(ids.map(async id=>{
     try{
       const r=await fetch('/api/remote-agents?project='+encodeURIComponent(id));
@@ -337,39 +340,66 @@ async function pollCloud(){
     }catch(e){ /* a failed poll keeps the last answer */ }
   }));
   for(const k of [...cloudRows.keys()]) if(!ids.includes(k)) cloudRows.delete(k);   // a closed project's rows go with its tab (a slow poll can delete a just-opened tab's rows; the next poll puts them back)
+  cloudInflight=false;
   renderSessionSurfaces();
   cloudFast=pending ? cloudFast+1 : 0;
   scheduleCloud(pending && cloudFast<=CLOUD_FAST_MAX ? CLOUD_FAST_MS : CLOUD_POLL_MS);
 }
-function scheduleCloud(ms){ if(!cloudTimer) cloudTimer=setTimeout(pollCloud,ms); }
+function scheduleCloud(ms){ if(!cloudTimer){ cloudTimer=setTimeout(pollCloud,ms); cloudNextAt=Date.now()+ms; } cloudTipTick(); }
 // A project opened (or closed) in a tab: ask now, not at the next minute. renderTabs calls this; the same set of tabs asks nothing.
 let cloudKey='';
 export function cloudTabsChanged(){
   const key=openTabs.map(t=>t.id).join(',');
   if(key===cloudKey) return;
-  cloudKey=key; clearTimeout(cloudTimer); cloudTimer=setTimeout(pollCloud,200);
+  cloudKey=key; clearTimeout(cloudTimer); cloudTimer=setTimeout(pollCloud,200); cloudNextAt=Date.now()+200;
 }
 export function startCloudPolling(){
+  // t-a7e0: the hovered or focused Cloud row's line counts each second; rows are rebuilt on each poll, so the listeners are delegated
+  document.addEventListener('mouseover',e=>{ const row=e.target.closest&&e.target.closest('.ag-cloud'); if(row) cloudTipShow(row); });
+  document.addEventListener('mouseout',e=>{ const row=e.target.closest&&e.target.closest('.ag-cloud'); if(row && !row.contains(e.relatedTarget)) cloudTipHide(row); });
+  document.addEventListener('focusin',e=>{ const row=e.target.closest&&e.target.closest('.ag-cloud'); if(row) cloudTipShow(row); });
+  document.addEventListener('focusout',e=>{ const row=e.target.closest&&e.target.closest('.ag-cloud'); if(row) cloudTipHide(row); });
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ clearTimeout(cloudTimer); cloudTimer=0; pollCloud(); } });
   pollCloud();
 }
 // t-1148: closed-here (the ticket is closed here and only a branch or a send is left on GitHub) and stalled (7 days without activity) are dim, never "working"; t-b99b: so is unfinished (results imported, the ticket still open)
-const CLOUD_LABEL={sent:'sent to GitHub, waiting for a cloud session',working:'working on GitHub',unfinished:'imported; the cloud sprint did not finish: Continue here (tkt land <id>)','results-ready':'results ready: Import results',imported:'imported: Check & merge','closed-here':'closed here; nothing is open on GitHub (tkt take-back <id> clears this)',stalled:'no activity for 7 days; if the session is gone, tkt take-back <id> clears this'};
+const CLOUD_LABEL={sent:'sent to GitHub, waiting for a cloud session',starting:'cloud session launched, waiting for its first push',working:'working on GitHub',unfinished:'imported; the cloud sprint did not finish: Continue here (tkt land <id>)','results-ready':'results ready: Import results',imported:'imported: Check & merge','closed-here':'closed here; nothing is open on GitHub (tkt take-back <id> clears this)',stalled:'no activity for 7 days; if the session is gone, tkt take-back <id> clears this'};
 function cloudHtml(rows){
   if(!rows.length) return '';
   return `<div class="ag-cloudh"><b>Cloud</b><span>${rows.length}</span></div>`+rows.map(r=>{
     const what=r.state==='unknown' ? (r.pending?'checking GitHub':'GitHub could not be checked') : CLOUD_LABEL[r.state];
     const at=cloudAt(r), tip=(r.title||r.id)+(r.issue?' · GitHub issue #'+r.issue:'')+' · '+what;
-    const glyph=r.state==='working' ? '<span class="sdot spin ag-ring"></span>'
+    const glyph=r.state==='working'||r.state==='starting' ? '<span class="sdot spin ag-ring"></span>'
       : r.state==='results-ready' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Results ready</span><span class="ag-ps">Results</span></span>'
       : r.state==='imported' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Merge ready</span><span class="ag-ps">Merge</span></span>'
       : '<span class="sdot"></span>';
     return `<button class="ag-row ag-cloud st ${CLOUD_STATES[r.state]}" data-cloud="${escAttr(r.pid+'/'+r.id)}" data-state="${escAttr(r.state)}" title="${escAttr(tip)}" aria-label="${escAttr(r.id+(r.title?' '+r.title:'')+': '+what+(r.issue?', GitHub issue #'+r.issue:'')+(at?', '+at:''))}">`+
       `<span class="ag-i">${markGitHub()}</span><span class="ag-t1"><span class="ag-id">${esc(r.id)}</span><span class="ag-d">${esc(r.title)}</span></span>`+
-      `<span class="ag-at"></span><span class="ag-age">${esc(at||'–')}</span><span class="ag-g">${glyph}</span></button>`;
+      `<span class="ag-at"></span><span class="ag-age">${esc(at||'–')}</span><span class="ag-g">${glyph}</span><span class="ag-cloud-tip" role="tooltip">${esc(cloudTipText(r))}</span></button>`;
   }).join('');
 }
 function cloudAt(r){ return r.since===null ? '' : ageShort(Math.max(0,Math.round((Date.now()-r.since)/1000))); }
+// t-a7e0 (item 7): what a Cloud row's hover/focus line says: when GitHub was last read for this ticket (the server's checked) and when
+// the shell next asks, counted live while the line is shown. Never negative: a poll that is due says "now", one running "checking now…".
+export function cloudTipText(r, now=Date.now()){ return cloudTipLine(r.checked, cloudNextAt, cloudInflight, now); }
+// The line itself, from plain values (the spec checks each case with exact times): a due or overdue poll says "now", never a count below 1.
+export function cloudTipLine(checked, nextAt, inflight, now){
+  const ago=checked===null ? 'Not checked on GitHub yet' : 'Checked GitHub '+secsAgo(Math.max(0,Math.round((now-checked)/1000)))+' ago';
+  if(inflight) return ago+' · checking now…';
+  const n=Math.ceil((nextAt-now)/1000);
+  return ago+' · next look '+(nextAt && n>0 ? 'in '+n+'s' : 'now');
+}
+function secsAgo(s){ return s<60 ? s+'s' : ageShort(s); }
+let cloudTipRow=null, cloudTipTimer=0;   // the row whose line is shown (hovered or focused), and the 1 s ticker while it is
+function cloudTipTick(){
+  if(!cloudTipRow || !cloudTipRow.isConnected){ cloudTipRow=document.querySelector('.ag-cloud:hover, .ag-cloud:focus-visible'); }
+  if(!cloudTipRow){ clearInterval(cloudTipTimer); cloudTipTimer=0; return; }
+  const key=cloudTipRow.dataset.cloud||'', i=key.indexOf('/'), pid=key.slice(0,i), id=key.slice(i+1);
+  const r=((cloudRows.get(pid)||{}).rows||[]).find(x=>x.id===id), tip=cloudTipRow.querySelector('.ag-cloud-tip');
+  if(r && tip) tip.textContent=cloudTipText(r);
+}
+function cloudTipShow(row){ cloudTipRow=row; cloudTipTick(); if(!cloudTipTimer) cloudTipTimer=setInterval(cloudTipTick,1000); }
+function cloudTipHide(row){ if(cloudTipRow===row){ cloudTipRow=null; clearInterval(cloudTipTimer); cloudTipTimer=0; } }
 function openCloudRow(key){
   const i=key.indexOf('/'), pid=key.slice(0,i), id=key.slice(i+1), proj=getProjects().find(p=>p.id===pid);
   if(proj && TICKET_ID_RE.test(id)) openSessionInTab({proot:proj.path,ticket:id,show:true});   // t-4456: the project's tab, then its board pulses the card: no session view opens, nothing starts

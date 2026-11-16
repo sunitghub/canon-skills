@@ -5373,7 +5373,7 @@ func softTTL(res map[string]any) time.Duration {
 // starts one background refresh per ticket when the entry is missing or stale. ok is false until the first answer lands. A ticket
 // waiting on the user (results ready, imported) changes only when the user acts, so its entry is stale after 5 minutes, not 30 s:
 // a refresh is a `git fetch` and several `gh` calls, and the rate limit is shared with the board's cards.
-func githubStatusSoft(root, id string) (map[string]any, bool) {
+func githubStatusSoft(root, id string) (map[string]any, time.Time, bool) {
 	key := mergeKey{root, id}
 	mergeRunsMu.Lock()
 	h, have := statusCache[key]
@@ -5387,7 +5387,7 @@ func githubStatusSoft(root, id string) (map[string]any, bool) {
 		}()
 	}
 	mergeRunsMu.Unlock()
-	return h.res, have
+	return h.res, h.at, have // t-a7e0: at is when GitHub was last read for this ticket (the Cloud row's "checked")
 }
 
 var issueNumRe = regexp.MustCompile(`#([0-9]+)$`) // the issue number of a github: line (owner/repo#N)
@@ -5396,6 +5396,9 @@ var issueNumRe = regexp.MustCompile(`#([0-9]+)$`) // the issue number of a githu
 var cloudNow = time.Now
 
 const cloudStalledAfter = 7 * 24 * time.Hour
+
+// cloudStartingWindow (t-a7e0): a launched session counts as starting this long without a push (board-github.js CLOUD_WORKING_MS).
+const cloudStartingWindow = time.Hour
 
 // remoteAgents (t-761b) is the Agents list's Cloud group: a row per ticket out on GitHub (runs: github, a github: line, no
 // merged:), from the send until Check & merge lands it. The state is the card's own github-status stage, served by githubStatus
@@ -5427,7 +5430,7 @@ func remoteAgents(root string) []map[string]any {
 	rows := []map[string]any{}
 	for _, c := range cands {
 		state, newest, stage := "unknown", c.created, ""
-		res, have := githubStatusSoft(root, c.id)
+		res, checkedAt, have := githubStatusSoft(root, c.id)
 		if have && res["ok"] == true {
 			if st, ok := res["status"].(map[string]any); ok {
 				stage, _ = st["stage"].(string)
@@ -5436,6 +5439,13 @@ func remoteAgents(root string) []map[string]any {
 					continue // landed: the row leaves
 				case "sent":
 					state = "sent"
+					// t-a7e0: a session was launched (tkt send-issue --launch), the launch is the trail's newest event and it has not pushed yet:
+					// starting, for an hour (the card's CLOUD_WORKING_MS); a plain send, a re-send after it or an old launch stay sent.
+					launched, _ := st["launched"].(string)
+					started, _ := st["started"].(string)
+					if at, err := time.Parse(time.RFC3339, launched); err == nil && launched == started && cloudNow().Sub(at) < cloudStartingWindow {
+						state = "starting"
+					}
 				case "branch", "pr-open":
 					state = "working"
 					// t-b99b: results were imported (land: a local eval-report.md, the ticket still open, the PR open) and the cloud sprint did not finish: nothing runs,
@@ -5473,7 +5483,11 @@ func remoteAgents(root string) []map[string]any {
 		if m := issueNumRe.FindStringSubmatch(c.gh); m != nil {
 			issue = m[1]
 		}
-		rows = append(rows, map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "since": since, "pending": !have})
+		row := map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "since": since, "pending": !have}
+		if have && res["ok"] == true && !checkedAt.IsZero() { // a failed read is not a check (the row says "could not be checked")
+			row["checked"] = checkedAt.UTC().Format(time.RFC3339) // t-a7e0: the last real GitHub read, for the row's "checked … ago"
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }

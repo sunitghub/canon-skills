@@ -3166,6 +3166,10 @@ cmd_github_status() {
   # session still working (it pushes before its evaluator and opens the PR at the end), not a session that stopped short.
   local started=""
   [[ -f "$tdir/github.md" ]] && started="$(sed -nE 's/^## ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z) — (sent|launched)$/\1/p' "$tdir/github.md" | tail -n 1)"
+  # t-a7e0: the newest launch only (tkt send-issue --launch, after the session started): a send alone never sets it, so the board can
+  # tell "a session was launched and has not pushed yet" (starting) from "sent, waiting for someone to start one".
+  local launched=""
+  [[ -f "$tdir/github.md" ]] && launched="$(sed -nE 's/^## ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z) — launched$/\1/p' "$tdir/github.md" | tail -n 1)"
   # t-6f51: a send with no PR and no branch yet: when did anyone last touch the issue (a comment counts)? The board marks it
   # stale from this. An unreadable answer is null (never stale), not a failed status: the stage above is still true.
   local iupd=""
@@ -3186,14 +3190,15 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"warning":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"launched":%s,"warning":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
       "$([[ "$verdict" != - ]] && json_str "$verdict" || echo null)" "$([[ "$graded" != - ]] && json_str "$graded" || echo null)" "$match" \
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
       "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)" \
-      "$([[ -n "$started" ]] && json_str "$started" || echo null)" "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
+      "$([[ -n "$started" ]] && json_str "$started" || echo null)" "$([[ -n "$launched" ]] && json_str "$launched" || echo null)" \
+      "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"

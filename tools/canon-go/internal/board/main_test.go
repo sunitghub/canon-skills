@@ -2274,9 +2274,17 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		{"t-cc0e", "open", "pr-open", ago(2 * time.Hour), "working"},
 		{"t-cc0f", "open", "pr-open", ago(2 * time.Hour), "working"},
 		{"t-cc10", "open", "branch", ago(2 * time.Hour), "working"},
+		// t-a7e0: a launch with no push yet is starting for an hour; a plain send, an old launch or a re-send after it is sent; a push is working
+		{"t-cc11", "open", "sent", ago(10 * time.Minute), "starting"},
+		{"t-cc12", "open", "sent", ago(61 * time.Minute), "sent"},
+		{"t-cc13", "open", "sent", ago(5 * time.Minute), "sent"},
+		{"t-cc14", "open", "sent", ago(10 * time.Minute), "sent"},
+		{"t-cc15", "open", "branch", ago(10 * time.Minute), "working"},
 	}
 	// extra fields of `tkt github-status --json` per row
-	extra := map[string]string{"t-cc0d": `,"land":true,"close_here":false`, "t-cc0e": `,"land":true,"close_here":true`, "t-cc0f": `,"land":false`, "t-cc10": `,"land":true`}
+	extra := map[string]string{"t-cc0d": `,"land":true,"close_here":false`, "t-cc0e": `,"land":true,"close_here":true`, "t-cc0f": `,"land":false`, "t-cc10": `,"land":true`,
+		"t-cc11": `,"launched":"` + ago(10*time.Minute) + `"`, "t-cc12": `,"launched":"` + ago(61*time.Minute) + `"`,
+		"t-cc13": `,"launched":"` + ago(20*time.Minute) + `"`, "t-cc15": `,"launched":"` + ago(10*time.Minute) + `"`}
 	script := "#!/bin/sh\ncase \"$2\" in\n"
 	for _, r := range rows {
 		dir := filepath.Join(root, ".tickets", r.id)
@@ -2326,6 +2334,22 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 	for _, r := range rows {
 		if state[r.id] != r.want {
 			t.Errorf("%s (%s, stage %s) state = %v, want %s", r.id, r.status, r.stage, state[r.id], r.want)
+		}
+	}
+	// t-a7e0: every checked row says when GitHub was last read for it (the Cloud row's "checked … ago"); a failed read is no check
+	mergeRunsMu.Lock()
+	statusCache[mergeKey{root, "t-cc01"}] = statusHit{at: now, res: map[string]any{"ok": false, "output": "HTTP 502"}}
+	mergeRunsMu.Unlock()
+	for _, r := range remoteAgents(root) {
+		if r["id"] == "t-cc01" && r["checked"] != nil {
+			t.Errorf("a failed read carries checked %v", r["checked"])
+		}
+	}
+	for _, r := range got {
+		if c, _ := r["checked"].(string); c == "" {
+			t.Errorf("%s has no checked time", r["id"])
+		} else if _, err := time.Parse(time.RFC3339, c); err != nil {
+			t.Errorf("%s checked %q is not RFC 3339", r["id"], c)
 		}
 	}
 }
