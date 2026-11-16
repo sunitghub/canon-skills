@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-16-2026 22:10
+learnings-sweep last run: 11-17-2026 01:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-16 | [t-a811](.tickets/t-a811/learnings.md) | A spec that passes with the guard reverted proves the code was dead, not that the guard holds: the card already ignored clicks on buttons, so the stopPropagation calls were removed and the real guard (the id is a button) revert-proven; and a locale bug hides when the suite runs without a UTF-8 locale: pin LC_ALL in the test that guards it | UNPROMOTED |
 | 2026-11-16 | [t-a7e0](.tickets/t-a7e0/learnings.md) | A spec that accepts either of two outcomes ("next look now" or "checking now…") cannot pin the one a guard decides: move the wording into a pure function and check it at exact times; and test each half of an "or" criterion (hover or focus) on its own | UNPROMOTED |
 | 2026-11-16 | [t-d600](.tickets/t-d600/learnings.md) | A scheduled-only security check lets releases ship a known-vulnerable pin between runs (Node 22.23.5 found five days late, after two releases): run the same check as a release refusal, so the release path owns the freshness | UNPROMOTED |
 | 2026-11-16 | [t-788f](.tickets/t-788f/learnings.md) | A Test Plan line ticked for a test that was moved or never written fails the evaluator: when a planned test changes place, reword the line to name the file it went to before ticking it, and feed the close its real upstream record (merge-pr's merged:), not a hand-written one | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-16-2026 22:10
 | 2026-11-09 | [t-1219](.tickets/t-1219/learnings.md) | A recurrence count that matches on a ticket id reports references as recurrences: the first real run read 7 promoted lines Failing again on 0 mentions of their class. Run a new measure on the real data before trusting its verdict word, and keep the weaker signal beside it, not in it. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-09 | [t-0ca2](.tickets/t-0ca2/learnings.md) | When a gate prompt's label list changes, the shape check that enforces it must accept both lists or closed tickets' reports start failing: choose the list by the labels a report started with, and run the check over every closed report before and after (800 reports, same result). A mandate line in the same prompt ("not correctness") can contradict the new list: read the whole file. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-09 | [t-a05d](.tickets/t-a05d/learnings.md) | A reader that skips a failed directory read reports an empty corpus: `os.ReadDir` on a mode-000 `.tickets/` returned an empty report with exit 0 until the reviewer reproduced it; count a failed read under its own line and exit 1. A prose "No blocking findings" also counted as a reviewer NO until verdicts matched case-exactly. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-08 | [t-79bf](.tickets/t-79bf/learnings.md) | A command that rewrites a gitignored file with no other copy needs the same care as a database write: a mktemp temp file silently drops the target's mode to 0600, `mv` onto a directory 'succeeds' and loses the row inside it, and a missing final newline breaks line-count self-checks; copy the file with `cp -p` first, refuse a non-regular target up front, check every `mv`, and keep untrusted row text out of the terminal. The advisory reviewer (YES, no Act On) still found six real defects in the Considers: read the Considers, not only the verdict. | `promoted → standards/efficiency-notes.md, skills/sprint/reference/complete.md` |
 <!-- canon:learnings:END -->
