@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-15-2026 20:21
+learnings-sweep last run: 11-15-2026 23:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-16 | [t-fcb1](.tickets/t-fcb1/learnings.md) | A word trim to hold a doc's cap rewords text tests may pin: grep tests/ for every phrase the trim changes (sprint-checklists.sh pins close step 10's "a push that succeeded"; only the full-suite stamp caught it) | UNPROMOTED |
 | 2026-11-16 | [t-d8af](.tickets/t-d8af/learnings.md) | Bash `$(…)` drops NUL bytes, so `[ -n "$(tail -c1 f)" ]` calls a NUL-ended file newline-ended and the next append is glued on; count with `tail -c1 f \| wc -l`. And macOS grep reads a NUL file as binary (no match) while Git Bash's GNU grep matches, so the same file behaves differently per platform. | UNPROMOTED |
 | 2026-11-16 | [t-c206](.tickets/t-c206/learnings.md) | macOS `mktemp -d` with no template ignores TMPDIR, so pinning TMPDIR does not keep a child tool's scratch dirs inside a test's folder: clean them from what the tool recorded, and pin every registry the tool writes. | UNPROMOTED |
 | 2026-11-16 | [t-925a](.tickets/t-925a/learnings.md) | A test that runs a gate tool must pin its registry too: tests/worktree-write-links.sh registered gate scopes in the real /tmp registry, so a parallel test's uninstall refused and the user's own canon update would have for 2 h; earlier suites passed on timing (t-c206). | UNPROMOTED |

@@ -35,7 +35,8 @@ assert_count 0 "@$ROOT" "$project/AGENTS.md"
 assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
 # t-5c4b: the block carries the platforms line every session loads, right under its note, and the section it points to exists
 pline="$(grep '^> Platforms:' "$project/AGENTS.md" || true)"
-assert_contains "$pline" "on Windows canon's commands run in Git Bash, never PowerShell or cmd"
+assert_contains "$pline" "exactly as written, never piped into head, Select-Object, a pager or a filter"
+assert_contains "$pline" "run from any shell through their .cmd shims, which start Git Bash; .sh scripts need Git Bash"
 [[ "$(grep -A1 '^> Managed by `skills.sh`' "$project/AGENTS.md" | tail -1)" == "$pline" ]] || fail "the platforms line is not under the block's note"
 sect="$(sed -n 's/.*efficiency-notes.md › \([A-Za-z ]*\) (canon install).*/\1/p' <<< "$pline")"
 grep -qx "## $sect" "$ROOT/standards/efficiency-notes.md" || fail "the platforms line points at a section efficiency-notes.md does not have: '$sect'"
@@ -335,7 +336,7 @@ out="$("$SKILLS" add sprint "$fresh" 2>&1)"
 [[ "$out" != *"[registry]  dropped"* ]] || fail "the dropped line printed when nothing was dropped"
 # an empty TEMP/TMP must not make the current folder count as temp (a project under the cwd is still registered)
 under_cwd="$(reg_project)"
-out="$(cd "$tmp_home" && TEMP= TMP= "$SKILLS" add sprint "$under_cwd" 2>&1)"
+out="$(cd "$tmp_home" && TEMP='' TMP='' "$SKILLS" add sprint "$under_cwd" 2>&1)"
 [[ "$out" != *"not registered"* ]] || fail "a project under the cwd was refused as temp: $out"
 assert_count 1 "$under_cwd" "$projects_file"
 # a hand-edited registry: a blank line is not a vanished folder, and a last line without a newline is kept

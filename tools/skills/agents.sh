@@ -10,7 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 SKILLS_TABLE_NOTE="> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Paths are relative to the canon install."
 # t-5c4b: every session loads AGENTS.md (Claude Code through CLAUDE.md, Codex, pi, cloud sessions), so this one line is how
 # each of them knows the platform rule; the details stay in standards/efficiency-notes.md, read on demand.
-PLATFORMS_NOTE="> Platforms: on Windows canon's commands run in Git Bash, never PowerShell or cmd. Details: standards/efficiency-notes.md › Platforms (canon install)."
+PLATFORMS_NOTE="> Platforms: run canon's commands (sprint, tkt, skills, canon) exactly as written, never piped into head, Select-Object, a pager or a filter, never with output dropped: their output is your next step. On Windows they run from any shell through their .cmd shims, which start Git Bash; .sh scripts need Git Bash. Details: standards/efficiency-notes.md › Platforms (canon install)."
 
 skills_table_upsert() {
   local agents_file="$1" name="$2" skill_row="$3"
