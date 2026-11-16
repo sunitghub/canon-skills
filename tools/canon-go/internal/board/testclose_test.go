@@ -2,6 +2,7 @@ package board
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -29,6 +30,9 @@ func TestTestCloseArgs(t *testing.T) {
 	}
 	if _, good := testCloseArgs("t-ab12", map[string]any{"by": "a", "steps": ten[:10]}); !good {
 		t.Error("10 steps (the limit) refused")
+	}
+	if _, good := testCloseArgs("t-ab12", map[string]any{"by": strings.Repeat("b", 80), "steps": []any{step(strings.Repeat("x", 200), "pass")}}); !good {
+		t.Error("an 80-character name and a 200-character step (the limits) refused")
 	}
 	bad := map[string]map[string]any{
 		"no steps":           {"by": "a", "steps": []any{}},
@@ -96,6 +100,12 @@ func TestTestCloseRoute(t *testing.T) {
 	if code != 200 || out["ok"] != true || ran() != "manual-qa t-ab12 --by Sunit --step export works|pass\ncomplete t-ab12\n" {
 		t.Fatalf("all pass: %d %v, ran %q; want manual-qa then complete", code, out, ran())
 	}
+	if qa, _ := out["qa"].(map[string]any); qa == nil || qa["ok"] != true {
+		t.Fatalf("all pass: no qa result in %v", out)
+	}
+	if cl, _ := out["close"].(map[string]any); cl == nil || !strings.Contains(fmt.Sprint(cl["output"]), "done") {
+		t.Fatalf("all pass: no close result in %v", out)
+	}
 	code, out = post(`{"by":"Sunit","steps":[{"what":"export works","result":"pass"},{"what":"opens","result":"fail"}]}`)
 	if code != 200 || out["ok"] != false || out["close"] != nil || strings.Contains(ran(), "complete") {
 		t.Fatalf("a fail step: %d %v, ran %q; want manual-qa only", code, out, ran())
@@ -116,10 +126,32 @@ func TestTestCloseRoute(t *testing.T) {
 		strings.Replace(shape, "merged: abc1234\n", "", 1),
 		strings.Replace(shape, "manual: true", "manual: false", 1),
 		strings.Replace(shape, "cloud_status: closed", "cloud_status: in_progress", 1),
+		strings.Replace(shape, "merged: abc1234", "merged: ", 1),
 	} {
 		writeTC(other)
 		if code, _ := post(`{"by":"Sunit","steps":[{"what":"export works","result":"pass"}]}`); code != 409 || ran() != "" {
 			t.Fatalf("ticket %q: %d, ran %q; want 409 and nothing run", other, code, ran())
 		}
+	}
+	// a ticket the project does not hold: 409, nothing run
+	if err := os.RemoveAll(filepath.Join(ticketsDir, "t-ab12")); err != nil {
+		t.Fatal(err)
+	}
+	if code, _ := post(`{"by":"Sunit","steps":[{"what":"export works","result":"pass"}]}`); code != 409 || ran() != "" {
+		t.Fatalf("no such ticket: %d, ran %q; want 409 and nothing run", code, ran())
+	}
+}
+
+// t-788f: the board finds sprint beside tkt (SPRINT_BIN overrides), and a sprint that cannot start says so, never an empty ok.
+func TestResolveAndRunSprint(t *testing.T) {
+	t.Setenv("SPRINT_BIN", "")
+	t.Setenv("TKT_BIN", filepath.Join("/opt", "canon", "tools", "tkt"))
+	if got := resolveSprint(); got != filepath.Join("/opt", "canon", "tools", "sprint") {
+		t.Fatalf("resolveSprint = %q, want sprint beside tkt", got)
+	}
+	t.Setenv("SPRINT_BIN", filepath.Join(t.TempDir(), "no-such-sprint"))
+	out := runSprint(t.TempDir(), []string{"complete", "t-ab12"})
+	if out["ok"] != false || !strings.Contains(fmt.Sprint(out["output"]), "could not run sprint") {
+		t.Fatalf("a missing sprint: %v", out)
 	}
 }

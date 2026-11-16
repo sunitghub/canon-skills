@@ -102,6 +102,8 @@ assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
 cp "$f" "$W/f-c8d4"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
 awk '/^---$/ && ++n == 2 { print "cloud_status: closed" } { print }' "$f" > "$W/fm" && mv "$W/fm" "$f"
 assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"; assert_eq false "$(land)"
+cp ".tickets/$id/eval-report.md" "$W/e-c8d4"; printf 'evaluator-run-id: 1-1\ngraded-head: %s\nfail: not yet\n' "$G" > ".tickets/$id/eval-report.md"
+[[ "$(st)" != results-in* ]] || fail "a failing verdict on a Manual ticket read as results-in"; cp "$W/e-c8d4" ".tickets/$id/eval-report.md"
 sed -i.bak 's/^cloud_status: closed$/cloud_status: in_progress/' "$f" && rm -f "$f.bak"
 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"; assert_eq true "$(land)"
 sed -i.bak 's/^cloud_status: in_progress$/cloud_status: closed/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" off >/dev/null

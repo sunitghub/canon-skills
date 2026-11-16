@@ -49,6 +49,10 @@ refused "with no pass step"
 refused "manual-qa.md is failing"
 "$SPRINT" manual-qa "$id" --by tester --step "opened it in Numbers|pass" >/dev/null
 
+# not a ticket id, or one this project does not hold
+rc=0; out="$("$SPRINT" complete bogus 2>&1)" || rc=$?; [[ "$rc" == 1 ]] || fail "sprint complete bogus: rc $rc"; assert_contains "$out" "Usage: sprint complete [<ticket-id>]"
+refused_other() { local rc=0 out; out="$("$SPRINT" complete "$1" 2>&1)" || rc=$?; [[ "$rc" == 1 ]] || fail "sprint complete $1: rc $rc: $out"; assert_contains "$out" "$2"; }
+refused_other t-zz99 "no ticket.md"
 # each shape it must refuse (put back after each)
 cp "$f" "$W/f.ok"; cp "$t/eval-report.md" "$W/e.ok"; cp "$t/acceptance.md" "$W/a.ok"
 sed -i.bak 's/^manual: true$/manual: false/' "$f"; rm -f "$f.bak";                     refused "it is not a Manual ticket"; cp "$W/f.ok" "$f"
@@ -58,6 +62,10 @@ sed -i.bak 's/^status: open$/status: closed/' "$f"; rm -f "$f.bak";             
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\nfail: not yet\n' "$G" > "$t/eval-report.md";  refused "eval-report.md has no pass: verdict line"
 sed -i.bak 's/^eval_override: false$/eval_override: true/' "$f"; rm -f "$f.bak";        refused "eval-report.md has no pass: verdict line"   # an override never passes here
 cp "$W/f.ok" "$f"; cp "$W/e.ok" "$t/eval-report.md"
+rm "$t/eval-report.md";                                                                  refused "there is no eval-report.md"
+printf 'evaluator-run-id: 1-1\npass: all met\n' > "$t/eval-report.md";                 refused "eval-report.md has no single graded-head"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\ngraded-head: %s\npass: all met\n' "$G" "$L" > "$t/eval-report.md"; refused "eval-report.md has no single graded-head"
+cp "$W/e.ok" "$t/eval-report.md"
 sed -i.bak 's/^- \[x\] Export writes every todo$/- [ ] Export writes every todo/' "$t/acceptance.md"; rm -f "$t/acceptance.md.bak"
 refused "acceptance.md has unchecked items other than [manual] criteria"; cp "$W/a.ok" "$t/acceptance.md"
 # a code commit after the graded head in the PR: not the graded code
@@ -95,8 +103,9 @@ assert_contains "$out" "Missing required sprint file"
 # the close: ticks the [manual] criteria, closes the ticket, records the two events with tier manual-merged
 out="$("$SPRINT" complete "$id" 2>&1)" || fail "the manual-after-merge close refused: $out"
 assert_contains "$out" "Sprint completed: $id (manual-after-merge"
+assert_contains "$out" "Next: commit .tickets/$id and push"
 assert_grep '^status: closed$' "$f"
-assert_grep "^- \[x\] \[manual\] The file opens in a spreadsheet — manual-qa.md [0-9-]*$" "$t/acceptance.md"
+assert_grep "^- \[x\] \[manual\] The file opens in a spreadsheet — manual-qa.md $(date -u +%Y-%m-%d)$" "$t/acceptance.md"
 assert_eq 2 "$(events)"
 grep -h '"kind":"close.confirmed"' "$CANON_HOME"/events/*.jsonl | grep '"tier":"manual-merged"' >/dev/null || fail "close.confirmed has no tier manual-merged"
 assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"   # the active sprint is untouched
