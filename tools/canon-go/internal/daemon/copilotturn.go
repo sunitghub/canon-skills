@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"time"
 )
 
@@ -28,9 +29,13 @@ var (
 	copilotLineMax  = 8 << 20
 )
 
-// copilotEventsPath is the session's events.jsonl, or "" without a Copilot home or session id.
+// copilotSIDRe is the session id shape canon writes (newUUIDv4): an id read back from the ticket's file must keep to it before it
+// names a path, so a hand-edited one can't point the reader outside session-state.
+var copilotSIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// copilotEventsPath is the session's events.jsonl, or "" without a Copilot home or a session id in canon's shape.
 func copilotEventsPath(home, sid string) string {
-	if home == "" || sid == "" {
+	if home == "" || !copilotSIDRe.MatchString(sid) {
 		return ""
 	}
 	return filepath.Join(home, "session-state", sid, "events.jsonl")

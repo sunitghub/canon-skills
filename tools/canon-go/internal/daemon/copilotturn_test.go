@@ -146,6 +146,19 @@ func TestCopilotTurnRefusesLinksAndResumesAtOffset(t *testing.T) {
 	}
 }
 
+// t-c723 (security review): the session id comes from a file in the ticket's folder; only canon's UUID shape names a log path.
+func TestCopilotEventsPathNeedsCanonsID(t *testing.T) {
+	home := t.TempDir()
+	if got := copilotEventsPath(home, "11111111-2222-4333-8444-555555555555"); got != filepath.Join(home, "session-state", "11111111-2222-4333-8444-555555555555", "events.jsonl") {
+		t.Fatalf("a canon id: %q", got)
+	}
+	for _, sid := range []string{"", "../../etc", "11111111-2222-4333-8444-555555555555/../x", "ABCDEF01-2222-4333-8444-555555555555"} {
+		if got := copilotEventsPath(home, sid); got != "" {
+			t.Fatalf("%q named %q", sid, got)
+		}
+	}
+}
+
 func copilotPollFast(t *testing.T) {
 	old := copilotTurnPoll
 	copilotTurnPoll = 20 * time.Millisecond
