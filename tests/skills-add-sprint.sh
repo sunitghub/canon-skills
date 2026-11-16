@@ -336,7 +336,7 @@ out="$("$SKILLS" add sprint "$fresh" 2>&1)"
 [[ "$out" != *"[registry]  dropped"* ]] || fail "the dropped line printed when nothing was dropped"
 # an empty TEMP/TMP must not make the current folder count as temp (a project under the cwd is still registered)
 under_cwd="$(reg_project)"
-out="$(cd "$tmp_home" && TEMP= TMP= "$SKILLS" add sprint "$under_cwd" 2>&1)"
+out="$(cd "$tmp_home" && TEMP='' TMP='' "$SKILLS" add sprint "$under_cwd" 2>&1)"
 [[ "$out" != *"not registered"* ]] || fail "a project under the cwd was refused as temp: $out"
 assert_count 1 "$under_cwd" "$projects_file"
 # a hand-edited registry: a blank line is not a vanished folder, and a last line without a newline is kept
