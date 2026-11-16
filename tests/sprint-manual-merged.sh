@@ -66,6 +66,7 @@ rm "$t/eval-report.md";                                                         
 printf 'evaluator-run-id: 1-1\npass: all met\n' > "$t/eval-report.md";                 refused "eval-report.md has no single graded-head"
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\ngraded-head: %s\npass: all met\n' "$G" "$L" > "$t/eval-report.md"; refused "eval-report.md has no single graded-head"
 cp "$W/e.ok" "$t/eval-report.md"
+rm "$t/acceptance.md";                                                                  refused "there is no acceptance.md"; cp "$W/a.ok" "$t/acceptance.md"
 sed -i.bak 's/^- \[x\] Export writes every todo$/- [ ] Export writes every todo/' "$t/acceptance.md"; rm -f "$t/acceptance.md.bak"
 refused "acceptance.md has unchecked items other than [manual] criteria"; cp "$W/a.ok" "$t/acceptance.md"
 # a code commit after the graded head in the PR: not the graded code

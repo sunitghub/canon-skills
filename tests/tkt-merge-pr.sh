@@ -44,7 +44,8 @@ case "$1 $2" in
                 [[ -n "${STUB_RM_FAIL:-}" ]] && { echo "HTTP 502" >&2; exit 1; }
                 printf '%s\t%s\tmain\t%s\t%s\n' "${STUB_RM_STATE:-MERGED}" "${STUB_HEAD:?}" "${STUB_CROSS:-false}" "${STUB_RM_MC:-mergesha0000000000000000000000000000000000}"; exit 0; fi
               if [[ "$*" == *mergeCommit* ]]; then   # STUB_NO_SHA: GitHub has no merge commit; gh's --jq then prints "null" unless "// empty"
-                if [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
+                if [[ -s "$STUB_W/mc" ]]; then cat "$STUB_W/mc"   # t-788f: the real merge commit STUB_MERGE_COMMIT made
+                elif [[ -z "${STUB_NO_SHA:-}" ]]; then echo "mergesha0000000000000000000000000000000000"; elif [[ "$*" != *"// empty"* ]]; then echo null; fi
                 exit 0; fi
               if [[ "$*" == *"--json state --jq"* ]]; then echo "${STUB_AFTER:-OPEN}"; exit 0; fi
               # STUB_SCRIPT: a file of "MG MS" lines, one per read (the last repeats); STUB_READS counts the reads.
@@ -58,7 +59,12 @@ case "$1 $2" in
   "pr ready") exit "${STUB_READY_RC:-0}" ;;
   "pr merge") printf 'cwd %s\n' "$PWD" >> "$STUB_LOG"; [[ -n "${STUB_MERGE_FAIL:-}" ]] && { echo "could not delete branch" >&2; exit 1; }
               # STUB_MERGE_PUSH: GitHub's merge moves main on origin (here: to the PR head, a fast-forward of the base).
-              [[ -n "${STUB_MERGE_PUSH:-}" ]] && git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$STUB_HEAD"; exit 0 ;;
+              [[ -n "${STUB_MERGE_PUSH:-}" ]] && git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$STUB_HEAD"
+              # t-788f: STUB_MERGE_COMMIT: GitHub's --merge makes a real merge commit (base, then the PR head) and reports it as mergeCommit.
+              if [[ -n "${STUB_MERGE_COMMIT:-}" ]]; then
+                mc="$(git --git-dir="$STUB_W/origin.git" commit-tree "$STUB_HEAD^{tree}" -p "$(git --git-dir="$STUB_W/origin.git" rev-parse main)" -p "$STUB_HEAD" -m "Merge pull request #7")"
+                git --git-dir="$STUB_W/origin.git" update-ref refs/heads/main "$mc"; printf '%s\n' "$mc" > "$STUB_W/mc"; fi
+              exit 0 ;;
   # t-9807: STUB_ISSUE is the issue's state after the PR merged (default CLOSED: GitHub's Fixes keyword ran); the *_FAIL vars break a call.
   "issue view")  [[ -n "${STUB_ISSUE_VIEW_FAIL:-}" ]] && { echo "HTTP 500" >&2; exit 1; }; echo "${STUB_ISSUE:-CLOSED}" ;;
   "issue close") [[ -n "${STUB_ISSUE_CLOSE_FAIL:-}" ]] && { echo "HTTP 403" >&2; exit 1; }; exit 0 ;;
@@ -524,6 +530,21 @@ out="$(ff_merge)"
 assert_contains "$out" "next: $id is Manual and stays open: test the merged main here, record it (sprint manual-qa $id --by \"<you>\" --step \"<what you tested>|pass\"), then close it (sprint complete $id)"
 assert_grep '^status: open$' "$f"
 cp "$W/f-before" "$f"; git reset -q --hard "$BASE"
+# t-788f: the whole Manual chain on what merge-pr really records: GitHub makes a merge commit, merge-pr writes it as merged: and moves
+# local main to it, the person records the test, and `sprint complete <id>` (no active sprint) closes the ticket on it. Protects the
+# close's input from merge-pr (the manual-after-merge close never sees a hand-written merged:).
+sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+awk '/^---$/ && ++n == 2 { print "cloud_status: closed" } { print }' "$f" > "$W/fm" && mv "$W/fm" "$f"
+printf '# Acceptance\n\n## Criteria\n- [x] It works\n- [ ] [manual] Looks right\n\n## Test Plan\n- [x] x\n\n## QA\n- [x] Tested locally\n' > ".tickets/$id/acceptance.md"
+eval_ok; rm -f "$W/mc"
+git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
+out="$(STUB_MERGE_COMMIT=1 "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)" || fail "merge-pr of the Manual ticket failed: $out"
+MC="$(cat "$W/mc")"; assert_grep "^merged: $MC$" "$f"; assert_eq "$MC" "$(git rev-parse main)"; assert_eq "$PRHEAD" "$(git rev-parse main^2)"
+"$SPRINT" manual-qa "$id" --by tester --step "looks right|pass" >/dev/null
+out="$(CANON_TICKETS_DIR= "$SPRINT" complete "$id" 2>&1)" || fail "the manual-after-merge close refused merge-pr's own record: $out"
+assert_contains "$out" "Sprint completed: $id (manual-after-merge"
+assert_grep '^status: closed$' "$f"; assert_grep '^- \[x\] \[manual\] Looks right — manual-qa.md ' ".tickets/$id/acceptance.md"
+rm -f "$W/mc" ".tickets/$id/acceptance.md" ".tickets/$id/evidence/manual-qa.md"; cp "$W/f-before" "$f"; git reset -q --hard "$BASE"
 
 # t-41ff: the PR carries files canon already wrote here (import-results): identical ones, this ticket's ticket.md (local
 # fields aside) and the audit log are set aside, main fast-forwards, and the local fields and log lines come back. Any

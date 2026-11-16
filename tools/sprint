@@ -1351,7 +1351,8 @@ _manual_merged_problem() {
   [[ -n "$graded" && "$heads" == "$graded" && "$graded" =~ ^[0-9a-f]{7,40}$ ]] || { echo "eval-report.md has no single graded-head"; return; }
   out="$(late_docs_delta "$root" "$graded" "$ph" "$id" 2>&1)" || rc=$?
   (( rc == 0 )) || { echo "the merged PR head ${ph:0:7} is not the graded ${graded:0:7} plus late docs only: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-200)"; return; }
-  [[ ! -f "$tdir/acceptance.md" ]] || wt_write_ok "$tdir/acceptance.md" \
+  [[ -f "$tdir/acceptance.md" ]] || { echo "there is no acceptance.md"; return; }   # evaluator: no file must not pass the unchecked-items check
+  wt_write_ok "$tdir/acceptance.md" \
     || { echo "acceptance.md cannot be written here (a link), so its [manual] criteria cannot be ticked"; return; }
   if awk 'tolower($0) ~ /^[[:space:]]*[-*] \[ \]/ && tolower($0) !~ /\[manual\]/ { f = 1 } END { exit !f }' "$tdir/acceptance.md" 2>/dev/null; then
     echo "acceptance.md has unchecked items other than [manual] criteria"; return
