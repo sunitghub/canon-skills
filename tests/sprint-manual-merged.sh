@@ -12,6 +12,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 W="$(cd "$(mktemp -d)" && pwd -P)"
 CANON_HOME="$W/canon-home"; export CANON_HOME
 trap 'rm -rf "$W"' EXIT
+use_fresh_board "$W/board"   # the close's events go through the board binary (built before HOME moves)
 export HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config"; mkdir -p "$HOME"
 git config --global user.name t; git config --global user.email t@e; git config --global init.defaultBranch main
 P="$W/p"; mkdir "$P"; cd "$P"; git init -q
@@ -64,9 +65,14 @@ git merge -q --no-ff pr2 -m "Merge PR #3"; M2="$(git rev-parse HEAD)"
 "$SPRINT" manual-qa "$id" --by tester --step "opened it in Numbers|pass" >/dev/null
 sed -i.bak "s/^merged: .*/merged: $M2/" "$f"; rm -f "$f.bak";                           refused "is not the graded ${G:0:7} plus late docs only"
 # a squash merge: no PR head to check
-git checkout -q -b sq "$G"; echo v4 > other.txt; git add other.txt; git commit -qm squashed; S="$(git rev-parse HEAD)"; git checkout -q main
+echo v4 > other.txt; git add other.txt; git commit -qm "squashed PR #4"; S="$(git rev-parse HEAD)"   # a squash merge lands on main as one commit
+"$SPRINT" manual-qa "$id" --by tester --step "opened it in Numbers|pass" >/dev/null
 sed -i.bak "s/^merged: .*/merged: $S/" "$f"; rm -f "$f.bak";                            refused "has no PR head to check (a squash or rebase merge)"
 cp "$W/f.ok" "$f"
+# merged: in the PR #n form (no merge commit recorded), and a merge this checkout does not hold (the test would be of older code)
+sed -i.bak "s/^merged: .*/merged: PR #2/" "$f"; rm -f "$f.bak";                         refused "is not a merge commit in this repository"; cp "$W/f.ok" "$f"
+git checkout -q "$G~1"; "$SPRINT" manual-qa "$id" --by tester --step "opened it in Numbers|pass" >/dev/null
+refused "is not in this checkout's HEAD"; git checkout -q main
 # a stale record: tracked code changed after the test was recorded
 git reset -q --hard "$M"; "$SPRINT" manual-qa "$id" --by tester --step "opened it in Numbers|pass" >/dev/null
 echo v5 > src.txt; git commit -qam "after the test";                                    refused "manual-qa.md is stale"
@@ -81,6 +87,10 @@ assert_contains "$out" "it is not the active sprint ($other)"
 assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"
 cp "$W/f.ok" "$f"
 
+# the active sprint's own id keeps the full close (its gates refuse here: no plan.md), never this path
+rc=0; out="$("$SPRINT" complete "$other" 2>&1)" || rc=$?
+[[ "$rc" != 0 && "$out" != *"manual-after-merge"* ]] || fail "sprint complete <active id> did not take the full close: $out"
+assert_contains "$out" "Missing required sprint file"
 # the close: ticks the [manual] criteria, closes the ticket, records the two events with tier manual-merged
 out="$("$SPRINT" complete "$id" 2>&1)" || fail "the manual-after-merge close refused: $out"
 assert_contains "$out" "Sprint completed: $id (manual-after-merge"

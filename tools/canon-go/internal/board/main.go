@@ -1058,6 +1058,11 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "bad request", http.StatusBadRequest)
 				return
 			}
+			// only the card's shape (reviewer, t-788f): never a POST that starts the full close of an active sprint
+			if !testCloseTicketOK(eroot, id) {
+				http.Error(w, "this ticket is not a merged Manual cloud ticket waiting for its test", http.StatusConflict)
+				return
+			}
 			qa := runSprint(eroot, args)
 			out := map[string]any{"ok": false, "qa": qa}
 			if qa["ok"] == true && !testCloseHasFail(payload) {
@@ -5000,6 +5005,21 @@ func testCloseArgs(id string, payload map[string]any) ([]string, bool) {
 		args = append(args, "--step", what+"|"+res)
 	}
 	return args, true
+}
+
+// testCloseTicketOK: the ticket is the one Test & close is for (board-github.js ghTestClose): runs github, merged, Manual, its cloud
+// copy closed, open here. sprint complete checks the rest (the merged code, the verdict, the test record) and refuses on its own.
+func testCloseTicketOK(root, id string) bool {
+	p := findTicketPath(id, root)
+	if p == "" {
+		return false
+	}
+	t, err := parseTicket(p)
+	if err != nil {
+		return false
+	}
+	f := func(k string) string { return strings.TrimSpace(fmt.Sprint(t[k])) }
+	return f("runs") == "github" && t["merged"] != nil && f("merged") != "" && f("manual") == "true" && f("cloud_status") == "closed" && f("status") == "open"
 }
 
 // testCloseHasFail: the form recorded a failing step, so the ticket stays open (manual-qa records it; complete is not run).

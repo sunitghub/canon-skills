@@ -67,6 +67,18 @@ func TestTestCloseRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("SPRINT_BIN", stub)
+	writeTC := func(fields string) {
+		t.Helper()
+		d := filepath.Join(ticketsDir, "t-ab12")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "ticket.md"), []byte("---\nid: t-ab12\n"+fields+"created: 2026-11-16T00:00:00Z\n---\n# x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shape := "status: open\nruns: github\ngithub: acme/app#1\nmerged: abc1234\nmanual: true\ncloud_status: closed\n"
+	writeTC(shape)
 	post := func(body string) (int, map[string]any) {
 		t.Helper()
 		os.Remove(log)
@@ -96,5 +108,18 @@ func TestTestCloseRoute(t *testing.T) {
 	code, _ = post(`{"by":"Sunit","steps":[{"what":"a|b","result":"pass"}]}`)
 	if code != 400 || ran() != "" {
 		t.Fatalf("a bad payload: %d, ran %q; want 400 and nothing run", code, ran())
+	}
+	// another shape (the active sprint, a ticket not merged, not Manual): 409, nothing run
+	t.Setenv("QA_FAIL", "")
+	for _, other := range []string{
+		strings.Replace(shape, "status: open", "status: in_progress", 1),
+		strings.Replace(shape, "merged: abc1234\n", "", 1),
+		strings.Replace(shape, "manual: true", "manual: false", 1),
+		strings.Replace(shape, "cloud_status: closed", "cloud_status: in_progress", 1),
+	} {
+		writeTC(other)
+		if code, _ := post(`{"by":"Sunit","steps":[{"what":"export works","result":"pass"}]}`); code != 409 || ran() != "" {
+			t.Fatalf("ticket %q: %d, ran %q; want 409 and nothing run", other, code, ran())
+		}
 	}
 }
