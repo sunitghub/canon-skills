@@ -44,6 +44,7 @@ fi
 unset _skills_pkg
 
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+# shellcheck disable=SC2034  # read by project.sh and cmd-uninstall.sh, which skills.sh sources after this file
 PROJECTS_FILE="$HOME/.config/canon/projects"
 
 # t-50f7: canon_current_path <path> — in the versioned layout, a path stored before it (<home>/X from the single-tree install, or
