@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-16-2026 19:20
+learnings-sweep last run: 11-16-2026 20:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-16 | [t-d600](.tickets/t-d600/learnings.md) | A scheduled-only security check lets releases ship a known-vulnerable pin between runs (Node 22.23.5 found five days late, after two releases): run the same check as a release refusal, so the release path owns the freshness | UNPROMOTED |
 | 2026-11-16 | [t-788f](.tickets/t-788f/learnings.md) | A Test Plan line ticked for a test that was moved or never written fails the evaluator: when a planned test changes place, reword the line to name the file it went to before ticking it, and feed the close its real upstream record (merge-pr's merged:), not a hand-written one | UNPROMOTED |
 | 2026-11-16 | [t-c723](.tickets/t-c723/learnings.md) | A new test that writes a shared-home file ($CANON_HOME/cockpit/model-tiers.json) races any suite writing the same file in the parallel full run: pin a private CANON_HOME in every test that writes Admin's registry, and prove it by running the pair side by side on one shared home | UNPROMOTED |
 | 2026-11-16 | [t-fcb1](.tickets/t-fcb1/learnings.md) | A word trim to hold a doc's cap rewords text tests may pin: grep tests/ for every phrase the trim changes (sprint-checklists.sh pins close step 10's "a push that succeeded"; only the full-suite stamp caught it) | UNPROMOTED |
