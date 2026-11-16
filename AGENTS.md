@@ -58,7 +58,7 @@ Tiers Reviewer and Evaluator defaults (per agent, t-8f6d), applied unconditional
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
 > Managed by `skills.sh` — use `add`/`remove` to change.
-> Platforms: on Windows canon's commands run in Git Bash, never PowerShell or cmd. Details: standards/efficiency-notes.md › Platforms (canon install).
+> Platforms: run canon's commands (sprint, tkt, skills, canon) exactly as written, never piped into head, Select-Object, a pager or a filter, never with output dropped: their output is your next step. On Windows they run from any shell through their .cmd shims, which start Git Bash; .sh scripts need Git Bash. Details: standards/efficiency-notes.md › Platforms (canon install).
 
 | Skill | Category | Source |
 |-------|----------|--------|

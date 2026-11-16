@@ -23,7 +23,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
      `code-reviewer` are separate.
-   - No push to `origin/main` until both gates report.
+   - Gates run in turn, never in parallel. No push to `origin/main` until both gates report.
 2. **Reviewer** (advisory). `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
    `Agent` with `subagent_type: "canon-reviewer"`; after, before fix commits: `gate-snapshot.sh post …` (differs: stop,
    show the PRE hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
@@ -46,15 +46,15 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
    - `sprint second-eval <id>` names a model: complete.md "Second evaluator".
-4. **Tests:** a Test Plan line per criterion; each item ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
+4. **Tests:** a Test Plan line per criterion; each ✓ with dated evidence. Re-run any evaluator-claimed "pre-existing failure" in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box met.
-6. **DECISIONS.md:** one short row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
+6. **DECISIONS.md:** one row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
 7. **Conventions:** propose a convention line; ask first.
 8. **Summary:** `.tickets/<id>/summary.md`, one row per criterion (`delivered`/`waived`/`deferred`/`partial`;
    escape `|`), plus a paragraph naming gate models, any reviewer NO. `tkt learn <id>`;
    if it writes a file, `/learnings-sweep <id>`. Route each Noticed bullet: ticket `[t-xxxx]` or `[dismissed: why]`.
 9. **Close:** `sprint complete <id>`, never a hand-edited status. Refused: report, stop.
-10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a push that succeeded. Worktree: no PR;
+10. **Commit & push:** stage specific files plus DECISIONS/HANDOFF/LEARNINGS unless gitignored; `Closes: <id>` in the body; show; ask. "No remote is configured: committed locally, nothing pushed" if none; "pushed" only after a successful push. Worktree: no PR;
     **Check & merge**, then `tkt worktree-reset`. Canon: `public` only via `tkt push-main`; a push is not a release.
 
 ## Gate dispatch inputs
@@ -64,11 +64,11 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
   `defaults.eval.anthropic`) → claude: its `alias` if `fable`, `opus`, `sonnet` or `haiku`; copilot: as is (evaluator never Haiku).
   Else omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`. Source: `Gate model override`,
   `Admin Reviewer|Evaluator default`, `definition floor`.
-- **The prompt says:** ticket id, repo path and branch; read `reference/review.md` (reviewer) or
-  `reference/eval.md` (evaluator) and follow it; the `Model:` designation; write
+- **The prompt says:** ticket id, repo path and branch; follow `reference/review.md` (reviewer) or
+  `reference/eval.md` (evaluator); the `Model:` designation; write
   `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
   that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
-  `evaluator-run-id` as the very last command. Never pass a changed-files list.
+  `evaluator-run-id` as the last command. Never pass a changed-files list.
 - `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the session never types one).
 
 ## Read the detail when

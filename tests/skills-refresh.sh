@@ -56,8 +56,11 @@ assert_count 1 "User AGENTS content." "$project/AGENTS.md"
 assert_count 1 "| sprint | dev | skills/sprint/SKILL.md |" "$project/AGENTS.md"
 assert_count 0 "Source: $ROOT" "$project/AGENTS.md"
 assert_count 1 "Paths are relative to the canon install." "$project/AGENTS.md"
+# t-fcb1: the line canon writes, read from its one owner, tools/skills/agents.sh (PLATFORMS_NOTE)
+PN="$(sed -n 's/^PLATFORMS_NOTE="\(.*\)"$/\1/p' "$ROOT/tools/skills/agents.sh")"
+[[ "$PN" == "> Platforms: run canon's commands"* ]] || fail "PLATFORMS_NOTE not read from agents.sh: $PN"
 # t-5c4b: an existing block gains the platforms line once, under its note (the cksum check below proves a second refresh adds none)
-assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+assert_count 1 "$PN" "$project/AGENTS.md"
 [[ "$(grep -A1 '^> Managed by `skills.sh`' "$project/AGENTS.md" | tail -1)" == "> Platforms:"* ]] || fail "the platforms line is not under the note"
 sum_before="$(cksum < "$project/AGENTS.md")"
 out="$("$SKILLS" refresh "$project" 2>&1)"
@@ -65,20 +68,23 @@ assert_eq "$sum_before" "$(cksum < "$project/AGENTS.md")"
 [[ "$out" != *"added the platforms line"* ]] || fail "a refresh of a block that has the line claimed to add it"
 # ...and an older wording of the line is replaced, never kept beside the new one
 sed -i.bak 's/^> Platforms:.*/> Platforms: old wording./' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+assert_count 1 "> Platforms: old wording." "$project/AGENTS.md"   # the plant took (t-fcb1: never a vacuous refresh)
 "$SKILLS" refresh "$project" >/dev/null
 assert_count 0 "old wording" "$project/AGENTS.md"
-assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+assert_count 1 "$PN" "$project/AGENTS.md"
 # ...but a "> Platforms:" line of the user's own, outside the block, is kept
 printf '\n> Platforms: user note.\n' >> "$project/AGENTS.md"
-sed -i.bak 's/^> Platforms: on Windows.*/> Platforms: old wording./' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+sed -i.bak "s/^> Platforms: run canon's.*/> Platforms: old wording./" "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+assert_count 1 "> Platforms: old wording." "$project/AGENTS.md"   # the in-block line was replaced, the user's kept
 "$SKILLS" refresh "$project" >/dev/null
 assert_count 1 "> Platforms: user note." "$project/AGENTS.md"
-assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
+assert_count 1 "$PN" "$project/AGENTS.md"
 # ...and a block whose note line is gone still gains it once, inside the block (before its end)
-sed -i.bak -e '/^> Managed by `skills.sh`/d' -e '/^> Platforms: on Windows/d' "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+sed -i.bak -e '/^> Managed by `skills.sh`/d' -e "/^> Platforms: run canon's/d" "$project/AGENTS.md" && rm -f "$project/AGENTS.md.bak"
+assert_count 0 "$PN" "$project/AGENTS.md"   # the line is really gone before the refresh
 "$SKILLS" refresh "$project" >/dev/null
-assert_count 1 "> Platforms: on Windows canon's commands run in Git Bash" "$project/AGENTS.md"
-[[ "$(sed -n '/<!-- AI-SKILLS:BEGIN -->/,/<!-- AI-SKILLS:END -->/p' "$project/AGENTS.md")" == *"> Platforms: on Windows"* ]] || fail "the platforms line landed outside the block"
+assert_count 1 "$PN" "$project/AGENTS.md"
+[[ "$(sed -n '/<!-- AI-SKILLS:BEGIN -->/,/<!-- AI-SKILLS:END -->/p' "$project/AGENTS.md")" == *"$PN"* ]] || fail "the platforms line landed outside the block"
 
 # Symlinks created/repaired by refresh (via cmd_add)
 [[ -L "$project/.claude/skills" ]] || fail "expected .claude/skills symlink after refresh"
@@ -126,7 +132,7 @@ out="$("$SKILLS" refresh "$inj" 2>&1)"
 sed -i.bak '/^> Platforms:/d' "$inj/AGENTS.md" && rm -f "$inj/AGENTS.md.bak"
 out="$("$SKILLS" refresh "$inj" 2>&1)"
 assert_contains "$out" "added the platforms line"
-[ "$(grep -c $'^> Platforms: on Windows.*\r$' "$inj/AGENTS.md")" -eq 1 ] || fail "CRLF: the platforms line is missing, duplicated or not CRLF-ended"
+[ "$(grep -c "^> Platforms: run canon's.*"$'\r$' "$inj/AGENTS.md")" -eq 1 ] || fail "CRLF: the platforms line is missing, duplicated or not CRLF-ended"
 sum_before="$(cksum < "$inj/AGENTS.md")"
 out="$("$SKILLS" refresh "$inj" 2>&1)"
 assert_eq "$sum_before" "$(cksum < "$inj/AGENTS.md")"
@@ -295,4 +301,6 @@ if [[ "$(id -u)" != 0 ]]; then
   status_ok "$k11"
 fi
 
+# t-fcb1: canon's own AGENTS.md carries exactly the line agents.sh writes (a hand copy cannot drift)
+[ "$(tr -d '\r' < "$ROOT/AGENTS.md" | grep -cxF "$PN")" -eq 1 ] || fail "canon's AGENTS.md platforms line differs from PLATFORMS_NOTE"
 printf 'skills-refresh: ok\n'
