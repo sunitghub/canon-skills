@@ -54,6 +54,15 @@ fresh() {   # prints a repo on main, equal to a bare `public` remote, VERSION 0.
   git -C "$d" config user.email t@example.com; git -C "$d" config user.name test
   printf '%s' "$d"
 }
+# t-d600: the vendored check is a stub here (the fixture repo has no scripts/check-vendored.sh): VCHECK_RC is its exit code.
+cat > "$WORK/vcheck" <<'SH'
+#!/usr/bin/env bash
+echo "| node 22.23.4 (CI gate) | 22.23.4 | 22.23.5 | 1 patch | security release (fixed in 22.23.5) |"
+[[ "${VCHECK_RC:-0}" == 1 ]] && echo "- ADVISORY: node 22.23.4 pinned in tools/canon-gate-template.yml has a newer security release: fixed in 22.23.5"
+[[ "${VCHECK_RC:-0}" == 2 ]] && echo "check-vendored: the Node index lookup failed: HTTP 503" >&2
+exit "${VCHECK_RC:-0}"
+SH
+chmod +x "$WORK/vcheck"; export RELEASE_VENDORED_CHECK="$WORK/vcheck"
 rel() { local d="$1"; shift; (cd "$d" && PATH="$BIN:$PATH" bash scripts/release.sh "$@" 2>&1); }
 untouched() {   # untouched <repo>: no tag anywhere, public main where it was, no gh call
   local d="$1"
@@ -151,6 +160,18 @@ d="$(fresh)"; echo "- late edit" >> "$d/CHANGELOG.md"
 refuses "an uncommitted CHANGELOG" "$d" "uncommitted"
 d="$(fresh)"; echo 0.3.1 > "$d/VERSION"
 refuses "an uncommitted VERSION" "$d" "uncommitted"
+
+# t-d600: a pending security release in a pinned dependency refuses the release, dry run included, before any tag; a lookup that
+# cannot answer refuses too; CANON_RELEASE_SKIP_VENDORED skips the check, saying why. Protects scripts/release.sh (every release).
+d="$(fresh)"
+VCHECK_RC=1 refuses "a pin with a security release waiting" "$d" "- ADVISORY: node 22.23.4 pinned in tools/canon-gate-template.yml"
+VCHECK_RC=1 refuses "a pin with a security release waiting (--dry-run)" "$d" "a pinned dependency has a security release waiting" --dry-run
+VCHECK_RC=2 refuses "a vendored check that could not answer" "$d" "the vendored check could not answer (exit 2)"
+set +e; out="$(VCHECK_RC=1 CANON_RELEASE_SKIP_VENDORED="offline on a plane" rel "$d" --dry-run)"; code=$?; set -e
+[[ "$code" == 0 ]] || fail "release: the skip did not let a dry run through: $out"
+assert_contains "$out" "release: vendored check skipped: offline on a plane"
+set +e; out="$(VCHECK_RC=0 rel "$d" --dry-run)"; code=$?; set -e
+[[ "$code" == 0 ]] || fail "release: a clean vendored check refused: $out"; echo "release: the vendored check gates the release (t-d600)"
 d="$(fresh)"; git -C "$d" checkout -q -b feature
 refuses "a branch other than main" "$d" "main"
 d="$(fresh)"; echo x > "$d/x"; git -C "$d" "${ident[@]}" add x; git -C "$d" "${ident[@]}" commit -qm ahead
