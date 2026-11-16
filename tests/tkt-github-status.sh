@@ -162,7 +162,13 @@ sa() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("
 rm -f ".tickets/$id/github.md"; assert_eq "null" "$(sa)"
 printf '# GitHub\n\n## 2026-11-02T17:05:55Z — sent\nissue: x\n\n## 2026-11-02T17:18:49Z — launched\ncommand: y\n\n## 2026-11-02T17:23:30Z — imported\n' > ".tickets/$id/github.md"
 assert_eq "2026-11-02T17:18:49Z" "$(sa)"   # the newest start, not a later import
-rm -f ".tickets/$id/github.md"
+# t-a7e0: launched is the newest launch only (a send alone never sets it): the Cloud row's "starting" reads it
+la() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(j.launched))'; }
+assert_eq "2026-11-02T17:18:49Z" "$(la)"
+printf '# GitHub\n\n## 2026-11-02T17:05:55Z — sent\nissue: x\n' > ".tickets/$id/github.md"; assert_eq "null" "$(la)"
+printf '# GitHub\n\n## 2026-11-02T17:05:55Z — launched\n\n## 2026-11-03T09:00:00Z — launched\n\n## 2026-11-03T10:00:00Z — sent\n' > ".tickets/$id/github.md"
+assert_eq "2026-11-03T09:00:00Z" "$(la)"; assert_eq "2026-11-03T10:00:00Z" "$(sa)"   # a later re-send: started moves, launched does not
+rm -f ".tickets/$id/github.md"; assert_eq "null" "$(la)"
 # Read-only: only a pr list call, and the ticket is unchanged.
 : > "$W/log"; before="$(cksum < "$f")"; st >/dev/null
 assert_eq "1" "$(grep -c . "$W/log")"; grep -q '^pr list --repo acme/app --state all --search Fixes #23 in:body' "$W/log" || fail "wrong gh call: $(cat "$W/log")"
