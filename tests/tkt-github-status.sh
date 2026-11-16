@@ -97,6 +97,18 @@ git -C "$W/c" push -q origin "$L:refs/pull/24/head"
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G" > ".tickets/$id/eval-report.md"
 printf '24\tOPEN\t%s\n' "$L" > "$W/prs";       assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
 assert_contains "$("$TKT" github-status "$id")" "(the PR head plus late docs)"
+# t-788f: the same PR head for a Manual ticket left open after its import (cloud_status: closed) is results-in, not Continue here; the
+# late-docs check ran only for a closed ticket (Windows VM, t-m4gt). A cloud copy that did not close, or a non-Manual open ticket, is not.
+cp "$f" "$W/f-c8d4"; sed -i.bak 's/^status: closed$/status: open/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" on >/dev/null
+awk '/^---$/ && ++n == 2 { print "cloud_status: closed" } { print }' "$f" > "$W/fm" && mv "$W/fm" "$f"
+assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"; assert_eq false "$(land)"
+cp ".tickets/$id/eval-report.md" "$W/e-c8d4"; printf 'evaluator-run-id: 1-1\ngraded-head: %s\nfail: not yet\n' "$G" > ".tickets/$id/eval-report.md"
+[[ "$(st)" != results-in* ]] || fail "a failing verdict on a Manual ticket read as results-in"; cp "$W/e-c8d4" ".tickets/$id/eval-report.md"
+sed -i.bak 's/^cloud_status: closed$/cloud_status: in_progress/' "$f" && rm -f "$f.bak"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"; assert_eq true "$(land)"
+sed -i.bak 's/^cloud_status: in_progress$/cloud_status: closed/' "$f" && rm -f "$f.bak"; "$TKT" manual "$id" off >/dev/null
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"; assert_eq true "$(land)"
+cp "$W/f-c8d4" "$f"
 echo b > "$W/c/src.txt"; git -C "$W/c" commit -qam code; X="$(git -C "$W/c" rev-parse HEAD)"
 git -C "$W/c" push -q origin "+$X:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$X" > "$W/prs";       assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"

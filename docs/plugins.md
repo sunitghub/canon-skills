@@ -62,7 +62,7 @@ Audit kinds (t-4c09; the schema is fixed here, each emitter is built by the tick
 | `plan.approved` | `ticket`, `tier` | `sprint approve` ticks the plan's Sign-off box (t-2db7) |
 | `eval.compared` | `ticket`, `model` (the second report's `Model:` line), `disagreements` | `sprint eval-compare`: the binding and second evaluators' grades compared row by row (t-864c) |
 | `implement.started` | `ticket`, `session`, `agent`, `model`, `tier` (the stage, `build`), `source` (`ticket Build model` or `Admin Build default`) | the Cockpit switched a live session to the Build model after approval (t-3425) |
-| `close.confirmed` | `ticket`, `tier` (one of `trivial`, `bugfix`, `normal`, `high-risk`, read from the `Tier:` line of the plan's Sign-off; absent when it names none) | `sprint complete` closes the ticket |
+| `close.confirmed` | `ticket`, `tier` (one of `trivial`, `bugfix`, `normal`, `high-risk`, read from the `Tier:` line of the plan's Sign-off, absent when it names none; or `manual-merged` for the close of a Manual cloud ticket merged here, t-788f) | `sprint complete` closes the ticket |
 | `github.sent` | `ticket`, `issue` (number) | `tkt send-issue` |
 | `github.results_imported` | `ticket`, `pr` (number; absent when `--pr` was not a number) | `tkt import-results`, after a clean import |
 | `github.merged` | `ticket`, `pr` (number) | `tkt merge-pr`; also `tkt merged` and the board's GitHub poll (`tkt github-status`) for a PR merged outside `merge-pr` (t-7c89; the poll's line carries `actor: system`) |

@@ -34,6 +34,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -1050,6 +1051,25 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 				args = append(args, "--manual-after-merge")
 			}
 			sendJSON(w, runTkt(eroot, args))
+			return
+		case "test-close": // t-788f: the card's Test & close form: record the person's test, then close when every step passed
+			args, ok := testCloseArgs(id, payload)
+			if !ok {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			// only the card's shape (reviewer, t-788f): never a POST that starts the full close of an active sprint
+			if !testCloseTicketOK(eroot, id) {
+				http.Error(w, "this ticket is not a merged Manual cloud ticket waiting for its test", http.StatusConflict)
+				return
+			}
+			qa := runSprint(eroot, args)
+			out := map[string]any{"ok": false, "qa": qa}
+			if qa["ok"] == true && !testCloseHasFail(payload) {
+				c := runSprint(eroot, []string{"complete", id})
+				out["close"], out["ok"] = c, c["ok"]
+			}
+			sendJSON(w, out)
 			return
 		case "open-pr":
 			sendJSON(w, runTkt(eroot, []string{"open-pr", id}))
@@ -2435,7 +2455,7 @@ var (
 	apiTicketDemoRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`)
 	apiTicketManualRe   = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/manual$`)
 	apiTicketTagsRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/tags$`)
-	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push|finish-push|finish-reset|finish-dismiss)$`)
+	apiGitHubPostRe     = regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/github/(send|import|merge|merge-stop|take-back|open-pr|land|ready|commit-push|finish-push|finish-reset|finish-dismiss|test-close)$`)
 	apiWorktreeUnlockRe = regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`)
 	checkboxItemRe      = regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 	uncheckedItemRe     = regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
@@ -4942,6 +4962,91 @@ func resolveTkt() string {
 	return filepath.Join(dir, "tkt")
 }
 
+// resolveSprint is canon's sprint CLI beside tkt (t-788f); SPRINT_BIN overrides it, as TKT_BIN does tkt's.
+func resolveSprint() string {
+	if b := os.Getenv("SPRINT_BIN"); b != "" {
+		return b
+	}
+	dir := filepath.Dir(resolveTkt())
+	if runtime.GOOS == "windows" {
+		if c := filepath.Join(dir, "sprint.cmd"); exists(c) {
+			return c
+		}
+	}
+	return filepath.Join(dir, "sprint")
+}
+
+// testCloseArgs builds `sprint manual-qa <id> --by <who> --step "<what>|<pass|fail>"...` from the Test & close form (t-788f), or false
+// for anything else: exactly the keys by and steps; by 1-80 characters; 1-10 steps, each exactly {what, result}, what 1-200 characters,
+// result pass or fail. No control character anywhere and no | in a step (manual-qa's separator). Each value is one argv entry: no shell.
+func testCloseArgs(id string, payload map[string]any) ([]string, bool) {
+	if len(payload) != 2 {
+		return nil, false
+	}
+	by, ok := payload["by"].(string)
+	if !ok || !plainText(by, 80) {
+		return nil, false
+	}
+	steps, ok := payload["steps"].([]any)
+	if !ok || len(steps) == 0 || len(steps) > 10 {
+		return nil, false
+	}
+	args := []string{"manual-qa", id, "--by", by}
+	for _, v := range steps {
+		st, ok := v.(map[string]any)
+		if !ok || len(st) != 2 {
+			return nil, false
+		}
+		what, ok1 := st["what"].(string)
+		res, ok2 := st["result"].(string)
+		if !ok1 || !ok2 || !plainText(what, 200) || strings.Contains(what, "|") || (res != "pass" && res != "fail") {
+			return nil, false
+		}
+		args = append(args, "--step", what+"|"+res)
+	}
+	return args, true
+}
+
+// testCloseTicketOK: the ticket is the one Test & close is for (board-github.js ghTestClose): runs github, merged, Manual, its cloud
+// copy closed, open here. sprint complete checks the rest (the merged code, the verdict, the test record) and refuses on its own.
+func testCloseTicketOK(root, id string) bool {
+	p := findTicketPath(id, root)
+	if p == "" {
+		return false
+	}
+	t, err := parseTicket(p)
+	if err != nil {
+		return false
+	}
+	f := func(k string) string { return strings.TrimSpace(fmt.Sprint(t[k])) }
+	return f("runs") == "github" && t["merged"] != nil && f("merged") != "" && f("manual") == "true" && f("cloud_status") == "closed" && f("status") == "open"
+}
+
+// testCloseHasFail: the form recorded a failing step, so the ticket stays open (manual-qa records it; complete is not run).
+func testCloseHasFail(payload map[string]any) bool {
+	steps, _ := payload["steps"].([]any)
+	for _, v := range steps {
+		if st, ok := v.(map[string]any); ok && st["result"] == "fail" {
+			return true
+		}
+	}
+	return false
+}
+
+// plainText: 1 to max characters after trimming, none of them a control character.
+func plainText(s string, max int) bool {
+	t := strings.TrimSpace(s)
+	if t == "" || utf8.RuneCountInString(s) > max {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 func tailString(s string) string {
 	if len(s) > tktTail {
 		return s[len(s)-tktTail:]
@@ -4951,22 +5056,31 @@ func tailString(s string) string {
 
 func runTkt(root string, args []string) map[string]any { return runTktMax(root, args, 0) }
 
+// runSprint runs canon's sprint CLI in root (t-788f: the card's Test & close), the way runTkt runs tkt.
+func runSprint(root string, args []string) map[string]any {
+	return runToolMax(root, resolveSprint(), "sprint", args, 0)
+}
+
 // runTktMax: maxBytes 0 keeps only the last tktTail bytes (a log for a person). A document someone parses must not be cut:
 // with maxBytes > 0 a successful run's whole output is returned, or ok:false saying it is too large, never a tail of it.
 func runTktMax(root string, args []string, maxBytes int) map[string]any {
+	return runToolMax(root, resolveTkt(), "tkt", args, maxBytes)
+}
+
+func runToolMax(root, bin, name string, args []string, maxBytes int) map[string]any {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, resolveTkt(), args...)
+	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if ctx.Err() == context.DeadlineExceeded {
-		out, code = []byte(fmt.Sprintf("tkt %s did not finish within 300 s", args[0])), 124
+		out, code = []byte(fmt.Sprintf("%s %s did not finish within 300 s", name, args[0])), 124
 	} else if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			code = ee.ExitCode()
 		} else {
-			out, code = []byte(fmt.Sprintf("could not run tkt: %v", err)), 1
+			out, code = []byte(fmt.Sprintf("could not run %s: %v", name, err)), 1
 		}
 	}
 	if maxBytes > 0 && code == 0 {

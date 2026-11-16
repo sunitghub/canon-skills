@@ -14419,7 +14419,10 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   // t-aba6: under Copilot CLI a button reads Copilot's own list (never by itself: a read leaves one empty Copilot session), says when it
   // was read, and on a failure says why and keeps the list. Under Claude Code none of it shows. Prod path: Admin > Model tiers.
   test('Read Copilot\'s models: the button, its note, the read time and a failed read (t-aba6)', async ({ page }) => {
-    const read = { ok: true, source: 'copilot', read_at: '2026-11-14T15:07:26Z', models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
+    // read an hour ago, from the real clock: a fixed date turned into "more than a day old" a day after it was written (t-788f)
+    const readAt = new Date(Date.now() - 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
+    const shown = `Copilot's list, read ${readAt.slice(0, 10)} ${readAt.slice(11, 16)} UTC`;
+    const read = { ok: true, source: 'copilot', read_at: readAt, models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
     let posts = await openModelTiers(page, { ok: true, source: 'fallback', read_at: '', models: [] }, read);
     await expect(page.locator('#mt-copilot-read')).toBeHidden();               // Claude Code: nothing to read
     await page.locator('#mt-agent').selectOption('copilot');
@@ -14429,7 +14432,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(posts.reads).toEqual([]);                                         // never read by itself
     await expect(page.locator('#mt-step-reviewer select option')).toHaveCount(3);   // the starter list
     await page.locator('#mt-cp-read').click();
-    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+    await expect(page.locator('#mt-cp-when')).toHaveText(shown);
     expect(posts.reads).toEqual(['POST']);
     // the pickers offer what was just read, without a reload (reviewer t-aba6 Act On 1); the saved pick stays listed
     await expect(page.locator('#mt-step-reviewer select option[value="claude-sonnet-5.5"]')).toHaveText('Claude Sonnet 5.5 \u00b7 1x');
@@ -14440,7 +14443,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-agent').selectOption('copilot');
     await page.locator('#mt-cp-read').click();
     await expect(page.locator('#mt-cp-err')).toHaveText("Could not read Copilot's models: Copilot refused: Authentication required. The list below is kept.");
-    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+    await expect(page.locator('#mt-cp-when')).toHaveText(shown);
   });
 
   // t-aba6 (criteria 3, user 2026-11-14): a list read more than a day ago says so; a saved Copilot pick the list lacks stays selected,
@@ -17206,12 +17209,12 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   const made = [];
   test.afterEach(() => { while (made.length) removeTestTicket(PROJECT_ROOT, made.pop()); });
   // runs: github marks a ticket out on GitHub; github: alone is only the issue link (sync-issues, import-issue).
-  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', manual = false } = {}) {
+  function ghTicket(id, { status = 'open', github = '', merged = '', runs = github ? 'github' : '', manual = false, cloudStatus = '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2',
       ...(github ? [`github: ${github}`] : []), ...(runs ? [`runs: ${runs}`] : []), ...(merged ? [`merged: ${merged}`] : []),
-      ...(manual ? ['manual: true'] : []), 'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
+      ...(manual ? ['manual: true'] : []), ...(cloudStatus ? [`cloud_status: ${cloudStatus}`] : []), 'created: 2026-10-16T00:00:00Z', '---', '', `# GitHub test ${id}`, ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [ ] works', '', '## Test Plan', '- [ ] check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
     made.push(id);
   }
@@ -17246,6 +17249,54 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
       await page.evaluate(async () => (await import('/static/board-github.js')).pollGithub(true));
       await expect(card.locator('.card-gh-chip')).toHaveText(chip);
       await expect(card.locator('.card-gh-btn')).toHaveText(btn);
+    }
+  });
+
+  // t-788f: a Manual cloud ticket merged here, open for the person's test: the card offers Test & close (not Start); its form posts
+  // exactly what was entered, Record and close is off until the form is one the route accepts, and only that shape gets the button.
+  test('a merged Manual cloud ticket offers Test & close, whose form records the test and closes it (t-788f)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gtc');
+    ghTicket(id, { github: 'acme/app#57', merged: 'abc1234', manual: true, cloudStatus: 'closed' });
+    const posts = [];
+    await page.route(`**/api/ticket/${id}/github/test-close`, r => { posts.push(JSON.parse(r.request().postData() || '{}'));
+      return json(r, { ok: true, qa: { ok: true, exit_code: 0, output: 'manual-qa: wrote manual-qa.md' }, close: { ok: true, exit_code: 0, output: `Sprint completed: ${id}` } }); });
+    await page.addInitScript(() => { try { localStorage.removeItem('canon.testClose.by'); } catch {} });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-gh-btn')).toHaveText('Test & close');
+    await expect(card.locator('.card-start:not(.card-gh-btn)')).toHaveCount(0);
+    await card.locator('.card-gh-btn').click();
+    const ok = page.locator('#gh-dialog-ok');
+    await expect(page.locator('#gh-tc-form')).toBeVisible();
+    await expect(ok).toHaveText('Record and close');
+    await expect(ok).toBeDisabled();                                         // no name, no step yet
+    await page.locator('#gh-tc-by').fill('Sunit');
+    await expect(ok).toBeDisabled();
+    await page.locator('.gh-tc-what').first().fill('export | works');
+    await expect(ok).toBeDisabled();                                         // | is manual-qa's separator
+    await page.locator('.gh-tc-what').first().fill('Export CSV has every todo');
+    await page.locator('#gh-tc-add').click();
+    await page.locator('.gh-tc-what').nth(1).fill('Opens in Numbers');
+    await expect(ok).toBeEnabled();
+    await ok.click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`${id} is closed`);
+    await expect(page.locator('#gh-dialog-pre')).toContainText(`Sprint completed: ${id}`);
+    expect(posts).toEqual([{ by: 'Sunit', steps: [{ what: 'Export CSV has every todo', result: 'pass' }, { what: 'Opens in Numbers', result: 'pass' }] }]);
+  });
+
+  test('Test & close shows only for a merged Manual ticket whose cloud copy closed (t-788f)', async ({ page }) => {
+    const ids = { notManual: newTicketId(PROJECT_ROOT, 'gtn'), notClosed: newTicketId(PROJECT_ROOT, 'gtd'), notMerged: newTicketId(PROJECT_ROOT, 'gtm') };
+    ghTicket(ids.notManual, { github: 'acme/app#57', merged: 'abc1234', cloudStatus: 'closed' });
+    ghTicket(ids.notClosed, { github: 'acme/app#58', merged: 'abc1234', manual: true, cloudStatus: 'in_progress' });
+    ghTicket(ids.notMerged, { github: 'acme/app#59', manual: true, cloudStatus: 'closed' });
+    await routeStatus(page, ids.notMerged, { stage: 'results-in', pr: 60 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    for (const id of Object.values(ids)) {
+      await page.locator('#board-search').fill(id);
+      const card = page.locator(`.card[data-id="${id}"]`);
+      await expect(card).toBeVisible();
+      await expect(card.locator('.card-gh-btn', { hasText: 'Test & close' })).toHaveCount(0);
     }
   });
 

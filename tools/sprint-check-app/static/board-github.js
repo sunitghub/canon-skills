@@ -25,6 +25,11 @@ export function wtMerge(t) { return t && !ghOut(t) && t.wt_merge && t.wt_merge.b
 // t-607a: a worktree ticket tkt merge merged whose push or reset is still to do ({into, branch, push_done, reset_done}), or null.
 export function wtFinish(t) { return t && !ghOut(t) && t.finish && (!t.finish.push_done || !t.finish.reset_done) ? t.finish : null; }
 export function ghOut(t) { return !!(t && t.runs === 'github' && t.github && !t.merged); }
+// t-788f: a Manual cloud ticket merged here and left open for the person's test (sent --manual-after-merge, its cloud copy closed):
+// the card's next step is Test & close, never Start.
+export function ghTestClose(t) {
+  return !!(t && t.runs === 'github' && t.merged && String(t.manual) === 'true' && t.cloud_status === 'closed' && t.status === 'open');
+}
 // t-92f2: tkt land made its worktree and the close there has not happened yet: the card and the rail resume the session in it.
 export function ghClosingHere(t) { return ghOut(t) && !!stageOf(t).landed && t.status !== 'closed' && t.status !== 'cancelled'; }
 // t-3786: the one rule for "this tab's rail is the GitHub panel" (t-718b: a GitHub pick, or a ticket out on GitHub; t-92f2: not one
@@ -114,6 +119,7 @@ export function ghButtonHTML(t) {
     `<button class="card-start card-gh-btn" type="button" data-id="${esc(t.id)}" data-gh-action="${action}" title="${escAttr(title)}">${esc(label)}</button>`;
   // t-2906: a closed worktree ticket whose branch is not in main yet gets the same Check & merge as a PR (tkt merge picks the branch).
   if (!ghOut(t)) {
+    if (ghTestClose(t)) return btn('test-close', 'Test & close', 'Record what you tested on the merged code, then close the ticket (sprint manual-qa, then sprint complete)');
     if (wtMerge(t)) return btn('merge', 'Check & merge', `Check ${wtMerge(t).branch} and merge it into ${wtMerge(t).into || 'the default branch'} here after your confirmation`);
     const f = wtFinish(t);   // t-607a: merged here; the push and the worktree reset are left
     return f ? btn('wt-finish', 'Finish', `${f.branch} is merged into ${f.into}: push ${f.into} to origin and reset the worktree, each after its own confirmation`)
@@ -179,11 +185,71 @@ async function ghAction(t, action) {
   if (action === 'finish') return finishHere(t);
   if (action === 'wt-finish') return finishStep(t);
   if (action === 'to-cloud') return launchToCloud(t, msg => showToast(msg));
+  if (action === 'test-close') return testAndClose(t);
   if (action === 'started') {
     const v = await openDialog({ title: `Start another cloud session for ${t.id}?`, body: `A cloud session may already be running for issue #${p ? p.issue : '?'}. Start another one?`, ok: 'Start another', cancel: 'Cancel' });
     if (!v || !v.ok) return;
     return launchToCloud(t, msg => showToast(msg));
   }
+}
+
+// ── Test & close (t-788f): the person's test of a merged Manual cloud ticket, recorded, then the close ────────────────────────────
+const TC_BY_KEY = 'canon.testClose.by';
+function testCloseForm() {
+  const f = document.createElement('div'); f.className = 'gh-tc-form'; f.id = 'gh-tc-form';
+  let by = ''; try { by = localStorage.getItem(TC_BY_KEY) || ''; } catch { /* no storage: start empty */ }
+  f.innerHTML = `<label class="gh-tc-by">Tested by <input type="text" id="gh-tc-by" maxlength="80" autocomplete="name"></label>
+    <div class="gh-tc-steps" id="gh-tc-steps" role="list"></div>
+    <button type="button" id="gh-tc-add">Add a step</button>`;
+  f.querySelector('#gh-tc-by').value = by;
+  const list = f.querySelector('#gh-tc-steps');
+  const addStep = () => {
+    if (list.children.length >= 10) return;
+    const n = list.children.length + 1;
+    const row = document.createElement('div'); row.className = 'gh-tc-step'; row.setAttribute('role', 'listitem');
+    row.innerHTML = `<input type="text" class="gh-tc-what" maxlength="200" aria-label="Step ${n}: what you tested" placeholder="What you tested">
+      <label><input type="radio" name="gh-tc-r${n}" value="pass" checked> Pass</label>
+      <label><input type="radio" name="gh-tc-r${n}" value="fail"> Fail</label>`;
+    list.appendChild(row);
+    f.querySelector('#gh-tc-add').disabled = list.children.length >= 10;
+  };
+  addStep();
+  f.querySelector('#gh-tc-add').addEventListener('click', addStep);
+  return f;
+}
+function testCloseValues(f) {
+  const by = f.querySelector('#gh-tc-by').value.trim();
+  const steps = [...f.querySelectorAll('.gh-tc-step')].map(r => ({ what: r.querySelector('.gh-tc-what').value.trim(), result: r.querySelector('input[type=radio]:checked').value }))
+    .filter(s => s.what);
+  const bad = !by ? 'Say who tested it.' : !steps.length ? 'Add at least one step you tested.'
+    : steps.some(s => s.what.includes('|')) ? 'A step cannot contain |.' : '';
+  return { by, steps, bad };
+}
+async function testAndClose(t) {
+  const form = testCloseForm();
+  const shown = openDialog({ title: `Test & close ${t.id}`, body: `The merged code is on this machine. Test it, then record each step you tested. Record and close keeps the record (sprint manual-qa) and, when every step passed, closes the ticket (sprint complete ${t.id}). A failed step is kept and the ticket stays open.`, ok: 'Record and close', cancel: 'Cancel' });
+  // Record and close is offered only for a form the route accepts: a name, a step, no | (manual-qa's separator)
+  const check = () => updateDialog({ okDisabled: !!testCloseValues(form).bad }, shown.gen);
+  updateDialog({ table: form }, shown.gen); check();
+  form.addEventListener('input', check); form.addEventListener('click', check);
+  const v = await shown;
+  if (!v || !v.ok) return;
+  const { by, steps } = testCloseValues(form);
+  try { localStorage.setItem(TC_BY_KEY, by); } catch { /* no storage: nothing remembered */ }
+  const run = openDialog({ title: `Recording the test for ${t.id}…`, pre: 'Running sprint manual-qa…', cancel: 'Close', escape: false });
+  let res;
+  try { res = await postJSON(ghApi(t.id, 'test-close'), { by, steps }); }
+  catch (e) { res = { ok: false, qa: { ok: false, output: String(e.message || e) } }; }
+  const qaOk = !!(res.qa && res.qa.ok), failed = steps.some(s => s.result === 'fail');
+  updateDialog({
+    title: res.ok ? `${t.id} is closed` : failed && qaOk ? `Recorded; ${t.id} stays open` : `${t.id} was not closed`,
+    body: res.ok ? 'Your test is recorded and the ticket is closed. Next: Commit and push, so the close is on origin too.'
+      : failed && qaOk ? 'A step failed: it is recorded, and the ticket stays open. Fix it in a new sprint, then test again.'
+      : 'Nothing was closed. The output says why.',
+    pre: [(res.qa && res.qa.output) || '', (res.close && res.close.output) || ''].filter(Boolean).join('\n'), escape: true,
+  }, run.gen);
+  statusById.delete(t.id);
+  await loadData();
 }
 
 // ── Continue here (t-c259, renamed t-6623): a cloud PR whose gates did not pass on its head is closed on this machine ──────────────

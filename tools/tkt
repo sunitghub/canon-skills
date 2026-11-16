@@ -3060,6 +3060,13 @@ _record_branch_merge() {
   return "$rrc"
 }
 
+# _cloud_close_counts <ticket.md> — t-788f: the cloud sprint's close is this ticket's close: closed here, or a Manual ticket left open on
+# purpose after the import (t-e790) whose cloud copy closed. One rule for github-status's late-docs check, its tracked-ticket skip and results-in.
+_cloud_close_counts() {
+  [[ "$(get_field "$1" status)" == closed ]] && return 0
+  [[ "$(get_field "$1" manual)" == true && "$(get_field "$1" cloud_status)" == closed ]]
+}
+
 # cmd_github_status <id> [--json] — t-d271: where a ticket sent to GitHub stands, for the board to poll. Reads: one
 # gh call (the PR that says "Fixes #<issue>") and one ls-remote (canon-results/<id>), plus the local ticket; t-c8d4 adds one
 # object fetch of the PR head, only when a passed, closed ticket's PR head is past graded-head and not local yet. Stages:
@@ -3099,7 +3106,7 @@ cmd_github_status() {
   local late=false lerr
   if [[ "$verdict" == pass && "$pr" =~ ^[0-9]+$ && "$phead" =~ ^[0-9a-f]{40}$ && "$graded" != - ]] && ! $match \
     && [[ -z "$merged" && "$pst" != MERGED ]] \
-    && [[ "$(get_field "$file" status)" == closed ]]; then
+    && _cloud_close_counts "$file"; then
     if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
       lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
         || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
@@ -3110,7 +3117,7 @@ cmd_github_status() {
   # not already results-in; the fetch runs once per head (the commit stays local).
   local trk=false trel=".tickets/$id"
   if ! $branch && [[ "$pst" == OPEN && "$pr" =~ ^[0-9]+$ && "$phead" =~ ^[0-9a-f]{40}$ ]] \
-    && ! { [[ "$verdict" == pass ]] && { $match || $late; } && [[ "$(get_field "$file" status)" == closed ]]; }; then
+    && ! { [[ "$verdict" == pass ]] && { $match || $late; } && _cloud_close_counts "$file"; }; then
     if ! git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null; then
       lerr="$(git -C "$root" fetch -q origin "refs/pull/$pr/head" < /dev/null 2>&1)" \
         || { echo "github-status: could not fetch PR #$pr's head from origin: $lerr" >&2; exit 1; }
@@ -3132,8 +3139,7 @@ cmd_github_status() {
   fi
   if [[ -n "$merged" || "$pst" == MERGED ]]; then stage=merged
   # t-e790: a Manual ticket stays open after the import (the person tests after the merge); its cloud copy closed is the same "results in"
-  elif [[ "$verdict" == pass ]] && { $match || $late; } && { [[ "$(get_field "$file" status)" == closed ]] \
-       || [[ "$(get_field "$file" manual)" == true && "$(get_field "$file" cloud_status)" == closed ]]; }; then stage=results-in
+  elif [[ "$verdict" == pass ]] && { $match || $late; } && _cloud_close_counts "$file"; then stage=results-in
   elif $branch || $trk; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
