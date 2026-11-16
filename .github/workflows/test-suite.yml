@@ -49,7 +49,7 @@ jobs:
             if grep -q '^FAILED: ' "$log"; then
               awk '
                 /^==> / { cur = substr($0, 5); next }
-                /FAIL/ && cur != "" && !(cur in first) { first[cur] = $0 }
+                /FAIL/ && !/^FAILED: / && cur != "" && !(cur in first) { first[cur] = $0 }
                 /^FAILED: / { f = substr($0, 9); label = f; sub(/ \(exit [0-9]+\)$/, "", label);
                               printf "- **%s**: `%s`\n", f, (label in first ? first[label] : "(no FAIL line)") }
               ' "$log"
