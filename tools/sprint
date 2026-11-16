@@ -1250,10 +1250,19 @@ _eval_override_has_dated_waiver() {
 }
 
 cmd_complete() {
-  local id tdir acceptance
+  local id tdir acceptance want="${1:-}"
   local current_out current_rc
   set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
   if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
+  # t-788f: a named ticket that is not the active sprint closes only by the manual-after-merge path (a Manual cloud ticket merged here);
+  # before, the argument was ignored and the active sprint closed instead.
+  if [[ -n "$want" ]]; then
+    [[ "$want" =~ ^t-[a-z0-9]{4}$ ]] || { echo "Usage: sprint complete [<ticket-id>]" >&2; exit 1; }
+    if [[ "$current_rc" -ne 0 || "$(awk '{print $1}' <<< "$current_out")" != "$want" ]]; then
+      _complete_manual_merged "$want" "$([[ "$current_rc" -eq 0 ]] && awk '{print $1}' <<< "$current_out")"
+      return
+    fi
+  fi
   if [[ "$current_rc" -ne 0 ]]; then echo "No active sprint."; exit 1; fi
   id="$(awk '{print $1}' <<< "$current_out")"
 
@@ -1313,6 +1322,64 @@ cmd_complete() {
     echo "warning: tkt compact exited $compact_rc; the close stands. Run 'tkt compact --dry-run' to see why."
   fi
   return 0
+}
+
+# _manual_merged_problem <id> <tdir> — t-788f: why <id> cannot take the manual-after-merge close, or nothing when it can. The shape: a Manual
+# ticket sent with --manual-after-merge, its cloud copy closed (the full gate set ran there, Manual off, t-e790), merged here, and left
+# open for the person's test. merged: is also written by github-status's poll and `tkt merged`, which never compare the graded head, so the
+# merge commit's PR head (its second parent) is checked again here: graded-head plus merge-safe late docs only, as merge-pr requires.
+_manual_merged_problem() {
+  local id="$1" tdir="$2" f="$2/ticket.md" m graded heads root ph out rc=0
+  [[ -f "$f" ]] || { echo "no ticket.md"; return; }
+  [[ "$(get_field "$f" status)" == open ]] || { echo "its status is $(get_field "$f" status), not open"; return; }
+  [[ "$(get_field "$f" manual)" == true ]] || { echo "it is not a Manual ticket (manual: true)"; return; }
+  [[ "$(get_field "$f" cloud_status)" == closed ]] || { echo "its cloud copy did not close (cloud_status: $(get_field "$f" cloud_status))"; return; }
+  m="$(get_field "$f" merged)"
+  [[ -n "$m" ]] || { echo "it is not merged yet (Check & merge, or tkt merge-pr $id)"; return; }
+  root="$(project_root)"
+  [[ "$m" =~ ^[0-9a-f]{7,40}$ ]] && git -C "$root" cat-file -e "$m^{commit}" 2>/dev/null \
+    || { echo "merged: '$m' is not a merge commit in this repository (pull the default branch first)"; return; }
+  ph="$(git -C "$root" rev-parse -q --verify "$m^2" 2>/dev/null)" \
+    || { echo "merged: ${m:0:7} has no PR head to check (a squash or rebase merge): close it with the full gates instead"; return; }
+  [[ -f "$tdir/eval-report.md" ]] || { echo "there is no eval-report.md (Import results)"; return; }
+  grep -qE '^pass:' "$tdir/eval-report.md" || { echo "eval-report.md has no pass: verdict line"; return; }
+  heads="$(sed -n 's/^graded-head:[[:space:]]*//p' "$tdir/eval-report.md" | tr -d '\r' | sort -u)"
+  graded="${heads%%$'\n'*}"
+  [[ -n "$graded" && "$heads" == "$graded" && "$graded" =~ ^[0-9a-f]{7,40}$ ]] || { echo "eval-report.md has no single graded-head"; return; }
+  out="$(late_docs_delta "$root" "$graded" "$ph" "$id" 2>&1)" || rc=$?
+  (( rc == 0 )) || { echo "the merged PR head ${ph:0:7} is not the graded ${graded:0:7} plus late docs only: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-200)"; return; }
+  if grep -E '^[[:space:]]*[-*] \[ \]' "$tdir/acceptance.md" 2>/dev/null | grep -qviE '\[manual\]'; then
+    echo "acceptance.md has unchecked items other than [manual] criteria"; return
+  fi
+  _manual_qa_state "$id"
+  [[ "$MQA_STATE" == fresh && "$MQA_PASS" -gt 0 ]] || { echo "the person's test is not recorded (manual-qa.md is ${MQA_STATE}${MQA_MSG:+: $MQA_MSG}$([[ "$MQA_STATE" == fresh ]] && echo ', with no pass step')): sprint manual-qa $id --by \"<name>\" --step \"<what>|pass\""; return; }
+}
+
+# _complete_manual_merged <id> [<active id>] — t-788f: the close of a Manual cloud ticket merged here. One local gate, the person's test
+# (manual-qa.md fresh, all steps pass): the cloud ran the full close on this code and the merge check above proves it is the graded code.
+# Ticks the [manual] criteria citing manual-qa.md, closes the ticket and records the close (tier manual-merged). A miss writes nothing.
+_complete_manual_merged() {
+  local id="$1" active="${2:-}" tdir why acc tmp day
+  tdir="$(ticket_dir_for "$id")"
+  why="$(_manual_merged_problem "$id" "$tdir")"
+  if [[ -n "$why" ]]; then
+    if [[ -n "$active" ]]; then echo "Sprint $id cannot close: it is not the active sprint ($active), and it cannot take the manual-after-merge close: $why."
+    else echo "No active sprint, and $id cannot take the manual-after-merge close: $why."; fi
+    exit 1
+  fi
+  _manual_qa_state "$id"   # the check above ran in a subshell: read the test's state here for the closing line
+  acc="$tdir/acceptance.md"; day="$(date -u +%Y-%m-%d)"
+  if [[ -f "$acc" ]] && wt_write_ok "$acc"; then
+    tmp="$(mktemp "$tdir/.acceptance.XXXXXX")"
+    awk -v d="$day" 'tolower($0) ~ /\[manual\]/ && match($0, /^[[:space:]]*[-*] \[ \]/) { sub(/\[ \]/, "[x]"); $0 = $0 " — manual-qa.md " d } { print }' "$acc" > "$tmp" \
+      && cat "$tmp" > "$acc"; rm -f "$tmp"
+  fi
+  TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
+  canon_event sprint.completed sprint "$(project_root)" "ticket=$id"
+  canon_event close.confirmed sprint "$(project_root)" "ticket=$id" "tier=manual-merged"
+  handoff_recent "$(project_root)"
+  echo "Sprint completed: $id (manual-after-merge: the cloud's gates and this machine's test, $MQA_MSG)"
+  echo "Next: commit .tickets/$id and push (the board's Commit and push), so the close is on origin too."
 }
 
 # cmd_check_review_notes <id> — t-c38e: the close gate's review-notes.md shape check, run on demand (read-only). The
@@ -2475,7 +2542,7 @@ main() {
     status) cmd_status "$@" ;;
     approve) cmd_approve "$@" ;;
     recent) cmd_recent "$@" ;;
-    complete) cmd_complete ;;
+    complete) cmd_complete "$@" ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
     gate-model) cmd_gate_model "$@" ;;
