@@ -1641,6 +1641,46 @@ _signoff_option() {
     }' || true
 }
 
+# _gate_agent — the Model tiers agent of this session (t-c723): COCKPIT_AGENT in the Cockpit, else copilot when Copilot CLI ran us (it sets
+# COPILOT_CLI=1 for its subprocesses, changelog 0.0.421), else claude.
+_gate_agent() {
+  if [[ -n "${COCKPIT_AGENT:-}" ]]; then echo "$COCKPIT_AGENT"
+  elif [[ "${COPILOT_CLI:-}" == 1 ]]; then echo copilot
+  else echo claude; fi
+}
+
+# sprint gate-model <id> <reviewer|evaluator|speccheck> — t-c723: the model to dispatch that gate with, resolved by canon so the agent
+# does not have to (a Copilot session that skipped complete.md's lookup ran its gates on the agent file's floor). One line, exit 0:
+#   model: <id> (Admin <Role> default, <agent>)
+#   ticket rule: <why> — complete.md "Model tier for gates"   (a Gate model: line, or a Lite evaluator: the agent applies that rule)
+#   none: omit model (<why>)                                    (the agent file's floor)
+# The fail-safes are complete.md's: a Haiku evaluator pick and a Claude pick with no Agent-tool alias are omitted; the spec checker
+# gets the reviewer pick when the registry has no speccheck default (the loader fills it, as Admin shows); pi has no pick.
+cmd_gate_model() {
+  local id="${1:-}" role="${2:-}" tdir plan agent m label
+  [[ -n "$id" && "$role" =~ ^(reviewer|evaluator|speccheck)$ ]] || { echo "Usage: sprint gate-model <ticket-id> <reviewer|evaluator|speccheck>" >&2; exit 1; }
+  tdir="$(ticket_dir_for "$id")"; plan="$tdir/plan.md"
+  [[ -f "$plan" ]] || { echo "Sprint $id: plan.md not found." >&2; exit 1; }
+  case "$role" in reviewer) label=Reviewer ;; evaluator) label=Evaluator ;; *) label="Spec check" ;; esac
+  if [[ -n "$(signoff_model_parse "$plan" gate 2>/dev/null)" ]]; then
+    echo "ticket rule: the ticket's Gate model line — complete.md \"Model tier for gates\""; return 0
+  fi
+  if [[ "$role" == evaluator && "$(get_field "$tdir/ticket.md" demo 2>/dev/null)" == true ]]; then
+    echo "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier for gates\""; return 0
+  fi
+  agent="$(_gate_agent)"
+  [[ "$agent" == claude || "$agent" == copilot ]] || { echo "none: omit model ($agent has no Model tiers pick)"; return 0; }
+  m="$(_admin_stage_model "$role" "$agent")"
+  [[ -n "$m" ]] || { echo "none: omit model (no Admin $label default for $agent)"; return 0; }
+  if [[ "$role" == evaluator && "$(printf '%s' "$m" | tr 'A-Z' 'a-z')" == *haiku* ]]; then
+    echo "none: omit model (Admin's Evaluator pick $m is a Haiku model; the binding evaluator never runs on Haiku outside Lite)"; return 0
+  fi
+  if [[ "$agent" == claude && ! "$m" =~ ^(fable|opus|sonnet|haiku)$ ]]; then
+    echo "none: omit model (Admin's $label pick $m has no alias the Agent tool takes)"; return 0
+  fi
+  echo "model: $m (Admin $label default, $agent)"
+}
+
 # sprint second-eval <id> — t-864c: the model the second evaluator runs on, or `skip: <reason>` (always exit 0). It needs Admin's Second
 # eval pick for the agent (Off by default); it runs on a high-risk ticket unless the Sign-off says `Second eval: off`, and on any ticket
 # whose Sign-off says `Second eval: on`. A ticket's Gate model never sets it (the point is another model).
@@ -1724,6 +1764,8 @@ cmd_eval_compare() {
 # orchestrating agent goes on to invoke `sprint complete` itself. Prints the
 # resulting count and a retry-budget-exhausted notice at 3, but never blocks
 # on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
+# t-c723: a report with no `pass:`/`fail:` line but a verdict in another shape (`verdict: pass —`, `**pass:**`, `## pass`) is refused
+# (exit 1) naming the line it needs, and the count is left alone: the grade may be right, only its line is wrong.
 cmd_eval_verdict() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
@@ -1746,6 +1788,11 @@ cmd_eval_verdict() {
   current="$(get_field "$ticket_file" eval_fail_count 2>/dev/null)"
   [[ -z "$current" ]] && current=0
 
+  if ! grep -qE '^(pass|fail):' "$report" \
+    && grep -qiE '^[#*_ ]*(verdict[*_ ]*:[*_ ]*)?[*_]*(pass|fail)[*_ ]*([:—–-]|$)' "$report"; then
+    echo "Sprint $id: eval-report.md has a verdict line in the wrong shape; it must start the line with \`pass: <one-line summary>\` or \`fail: <one-line summary>\` (no \`verdict:\`, bold or heading). eval_fail_count is unchanged: ask the evaluator to fix that line." >&2
+    exit 1
+  fi
   if grep -qE '^pass:' "$report"; then
     new=0
   else
@@ -2378,6 +2425,7 @@ Usage:
   sprint suggest-tier [<id>]  Propose (never apply) a bugfix|normal tier from the
                             diff — structural, propose-only; the human still writes
                             `Tier: bugfix` in plan.md ## Sign-off
+  sprint gate-model <id> <reviewer|evaluator|speccheck>  The model to dispatch that gate with (t-c723)
   sprint second-eval <id>  The model the second evaluator runs on, or skip: <reason> (t-864c)
   sprint eval-compare <id>  The binding and second evaluators' grades, row by row, and Disagreements: <n>
   sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
@@ -2430,6 +2478,7 @@ main() {
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
+    gate-model) cmd_gate_model "$@" ;;
     second-eval) cmd_second_eval "$@" ;;
     eval-compare) cmd_eval_compare "$@" ;;
     relay-report) cmd_relay_report "$@" ;;
