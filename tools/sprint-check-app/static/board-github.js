@@ -1045,12 +1045,17 @@ function showSent(panel, t, tab) {
       <p>Run it in the cloud:</p>
       <ol class="ck-gh-steps">
         <li>One time only: in claude.ai/code create an environment named <b>canon</b>, set Network access to Limited with Allow package managers ticked, and paste the allowed domains and the setup script. Both are in Factory › GitHub (Copy domains, Copy setup script), or print them with <code>tkt cloud-env</code>.</li>
-        <li>${line ? `Start a Claude cloud session on the canon environment and type:<pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre>` : `Start a Claude cloud session on the canon environment and point it at issue #${esc(n)}.`}</li>
+        <li>Start a Claude cloud session on the canon environment, one of:
+          <div class="ck-gh-ways" id="ck-gh-hint">
+            ${cmd ? `<div class="ck-gh-way"><button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><span>To Claude Cloud: runs canon's command <code>tkt send-issue ${esc(t.id)} --launch</code> (on Windows it copies that line: paste it in the board's Terminal after <code>su</code>, steps below).</span></div>
+            <div class="ck-gh-way"><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button><span>Copy command: copies the <code>claude --cloud '…'</code> command, for a terminal you open yourself.</span></div>` : ''}
+            ${line ? `<div class="ck-gh-way"><button type="button" id="ck-gh-copy">Copy prompt</button><span>Copy prompt: copies the text below, for claude.ai/code.</span><pre class="ck-gh-pre ck-gh-prompt" id="ck-gh-prompt">${esc(line)}</pre></div>` : `<div class="ck-gh-way"><span>Point it at issue #${esc(n)}.</span></div>`}
+          </div>
+          <span class="ck-gh-status" id="ck-gh-status" role="status"></span>
+        </li>
         <li>The card moves to In progress. When the session finishes it shows Results ready: press Import results, then Check &amp; merge.</li>
       </ol>
-      ${cmd ? `<p class="ck-gh-hint" id="ck-gh-hint"><span>To Claude Cloud: runs canon's command <code>tkt send-issue ${esc(t.id)} --launch</code> (on Windows it copies that line: paste it in the board's Terminal after <code>su</code>, steps below).</span><span>Copy command: copies the <code>claude --cloud '…'</code> command, for a terminal you open yourself.</span><span>Copy prompt: copies the text above, for claude.ai/code.</span></p>` : ''}
       ${doctor.state === 'ready' ? '' : `<p class="ck-gh-prereq" id="ck-gh-prereq">First time on this repository? The cloud session needs the Claude GitHub App installed on it and the canon environment (Factory › GitHub › Cloud environment). After you change the environment's setup script, start a new session: an open one keeps the old script.</p>`}
-      <div class="ck-gh-actions">${cmd ? `<button type="button" class="ck-gh-create" id="ck-gh-to-cloud" title="${escAttr(toCloudTip())}">To Claude Cloud</button><button type="button" id="ck-gh-copy-cmd" title="For a real terminal in this project; refused inside a Claude session">Copy command</button>` : ''}${line ? `<button type="button" id="ck-gh-copy">Copy prompt</button>` : ''}<span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   const copyText = async (text, note = 'Copied.') => {
     const s = document.getElementById('ck-gh-status');

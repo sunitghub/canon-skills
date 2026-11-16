@@ -266,3 +266,6 @@
    the scrolling Agents list can never clip it (the Cloud group is last, where an absolute line was cut off) */
   .ag-row.ag-cloud .ag-cloud-tip{display:none;grid-column:1/-1;margin-top:2px;padding:2px 0 0 26px;color:var(--text-dim);font-size:var(--fs-xs);white-space:normal;text-align:left}
   .ag-row.ag-cloud:hover .ag-cloud-tip,.ag-row.ag-cloud:focus-visible .ag-cloud-tip{display:block}
+  /* t-a811: which steps run in your own session and which in a fresh subagent */
+  .mt-runs{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--border-hover);border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.03em;color:var(--text-muted);vertical-align:1px}
+  .mt-runs.sub{border-color:var(--accent);color:var(--accent)}

@@ -64,14 +64,14 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-cp-busy strong { color: var(--th-bad-ink, var(--bad-ink)); }
 .ck-gh-cp-msg { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-muted); }
 .ck-gh-cp-msg input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
-.ck-gh-actions button {
+.ck-gh-actions button, .ck-gh-way button {
   font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 8px; cursor: pointer;
   border: 1px solid var(--border); background: transparent; color: var(--text);
 }
-.ck-gh-actions .ck-gh-create { background: var(--accent); border-color: var(--accent); color: var(--th-on-accent, #fff); }
-.ck-gh-actions button:disabled { opacity: .5; cursor: default; }
-.ck-gh-actions button:hover:not(:disabled), .ck-gh-actions button:focus-visible:not(:disabled) { background: var(--surface-hover); border-color: var(--border-hover); }
-.ck-gh-actions .ck-gh-create:hover:not(:disabled), .ck-gh-actions .ck-gh-create:focus-visible:not(:disabled) { background: var(--accent); border-color: var(--accent); opacity: .88; }
+.ck-gh-actions .ck-gh-create, .ck-gh-way .ck-gh-create { background: var(--accent); border-color: var(--accent); color: var(--th-on-accent, #fff); }
+.ck-gh-actions button:disabled, .ck-gh-way button:disabled { opacity: .5; cursor: default; }
+.ck-gh-actions button:hover:not(:disabled), .ck-gh-actions button:focus-visible:not(:disabled), .ck-gh-way button:hover:not(:disabled), .ck-gh-way button:focus-visible:not(:disabled) { background: var(--surface-hover); border-color: var(--border-hover); }
+.ck-gh-actions .ck-gh-create:hover:not(:disabled), .ck-gh-actions .ck-gh-create:focus-visible:not(:disabled), .ck-gh-way .ck-gh-create:hover:not(:disabled), .ck-gh-way .ck-gh-create:focus-visible:not(:disabled) { background: var(--accent); border-color: var(--accent); opacity: .88; }
 .ck-gh-box .ck-gh-steps { margin: 0; padding-left: 1.4em; color: var(--text-muted); }   /* t-e28c */
 .ck-gh-box .ck-gh-steps li { margin: 0 0 6px; }
 .ck-gh-box .ck-gh-steps .ck-gh-pre { margin: 6px 0 0; }
@@ -110,3 +110,8 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .gh-tc-step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .gh-tc-form input[type=text] { flex: 1 1 14em; min-width: 0; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-body); font: inherit; }
 .gh-tc-form #gh-tc-add { align-self: flex-start; }
+/* t-a811: step 2's three ways to start the session, each a button with its caption */
+.ck-gh-ways { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.ck-gh-way { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 10px; align-items: start; }
+.ck-gh-way > span { font-size: 12.5px; color: var(--text-muted); }
+.ck-gh-way > .ck-gh-pre { grid-column: 1 / -1; margin: 0; }

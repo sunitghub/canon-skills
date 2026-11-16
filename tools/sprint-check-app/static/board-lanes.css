@@ -249,6 +249,11 @@
       font: 700 var(--fs-sm) var(--mono); letter-spacing: 0; white-space: nowrap;
       color: var(--text-muted); position: relative; z-index: 1;
     }
+    /* t-a811: the id is a copy button that still looks like the id */
+    button.card-id { border: 0; background: transparent; padding: 0; margin: 0; cursor: copy; border-radius: 3px; }
+    button.card-id:hover { color: var(--text); text-decoration: underline dotted; }
+    button.card-id:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    button.card-id.copied { color: var(--ok-ink, var(--ok)); }
     .card-menu-btn {
       margin-left: -2px; flex-shrink: 0; font-size: 13px; padding: 0 3px; height: 16px;
       border-radius: 4px; border: 1px solid transparent; background: transparent;
