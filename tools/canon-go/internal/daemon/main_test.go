@@ -9434,3 +9434,149 @@ func TestSwitchToBuildTypesNothing(t *testing.T) {
 	s.switchToBuild(se)
 	check("same model, agent working", se, "plan")
 }
+
+// writeSignoffPlan writes a ticket's plan.md with this Sign-off line, approved (sprint approve's record) or not.
+func writeSignoffPlan(t *testing.T, root, ticket, tierLine string, approved bool) string {
+	t.Helper()
+	box := "- [ ] Plan approved\n"
+	if approved {
+		box = "- [x] Plan approved\nApproved: sha256:abc 2026-11-16T00:00:00Z\n"
+	}
+	p := filepath.Join(root, ".tickets", ticket, "plan.md")
+	if err := os.WriteFile(p, []byte("# Plan\n\n## Sign-off\n"+tierLine+"\n\n"+box+"\n## Approach\n1. do it\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// t-874a: a ticket bound to a worktree that tracks its own .tickets/ has its plan approved THERE (sprint approve pins the worktree's
+// copy); main's copy stays unapproved. The Build switch and the session's model must read the worktree's plan.md, for Claude and
+// Copilot. Protects every Cockpit worktree session's Build switch (DECISIONS t-3425) and the model a resumed worktree session starts on.
+func TestSwitchToBuildReadsTheBoundWorktreesPlan(t *testing.T) {
+	for _, agent := range []string{"claude", "copilot"} {
+		t.Run(agent, func(t *testing.T) {
+			t.Setenv("CANON_HOME", t.TempDir())
+			restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+			bin, argvFile, _ := fakeSprint(t)
+			if agent == "copilot" {
+				t.Setenv("COCKPIT_COPILOT_BIN", bin)
+				t.Setenv("COPILOT_HOME", t.TempDir())
+			}
+			root, wt := boundTicketFixture(t, "open", "in_progress")
+			writeSignoffPlan(t, root, "t-ab12", "Tier: normal | Plan model: opus | Build model: opus", false)
+			writeSignoffPlan(t, wt, "t-ab12", "Tier: normal | Plan model: haiku | Build model: sonnet", false)
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			resp := startSessionWithAgent(t, ts.URL, "t-ab12", agent, bootTok)
+			resp.Body.Close()
+			waitFile(t, argvFile, 3*time.Second)
+			var se *session
+			s.mu.Lock()
+			for _, x := range s.sessions {
+				se = x
+			}
+			s.mu.Unlock()
+			want := func(m string) string {
+				if agent == "copilot" {
+					return copilotModel(m)
+				}
+				return m
+			}
+			if se == nil || se.stage != "plan" || se.model != "haiku" { // the pick as written; copilot's id is mapped when typed
+				t.Fatalf("before approval: stage %q on %q, want stage plan on the worktree's Plan model haiku", se.stage, se.model)
+			}
+			writeSignoffPlan(t, wt, "t-ab12", "Tier: normal | Plan model: haiku | Build model: sonnet", true)
+			se.setStatus("awaiting-input")
+			s.switchToBuild(se)
+			se.mu.Lock()
+			out, stage := string(se.buf), se.stage
+			se.mu.Unlock()
+			if stage != "build" || !strings.Contains(out, "/model "+want("sonnet")) || !strings.Contains(out, "Plan approved: continue the build (t-ab12) on "+want("sonnet")+".") {
+				t.Fatalf("stage %q, typed %q: want /model %s and the continue line from the worktree's approved plan", stage, out, want("sonnet"))
+			}
+			se.setStatus("awaiting-input")
+			s.switchToBuild(se) // a second turn end: nothing more is typed
+			se.mu.Lock()
+			again := string(se.buf)
+			se.mu.Unlock()
+			if strings.Count(again, "/model ") != strings.Count(out, "/model ") || strings.Count(again, "Plan approved: continue") != strings.Count(out, "Plan approved: continue") {
+				t.Fatalf("a second turn end typed more: %q", again)
+			}
+			// a session started after the approval starts on the worktree's Build model
+			if m, st, _ := s.sessionModel(root, "t-ab12", tierAgent(agent)); st != "build" || m != "sonnet" {
+				t.Fatalf("sessionModel after approval: %q on %q, want build on sonnet", st, m)
+			}
+			killAllSessions(s)
+			if err := os.Remove(argvFile); err != nil {
+				t.Fatal(err)
+			}
+			resp = startSessionWithAgent(t, ts.URL, "t-ab12", agent, bootTok)
+			resp.Body.Close()
+			waitFile(t, argvFile, 3*time.Second)
+			argv, _ := os.ReadFile(argvFile)
+			var se2 *session
+			s.mu.Lock()
+			for _, x := range s.sessions {
+				se2 = x
+			}
+			s.mu.Unlock()
+			if se2 == nil || se2.stage != "build" || !strings.Contains(string(argv), want("sonnet")) {
+				t.Fatalf("a start after approval: stage %v, argv %q; want build and --model %s", se2 != nil && se2.stage == "build", argv, want("sonnet"))
+			}
+		})
+	}
+}
+
+// t-874a: the session reads main's plan.md whenever the worktree's copy cannot be trusted or is not there, and that fall-back still
+// switches when main's is the approved one (a gitignored .tickets/ has no worktree copy at all).
+func TestPlanReadersFallBackToMain(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, root, wt string)
+		want  bool // planApprovedIn
+	}{
+		{"the worktree's plan.md is a link to an approved file", func(t *testing.T, root, wt string) {
+			writeSignoffPlan(t, root, "t-ab12", "Tier: normal", false)
+			elsewhere := filepath.Join(t.TempDir(), "plan.md")
+			p := writeSignoffPlan(t, wt, "t-ab12", "Tier: normal", true)
+			if err := os.Rename(p, elsewhere); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(elsewhere, p); err != nil {
+				t.Skipf("no symlinks here: %v", err)
+			}
+		}, false},
+		{"no lock", func(t *testing.T, root, wt string) {
+			writeSignoffPlan(t, root, "t-ab12", "Tier: normal", false)
+			writeSignoffPlan(t, wt, "t-ab12", "Tier: normal", true)
+			if err := os.Remove(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")); err != nil {
+				t.Fatal(err)
+			}
+		}, false},
+		{"no ticket folder in the worktree (gitignored .tickets), main approved", func(t *testing.T, root, wt string) {
+			writeSignoffPlan(t, root, "t-ab12", "Tier: normal", true)
+			if err := os.RemoveAll(filepath.Join(wt, ".tickets", "t-ab12")); err != nil {
+				t.Fatal(err)
+			}
+		}, true},
+		{"the worktree's ticket folder has no plan.md, main approved", func(t *testing.T, root, wt string) {
+			writeSignoffPlan(t, root, "t-ab12", "Tier: normal", true)
+		}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("CANON_HOME", t.TempDir())
+			root, wt := boundTicketFixture(t, "open", "in_progress")
+			c.setup(t, root, wt)
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			if got := s.planApprovedIn(root, "t-ab12"); got != c.want {
+				t.Fatalf("planApprovedIn = %v, want %v", got, c.want)
+			}
+			if _, st, _ := s.sessionModel(root, "t-ab12", "claude"); (st == "build") != c.want {
+				t.Fatalf("sessionModel stage %q, want build=%v", st, c.want)
+			}
+		})
+	}
+}
