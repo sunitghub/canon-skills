@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.61.2] - 2026-11-16
+
+- Fixed: `context-doctor` prints no Summary table and no lean/trim/overloaded verdict for a repo with no agent context; before, it could report `lean` for a repo it never audited. Its evals now cover the `--model 4|5` modes, the model-agnostic checks (checkpoint/pause, progress-claim grounding) and the Claude 5 checks, including an Opus 5 target (t-7e8c).
+
 ## [0.61.1] - 2026-11-15
 
 - Fixed: the `context-check` skill no longer reads `context-findings.md`, a file it stopped writing when it moved to `context-check-report.md`. Every run now reports every current issue, including ones an earlier run already reported; the report's `**Trend:**` line carries the history. A `context-findings.md` left in a project by an older version is ignored, and can be deleted. Its evals now cover the report table, the history file (first run, trend line, 20-entry cap) and canon-managed vs project-local skills (t-c02a).
