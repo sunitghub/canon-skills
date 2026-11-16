@@ -71,9 +71,28 @@ func untrackedFiles(root string) ([]string, error) {
 	return files, nil
 }
 
+// keepMirrorOut (t-d8af) writes canon's ignore lines when the folder holds canon's skill mirror (a project that got the skills
+// before git was turned on has none), then checks git ignores each mirror path that exists; it returns why not, or "".
+func keepMirrorOut(root string) string {
+	common.EnsureCanonIgnored(root)
+	for _, rel := range []string{".claude/skills", ".agents/skills"} {
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(rel))); err != nil {
+			continue
+		}
+		if _, _, err := gitOutIn(root, 10*time.Second, "check-ignore", "-q", "--", rel); err != nil {
+			return "canon's skill folder " + rel + " is not ignored by this folder's .gitignore (canon could not add /" + rel +
+				" to it), so a snapshot would save it. Add the line /" + rel + " to .gitignore, then open the snapshot again."
+		}
+	}
+	return ""
+}
+
 // firstSnapshotPreview stages nothing: it counts what a snapshot would save.
 func firstSnapshotPreview(root string) map[string]any {
 	if ok, msg := canonStartOnly(root); !ok {
+		return map[string]any{"ok": true, "can_snapshot": false, "reason": msg}
+	}
+	if msg := keepMirrorOut(root); msg != "" {
 		return map[string]any{"ok": true, "can_snapshot": false, "reason": msg}
 	}
 	files, err := untrackedFiles(root)
@@ -181,6 +200,9 @@ func firstSnapshot(root string, confirm any, ignore []string) map[string]any {
 	script := filepath.Join(croot, "tools", "secret-scan.sh")
 	if croot == "" || !exists(script) {
 		return fail("The secret scan is not available, so nothing was saved.")
+	}
+	if msg := keepMirrorOut(root); msg != "" { // before orig is read, so a failed save's restore keeps canon's lines
+		return fail(msg)
 	}
 	ignorePath := filepath.Join(root, ".gitignore")
 	orig, readErr := os.ReadFile(ignorePath)

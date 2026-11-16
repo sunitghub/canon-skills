@@ -145,6 +145,9 @@ func ensureMirrorGitignored(wt string) []string {
 	if notRegular(gi) {
 		return []string{gi + " is not a regular file: left as is"}
 	}
+	if unreadable(gi) { // t-d8af: a read that fails would look empty, and the write after it would drop the user's lines
+		return []string{gi + " cannot be read: left as is"}
+	}
 	for _, entry := range []string{"/.claude/skills", "/.agents/skills"} {
 		if hasLine(gi, entry+"/") { // the directory-only line an earlier canon wrote: replace it, or drop it if the bare line exists
 			have := hasLine(gi, entry)
@@ -176,13 +179,43 @@ func ensureMirrorGitignored(wt string) []string {
 	return did
 }
 
+// EnsureCanonIgnored writes canon's ignore lines (the skill mirror, the close's run records, and /.claude/agents when that
+// is a link) into wt's ignore file when wt is a git work tree that holds canon's mirror. t-d8af: the board's Turn on git and its
+// first snapshot call it, so a project that got canon's skills before git never snapshots the mirror; a folder without a
+// mirror is left exactly as it is.
+func EnsureCanonIgnored(wt string) []string {
+	if !insideWorkTree(wt) {
+		return nil
+	}
+	mirror := false
+	for _, rel := range []string{".claude/skills", ".agents/skills"} {
+		if _, err := os.Lstat(filepath.Join(wt, filepath.FromSlash(rel))); err == nil {
+			mirror = true
+		}
+	}
+	if !mirror {
+		return nil
+	}
+	did := ensureMirrorGitignored(wt)
+	if isDirLink(filepath.Join(wt, ".claude", "agents")) {
+		did = append(did, ensureLine(wt, "/.claude/agents")...)
+	}
+	return did
+}
+
+// unreadable: the file exists but cannot be read (any error but not-exist).
+func unreadable(p string) bool {
+	_, err := os.ReadFile(p)
+	return err != nil && !os.IsNotExist(err)
+}
+
 // ensureLine adds entry to wt's ignore file (ignoreFile) when it is missing, after a newline if the file does not end in one.
 func ensureLine(wt, entry string) []string {
 	if !insideWorkTree(wt) {
 		return nil
 	}
 	gi := ignoreFile(wt)
-	if notRegular(gi) || hasLine(gi, entry) {
+	if notRegular(gi) || unreadable(gi) || hasLine(gi, entry) {
 		return nil
 	}
 	raw, _ := os.ReadFile(gi)
@@ -256,6 +289,9 @@ func notRegular(p string) bool {
 
 // writeFileNoFollow writes p without following a link at its last component (O_NOFOLLOW where the OS has it, noFollow): the
 // check in notRegular and this open cannot be raced into a write through a link swapped in between.
+// WriteFileNoFollow is writeFileNoFollow for the board (t-d8af: a rollback never writes through a link).
+func WriteFileNoFollow(p string, data []byte) error { return writeFileNoFollow(p, data) }
+
 func writeFileNoFollow(p string, data []byte) error {
 	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|noFollow, 0o644)
 	if err != nil {
