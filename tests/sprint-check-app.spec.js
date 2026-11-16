@@ -6702,6 +6702,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(tip).toBeHidden();                                  // only while hovered or focused
       await row.hover();
       await expect(tip).toBeVisible();
+      // the line sits inside the row and the Agents list, never clipped below the last row (reviewer, t-a7e0): in the row's own flow
+      const [tb, lb] = await Promise.all([tip.boundingBox(), page.locator('#ag-list').boundingBox()]);
+      expect(tb.y >= lb.y && tb.y + tb.height <= lb.y + lb.height + 1, `tip ${JSON.stringify(tb)} inside the list ${JSON.stringify(lb)}`).toBe(true);
       const read = async () => (await tip.textContent()) || '';
       const first = await read();
       const m = first.match(/^Checked GitHub (\d+)s ago · next look in (\d+)s$/);

@@ -2336,7 +2336,15 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 			t.Errorf("%s (%s, stage %s) state = %v, want %s", r.id, r.status, r.stage, state[r.id], r.want)
 		}
 	}
-	// t-a7e0: every checked row says when GitHub was last read for it (the Cloud row's "checked … ago")
+	// t-a7e0: every checked row says when GitHub was last read for it (the Cloud row's "checked … ago"); a failed read is no check
+	mergeRunsMu.Lock()
+	statusCache[mergeKey{root, "t-cc01"}] = statusHit{at: now, res: map[string]any{"ok": false, "output": "HTTP 502"}}
+	mergeRunsMu.Unlock()
+	for _, r := range remoteAgents(root) {
+		if r["id"] == "t-cc01" && r["checked"] != nil {
+			t.Errorf("a failed read carries checked %v", r["checked"])
+		}
+	}
 	for _, r := range got {
 		if c, _ := r["checked"].(string); c == "" {
 			t.Errorf("%s has no checked time", r["id"])

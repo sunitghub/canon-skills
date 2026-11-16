@@ -262,7 +262,7 @@
   .lg-row-broken,.lg-row-missing{color:var(--st-need)} .lg-row-unsealed{color:var(--text-muted)}
   #lg-keep{background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px}
 
-/* t-a7e0: a Cloud row's live "checked / next look" line, shown while the row is hovered or focused */
-.ag-row.ag-cloud{position:relative}
-.ag-row.ag-cloud .ag-cloud-tip{display:none;position:absolute;left:8px;right:8px;top:100%;z-index:5;margin-top:2px;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-raised);color:var(--text-body);font-size:var(--fs-xs);white-space:normal;text-align:left;pointer-events:none}
-.ag-row.ag-cloud:hover .ag-cloud-tip,.ag-row.ag-cloud:focus-visible .ag-cloud-tip{display:block}
+/* t-a7e0: a Cloud row's live "checked / next look" line, shown inside the row while it is hovered or focused: in the row's own flow, so
+   the scrolling Agents list can never clip it (the Cloud group is last, where an absolute line was cut off) */
+  .ag-row.ag-cloud .ag-cloud-tip{display:none;grid-column:1/-1;margin-top:2px;padding:2px 0 0 26px;color:var(--text-dim);font-size:var(--fs-xs);white-space:normal;text-align:left}
+  .ag-row.ag-cloud:hover .ag-cloud-tip,.ag-row.ag-cloud:focus-visible .ag-cloud-tip{display:block}

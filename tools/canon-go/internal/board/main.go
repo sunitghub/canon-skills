@@ -5484,7 +5484,7 @@ func remoteAgents(root string) []map[string]any {
 			issue = m[1]
 		}
 		row := map[string]any{"id": c.id, "title": c.title, "state": state, "issue": issue, "since": since, "pending": !have}
-		if have && !checkedAt.IsZero() {
+		if have && res["ok"] == true && !checkedAt.IsZero() { // a failed read is not a check (the row says "could not be checked")
 			row["checked"] = checkedAt.UTC().Format(time.RFC3339) // t-a7e0: the last real GitHub read, for the row's "checked … ago"
 		}
 		rows = append(rows, row)
