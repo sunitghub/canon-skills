@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.61.4] - 2026-11-16
+
+- Changed: the `> Platforms:` line canon writes into each project's `AGENTS.md` now tells agents to run canon's commands (`sprint`, `tkt`, `skills`, `canon`) exactly as written, never piped into `head`, `Select-Object`, a pager or a filter, because their output is the next step. On Windows they run from any shell, PowerShell included, through their `.cmd` shims, which start Git Bash; `.sh` scripts still need Git Bash. The old "never PowerShell or cmd" wording is gone. Projects pick up the new line on their next `canon update` or `skills.sh refresh` (t-fcb1).
+- Changed: the sprint close checklist says the close gates run one after another, never in parallel (t-fcb1).
+
 ## [0.61.3] - 2026-11-16
 
 - Fixed: a project that got canon's skills before version history was turned on no longer saves canon's skill folders (`.claude/skills`, `.agents/skills`) in its first commit or first snapshot. Turn on git and Save a first snapshot now add canon's ignore lines when those folders exist, and the snapshot refuses, saying why, while one of them is still not ignored. A failed Turn on git puts your `.gitignore` back exactly as it was; a `.gitignore` that is a link, a FIFO or unreadable is never changed (t-d8af).
