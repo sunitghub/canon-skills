@@ -271,7 +271,7 @@ Start checklist — rules that need no reference read (each owned by the step na
    `subagent_type: "canon-spec-checker"` (fallback `general-purpose`), told to follow `skills/sprint/reference/spec-check.md` for the
    ticket and to write `.tickets/<id>/spec-review.md`; then `gate-snapshot.sh post …` (exit 1: stop and show the person what it names,
    as for a close gate) and `tools/subagent-log.sh --agent-id <id>
-   --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: a ticket's `Gate model:`, else Admin > Model tiers'
+   --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: the one `gate-snapshot.sh pre … --role speccheck` printed (`sprint gate-model`, t-c723), which applies: a ticket's `Gate model:`, else Admin > Model tiers'
    Spec check default for the agent (`defaults.speccheck.<claude|copilot>` in `$CANON_HOME/cockpit/model-tiers.json`, else the seed
    `tools/sprint-check-app/model-tiers.json`; a file saved before the step has none: use its `defaults.reviewer.<agent>`, as Admin
    shows; Claude Code: the entry's alias), else omit it (the agent file's floor). It never blocks and you never apply its findings yourself: put them in the brief, and the person decides. A failed or

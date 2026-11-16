@@ -589,7 +589,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    resetting to `0` on `pass` — so the retry-budget check above sees real state on the *next*
    `sprint complete` invocation, regardless of whether this one goes on to reach step 9's CLI
    call. Do this even when the verdict is `pass`, to reset the counter. See
-   `standards/ticket-layout.md`'s `eval_fail_count` field contract for the full mechanics.
+   `standards/ticket-layout.md`'s `eval_fail_count` field contract for the full mechanics. A verdict line in another shape
+   (`verdict: pass —`, bold, a heading) is refused, exit 1, with the count unchanged: ask the same evaluator to fix only that line
+   (t-c723).
 
    **Log the subagent run.** Immediately after the evaluator subagent completes (and after `gate-snapshot.sh post`, step 7), read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
