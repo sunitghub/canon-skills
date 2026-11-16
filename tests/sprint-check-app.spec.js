@@ -14419,7 +14419,10 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   // t-aba6: under Copilot CLI a button reads Copilot's own list (never by itself: a read leaves one empty Copilot session), says when it
   // was read, and on a failure says why and keeps the list. Under Claude Code none of it shows. Prod path: Admin > Model tiers.
   test('Read Copilot\'s models: the button, its note, the read time and a failed read (t-aba6)', async ({ page }) => {
-    const read = { ok: true, source: 'copilot', read_at: '2026-11-14T15:07:26Z', models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
+    // read an hour ago, from the real clock: a fixed date turned into "more than a day old" a day after it was written (t-788f)
+    const readAt = new Date(Date.now() - 3600e3).toISOString().replace(/\.\d+Z$/, 'Z');
+    const shown = `Copilot's list, read ${readAt.slice(0, 10)} ${readAt.slice(11, 16)} UTC`;
+    const read = { ok: true, source: 'copilot', read_at: readAt, models: [{ id: 'claude-sonnet-5.5', name: 'Claude Sonnet 5.5', usage: '1x' }] };
     let posts = await openModelTiers(page, { ok: true, source: 'fallback', read_at: '', models: [] }, read);
     await expect(page.locator('#mt-copilot-read')).toBeHidden();               // Claude Code: nothing to read
     await page.locator('#mt-agent').selectOption('copilot');
@@ -14429,7 +14432,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(posts.reads).toEqual([]);                                         // never read by itself
     await expect(page.locator('#mt-step-reviewer select option')).toHaveCount(3);   // the starter list
     await page.locator('#mt-cp-read').click();
-    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+    await expect(page.locator('#mt-cp-when')).toHaveText(shown);
     expect(posts.reads).toEqual(['POST']);
     // the pickers offer what was just read, without a reload (reviewer t-aba6 Act On 1); the saved pick stays listed
     await expect(page.locator('#mt-step-reviewer select option[value="claude-sonnet-5.5"]')).toHaveText('Claude Sonnet 5.5 \u00b7 1x');
@@ -14440,7 +14443,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-agent').selectOption('copilot');
     await page.locator('#mt-cp-read').click();
     await expect(page.locator('#mt-cp-err')).toHaveText("Could not read Copilot's models: Copilot refused: Authentication required. The list below is kept.");
-    await expect(page.locator('#mt-cp-when')).toHaveText("Copilot's list, read 2026-11-14 15:07 UTC");
+    await expect(page.locator('#mt-cp-when')).toHaveText(shown);
   });
 
   // t-aba6 (criteria 3, user 2026-11-14): a list read more than a day ago says so; a saved Copilot pick the list lacks stays selected,
