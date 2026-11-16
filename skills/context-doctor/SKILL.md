@@ -226,13 +226,15 @@ Omit the last two rows entirely in `4` mode — don't print them as "n/a".
 context-doctor verdict: lean | trim | overloaded
 ```
 
-The final `context-doctor verdict:` line is required.
+The final `context-doctor verdict:` line is required whenever context was audited (not for the
+no-context stop in Gotchas).
 
 ## Gotchas
 
 - **No context artifacts found?** If the repo has no `CLAUDE.md`/`AGENTS.md`/skills/agent config,
-  say so and stop with a limited-scope note — do not invent findings. A repo with no agent context
-  is a valid, clean result.
+  say so and stop with a limited-scope note — do not invent findings, and print no Summary table and
+  no lean/trim/overloaded verdict (nothing was audited to earn one). A repo with no agent context is
+  a valid, clean result.
 - **Durable memory is not clutter.** A decision log or handoff file is deliberate cross-session
   memory, not the manual-bookkeeping the memory lens flags. Don't recommend deleting durable records.
 - **Don't over-apply "rules → judgement".** Constraints that guard genuinely dangerous or

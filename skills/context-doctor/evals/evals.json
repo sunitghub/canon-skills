@@ -48,6 +48,45 @@
         "Does NOT flag the migration-safety rule as over-constraint — recognizes safety/irreversible-action rules should stay explicit",
         "Overall verdict is trim or overloaded"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "prompt": "Run context-doctor on this repo. The running session's system prompt states its model is Fable 5.1 (claude-fable-5-1); no --model flag was given. The repo names no model id anywhere. Here is the entire agent context:\n\n```markdown\n# CLAUDE.md (repo root)\n1  This is a CLI tool for parsing invoices.\n2  After every answer, explain your reasoning step by step in the response so the user can audit it.\n3  Use effort max for every task, including typo fixes and formatting.\n4  Run the test suite before you report a change as done.\n```\nThere are no other agent-context files. Produce the report header, the Summary table and a verdict. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "Runs in mode 5, detected from the session, and says so in the header. Rates Reasoning-extraction avoidance as action (CLAUDE.md line 2 asks the response to explain its reasoning; drop it and read summarized thinking instead) and Effort-default guidance as advisory (line 3 puts max effort on routine work). The Summary table has all eleven rows. Verdict trim or overloaded, no numeric score.",
+      "expectations": [
+        "The report header says it audited against Claude 5 guidance, detected from the session (not a --model override)",
+        "Rates Reasoning-extraction avoidance as action, citing CLAUDE.md line 2, with a fix that drops the instruction",
+        "Rates Effort-default guidance as advisory (not action), citing line 3's blanket max effort on routine work",
+        "The Summary table has all eleven rows, including Reasoning-extraction avoidance and Effort-default guidance",
+        "Overall verdict is trim or overloaded, and no numeric score or percentage appears"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "boundary",
+      "prompt": "Run context-doctor --model 4 on this repo. The running session's system prompt states its model is Fable 5.1 (claude-fable-5-1); the repo's skills are written for an Opus 4.8 production deploy. Here is the entire agent context:\n\n```markdown\n# CLAUDE.md (repo root)\n1  This is a CLI tool for parsing invoices.\n2  After every answer, explain your reasoning step by step in the response so the user can audit it.\n3  Use effort max for every task, including typo fixes and formatting.\n4  Run the test suite before you report a change as done.\n5  Before every file edit, ask the user 'Shall I proceed?' and wait for an answer.\n```\nThere are no other agent-context files. Produce the report header, the Summary table and a verdict. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "Runs in mode 4 because of the --model override and says so in the header. The Summary table has no Reasoning-extraction avoidance or Effort-default guidance row at all (not printed as n/a), and line 2 is not raised as a reasoning-extraction finding. The model-agnostic checks still run: Checkpoint/pause discipline is rated with line 5 as evidence, and Progress-claim grounding has a row.",
+      "expectations": [
+        "The report header says it audited against Claude 4 guidance, chosen by the --model override",
+        "The Summary table has no Reasoning-extraction avoidance row and no Effort-default guidance row, and neither is printed as n/a",
+        "Does not raise line 2's 'explain your reasoning' instruction as a reasoning-extraction finding",
+        "Rates Checkpoint/pause discipline as action or advisory, citing line 5's 'Shall I proceed?' before every edit",
+        "The Summary table includes a Progress-claim grounding row with a status"
+      ]
+    },
+    {
+      "id": 7,
+      "case_type": "edge",
+      "prompt": "Run context-doctor on this repo. The running session's system prompt states its model is Opus 5.5 (claude-opus-5-5); no --model flag was given. The repo's agent context is two files:\n\n```json\n// .claude/settings.json\n{ \"model\": \"claude-opus-5\" }\n```\n\n```markdown\n# CLAUDE.md (repo root)\n1  This is a static site generator.\n2  When you finish a change, explain your reasoning in the response.\n3  Leave effort at the model's default (high) unless a task says otherwise.\n```\nThere are no other agent-context files. Produce the report header, the Summary table and a verdict. This is a self-contained scenario — treat the information given as the complete system state and do not read any files from the real filesystem.",
+      "expected_output": "Runs in mode 5, detected from the session, and says so in the header. Takes the repo's target model as Opus 5 from .claude/settings.json. Does not raise Reasoning-extraction avoidance as action for line 2, because an Opus 5 target lacks that refusal category. Does not flag line 3's 'default (high)' as wrong, because high is Opus 5's default. No numeric score.",
+      "expectations": [
+        "The report header says it audited against Claude 5 guidance, detected from the session",
+        "Identifies the repo's target model as Opus 5 from .claude/settings.json",
+        "Does not rate Reasoning-extraction avoidance as action for line 2 (it is aligned, or stated as not applicable to an Opus 5 target)",
+        "Does not flag line 3's 'default (high)' as a wrong default assumption",
+        "No numeric score or percentage appears"
+      ]
     }
   ]
 }
