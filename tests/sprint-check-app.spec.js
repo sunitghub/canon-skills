@@ -6721,6 +6721,45 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-a7e0 (evaluator): the line's wording at exact times: a count above zero, "now" when the poll is due or overdue (never a negative
+    // count), "checking now…" while one runs, "Not checked" before the first read.
+    test('t-a7e0: the Cloud row line says now at zero and never a negative count', async ({ page }) => {
+      await cloudRoute(page, () => []);
+      await openShell(page, []);
+      const lines = await page.evaluate(async () => {
+        const { cloudTipLine } = await import('/static/cockpit-sessions.js');
+        const t0 = Date.parse('2026-11-17T10:00:00Z'), checked = t0 - 40e3;
+        return [cloudTipLine(checked, t0 + 20e3, false, t0), cloudTipLine(checked, t0 + 400, false, t0), cloudTipLine(checked, t0, false, t0),
+          cloudTipLine(checked, t0 - 5e3, false, t0), cloudTipLine(checked, t0 + 20e3, true, t0), cloudTipLine(null, t0 + 20e3, false, t0), cloudTipLine(checked, 0, false, t0)];
+      });
+      expect(lines).toEqual([
+        'Checked GitHub 40s ago · next look in 20s',
+        'Checked GitHub 40s ago · next look in 1s',            // a part second rounds up, never "in 0s"
+        'Checked GitHub 40s ago · next look now',              // due
+        'Checked GitHub 40s ago · next look now',              // overdue: never "in -5s"
+        'Checked GitHub 40s ago · checking now…',
+        'Not checked on GitHub yet · next look in 20s',
+        'Checked GitHub 40s ago · next look now',              // nothing scheduled yet
+      ]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-a7e0 (evaluator): the line shows for a keyboard user too: Tab focus on a Cloud row shows it, and it hides when focus leaves.
+    test('t-a7e0: a Cloud row shows its line when focused from the keyboard @webkit', async ({ page }) => {
+      await cloudRoute(page, () => [{ id: 't-cl23', title: 'Focused', state: 'sent', issue: '23', since: ago(60), pending: false, checked: ago(30) }]);
+      await openShell(page, []);
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      const row = cloudRow(page, 't-cl23'), tip = row.locator('.ag-cloud-tip');
+      await expect(row).toBeVisible();
+      await page.keyboard.press('Tab');                                  // keyboard modality, so focus shows :focus-visible
+      await row.focus();
+      await expect(tip).toBeVisible();
+      await expect(tip).toHaveText(/^Checked GitHub \d+s ago · (next look (in \d+s|now)|checking now…)$/);
+      await row.evaluate(e => e.blur());
+      await expect(tip).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('shell sidebar (t-e69b): mockup rows, agent codes, group counts, titles fetched once and inert', async ({ page }) => {
       const hits = await stubTicketDocs(page);
       await openShell(page, stateRows());

@@ -381,11 +381,13 @@ function cloudHtml(rows){
 function cloudAt(r){ return r.since===null ? '' : ageShort(Math.max(0,Math.round((Date.now()-r.since)/1000))); }
 // t-a7e0 (item 7): what a Cloud row's hover/focus line says: when GitHub was last read for this ticket (the server's checked) and when
 // the shell next asks, counted live while the line is shown. Never negative: a poll that is due says "now", one running "checking now…".
-export function cloudTipText(r, now=Date.now()){
-  const ago=r.checked===null ? 'Not checked on GitHub yet' : 'Checked GitHub '+secsAgo(Math.max(0,Math.round((now-r.checked)/1000)))+' ago';
-  if(cloudInflight) return ago+' · checking now…';
-  const n=Math.ceil((cloudNextAt-now)/1000);
-  return ago+' · next look '+(cloudNextAt && n>0 ? 'in '+n+'s' : 'now');
+export function cloudTipText(r, now=Date.now()){ return cloudTipLine(r.checked, cloudNextAt, cloudInflight, now); }
+// The line itself, from plain values (the spec checks each case with exact times): a due or overdue poll says "now", never a count below 1.
+export function cloudTipLine(checked, nextAt, inflight, now){
+  const ago=checked===null ? 'Not checked on GitHub yet' : 'Checked GitHub '+secsAgo(Math.max(0,Math.round((now-checked)/1000)))+' ago';
+  if(inflight) return ago+' · checking now…';
+  const n=Math.ceil((nextAt-now)/1000);
+  return ago+' · next look '+(nextAt && n>0 ? 'in '+n+'s' : 'now');
 }
 function secsAgo(s){ return s<60 ? s+'s' : ageShort(s); }
 let cloudTipRow=null, cloudTipTimer=0;   // the row whose line is shown (hovered or focused), and the 1 s ticker while it is
