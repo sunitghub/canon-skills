@@ -352,7 +352,7 @@ EOF
     echo "  [sprint]  created PROMOTED.md"
   fi
   if ! has_line "@PROMOTED.md" "$agents"; then
-    [ -s "$agents" ] && [ -n "$(tail -c1 "$agents")" ] && echo >> "$agents"
+    ends_without_newline "$agents" && echo >> "$agents"
     echo "@PROMOTED.md" >> "$agents"
     echo "  [AGENTS.md]  added @PROMOTED.md import"
   fi
@@ -381,7 +381,7 @@ ensure_gitattributes() {
     verb=updated
     # Match an existing CRLF file's line endings rather than leaving it mixed.
     if awk '/\r$/ { f=1; exit } END { exit !f }' "$ga"; then eol=$'\r'; fi
-    [ -s "$ga" ] && [ -n "$(tail -c1 "$ga")" ] && printf '%s\n' "$eol" >> "$ga"
+    ends_without_newline "$ga" && printf '%s\n' "$eol" >> "$ga"
   fi
   printf '%s\n' "# canon:gitattributes:BEGIN$eol" \
     "# Shell scripts stay LF: bash can't run CRLF, and Git for Windows checks out CRLF by default.$eol" \

@@ -43,6 +43,10 @@ printf '# canon runtime files — per-machine session state, never commit (t-2f5
 assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/')" "$(cat .tickets/.gitignore)"
 "$TKT" create "Gains it once" >/dev/null
 assert_eq 1 "$(grep -cxF '.before-import/' .tickets/.gitignore)"
+# t-d8af: a canon-seeded block whose last line has no newline (or ends in NUL bytes) gets each new entry on its own line
+printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE' > .tickets/.gitignore
+"$TKT" create "No final newline" >/dev/null
+assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/')" "$(cat .tickets/.gitignore)"
 
 # ...and it must never clobber a user's existing .tickets/.gitignore.
 preserve_project="$(make_project)"
