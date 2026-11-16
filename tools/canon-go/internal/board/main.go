@@ -6282,8 +6282,13 @@ func trackChanges(root string, confirm any) map[string]any {
 	hadIgnore := statErr == nil
 	// t-d8af: the user's own bytes, kept only for a regular file canon can read, so a failed start can put them back after
 	// EnsureCanonIgnored appended canon's lines (a link or an unreadable file is never written, by it or by the rollback).
-	origIgnore, origErr := os.ReadFile(ignore)
-	canRestore := hadIgnore && ignoreInfo.Mode().IsRegular() && origErr == nil
+	var origIgnore []byte
+	canRestore := false
+	if hadIgnore && ignoreInfo.Mode().IsRegular() { // never read a FIFO or a link: a read could block Turn on git
+		var err error
+		origIgnore, err = os.ReadFile(ignore)
+		canRestore = err == nil
+	}
 	created, wroteIgnore, appendedIgnore := false, false, false
 	git := func(args ...string) (string, error) {
 		out, errOut, err := gitOutIn(root, 20*time.Second, args...)

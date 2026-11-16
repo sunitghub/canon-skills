@@ -171,6 +171,7 @@ ends_without_newline "$EW/plain" || fail "a file with no final newline was misse
 ! ends_without_newline "$EW/empty" || fail "an empty file must not get a leading newline"
 ! ends_without_newline "$EW/missing" || fail "a missing file must not get a leading newline"
 rm -rf "$EW"
-[ "$(git -C "$ROOT" grep -n '$(tail -c1' -- tools/skills | grep -vc 'lib.sh:')" = 0 ] || fail "a tools/skills site still reads the last byte with \$(tail -c1): $(git -C "$ROOT" grep -n '$(tail -c1' -- tools/skills)"
+# the NUL-blind idiom itself ([ -n "$(tail -c1 f)" ]) is gone from every tools/skills site, ensure_blank_sep included (reviewer t-d8af)
+[ -z "$(git -C "$ROOT" grep -n -e '-n "$(tail -c1' -- tools/skills)" ] || fail "a tools/skills site still reads the last byte with [ -n \"\$(tail -c1 …)\" ]: $(git -C "$ROOT" grep -n -e '-n "$(tail -c1' -- tools/skills)"
 
 echo "skills-mirror-gitignore: ok"

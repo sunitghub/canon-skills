@@ -404,30 +404,47 @@ check_mirror() {
   printf '/.claude/skills\n!/.claude/skills\n' >> "$proj/.gitignore"
   r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"; assert_contains "${r#* }" "is not ignored"
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
+  # Git Bash: `ln -s` copies by default and NTFS ignores `chmod 200`, so the link and unreadable cases run only where they mean something
+  local can_link=1; ln -s /nonexistent "$home/probe" 2>/dev/null && [[ -L "$home/probe" ]] || can_link=0; rm -f "$home/probe"
   # 2c. a symlinked .gitignore: never written through, the preview refuses, the save commits nothing
+  if (( can_link )); then
   new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"
   req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; plant_mirror "$proj"
   cp "$proj/.gitignore" "$out/target"; cp "$out/target" "$out/orig"; rm "$proj/.gitignore"; ln -s "$out/target" "$proj/.gitignore"
   r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
   cmp -s "$out/target" "$out/orig" || fail "$kind: the snapshot wrote through a symlinked .gitignore"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
+  fi
   # 3. a symlinked .gitignore under Turn on git (a passing and a failing commit): the target is byte-identical
+  mkdir -p "$home/hooks"; printf '#!/bin/sh\nexit 1\n' > "$home/hooks/pre-commit"; chmod +x "$home/hooks/pre-commit"
+  if (( can_link )); then
   new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; printf 'theirs\n' > "$out/target"; ln -s "$out/target" "$proj/.gitignore"; plant_mirror "$proj"
   register "$port" "$proj"; req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null
   assert_eq "theirs" "$(cat "$out/target")"
-  mkdir -p "$home/hooks"; printf '#!/bin/sh\nexit 1\n' > "$home/hooks/pre-commit"; chmod +x "$home/hooks/pre-commit"
   printf '[core]\n\thooksPath = %s\n' "$home/hooks" > "$home/.gitconfig"
   new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; printf 'theirs\n' > "$out/target"; ln -s "$out/target" "$proj/.gitignore"; plant_mirror "$proj"
   register "$port" "$proj"; r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
   assert_eq "theirs" "$(cat "$out/target")"
+  rm -f "$home/.gitconfig"
+  fi
+  printf '[core]\n\thooksPath = %s\n' "$home/hooks" > "$home/.gitconfig"
   # 4. a failing Turn on git puts the user's .gitignore back byte for byte after canon appended its lines
   new_dir; proj="$NEW_DIR"; printf 'mine\r\nkeep' > "$proj/.gitignore"; cp "$proj/.gitignore" "$home/orig4"; plant_mirror "$proj"
   register "$port" "$proj"; r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
   cmp -s "$proj/.gitignore" "$home/orig4" || fail "$kind: a failed Turn on git left canon's lines in the user's .gitignore"
   [[ ! -e "$proj/.git" ]] || fail "$kind: a failed Turn on git left .git"
   rm -f "$home/.gitconfig"
+  # 4b. a FIFO .gitignore never blocks Turn on git forever (canon reads only a regular file; reviewer t-d8af): `git add` itself waits on it
+  # until the board's 20 s git timeout, so the request answers within 60 s
+  if command -v mkfifo >/dev/null 2>&1; then
+    new_dir; proj="$NEW_DIR"; mkfifo "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"
+    code="$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" \
+      --data-binary '{"confirm":true}' "http://127.0.0.1:$port/api/track-changes?project=$PROJ_ID")" || true
+    [[ "$code" != 000 ]] || fail "$kind: Turn on git hung on a FIFO .gitignore"
+    [[ -p "$proj/.gitignore" ]] || fail "$kind: the FIFO .gitignore was replaced"
+  fi
   # 5. an unreadable .gitignore is never written by Turn on git or the snapshot
-  if [[ "$(id -u)" != 0 ]]; then
+  if [[ "$(id -u)" != 0 && "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* ]]; then
     new_dir; proj="$NEW_DIR"; printf 'mine\n' > "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"; chmod 200 "$proj/.gitignore"
     req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; chmod 644 "$proj/.gitignore"
     assert_eq "mine" "$(cat "$proj/.gitignore")"
