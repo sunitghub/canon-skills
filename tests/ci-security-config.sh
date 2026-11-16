@@ -79,7 +79,7 @@ check_template() {   # check_template <file> (t-04f4): the workflow the board wr
     if [[ ! "$nv" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$ ]]; then echo "Node not at an exact x.y.z (node-version: ${nv:-missing})"
     else
       major="${nv%%.*}"
-      case "$major" in 22) floor=22.23.4 ;; 24) floor=24.22.1 ;; 26) floor=26.12.1 ;; *) floor="" ;; esac
+      case "$major" in 22) floor=22.23.5 ;; 24) floor=24.22.1 ;; 26) floor=26.12.1 ;; *) floor="" ;; esac
       if [[ -z "$floor" ]]; then echo "Node major $major has no patched release in the floor table"
       elif ! node_ge "$nv" "$floor"; then echo "Node $nv is below the patched floor $floor"; fi
     fi
@@ -186,10 +186,10 @@ plant "$TPL: a write command (issue, PR, commit) present" $TPL 's/^(        run:
 plant "$TPL: no actions/setup-node step" $TPL '/- name: Set up a patched Node/,/- name: Install Claude Code CLI/{/- name: Install Claude Code CLI/!d;}'
 plant "$TPL: setup-node comes after the CLI install" $TPL 's/^      - name: Set up a patched Node$/      - name: early\n        run: npm install -g @anthropic-ai\/claude-code@2.1.309\n      - name: Set up a patched Node/'
 plant "$TPL: action not pinned to a full SHA" $TPL 's/(setup-node@)[0-9a-f]{40}/\1v7.1.0/'
-plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: 22/'
-plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: lts\/*/'
-plant "$TPL: Node 22.23.3 is below the patched floor 22.23.4" $TPL 's/node-version: 22\.23\.4/node-version: 22.23.3/'
-plant "$TPL: Node major 20 has no patched release" $TPL 's/node-version: 22\.23\.4/node-version: 20.20.2/'
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.5/node-version: 22/'
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.5/node-version: lts\/*/'
+plant "$TPL: Node 22.23.4 is below the patched floor 22.23.5" $TPL 's/node-version: 22\.23\.5/node-version: 22.23.4/'
+plant "$TPL: Node major 20 has no patched release" $TPL 's/node-version: 22\.23\.5/node-version: 20.20.2/'
 plant "$TPL: setup-node package-manager-cache is not false" $TPL 's/package-manager-cache: false/package-manager-cache: true/'
 plant "$TPL: setup-node package-manager-cache is not false" $TPL '/package-manager-cache:/d'
 plant "$TPL: setup-node check-latest: true" $TPL 's/^(          package-manager-cache: false.*)$/\1\n          check-latest: true/'
@@ -204,8 +204,8 @@ plant "$TPL: unexpected line in the setup-node step" $TPL 's/^(          package
 plant "$TPL: an if: condition present" $TPL 's/^      - name: Set up a patched Node$/      - name: Set up a patched Node\n        if: false/'
 plant "$TPL: an environment override of PATH, NODE_OPTIONS or npm/yarn config" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require .\/x.js/'
 # t-2d0f: guard gaps t-c4b4 left (template-regression guards, not a defence against a hostile template)
-plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: 22.023.4/'
-plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.4/node-version: 22.23.1000/'
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.5/node-version: 22.023.4/'
+plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.5/node-version: 22.23.1000/'
 plant "$TPL: an environment override of PATH, NODE_OPTIONS or npm/yarn config" $TPL 's/^(        uses: actions\/setup-node@.*)$/\1\n        env: { NODE_OPTIONS: x }/'
 plant "$TPL: a strategy matrix present" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22.23.4]/'
 plant "missing $TPL" $TPL rm
