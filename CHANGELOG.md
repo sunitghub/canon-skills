@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-11-16
+
+- New: after **To Claude Cloud** (or `tkt send-issue <id> --launch`), the ticket's Cloud row in the Agents list shows **starting**, with the working spinner and "cloud session launched, waiting for its first push", and the card's chip says "starting". Before, the row kept a still ring until the session pushed its branch. A plain send, or a session started from claude.ai/code (Copy command, Copy prompt), still reads "sent" until the first push (t-a7e0).
+- New: hovering or focusing a Cloud row shows when GitHub was last checked for it and when the board next looks, for example "Checked GitHub 40s ago · next look in 20s", counted each second, and "checking now…" during a check (t-a7e0).
+- New: `tkt github-status --json` adds `launched`, the time of the newest launch in the ticket's GitHub trail (t-a7e0).
+- The board and the Cockpit daemon changed: after `canon update`, restart the daemon (Admin > Restart Daemon).
+
 ## [0.63.1] - 2026-11-16
 
 - Security: the CI gate workflow that **Set up CI gate** writes now pins Node **22.23.5**, a security release of Node 22 (it pinned 22.23.4). A project that already set up the CI gate keeps its own copy of the workflow: re-run **Set up CI gate**, or change `node-version: 22.23.4` to `22.23.5` in `.github/workflows/` yourself (t-d600).
