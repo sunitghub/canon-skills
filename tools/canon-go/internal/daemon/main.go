@@ -4278,12 +4278,24 @@ var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
 // `sprint continue`. Every status reader (both session resolvers, pi's check, the continue flag, the cwd lock gate)
 // goes through here, so they cannot disagree.
 func (s *server) ticketStatusIn(root, ticket string) string {
+	if st := ticketStatusOf(s.ticketFileIn(root, ticket, "ticket.md")); st != "" {
+		return st
+	}
+	return ticketStatusOf(filepath.Join(s.sessionStateDir(root, ticket), "ticket.md")) // the worktree's copy has no status: main's
+}
+
+// ticketFileIn is the path of one of a ticket's sprint files (ticket.md, plan.md) where its sprint runs (t-874a): the bound worktree's
+// copy (boundWorktreeIn: a registered worktree, plain folders) when that file there is a plain regular file, else main's. A worktree
+// with its own tracked .tickets/ is where `sprint approve` pins the plan (tools/ticket-root.sh tickets_dir), so reading main's would
+// never see the approval. The daemon's own state files (.cockpit-cwd, session ids) stay in main's folder and do not come here.
+func (s *server) ticketFileIn(root, ticket, name string) string {
 	if wt := s.boundWorktreeIn(root, ticket); wt != "" {
-		if st := ticketStatusOf(filepath.Join(wt, ".tickets", ticket, "ticket.md")); st != "" {
-			return st
+		p := filepath.Join(wt, ".tickets", ticket, name)
+		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+			return p
 		}
 	}
-	return ticketStatusOf(filepath.Join(s.sessionStateDir(root, ticket), "ticket.md"))
+	return filepath.Join(s.sessionStateDir(root, ticket), name)
 }
 
 // ticketStatusOf is the `status:` of one ticket.md, "" when the file or field is absent.
@@ -4809,7 +4821,7 @@ var approvedLineRe = regexp.MustCompile(`(?m)^Approved: sha256:`)
 
 // planApprovedIn: the ticket's plan carries sprint approve's record.
 func (s *server) planApprovedIn(root, ticket string) bool {
-	b, err := os.ReadFile(filepath.Join(s.sessionStateDir(root, ticket), "plan.md"))
+	b, err := os.ReadFile(s.ticketFileIn(root, ticket, "plan.md"))
 	return err == nil && approvedLineRe.Match(b)
 }
 
@@ -4844,7 +4856,7 @@ func (s *server) sessionModel(root, ticket, agent string) (model, stage, source 
 // the whole run on a typo, but here a human is watching the terminal they just asked for. ticket has passed ticketRe, so it cannot
 // traverse out of .tickets/.
 func (s *server) signoffModelIn(root, ticket, label string) string {
-	plan := filepath.Join(s.sessionStateDir(root, ticket), "plan.md")
+	plan := s.ticketFileIn(root, ticket, "plan.md")
 	b, err := os.ReadFile(plan)
 	if err != nil {
 		return ""
