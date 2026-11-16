@@ -540,8 +540,9 @@ eval_ok; rm -f "$W/mc"
 git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 out="$(STUB_MERGE_COMMIT=1 "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)" || fail "merge-pr of the Manual ticket failed: $out"
 MC="$(cat "$W/mc")"; assert_grep "^merged: $MC$" "$f"; assert_eq "$MC" "$(git rev-parse main)"; assert_eq "$PRHEAD" "$(git rev-parse main^2)"
-"$SPRINT" manual-qa "$id" --by tester --step "looks right|pass" >/dev/null
-out="$(CANON_TICKETS_DIR= "$SPRINT" complete "$id" 2>&1)" || fail "the manual-after-merge close refused merge-pr's own record: $out"
+# the full run's stamp sets CANON_TICKETS_DIR to canon's own .tickets: sprint must read this project's
+env -u CANON_TICKETS_DIR "$SPRINT" manual-qa "$id" --by tester --step "looks right|pass" >/dev/null
+out="$(env -u CANON_TICKETS_DIR "$SPRINT" complete "$id" 2>&1)" || fail "the manual-after-merge close refused merge-pr's own record: $out"
 assert_contains "$out" "Sprint completed: $id (manual-after-merge"
 assert_grep '^status: closed$' "$f"; assert_grep '^- \[x\] \[manual\] Looks right — manual-qa.md ' ".tickets/$id/acceptance.md"
 rm -f "$W/mc" ".tickets/$id/acceptance.md" ".tickets/$id/evidence/manual-qa.md"; cp "$W/f-before" "$f"; git reset -q --hard "$BASE"
