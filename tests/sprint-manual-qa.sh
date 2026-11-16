@@ -62,6 +62,15 @@ rm "$MQ"
 # no [manual] criterion, no record: exactly as before
 criteria "- [ ] one\n- [ ] two\n"
 ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "no stamped logs"
+# t-a811: a criterion with a multibyte character near its start (the 8-character [manual] test cut "Admin ›" mid-character) must not
+# break the pre-flight on macOS's UTF-8 awk (it exited 2, "illegal byte sequence"); and a non-ASCII [manual] criterion still counts
+UTF8_LOCALE="$(locale -a 2>/dev/null | grep -i -m1 -E '^(en_US|C)\.utf-?8$' || true)"   # the bug shows only under a UTF-8 locale
+[[ -n "$UTF8_LOCALE" ]] && { SAVED_LC_ALL="${LC_ALL-}"; export LC_ALL="$UTF8_LOCALE"; }
+criteria "- [ ] Admin › Model tiers: each step card\n- [ ] Café menu: é and — near the start\n"
+ce "$ID"; assert_eq 0 "$code"; assert_contains "$out" "no stamped logs"
+criteria "- [ ] Admin › Model tiers\n- [ ] [manual] Résumé looks right — on a phone\n"
+ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "criterion 2 is tagged [manual] (R"   # shown as printable ASCII (it goes into the evaluator's prompt)
+[[ -n "$UTF8_LOCALE" ]] && { if [[ -n "$SAVED_LC_ALL" ]]; then export LC_ALL="$SAVED_LC_ALL"; else unset LC_ALL; fi; }
 # a [manual] criterion (the number counts all criteria; the Test Plan's tag is not a criterion) and no record: refused with the question
 criteria "- [ ] one\n- [x] [manual] The list looks right in a browser\n- [ ] three\n"
 ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  manual-qa.md missing: criterion 2 is tagged [manual] (The list looks right in a browser)"
