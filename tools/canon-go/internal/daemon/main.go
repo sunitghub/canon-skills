@@ -149,6 +149,7 @@ type session struct {
 	// handleStart uses it to grace-check for a dead-resume failure and retry
 	// fresh before the client ever sees this session.
 	copilotResumeAttempt bool
+	copilotLog           string // t-c723: copilot's events.jsonl for this session, read for its turn ends ("" for other agents); read-only after spawn()
 
 	mu            sync.Mutex
 	buf           []byte
@@ -902,9 +903,8 @@ func termArgs(sid, ticket, projectRoot string) []string {
 // shell hooks; needs-you is a Phase-2 pi extension). copilot mirrors claude's
 // optional-flag shape: [--model <m>] then (--resume=<id>) or (--session-id <id>
 // --interactive <prompt>) — no --settings equivalent (copilot hooks are
-// file-configured, not per-invocation, and it has no Notification-hook-equivalent
-// event regardless; needs-you falls back to the same PTY-quiescence path pi
-// already uses). copilot takes 0 positional arguments (verified live against
+// file-configured, not per-invocation; needs-you falls back to the same PTY-quiescence
+// path pi already uses, and its turn ends come from copilot's own events.jsonl, t-c723). copilot takes 0 positional arguments (verified live against
 // `copilot --help`, t-842b's claude-positional trick does not carry over): the
 // fresh-start prompt must go through -i/--interactive, not a bare positional —
 // a bare positional fails with "error: too many arguments. Expected 0
@@ -1040,6 +1040,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// exists to wire up regardless — see resolveCopilotSessionIDIn/agentSpawnArgs).
 	program := s.cfg.sprintBin               // claude default / COCKPIT_SPRINT_BIN override
 	copilotResuming := false                 // t-6ce0: surfaced onto the session below
+	copilotLog := ""                         // t-c723: the copilot session's events.jsonl, read for its turn ends
 	copilotPick := ""                        // t-d8b0: logged below when copilot can't take it
 	claudeModel, stage, source := "", "", "" // t-3425: the session's model, the stage it is for and where it came from
 	inProgress := s.ticketStatusIn(projectRoot, ticket) == "in_progress"
@@ -1061,6 +1062,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		program = common.EnvOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
 		copilotResuming = resuming
+		copilotLog = copilotEventsPath(copilotHomeDir(), copilotSessionID)
 		copilotPick, stage, source = s.sessionModel(projectRoot, ticket, tierAgent(kind)) // t-3425: the stage's model, never Gate model's
 		args = agentSpawnArgs("copilot", ticket, resuming, !resuming && inProgress, copilotSessionID, copilotPick, "")
 	default:
@@ -1104,7 +1106,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
-		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming, stage: stage, model: claudeModel + copilotPick,
+		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming, copilotLog: copilotLog, stage: stage, model: claudeModel + copilotPick,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
@@ -1139,6 +1141,14 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se.bg.Add(2)
 	go func() { defer se.bg.Done(); se.readLoop() }()
 	go func() { defer se.bg.Done(); se.waitExit(c.Wait, s.cfg.exitDrain) }() // reaps the child (no zombie) and ends readLoop on Windows
+	// t-c723: a resumed session's old turns are history, so it starts at the log's size now
+	if copilotLog != "" {
+		from := int64(0)
+		if copilotResuming {
+			from = copilotLogSize(copilotLog)
+		}
+		go s.watchCopilotTurns(se, copilotLog, from)
+	}
 	return se, nil
 }
 

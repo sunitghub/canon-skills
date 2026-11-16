@@ -9361,19 +9361,44 @@ func TestSwitchToBuildFromHookStatus(t *testing.T) {
 	t.Fatal("the hook's awaiting-input did not start the switch")
 }
 
-// t-3425: under Copilot CLI the switch types Copilot's own id (an alias is mapped, t-d8b0). Protects a copilot session at approval.
+// t-3425, t-c723: under Copilot CLI the switch starts from Copilot's own events.jsonl (no hook) and types Copilot's own id (an alias
+// is mapped, t-d8b0), then the continue line, even though Copilot logs a user.message and a model_change for the typed /model in
+// between. Protects a copilot session at approval.
 func TestSwitchToBuildCopilotTypesCopilotID(t *testing.T) {
 	t.Setenv("CANON_HOME", t.TempDir())
-	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
-	s, se, _, _ := buildSwitchSessionAs(t, "Tier: normal | Plan model: sonnet | Build model: haiku", "copilot")
-	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
-	se.mu.Lock()
-	out := string(se.buf)
-	se.mu.Unlock()
-	if !strings.Contains(out, "/model claude-haiku-4.5") || strings.Contains(out, "/model haiku") {
-		t.Fatalf("copilot switch typed %q, want /model claude-haiku-4.5", out)
+	copilotPollFast(t)
+	restQuietWait(t, 200*time.Millisecond, 3*time.Second)
+	_, se, _, _ := buildSwitchSessionAs(t, "Tier: normal | Plan model: sonnet | Build model: haiku", "copilot")
+	if se.copilotLog == "" || !strings.HasPrefix(se.copilotLog, os.Getenv("COPILOT_HOME")) {
+		t.Fatalf("copilot session log %q is not under COPILOT_HOME", se.copilotLog)
 	}
+	appendLog(t, se.copilotLog, nl(evUser, evStart, evMsgTools, evEnd, evStart, evMsgNone, evEnd)...)
+	waitStatus(t, se, "awaiting-input", 3*time.Second)
+	se.mu.Lock()
+	state, _, _, _ := sessionStateLocked(se, time.Now())
+	se.mu.Unlock()
+	if state != "done" {
+		t.Fatalf("board state %q at the end of a copilot turn, want done", state)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	logged := false
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		out, stage := string(se.buf), se.stage
+		se.mu.Unlock()
+		if strings.Contains(out, "/model claude-haiku-4.5") && !logged {
+			appendLog(t, se.copilotLog, nl(`{"type":"user.message","data":{"content":"/model claude-haiku-4.5"}}`, evModel)...)
+			logged = true
+		}
+		if stage == "build" {
+			if strings.Count(out, "/model ") != 2 || strings.Contains(out, "/model haiku") || !strings.Contains(out, "Plan approved: continue the build (t-ab12) on claude-haiku-4.5.") {
+				t.Fatalf("copilot switch typed %q, want /model claude-haiku-4.5 once (the PTY echoes each typed line: 2), then the continue line", out)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the copilot turn end never completed the Build switch")
 }
 
 // t-3425: no Build model anywhere (sprint approve printed nothing): nothing is typed and the session keeps its model; a pi session
