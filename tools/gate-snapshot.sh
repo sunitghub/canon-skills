@@ -17,6 +17,8 @@
 # subdirectory); the audit log is the project's (`project_root`, like subagent-log.sh), also when run from a linked worktree.
 # Order around a dispatch: `pre`, the gate, `post`, THEN subagent-log.sh (its append is a change this tool would flag), then the next `pre`.
 #
+# `pre --role reviewer|evaluator|speccheck` also prints the model to dispatch that gate with (`sprint gate-model`, t-c723).
+#
 # Usage: gate-snapshot.sh pre <snapshot-file> | gate-snapshot.sh post <snapshot-file>
 set -euo pipefail
 
@@ -89,6 +91,23 @@ emit_gate_started() {
   canon_event gate.started gate-snapshot "$(dirname "$(dirname "$tdir")")" "ticket=$id" "role=$role" "attempt=$((fails + 1))" "docs=$docs"
 }
 
+# print_gate_model — t-c723: the model to dispatch this gate with, resolved by `sprint gate-model` for the ticket whose folder holds the
+# snapshot file, printed right before the dispatch so the agent passes it (a Copilot session that skipped complete.md's lookup ran its
+# gates on the agent file's floor). Nothing for another role or a file outside a ticket.
+print_gate_model() {
+  local tdir id line agent
+  [[ "$role" =~ ^(reviewer|evaluator|speccheck)$ ]] || return 0
+  tdir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)" || return 0
+  id="$(basename "$tdir")"
+  [[ "$(basename "$(dirname "$tdir")")" == .tickets && -f "$tdir/plan.md" ]] || return 0
+  line="$("$SCRIPT_DIR/sprint" gate-model "$id" "$role" 2>/dev/null)" || return 0
+  agent="canon-$role"; [[ "$role" != speccheck ]] || agent=canon-spec-checker
+  case "$line" in
+    "model: "*) echo "gate-snapshot: dispatch $agent with $line" ;;
+    ?*) echo "gate-snapshot: dispatch $agent: $line" ;;
+  esac
+}
+
 spec_docs() { cat "$(dirname "$file")/acceptance.md" "$(dirname "$file")/plan.md" 2>/dev/null | digest; }   # the two files the spec check grades
 
 if [[ "$mode" == pre ]]; then
@@ -113,6 +132,7 @@ if [[ "$mode" == pre ]]; then
     printf 'CANON_HOME=%s/canon\nTMPDIR=%s/tmp\n' "$scope" "$scope" > "$file.scope"
     echo "gate-snapshot: gate scope active until post: canon update, skills.sh and uninstall refuse real HOME/CANON_HOME meanwhile; a pi gate runs under: env \$(cat $file.scope) pi -p …"
   fi
+  print_gate_model
   emit_gate_started
   exit 0
 fi
