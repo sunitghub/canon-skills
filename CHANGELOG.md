@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.62.1] - 2026-11-16
+
+- Fixed: a Cockpit session in a worktree now switches to the Build model after `sprint approve`, and a session started or resumed after the approval starts on the Build model. In a project that tracks `.tickets/` in git, the worktree has its own copy of the ticket, and `sprint approve` pins the plan there; the daemon read the main checkout's copy, saw no approval and never typed `/model`. It now reads the ticket's `plan.md` and `ticket.md` from the worktree the ticket is bound to (a worktree git knows about, with no links), else from the main checkout (t-874a).
+- Changed: the end-user zip's size cap is now 4480 KB (t-874a).
+- The Cockpit daemon changed: after `canon update`, restart the daemon (Admin > Restart Daemon).
+
 ## [0.62.0] - 2026-11-16
 
 - Fixed: a Copilot CLI session in the Cockpit now switches to the Build model after `sprint approve`. The daemon reads Copilot's own session log (`~/.copilot/session-state/<id>/events.jsonl`, read-only), sees when Copilot's turn ends, then types `/model <build>` and the continue line, as it already did for Claude Code. Before, the session stayed on the Plan model (t-c723).
