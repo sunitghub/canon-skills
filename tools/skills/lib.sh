@@ -44,6 +44,7 @@ fi
 unset _skills_pkg
 
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+# shellcheck disable=SC2034  # read by project.sh and cmd-uninstall.sh, which skills.sh sources after this file
 PROJECTS_FILE="$HOME/.config/canon/projects"
 
 # t-50f7: canon_current_path <path> — in the versioned layout, a path stored before it (<home>/X from the single-tree install, or
@@ -108,12 +109,19 @@ has_line() {
   HAS_LINE_T="$1" awk 'BEGIN { t = ENVIRON["HAS_LINE_T"] } { sub(/\r$/, "") } $0 == t { f=1; exit } END { exit !f }' "$2"
 }
 
+# ends_without_newline <file> — true for a non-empty file whose last byte is not a newline. t-d8af: `$(tail -c1 f)` drops a NUL
+# byte, so a file ending in NULs (a .gitignore cut off by a crash) read as newline-ended and canon's first appended line was glued
+# to it; `wc -l` counts the newline instead. False for a missing or empty file.
+ends_without_newline() {
+  [ -s "$1" ] && [ "$(tail -c1 "$1" | wc -l | tr -d ' ')" = 0 ]
+}
+
 # ensure_blank_sep <file> — end the file on exactly one separating blank line before canon appends a block: nothing for an
 # empty or missing file, nothing when the last line is already blank (t-351c: each writer added its own, so they stacked).
 ensure_blank_sep() {
   local f="$1"
   [ -s "$f" ] || return 0
-  if [ -n "$(tail -c1 "$f")" ]; then echo >> "$f"; fi
+  if ends_without_newline "$f"; then echo >> "$f"; fi
   if [ -n "$(tail -n1 "$f" | tr -d '\r')" ]; then echo >> "$f"; fi
   return 0
 }

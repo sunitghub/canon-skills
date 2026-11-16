@@ -404,3 +404,86 @@ func TestWriteFileNoFollowRefusesALink(t *testing.T) {
 		t.Errorf("a plain file must be written: %q", b)
 	}
 }
+
+// t-d8af, prod path: the board's Turn on git (POST /api/track-changes) and its first snapshot (GET/POST /api/first-snapshot)
+// call EnsureCanonIgnored, so a project that got canon's skills before git never saves the mirror.
+func TestEnsureCanonIgnored(t *testing.T) {
+	canon := fakeCanon(t)
+	check := func(dir, rel string) bool { return exec.Command("git", "-C", dir, "check-ignore", "-q", "--", rel).Run() == nil }
+
+	// a .gitignore ending in NUL bytes, no newline (the user's Windows file): every canon line is a whole line that git reads
+	wt := gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(wt, ".claude"), 0o755))
+	must(t, os.MkdirAll(filepath.Join(wt, ".agents"), 0o755))
+	createDirLink(filepath.Join(canon, "skills"), filepath.Join(wt, ".claude", "skills"))
+	createDirLink(filepath.Join(canon, "skills"), filepath.Join(wt, ".agents", "skills"))
+	createDirLink(filepath.Join(canon, "agents"), filepath.Join(wt, ".claude", "agents"))
+	must(t, os.WriteFile(filepath.Join(wt, ".gitignore"), []byte("x\x00\x00"), 0o644))
+	EnsureCanonIgnored(wt)
+	b, _ := os.ReadFile(filepath.Join(wt, ".gitignore"))
+	if !strings.HasPrefix(string(b), "x\x00\x00\n/.claude/skills\n") {
+		t.Errorf("canon's first line must start on its own line after the user's bytes, got %q", b)
+	}
+	for _, rel := range []string{".claude/skills", ".agents/skills", ".claude/agents"} {
+		if !check(wt, rel) {
+			t.Errorf("%s is not ignored after EnsureCanonIgnored: %q", rel, b)
+		}
+	}
+	for _, l := range []string{"/.claude/subagent-runs.jsonl", "/.tickets/*/gate-snapshot.txt*", "/.claude/settings.local.json"} {
+		if !hasLine(filepath.Join(wt, ".gitignore"), l) {
+			t.Errorf("missing %s", l)
+		}
+	}
+
+	// a mirror and no .gitignore yet: one is created with canon's lines
+	fresh := gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(fresh, ".agents", "skills"), 0o755))
+	EnsureCanonIgnored(fresh)
+	if !hasLine(filepath.Join(fresh, ".gitignore"), "/.agents/skills") || !check(fresh, ".agents/skills") {
+		t.Error("a mirror with no .gitignore must get one holding canon's lines")
+	}
+
+	// no mirror: nothing written
+	plain := gitRepo(t)
+	must(t, os.WriteFile(filepath.Join(plain, ".gitignore"), []byte("mine\n"), 0o644))
+	if did := EnsureCanonIgnored(plain); did != nil {
+		t.Errorf("no mirror must write nothing, did %v", did)
+	}
+	if b, _ := os.ReadFile(filepath.Join(plain, ".gitignore")); string(b) != "mine\n" {
+		t.Errorf("no mirror changed .gitignore to %q", b)
+	}
+
+	// not a git work tree: nothing written
+	bare := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(bare, ".claude", "skills"), 0o755))
+	EnsureCanonIgnored(bare)
+	if _, err := os.Lstat(filepath.Join(bare, ".gitignore")); err == nil {
+		t.Error("a folder without git must get no .gitignore")
+	}
+
+	// a symlinked .gitignore: the target is never written
+	sym := gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(sym, ".claude", "skills"), 0o755))
+	outside := filepath.Join(t.TempDir(), "outside")
+	must(t, os.WriteFile(outside, []byte("theirs\n"), 0o644))
+	if err := os.Symlink(outside, filepath.Join(sym, ".gitignore")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	EnsureCanonIgnored(sym)
+	if b, _ := os.ReadFile(outside); string(b) != "theirs\n" {
+		t.Errorf("wrote through a symlinked .gitignore: %q", b)
+	}
+
+	// an unreadable .gitignore is never written (a failed read would look empty and the write would drop the user's lines)
+	if runtime.GOOS != "windows" && os.Geteuid() != 0 {
+		ur := gitRepo(t)
+		must(t, os.MkdirAll(filepath.Join(ur, ".claude", "skills"), 0o755))
+		p := filepath.Join(ur, ".gitignore")
+		must(t, os.WriteFile(p, []byte("mine\n"), 0o200)) // writable, not readable
+		EnsureCanonIgnored(ur)
+		must(t, os.Chmod(p, 0o644))
+		if b, _ := os.ReadFile(p); string(b) != "mine\n" {
+			t.Errorf("an unreadable .gitignore was written: %q", b)
+		}
+	}
+}

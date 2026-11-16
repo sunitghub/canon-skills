@@ -6278,9 +6278,18 @@ func trackChanges(root string, confirm any) map[string]any {
 	if insideWorkTree(root) {
 		return fail("This folder is already inside a git repository.")
 	}
-	_, statErr := os.Lstat(ignore)
+	ignoreInfo, statErr := os.Lstat(ignore)
 	hadIgnore := statErr == nil
-	created, wroteIgnore := false, false
+	// t-d8af: the user's own bytes, kept only for a regular file canon can read, so a failed start can put them back after
+	// EnsureCanonIgnored appended canon's lines (a link or an unreadable file is never written, by it or by the rollback).
+	var origIgnore []byte
+	canRestore := false
+	if hadIgnore && ignoreInfo.Mode().IsRegular() { // never read a FIFO or a link: a read could block Turn on git
+		var err error
+		origIgnore, err = os.ReadFile(ignore)
+		canRestore = err == nil
+	}
+	created, wroteIgnore, appendedIgnore := false, false, false
 	git := func(args ...string) (string, error) {
 		out, errOut, err := gitOutIn(root, 20*time.Second, args...)
 		if err != nil {
@@ -6304,6 +6313,8 @@ func trackChanges(root string, confirm any) map[string]any {
 		}
 		if wroteIgnore {
 			_ = os.Remove(ignore)
+		} else if appendedIgnore && canRestore {
+			_ = common.WriteFileNoFollow(ignore, origIgnore)
 		}
 		msg := "Could not start tracking changes: " + err.Error()
 		if len(msg) > 400 {
@@ -6320,6 +6331,10 @@ func trackChanges(root string, confirm any) map[string]any {
 			return rollback(err)
 		}
 		wroteIgnore = true
+	}
+	// t-d8af: a folder that got canon's skills before git keeps canon's mirror out of its history from the first commit on.
+	if did := common.EnsureCanonIgnored(root); len(did) > 0 && hadIgnore {
+		appendedIgnore = true
 	}
 	if _, err := git("add", "--", ".gitignore"); err != nil {
 		return rollback(err)

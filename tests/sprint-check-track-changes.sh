@@ -341,6 +341,13 @@ check_snapshot_no_scanner() {
   r="$(fsreq POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true,"ignore":["notes.md"]}')"
   assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "needs bash"
   assert_eq "$snap" "$(cat "$proj/.gitignore")"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
+  # t-d8af: a failed save keeps canon's mirror lines (written before its restore point) and the user's bytes
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$SERVER_PORT" "$proj"
+  req POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; snap="$(cat "$proj/.gitignore")"
+  mkdir -p "$proj/.agents/skills/sprint"; echo s > "$proj/.agents/skills/sprint/SKILL.md"
+  r="$(fsreq POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true,"ignore":["notes.md"]}')"; assert_eq "400" "${r%% *}"
+  [[ "$(cat "$proj/.gitignore")" == "$snap"$'\n'* ]] || fail "$kind: a failed snapshot lost the user's .gitignore bytes"
+  grep -qxF /.agents/skills "$proj/.gitignore" || fail "$kind: a failed snapshot stripped canon's mirror line"
 }
 
 # t-a854: a folder inside a parent's repository is never snapshotted (git add -A would stage the parent's other files), and a scanner that
@@ -364,10 +371,93 @@ check_snapshot_edges() {
   assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"; assert_eq "" "$(git -C "$proj" diff --cached --name-only)"
 }
 
+# t-d8af: canon's skill mirror (.claude/skills, .agents/skills: a link as skills.sh makes it, and a real folder as git sees a Windows
+# junction) never reaches a first commit or snapshot when the skills came before git; canon's ignore lines start on their own line;
+# a symlinked or unreadable .gitignore is never written; a failed start or snapshot keeps the user's bytes.
+check_mirror() {
+  local kind="$1" home dflt port proj r mir out tracked
+  new_dir; home="$NEW_DIR"; new_dir; dflt="$NEW_DIR"; start_server "$kind" "$dflt" "$home"; port="$SERVER_PORT"
+  new_dir; mir="$NEW_DIR"; mkdir -p "$mir/skills/sprint" "$mir/agents"; echo s > "$mir/skills/sprint/SKILL.md"; echo a > "$mir/agents/canon-reviewer.md"
+  plant_mirror() { mkdir -p "$1/.claude" "$1/.agents/skills/sprint"; ln -s "$mir/skills" "$1/.claude/skills"; ln -s "$mir/agents" "$1/.claude/agents"; cp "$mir/skills/sprint/SKILL.md" "$1/.agents/skills/sprint/"; }
+  ignored() { git -C "$1" check-ignore -q -- "$2"; }
+  # 1. Turn on git with the mirror already there and the user's own .gitignore (no final newline): canon's lines are whole lines after the user's bytes
+  new_dir; proj="$NEW_DIR"; printf 'mine' > "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"
+  r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "200" "${r%% *}"
+  [[ "$(head -2 "$proj/.gitignore")" == $'mine\n/.claude/skills' ]] || fail "$kind: canon's first line is not on its own line: $(od -c "$proj/.gitignore")"
+  for l in /.agents/skills /.claude/agents /.claude/subagent-runs.jsonl '/.tickets/*/gate-snapshot.txt*' /.claude/settings.local.json; do
+    grep -qxF -- "$l" "$proj/.gitignore" || fail "$kind: Turn on git did not write $l"
+  done
+  for rel in .claude/skills .agents/skills .claude/agents; do ignored "$proj" "$rel" || fail "$kind: $rel not ignored after Turn on git"; done
+  assert_eq ".gitignore" "$(git -C "$proj" show --name-only --format= HEAD)"
+  # 2. git turned on before the mirror existed (every project started before t-d8af): the preview adds canon's lines and lists no mirror; the save commits none
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"
+  req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; plant_mirror "$proj"
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "true" "$(jget "${r#* }" can_snapshot)"
+  [[ "${r#* }" != *'"name":".claude"'* && "${r#* }" != *'"name":".agents"'* ]] || fail "$kind: the preview lists canon's mirror: ${r#* }"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "200" "${r%% *}"
+  tracked="$(git -C "$proj" ls-files)"
+  ! grep -qE '^\.(claude|agents)/' <<<"$tracked" || fail "$kind: the snapshot committed canon's mirror: $tracked"
+  grep -qx notes.md <<<"$tracked" || fail "$kind: notes.md was not saved"
+  # 2b. a later `!` rule un-ignores the mirror: the preview says why and the save commits nothing
+  new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"
+  req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; plant_mirror "$proj"
+  printf '/.claude/skills\n!/.claude/skills\n' >> "$proj/.gitignore"
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"; assert_eq "true" "$(jget "${r#* }" ok)"
+  assert_contains "$(jget "${r#* }" reason)" "is not ignored"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
+  # Git Bash: `ln -s` copies by default and NTFS ignores `chmod 200`, so the link and unreadable cases run only where they mean something
+  local can_link=1; ln -s /nonexistent "$home/probe" 2>/dev/null && [[ -L "$home/probe" ]] || can_link=0; rm -f "$home/probe"
+  # 2c. a symlinked .gitignore: never written through, the preview refuses, the save commits nothing
+  if (( can_link )); then
+  new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"
+  req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; plant_mirror "$proj"
+  cp "$proj/.gitignore" "$out/target"; cp "$out/target" "$out/orig"; rm "$proj/.gitignore"; ln -s "$out/target" "$proj/.gitignore"
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"
+  r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  cmp -s "$out/target" "$out/orig" || fail "$kind: the snapshot wrote through a symlinked .gitignore"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
+  fi
+  # 3. a symlinked .gitignore under Turn on git (a passing and a failing commit): the target is byte-identical
+  mkdir -p "$home/hooks"; printf '#!/bin/sh\nexit 1\n' > "$home/hooks/pre-commit"; chmod +x "$home/hooks/pre-commit"
+  if (( can_link )); then
+  new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; printf 'theirs\n' > "$out/target"; ln -s "$out/target" "$proj/.gitignore"; plant_mirror "$proj"
+  register "$port" "$proj"; req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null
+  assert_eq "theirs" "$(cat "$out/target")"
+  printf '[core]\n\thooksPath = %s\n' "$home/hooks" > "$home/.gitconfig"
+  new_dir; proj="$NEW_DIR"; new_dir; out="$NEW_DIR"; printf 'theirs\n' > "$out/target"; ln -s "$out/target" "$proj/.gitignore"; plant_mirror "$proj"
+  register "$port" "$proj"; r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  assert_eq "theirs" "$(cat "$out/target")"
+  rm -f "$home/.gitconfig"
+  fi
+  printf '[core]\n\thooksPath = %s\n' "$home/hooks" > "$home/.gitconfig"
+  # 4. a failing Turn on git puts the user's .gitignore back byte for byte after canon appended its lines
+  new_dir; proj="$NEW_DIR"; printf 'mine\r\nkeep' > "$proj/.gitignore"; cp "$proj/.gitignore" "$home/orig4"; plant_mirror "$proj"
+  register "$port" "$proj"; r="$(req POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"
+  cmp -s "$proj/.gitignore" "$home/orig4" || fail "$kind: a failed Turn on git left canon's lines in the user's .gitignore"
+  [[ ! -e "$proj/.git" ]] || fail "$kind: a failed Turn on git left .git"
+  rm -f "$home/.gitconfig"
+  # 4b. a FIFO .gitignore never blocks Turn on git forever (canon reads only a regular file; reviewer t-d8af): `git add` itself waits on it
+  # until the board's 20 s git timeout, so the request answers within 60 s
+  if command -v mkfifo >/dev/null 2>&1; then
+    new_dir; proj="$NEW_DIR"; mkfifo "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"
+    code="$(curl -s -m 60 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: http://127.0.0.1:$port" \
+      --data-binary '{"confirm":true}' "http://127.0.0.1:$port/api/track-changes?project=$PROJ_ID")" || true
+    [[ "$code" != 000 ]] || fail "$kind: Turn on git hung on a FIFO .gitignore"
+    [[ -p "$proj/.gitignore" ]] || fail "$kind: the FIFO .gitignore was replaced"
+  fi
+  # 5. an unreadable .gitignore is never written by Turn on git or the snapshot
+  if [[ "$(id -u)" != 0 && "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* ]]; then
+    new_dir; proj="$NEW_DIR"; printf 'mine\n' > "$proj/.gitignore"; plant_mirror "$proj"; register "$port" "$proj"; chmod 200 "$proj/.gitignore"
+    req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; chmod 644 "$proj/.gitignore"
+    assert_eq "mine" "$(cat "$proj/.gitignore")"
+  fi
+  printf 'sprint-check-mirror[%s]: ok\n' "$kind"
+}
+
 check_backend go
 check_first_snapshot go
 check_snapshot_no_scanner go
 check_snapshot_edges go
+check_mirror go
 check_no_git go
 # the JSON key sets of GET, a successful POST and a refusal (compared py == go before t-15d8; now explicit)
 # shellcheck disable=SC2154  # go_KEYS is assigned by check_backend through eval

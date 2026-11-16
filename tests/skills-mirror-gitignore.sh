@@ -152,5 +152,33 @@ printf 'node_modules/\n' > "$H/.gitignore"; git -C "$H" add .gitignore; git -C "
 )
 rm -rf "$H" "$H_HOME"
 rm -rf "$SYM" "$RD" "$RP" "$NN" "$E2E" "$E2E_HOME"
+# ── 11. t-d8af: a .gitignore that ends in NUL bytes (a write cut off by a crash; the user's Windows project) or with no newline:
+#        canon's first line starts on its own line, so git reads it. `$(tail -c1)` dropped the NUL and glued the line on. ──
+for f in 'x\0\0' 'x' ''; do
+  ND="$(mktemp -d)"; git -C "$ND" init -q; mkdir -p "$ND/.claude/skills"; printf "$f" > "$ND/.gitignore"
+  _ensure_mirror_gitignored "$ND" >/dev/null
+  git -C "$ND" check-ignore -q -- .claude/skills || fail "after a .gitignore of '$f', .claude/skills is not ignored: $(od -c "$ND/.gitignore")"
+  _ensure_mirror_gitignored "$ND" >/dev/null   # a second run adds nothing (has_line reads past the NUL bytes)
+  [ "$(LC_ALL=C grep -acxF /.claude/skills "$ND/.gitignore")" = 1 ] || fail "a second run duplicated canon's line after a .gitignore of '$f'"
+  rm -rf "$ND"
+done
+# the other two callers on a NUL-ended file: _ensure_agents_link_gitignored's line and ensure_blank_sep's separator start on a new line
+ND="$(mktemp -d)"; git -C "$ND" init -q; printf 'x\0\0' > "$ND/.gitignore"
+_ensure_agents_link_gitignored "$ND" >/dev/null
+git -C "$ND" check-ignore -q -- .claude/agents || fail "after a NUL-ended .gitignore, /.claude/agents is not ignored: $(od -c "$ND/.gitignore")"
+printf 'x\0' > "$ND/blk"; ensure_blank_sep "$ND/blk"
+[ "$(od -An -c "$ND/blk" | tr -d ' \n')" = 'x\0\n\n' ] || fail "ensure_blank_sep on a NUL-ended file: $(od -c "$ND/blk")"
+rm -rf "$ND"
+# ends_without_newline: true only for a non-empty file whose last byte is not a newline, NUL included (all six tools/skills sites use it)
+EW="$(mktemp -d)"
+printf 'x\0' > "$EW/nul"; printf 'x' > "$EW/plain"; printf 'x\n' > "$EW/nl"; : > "$EW/empty"
+ends_without_newline "$EW/nul" || fail "a NUL-ended file must read as having no final newline"
+ends_without_newline "$EW/plain" || fail "a file with no final newline was missed"
+! ends_without_newline "$EW/nl" || fail "a newline-ended file read as having none"
+! ends_without_newline "$EW/empty" || fail "an empty file must not get a leading newline"
+! ends_without_newline "$EW/missing" || fail "a missing file must not get a leading newline"
+rm -rf "$EW"
+# the NUL-blind idiom itself ([ -n "$(tail -c1 f)" ]) is gone from every tools/skills site, ensure_blank_sep included (reviewer t-d8af)
+[ -z "$(git -C "$ROOT" grep -n -e '-n "$(tail -c1' -- tools/skills)" ] || fail "a tools/skills site still reads the last byte with [ -n \"\$(tail -c1 …)\" ]: $(git -C "$ROOT" grep -n -e '-n "$(tail -c1' -- tools/skills)"
 
 echo "skills-mirror-gitignore: ok"

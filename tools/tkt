@@ -64,8 +64,14 @@ ACTIVE.beat
 EOF
   elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore"; then
     # t-187e, t-41ff: a file canon seeded earlier gains each newer entry; one the user wrote is left alone
-    grep -qxF 'ACTIVE.beat' "$dir/.gitignore" || printf 'ACTIVE.beat\n' >> "$dir/.gitignore"
-    grep -qxF '.before-import/' "$dir/.gitignore" || printf '.before-import/\n' >> "$dir/.gitignore"
+    local add=()
+    grep -qxF 'ACTIVE.beat' "$dir/.gitignore" || add+=('ACTIVE.beat')
+    grep -qxF '.before-import/' "$dir/.gitignore" || add+=('.before-import/')
+    if (( ${#add[@]} )); then
+      # t-d8af: a file with no final newline (or ending in NUL bytes, which $(tail -c1) drops) would glue the first entry to its last line
+      [[ -s "$dir/.gitignore" && "$(tail -c1 "$dir/.gitignore" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$dir/.gitignore"
+      printf '%s\n' "${add[@]}" >> "$dir/.gitignore"
+    fi
   fi
   echo "$dir"
 }

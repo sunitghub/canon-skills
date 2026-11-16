@@ -71,7 +71,7 @@ _ensure_mirror_gitignored() {
       echo "  [gitignore] $entry (replaced $entry/)"
     fi
     if ! has_line "$entry" "$gi"; then
-      [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
+      ends_without_newline "$gi" && echo >> "$gi"
       printf '%s\n' "$entry" >> "$gi"
       echo "  [gitignore] $entry"
     fi
@@ -86,7 +86,7 @@ _ensure_mirror_gitignored() {
   # t-5988: Claude Code saves the commands a user approves, with any password in them, in .claude/settings.local.json; committed, it publishes them.
   for entry in "/.claude/subagent-runs.jsonl" "/.tickets/*/gate-snapshot.txt*" "/.claude/settings.local.json"; do
     if ! has_line "$entry" "$gi"; then
-      [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
+      ends_without_newline "$gi" && echo >> "$gi"
       printf '%s\n' "$entry" >> "$gi"
       echo "  [gitignore] $entry"
     fi
@@ -198,7 +198,7 @@ _ensure_agents_link_gitignored() {
   gi="$(_ignore_file "$project_dir")"
   _not_regular "$gi" && return 0
   if ! has_line "$entry" "$gi"; then
-    [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
+    ends_without_newline "$gi" && echo >> "$gi"
     printf '%s\n' "$entry" >> "$gi"
     echo "  [gitignore] $entry"
   fi
