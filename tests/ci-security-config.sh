@@ -31,7 +31,7 @@ check_common() {   # check_common <workflow file>: the rules every workflow keep
 
 TPL=tools/canon-gate-template.yml
 node_ge() {   # node_ge A B: true when version A >= B (x.y.z, minor and patch under 1000); pure arithmetic, no sort -V on BSD or Git Bash
-  local IFS=.; local -a a=($1) b=($2)
+  local -a a b; IFS=. read -r -a a <<< "$1"; IFS=. read -r -a b <<< "$2"
   (( 10#${a[0]} * 1000000 + 10#${a[1]} * 1000 + 10#${a[2]} >= 10#${b[0]} * 1000000 + 10#${b[1]} * 1000 + 10#${b[2]} ))
 }
 check_template() {   # check_template <file> (t-04f4): the workflow the board writes into consumer repos
