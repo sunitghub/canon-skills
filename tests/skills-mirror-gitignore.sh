@@ -162,6 +162,13 @@ for f in 'x\0\0' 'x' ''; do
   [ "$(LC_ALL=C grep -acxF /.claude/skills "$ND/.gitignore")" = 1 ] || fail "a second run duplicated canon's line after a .gitignore of '$f'"
   rm -rf "$ND"
 done
+# the other two callers on a NUL-ended file: _ensure_agents_link_gitignored's line and ensure_blank_sep's separator start on a new line
+ND="$(mktemp -d)"; git -C "$ND" init -q; printf 'x\0\0' > "$ND/.gitignore"
+_ensure_agents_link_gitignored "$ND" >/dev/null
+git -C "$ND" check-ignore -q -- .claude/agents || fail "after a NUL-ended .gitignore, /.claude/agents is not ignored: $(od -c "$ND/.gitignore" | head -3)"
+printf 'x\0' > "$ND/blk"; ensure_blank_sep "$ND/blk"
+[ "$(od -An -c "$ND/blk" | tr -d ' \n')" = 'x\0\n\n' ] || fail "ensure_blank_sep on a NUL-ended file: $(od -c "$ND/blk")"
+rm -rf "$ND"
 # ends_without_newline: true only for a non-empty file whose last byte is not a newline, NUL included (all six tools/skills sites use it)
 EW="$(mktemp -d)"
 printf 'x\0' > "$EW/nul"; printf 'x' > "$EW/plain"; printf 'x\n' > "$EW/nl"; : > "$EW/empty"

@@ -145,9 +145,6 @@ func ensureMirrorGitignored(wt string) []string {
 	if notRegular(gi) {
 		return []string{gi + " is not a regular file: left as is"}
 	}
-	if unreadable(gi) { // t-d8af: a read that fails would look empty, and the write after it would drop the user's lines
-		return []string{gi + " cannot be read: left as is"}
-	}
 	for _, entry := range []string{"/.claude/skills", "/.agents/skills"} {
 		if hasLine(gi, entry+"/") { // the directory-only line an earlier canon wrote: replace it, or drop it if the bare line exists
 			have := hasLine(gi, entry)
@@ -184,9 +181,6 @@ func ensureMirrorGitignored(wt string) []string {
 // first snapshot call it, so a project that got canon's skills before git never snapshots the mirror; a folder without a
 // mirror is left exactly as it is.
 func EnsureCanonIgnored(wt string) []string {
-	if !insideWorkTree(wt) {
-		return nil
-	}
 	mirror := false
 	for _, rel := range []string{".claude/skills", ".agents/skills"} {
 		if _, err := os.Lstat(filepath.Join(wt, filepath.FromSlash(rel))); err == nil {
@@ -203,7 +197,8 @@ func EnsureCanonIgnored(wt string) []string {
 	return did
 }
 
-// unreadable: the file exists but cannot be read (any error but not-exist).
+// unreadable: the file exists but cannot be read (any error but not-exist). t-d8af: ensureLine, canon's only appender, skips such a
+// file, because the failed read would look empty and its write would drop the user's lines.
 func unreadable(p string) bool {
 	_, err := os.ReadFile(p)
 	return err != nil && !os.IsNotExist(err)

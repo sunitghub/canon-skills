@@ -435,6 +435,14 @@ func TestEnsureCanonIgnored(t *testing.T) {
 		}
 	}
 
+	// a mirror and no .gitignore yet: one is created with canon's lines
+	fresh := gitRepo(t)
+	must(t, os.MkdirAll(filepath.Join(fresh, ".agents", "skills"), 0o755))
+	EnsureCanonIgnored(fresh)
+	if !hasLine(filepath.Join(fresh, ".gitignore"), "/.agents/skills") || !check(fresh, ".agents/skills") {
+		t.Error("a mirror with no .gitignore must get one holding canon's lines")
+	}
+
 	// no mirror: nothing written
 	plain := gitRepo(t)
 	must(t, os.WriteFile(filepath.Join(plain, ".gitignore"), []byte("mine\n"), 0o644))

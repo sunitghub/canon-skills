@@ -402,7 +402,8 @@ check_mirror() {
   new_dir; proj="$NEW_DIR"; echo notes > "$proj/notes.md"; register "$port" "$proj"
   req POST "$port" "?project=$PROJ_ID" '{"confirm":true}' >/dev/null; plant_mirror "$proj"
   printf '/.claude/skills\n!/.claude/skills\n' >> "$proj/.gitignore"
-  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"; assert_contains "${r#* }" "is not ignored"
+  r="$(fsreq GET "$port" "?project=$PROJ_ID")"; assert_eq "false" "$(jget "${r#* }" can_snapshot)"; assert_eq "true" "$(jget "${r#* }" ok)"
+  assert_contains "$(jget "${r#* }" reason)" "is not ignored"
   r="$(fsreq POST "$port" "?project=$PROJ_ID" '{"confirm":true}')"; assert_eq "400" "${r%% *}"; assert_eq "1" "$(git -C "$proj" rev-list --count HEAD)"
   # Git Bash: `ln -s` copies by default and NTFS ignores `chmod 200`, so the link and unreadable cases run only where they mean something
   local can_link=1; ln -s /nonexistent "$home/probe" 2>/dev/null && [[ -L "$home/probe" ]] || can_link=0; rm -f "$home/probe"
