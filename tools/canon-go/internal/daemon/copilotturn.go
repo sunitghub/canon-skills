@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -71,8 +73,8 @@ func (t *copilotTurn) apply(e copilotEvent) string {
 		return ""
 	}
 	switch e.Type {
-	case "assistant.turn_start":
-		t.ended = false
+	case "assistant.turn_start": // a turn that ends with no message (aborted) is at rest, not still asking for tools
+		t.ended, t.lastTools = false, false
 		return "running"
 	case "assistant.message":
 		t.lastTools = len(e.Data.ToolRequests) > 0
@@ -152,13 +154,22 @@ func (t *copilotTurn) read(path string) ([]string, error) {
 // offset to start at: the log's size at spawn for a resumed session (its old turns are history), 0 for a new one.
 func (s *server) watchCopilotTurns(se *session, path string, from int64) {
 	t := &copilotTurn{off: from}
+	lastErr := ""
 	for {
 		select {
 		case <-se.done:
 			return
 		case <-time.After(copilotTurnPoll):
 		}
-		sts, _ := t.read(path) // not there yet, or not a regular file: try again next poll
+		sts, err := t.read(path)
+		switch {
+		case err == nil:
+			lastErr = ""
+		case errors.Is(err, fs.ErrNotExist): // not written yet: try again next poll
+		case err.Error() != lastErr: // said once, so a log it can't read never passes for a quiet session
+			lastErr = err.Error()
+			fmt.Fprintf(os.Stderr, "cockpit-daemon: copilot session %s: can't read its events log %s: %v\n", se.ticket, path, err)
+		}
 		for _, st := range sts {
 			se.setStatus(st)
 			if st == "awaiting-input" {

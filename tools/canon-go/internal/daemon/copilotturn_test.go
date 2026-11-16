@@ -75,6 +75,7 @@ func TestCopilotTurnStatuses(t *testing.T) {
 		{"a subagent's own turn end", nl(evStart, evMsgTools, evSubStart, evSubTurn, evSubMsg, evSubEnd), []string{"running"}},
 		{"main turn ends while a subagent runs", nl(evStart, evMsgNone, evSubStart, evEnd), []string{"running"}},
 		{"the subagent finishes after", nl(evStart, evMsgNone, evSubStart, evEnd, evSubDone), []string{"running", "awaiting-input"}},
+		{"a turn aborted after asking for tools", nl(evStart, evMsgTools, evEnd, evStart, evEnd), []string{"running", "running", "awaiting-input"}},
 		{"user.message and model_change change nothing", nl(evUser, evModel), nil},
 		{"a malformed line is skipped", nl(evStart, `{"type":"assistant.message","data":{"toolRequests":[`, evMsgNone, evEnd), []string{"running", "awaiting-input"}},
 	}
