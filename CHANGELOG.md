@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.64.1] - 2026-11-17
+
+- New: Factory › GitHub shows the GitHub workflow as a looping flowchart (Send → Work → Guard → Return → Merge, and back to Send). **Next step** and **Back** move one box at a time, **All steps** shows the list, and **Play** moves one stage every 5 seconds, counting down, until you press anything else (t-a811).
+- Changed: after Send to GitHub, the panel's "Run it in the cloud" puts the three ways to start a session (To Claude Cloud, Copy command, Copy prompt) inside step 2, each with its own line, so they read as one choice, not more steps (t-a811).
+- New: click a card's ticket id to copy it ("Copied" shows briefly); it does not open the card. The card menu's Copy ID stays (t-a811).
+- New: Admin › Model tiers marks each step as running in **your session** (Plan, Build), a **fresh subagent** (Spec check, Reviewer, Evaluator, Second eval) or **light work** (t-a811).
+- Fixed: `sprint check-evidence` no longer stops with "illegal byte sequence" on macOS when an acceptance criterion has a character such as `›`, `é` or `—` near its start (t-a811).
+
 ## [0.64.0] - 2026-11-16
 
 - New: after **To Claude Cloud** (or `tkt send-issue <id> --launch`), the ticket's Cloud row in the Agents list shows **starting**, with the working spinner and "cloud session launched, waiting for its first push", and the card's chip says "starting". Before, the row kept a still ring until the session pushed its branch. A plain send, or a session started from claude.ai/code (Copy command, Copy prompt), still reads "sent" until the first push (t-a7e0).
