@@ -6426,7 +6426,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     test('t-10ac, t-4358: a Claude row leads with the Claude mark in its orange in both themes; a Copilot row with its own mark; Pi keeps its lettered tile', async ({ page }) => {
-      await openShell(page, stateRows());
+      await openShell(page, [...stateRows(), { session: 's9', ticket: 't-fff6', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'pi', status: 'running', state: 'working', state_secs: 5, idle_secs: 5, idle_limit_secs: 300, signal: 'activity' }]);
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       const claude = page.locator('#ag-list .ag-row', { hasText: 't-ccc3' }).locator('.ag-i svg.ag-mk-claude path');
       for (const theme of ['dark', 'light']) {
@@ -6440,11 +6440,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(copilot.locator('.ag-badge')).toHaveCount(0);
       for (const theme of ['dark', 'light']) {
         await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-        expect(await copilot.locator('svg.ag-mk-copilot rect').evaluate(r => r.getAttribute('fill')), `the Copilot tile, ${theme}`).toBe('#8957e5');
+        expect(await copilot.locator('svg.ag-mk-copilot rect').evaluate(r => getComputedStyle(r).fill), `the Copilot tile paints violet, ${theme}`).toBe('rgb(137, 87, 229)');
         const box = sel => page.locator(sel).first().evaluate(el => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
         expect(await box('#ag-list svg.ag-mk-copilot'), `same box as the Claude mark, ${theme}`).toEqual(await box('#ag-list svg.ag-mk-claude'));
       }
-      expect(await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).agentMark('pi'))).toContain('ag-badge');   // Pi keeps its tile
+      const pi = page.locator('#ag-list .ag-row', { hasText: 't-fff6' });   // a rendered Pi row keeps its lettered tile (reviewer, t-4358)
+      await expect(pi.locator('.ag-i .ag-badge')).toHaveText('P');
+      await expect(pi.locator('svg.ag-mk-copilot, svg.ag-mk-claude')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
