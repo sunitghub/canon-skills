@@ -187,7 +187,11 @@ function mtRender(){
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
       const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
-      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
+      // t-b809 (user): while a preset waits for Apply, each card says what it becomes or that it stays (never disabled: it stays editable)
+      const pend=mtPresetPend?(mtOpts.presets||[]).find(p=>p.id===mtPresetPend):null, to=pend?((pend.picks||{})[st.id]||{})[mtAgent]:undefined;
+      const will=pend&&to!==undefined&&to!==cur;
+      const pendNote=!pend?'':will?`<div class="setting-d mt-pend mt-pend-to">\u2192 ${esc(mtModelName(st.id,mtAgent,to))} on Apply</div>`:'<div class="setting-d mt-pend mt-pend-same">No change</div>';
+      return `<div class="mt-default-card${will?' mt-will':''}" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div>${pendNote}</div>${note}</div>`;   // inside the picker row: the card's subgrid keeps 4 rows
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }
@@ -246,13 +250,13 @@ function mtPresetMatches(p){
 function mtRenderPresets(){
   const el=document.getElementById('mt-preset'); if(!el) return;
   const list=mtOpts.presets||[], last=list.find(p=>p.id===mtPresetLast&&mtPresetMatches(p)), cur=last||list.find(mtPresetMatches), shown=list.find(p=>p.id===mtPresetPend)||cur;
-  const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}</option>`;
+  const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}${p.default?' (default)':''}</option>`;   // default: the preset a fresh install equals
   const group=(src,label)=>{ const g=list.filter(p=>p.source===src); return g.length?`<optgroup label="${escAttr(label)}">${g.map(opt).join('')}</optgroup>`:''; };
   let h=`<div class="mt-preset-row"><label class="setting-k" for="mt-preset-sel">Preset</label>
     <select id="mt-preset-sel" aria-describedby="mt-preset-d"><option value=""${shown?'':' selected'}>Custom</option>${group('canon','canon')}${group('yours','Yours')}</select>
     <span class="setting-d" id="mt-preset-d">${shown?esc(shown.desc||(shown.source==='yours'?'Your saved picks.':'')):'Your own picks: they match no preset.'}</span>
     <button type="button" class="btn b-neutral" id="mt-preset-save">Save current as preset\u2026</button>${shown&&shown.source==='yours'&&!mtPresetPend?`<button type="button" class="btn b-danger" id="mt-preset-del">Delete</button>`:''}</div>`;
-  if(mtPresetSaving) h+=`<div class="mt-preset-row"><input type="text" id="mt-preset-name" maxlength="40" placeholder="Preset name" aria-label="Preset name"><button type="button" class="btn b-primary" id="mt-preset-name-ok">Save</button><button type="button" class="btn b-close" id="mt-preset-name-x">Cancel</button><span class="setting-d">Saves the current picks for ${esc(mtAgentsListed().map(mtAgentLabel).join(' and '))}.</span></div>`;
+  if(mtPresetSaving) h+=`<div class="mt-preset-row"><input type="text" id="mt-preset-name" maxlength="40" placeholder="Preset name" aria-label="Preset name"><button type="button" class="btn b-primary" id="mt-preset-name-ok">Save</button><button type="button" class="btn b-close" id="mt-preset-name-x">Cancel</button><span class="setting-d" id="mt-preset-where">Saves the current picks for ${esc(mtAgentsListed().map(mtAgentLabel).join(' and '))}${mtOpts.user_file?` in <code>${esc(mtOpts.user_file)}</code>, your own file for every project`:''}.</span></div>`;
   const pend=list.find(p=>p.id===mtPresetPend);
   if(pend){
     const rows=[];

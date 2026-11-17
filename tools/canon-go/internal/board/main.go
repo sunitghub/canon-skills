@@ -227,7 +227,7 @@ Usage:
   canon-go --help           Show this help
 
 Helpers (used by canon's shell tools; see helpers.go):
-  headless-json, json-strings <file>, skill-check <skill-dir>,
+  headless-json, headless-usage, json-strings <file>, skill-check <skill-dir>,
   settings <status|add|remove> <settings.json> <allow|deny|additionalDirectories> <rule>...
   event <kind> --project <dir> --source <name> [--actor user|agent|system] key=value...
   log verify | seal        the activity log's day seals (canon log)

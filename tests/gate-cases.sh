@@ -94,7 +94,7 @@ rm -rf "$CASES"
 
 # no cases folder: text and JSON say so and exit 0; a folder inside the cases folder with no case.md is ignored
 rc "$G" run; assert_eq 0 "$code"; assert_eq "gate cases: none (no $CASES)" "$out"
-rc "$G" run --json; assert_eq 0 "$code"; assert_eq '{"pass":0,"run":0,"recorded":0,"skipped":0,"cases":[]}' "$out"
+rc "$G" run --json; assert_eq 0 "$code"; assert_eq '{"pass":0,"run":0,"recorded":0,"replay":0,"skipped":0,"cases":[]}' "$out"
 rc "$G" ls; assert_eq 0 "$code"; assert_eq "gate cases: none (no $CASES)" "$out"
 mkdir -p "$CASES/not-a-case" "$CASES/frontmatter-only"
 rc "$G" run; assert_eq 0 "$code"; assert_eq "gate cases: 0 of 0 pass, 0 recorded" "$out"
@@ -197,10 +197,201 @@ rc "$G" run --json; assert_eq 0 "$code"
 printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); m=d["cases"][0]["miss"]; assert "quote \" backslash \\ tab" in m and "\x1b" not in m and "\x01" not in m, m' || fail "gate-cases: --json is invalid or kept a control character: $out"
 rm -rf "$CASES"
 
+# --- replay (t-b809): re-runs today's gates on a past commit through `claude -p`. A stub claude records its arguments and environment
+# and answers with a real reply's JSON shape; a scratch repo holds the base, the graded commit and the fix. Protects the trial that decides
+# whether the reviewer folds into the evaluator, and `run` (pre-gate, every close) never spending a call. ---
+use_fresh_board "$WORK/board"
+REPO="$WORK/repo"; mkdir -p "$REPO"; git -C "$REPO" init -q; git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t
+printf 'a\n' > "$REPO/x.txt"; git -C "$REPO" add x.txt; git -C "$REPO" commit -qm base; BASE_SHA="$(git -C "$REPO" rev-parse HEAD)"
+printf 'b\n' > "$REPO/x.txt"; git -C "$REPO" commit -qam graded; REF_SHA="$(git -C "$REPO" rev-parse HEAD)"
+printf 'c\n' > "$REPO/x.txt"; git -C "$REPO" commit -qam fix; FIX_SHA="$(git -C "$REPO" rev-parse HEAD)"
+export GATE_CASES_DIR="$REPO/tests/gate-cases" CANON_GATE_SCOPE_DIR="$WORK/scope"   # the registry replay registers in, as a real close's
+mkcase() {  # mkcase <slug> <extra frontmatter lines...>: a replay case on the scratch repo
+  local s="$1"; shift; mkdir -p "$GATE_CASES_DIR/$s/state/ticket"
+  { printf -- '---\ngate: evaluator\nkind: replay\nmiss: a FIFO .gitignore blocks forever\nticket: t-abcd\nbase: %s\n' "$BASE_SHA"
+    printf '%s\n' "$@"; printf -- '---\n'; } > "$GATE_CASES_DIR/$s/case.md"
+  printf '# Acceptance\n- [ ] 1. the file says b\n' > "$GATE_CASES_DIR/$s/state/ticket/acceptance.md"
+}
+mkcase rp "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo|named pipe'
+STUB="$WORK/stub"; mkdir -p "$STUB/bin" "$STUB/calls"
+cat > "$STUB/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+# a stand-in for claude -p: logs each call, answers with a real reply's JSON (2026-11-17) around the text in $STUB/reply-<agent>.txt
+args=("$@"); agent=probe
+for ((i = 0; i < ${#args[@]}; i++)); do [[ "${args[$i]}" == --agent ]] && agent="${args[$((i + 1))]}"; done
+if [[ "$agent" == probe ]]; then exit "${STUB_AUTH_RC:-0}"; fi
+n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
+{ printf 'arg=%s\n' "${args[@]}"; printf 'pwd=%s\nhome=%s\ncanon_home=%s\ntmpdir=%s\nxdg=%s\nscope=%s\ntickets=%s\npid=%s\n' "$PWD" "$HOME" "$CANON_HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$CANON_GATE_SCOPE_DIR" "$CANON_TICKETS_DIR" "$$"
+  [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"; [[ -f .claude/agents/canon-reviewer.md ]] && echo "agents=resolve"
+  cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'
+  echo "remotes=$(git remote | tr '\n' ' ')"; echo "refs=$(git for-each-ref --format='%(refname)' | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
+[[ -z "${STUB_DIRTY:-}" ]] || echo "# dirtied by the stub" >> "$STUB_DIRTY"
+[[ -z "${STUB_GIT_NOISE:-}" ]] || { sleep 1.1; git -C "$STUB_GIT_NOISE" status >/dev/null; : > "$STUB_GIT_NOISE/.git/noise.tmp"; rm -f "$STUB_GIT_NOISE/.git/noise.tmp"; }
+case "${STUB_MODE:-ok}" in
+  sleep) exec sleep 60 ;;
+  fail) [[ "$n" == "${STUB_FAIL_CALL:-1}" ]] && { echo "boom" >&2; exit 3; } ;;
+  iserror) printf '{"is_error":true,"result":"rate limited"}'; exit 0 ;;
+  nousage) printf '{"is_error":false,"session_id":"s","result":"pass: fine"}'; exit 0 ;;
+esac
+python3 -c 'import json,sys; print(json.dumps({"duration_ms":1513,"total_cost_usd":0.0030145700000000003,"modelUsage":{"claude-sonnet-5-5":{"inputTokens":2,"outputTokens":4,"cacheReadInputTokens":11457,"cacheCreationInputTokens":14489}},"is_error":False,"session_id":"s","result":open(sys.argv[1]).read()}))' "$STUB/reply-$agent.txt"
+EOF
+chmod +x "$STUB/bin/claude"; export STUB
+SP="$STUB/bin:$PATH"
+rp() { set +e; out="$(PATH="$SP" "$G" replay "$@" 2>&1)"; code=$?; set -e; }
+calls() { ls "$STUB/calls" | wc -l | tr -d ' '; }
+row() { sed -n "${1}p" "$WORK/r.jsonl"; }
+reply() { printf '%s\n' "$2" > "$STUB/reply-$1.txt"; }
+reset() { rm -f "$WORK/r.jsonl"; rm -rf "$WORK/r-reports" "$STUB/calls"; mkdir -p "$STUB/calls"; }
+REPO_STATUS="$(git -C "$REPO" status --porcelain)"
+
+# no --yes: the count, exit 2, no call (not even the auth probe)
+rp rp --config split --runs 2; assert_eq 2 "$code"; assert_contains "$out" "would make 4 claude -p calls"; assert_eq 0 "$(calls)"
+[[ ! -e "$WORK/r.jsonl" ]] || fail "replay without --yes wrote results"
+rp rp --config folded --runs 3; assert_contains "$out" "would make 3 claude -p calls"
+# split: the reviewer's Act On names it (caught), the evaluator passes; the stub saw the pinned env, the agent, the mode and the allowlist
+reset
+reply canon-reviewer $'Changed files: x.txt\n## Triage\n- Act On: x.txt:1 reads a FIFO and blocks forever\n- Consider: none\n- Noted: none\n- Dismissed: none\nNO — one Act On'
+reply canon-evaluator $'## Criteria\n| 1 | pass |\npass: the file says b'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_eq 0 "$code" "replay split: $out"
+assert_eq 2 "$(calls)"; assert_eq 2 "$(wc -l < "$WORK/r.jsonl" | tr -d ' ')"
+assert_contains "$(row 1)" '"case":"rp","kind":"defect","config":"split","run":1,"gate":"reviewer","model":"claude-sonnet-5-5","verdict":"fail","caught":true,"leak":false,"tokens":25952,"duration_ms":1513,"cost_usd":0.0030'
+assert_contains "$(row 2)" '"gate":"evaluator","model":"claude-sonnet-5-5","verdict":"pass","caught":false'
+c1="$STUB/calls/1"
+assert_grep "^arg=canon-reviewer$" "$c1"; assert_grep "^arg=claude-sonnet-5-5$" "$c1"; assert_grep "^arg=dontAsk$" "$c1"; assert_grep "^arg=Write$" "$c1"; assert_grep "^arg=Edit$" "$c1"
+assert_grep "^arg=Bash$" "$c1"; assert_grep "^arg=canon-evaluator$" "$STUB/calls/2"
+assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^remotes=$" "$c1"; assert_grep "^refs=$" "$c1"; assert_grep "^gitdir=\.git$" "$c1"; assert_grep "^agents=linked$" "$c1"; assert_grep "^agents=resolve$" "$c1"
+for k in canon_home tmpdir xdg; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "$TMPDIR"/gate-replay.* ]] || fail "replay: $k was not pinned to scratch: $v"; done
+[[ "$(sed -n 's/^pwd=//p' "$c1")" == "$TMPDIR"/gate-replay.*/wt ]] || fail "replay: the gate did not run in the scratch worktree: $(sed -n 's/^pwd=//p' "$c1")"
+grep -q "^arg=.*Base ref: \`$BASE_SHA\`" "$c1" || grep -q "Base ref: \`$BASE_SHA\`" "$c1" || fail "replay: the prompt does not name the base"
+grep -q "{{" "$c1" && fail "replay: a prompt placeholder was left unfilled"
+# one prompt file (tools/gate-replay.md): each gate gets its own section plus the shared rules, exactly once
+for cf in "$c1" "$STUB/calls/2"; do assert_count 1 "Do not run the full suite" "$cf"; assert_count 1 "Base ref:" "$cf"; done
+grep -q "advisory reviewer gate" "$c1" && grep -q "binding evaluator gate" "$STUB/calls/2" || fail "replay: a gate got another gate's prompt"
+assert_eq "$REPO_STATUS" "$(git -C "$REPO" status --porcelain)"
+[[ -z "$(ls -A "$TMPDIR")" && -z "$(ls -A "$WORK/scope")" ]] || fail "replay left scratch or a scope record behind: $(ls -A "$TMPDIR" "$WORK/scope")"
+assert_file_exists "$WORK/r-reports/rp-split-1-reviewer.md"
+# a reviewer finding only under Noted is not a catch; an evaluator pass that mentions it is not a catch; a fail that names it is
+reset
+reply canon-reviewer $'## Triage\n- Act On: none\n- Consider: none\n- Noted: a FIFO could block\n- Dismissed: none\nYES'
+reply canon-evaluator $'Findings: a fifo is mentioned\npass: fine'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"pass","caught":false'; assert_contains "$(row 2)" '"verdict":"pass","caught":false'
+reset; reply canon-evaluator $'## Findings\n- x.txt:1 blocks on a named pipe\nfail: criterion 1'
+rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"gate":"folded","model":"claude-sonnet-5-5","verdict":"fail","caught":true'
+assert_grep "^arg=canon-evaluator$" "$STUB/calls/1"; grep -q "Reviewer findings (advisory)" "$STUB/calls/1" || fail "replay: the folded prompt was not sent"
+# a fail for another reason whose passing criteria row names it is not a catch (the trial's t-c723 folded run 2)
+reset; reply canon-evaluator $'## Criteria\n| 1 | pass | handles the named pipe |\n## Findings\n- the full suite is not-run\n## Verdict\nfail: criterion 2 not-run'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 2)" '"verdict":"fail","caught":false'
+reset; reply canon-evaluator $'## Criteria\n| 1 | fail | x |\n## Verdict\nfail: x.txt:1 blocks on a FIFO'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 2)" '"verdict":"fail","caught":true'
+# a pass whose Findings name it is not a catch; a reviewer's own Findings section is not its triage
+reset; reply canon-evaluator $'## Findings\n- x.txt:1 blocks on a FIFO (low)\n## Verdict\npass: fine'
+reply canon-reviewer $'## Findings\n- x.txt:1 reads a FIFO\nConsider: a FIFO, outside the triage\n## Triage\n- Act On: none\n- Consider: none\n## Verdict\nNO — fifo, see above'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"fail","caught":false'; assert_contains "$(row 2)" '"verdict":"pass","caught":false'
+# folded: a concern line above Act On is not a catch (only Act On and Consider are), nor is a Consider after the section ends
+reset; reply canon-evaluator $'## Reviewer findings (advisory)\n- x.txt:1 FIFO read blocks\n- Act On: none\n- Consider: none\n## Verdict\nConsider: fifo\npass: fine'
+rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"pass","caught":false'
+# folded: the advisory section's Consider is a catch; its Noted is not; the leak flag reads the fix sha
+reset; reply canon-evaluator $'## Reviewer findings (advisory)\n- Act On: none\n- Consider: x.txt:1 FIFO read blocks\n- Noted: none\n## Verdict\npass: fine'
+rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"pass","caught":true,"leak":false'
+reset; reply canon-evaluator $'## Reviewer findings (advisory)\n- Act On: none\n- Noted: a FIFO, see '"${FIX_SHA:0:9}"$'\n## Verdict\npass: fine'
+rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"pass","caught":false,"leak":true'
+# errors: a failed call, is_error, a timeout killed by its PID, a bad ref (no call); each is an error row, the run goes on, exit 1
+mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
+reset; reply canon-evaluator 'pass: fine'
+set +e; out="$(STUB_MODE=fail STUB_FAIL_CALL=1 PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"verdict":"error","caught":false'; assert_contains "$(row 1)" '"error":"claude exited 3: boom'; assert_contains "$(row 2)" '"case":"rp2"'; assert_contains "$(row 2)" '"verdict":"pass"'
+reset; set +e; out="$(STUB_MODE=iserror PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"claude reported an error'
+reset; set +e; out="$(STUB_MODE=nousage PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"verdict":"error","caught":false'; assert_contains "$(row 1)" '"error":"no usage in claude'"'"'s reply"'
+reset; set +e; out="$(STUB_MODE=sleep GATE_REPLAY_TIMEOUT=2 PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"timeout after 2s"'
+spid="$(sed -n 's/^pid=//p' "$STUB/calls/1")"; ! kill -0 "$spid" 2>/dev/null || fail "replay: the timed-out call $spid is still running"
+[[ -z "$(ls -A "$TMPDIR")" ]] || fail "replay left scratch behind after a timeout: $(ls -A "$TMPDIR")"
+mkcase badref "ref: 0123456789abcdef0123456789abcdef01234567" "fix: $FIX_SHA" 'catch: fifo'
+reset; rp badref --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_eq 1 "$code"; assert_eq 0 "$(calls)"
+assert_contains "$(row 1)" '"gate":"-","model":"claude-sonnet-5-5","verdict":"error","caught":false'; assert_contains "$(row 1)" 'does not resolve'
+rm -rf "$GATE_CASES_DIR/badref" "$GATE_CASES_DIR/rp2"
+# git's own writes inside .git (an index refresh, a lock file) are not a change: a stub that runs git status and touches .git is no stop
+reset; reply canon-evaluator 'pass: fine'
+set +e; out="$(STUB_GIT_NOISE="$REPO" PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "replay stopped on git's own .git writes: $out"
+# a gate that changes the real checkout stops the replay at once (gate-snapshot post's check), with an error row
+mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
+reset; set +e; out="$(STUB_DIRTY="$REPO/dirty.txt" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; assert_eq 1 "$(wc -l < "$WORK/r.jsonl" | tr -d ' ')"
+[[ -z "$(ls -A "$TMPDIR")" ]] || fail "replay left scratch behind after a stop: $(ls -A "$TMPDIR")"; rm -f "$REPO/dirty.txt"
+reset; set +e; out="$(STUB_DIRTY="$REPO/.git/hooks/pre-commit" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; rm -f "$REPO/.git/hooks/pre-commit"
+reset; set +e; out="$(STUB_DIRTY="$REPO/.git/config" PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'
+git -C "$REPO" init -q; git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t; rm -rf "$GATE_CASES_DIR/rp2"
+# the auth probe fails: exit 2 before any case
+reset; set +e; out="$(STUB_AUTH_RC=1 PATH="$SP" "$G" replay rp --config split --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 2 "$code"; assert_contains "$out" "not logged in"; assert_eq 0 "$(calls)"; [[ ! -s "$WORK/r.jsonl" ]] || fail "replay wrote rows after a failed auth probe"
+# --out default: a fresh scratch dir, named in the output
+reset; reply canon-evaluator 'pass: fine'; rp rp --config folded --runs 1 --yes; assert_eq 0 "$code"
+dflt="$(sed -n 's/^gate-cases: results in //p' <<<"$out")"; [[ "$dflt" == "$TMPDIR"/gate-replay-out.*/replay.jsonl && -s "$dflt" ]] || fail "replay: no default results file: $out"
+rm -rf "$(dirname "$dflt")"
+# run lists a replay case and never calls claude; ls shows it; malformed replay cases fail run, naming the field
+reset; set +e; out="$(PATH="$SP" "$G" run 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "  replay    rp (evaluator): a FIFO .gitignore blocks forever"; assert_contains "$out" "gate cases: 0 of 0 pass, 0 recorded, 1 replay"; assert_eq 0 "$(calls)"
+rc "$G" run --json; assert_contains "$out" '"replay":1'
+rc "$G" ls; assert_contains "$out" "rp  evaluator  replay"
+mkcase ctl "ref: $REF_SHA" 'catch: ' 'expect_verdict: pass'; rc "$G" run; assert_eq 0 "$code" "a control with an empty catch: $out"
+mkcase nocatch "ref: $REF_SHA" "fix: $FIX_SHA"; rc "$G" run; assert_eq 1 "$code"; assert_contains "$out" "FAIL      nocatch (evaluator): malformed case.md: a replay case needs catch"
+rm -rf "$GATE_CASES_DIR/nocatch"; mkcase nofix "ref: $REF_SHA" 'catch: x'; rc "$G" run; assert_eq 1 "$code"; assert_contains "$out" "a replay case needs fix (the commit"
+rm -rf "$GATE_CASES_DIR/nofix"; mkcase badre "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: (unclosed'; rc "$G" run; assert_eq 1 "$code"; assert_contains "$out" "catch is not a valid regex"
+rp badre --config split --runs 1; assert_eq 2 "$code"; assert_contains "$out" "malformed case.md: catch is not a valid regex"
+rm -rf "$GATE_CASES_DIR/badre"
+# the ticket id names a path (.tickets/<id>), so it must be exactly t-xxxx; a missing ref is refused; fix must be a sha
+retk() { mkcase "$1" "ref: $REF_SHA" "fix: $3" 'catch: fifo'; { sed "s|^ticket: .*|$2|" "$GATE_CASES_DIR/$1/case.md" > "$WORK/c.tmp"; } && mv "$WORK/c.tmp" "$GATE_CASES_DIR/$1/case.md"; }
+for t in 'ticket: t-abcd/../x' 'ticket: xt-abcd'; do retk badtk "$t" "$FIX_SHA"; rc "$G" run; assert_eq 1 "$code" "$t"; assert_contains "$out" "ticket must be a ticket id"; rm -rf "$GATE_CASES_DIR/badtk"; done
+retk badtk 'ticket: ' "$FIX_SHA"; rc "$G" run; assert_eq 1 "$code"; assert_contains "$out" "a replay case needs ticket"; rm -rf "$GATE_CASES_DIR/badtk"
+for f in "${FIX_SHA:0:9};x" "x${FIX_SHA:0:9}"; do retk badfx 'ticket: t-abcd' "$f"; rc "$G" run; assert_eq 1 "$code" "$f"; assert_contains "$out" "a replay case needs fix"; rm -rf "$GATE_CASES_DIR/badfx"; done
+# option refusals: each exits non-zero before any claude call, naming the problem
+reset
+for a in "--runs 0|--runs must be" "--runs 1x|--runs must be" "--runs x1|--runs must be" "--config other|--config must be" "--model a;b|--model must be" "--model ;ab|--model must be" "--bogus|unknown option" "--runs|--runs needs a value"; do
+  set +e; out="$(PATH="$SP" "$G" replay rp --config split --yes ${a%%|*} 2>&1)"; code=$?; set -e
+  [[ "$code" -ne 0 ]] || fail "replay accepted ${a%%|*}"; assert_contains "$out" "${a#*|}"
+done
+rc "$G" replay --config split --yes; [[ "$code" -ne 0 ]] || fail "replay ran with no case"; assert_contains "$out" "name at least one replay case"
+rc "$G" replay nosuch --config split --yes; [[ "$code" -ne 0 ]] || fail "replay ran a missing case"; assert_contains "$out" "not a replay case: nosuch"
+rc "$G" replay --summary "$WORK/none.jsonl"; [[ "$code" -ne 0 ]] || fail "summary of a missing file"; assert_contains "$out" "no results file"
+assert_eq 0 "$(calls)"
+# the control: never caught, never a leak (it has no fix), its verdict in the summary
+reset; reply canon-evaluator 'pass: fine, see '"${FIX_SHA:0:9}"; rp ctl --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"kind":"control"'; assert_contains "$(row 1)" '"caught":false,"leak":false'
+# --summary on a fixture with known numbers: split close = reviewer + evaluator per case and run; a case-run is caught when any row is
+cat > "$WORK/fx.jsonl" <<'EOF'
+{"case":"a","kind":"defect","config":"split","run":1,"gate":"reviewer","verdict":"fail","caught":true,"leak":false,"tokens":100,"duration_ms":60000,"cost_usd":0.1}
+{"case":"a","kind":"defect","config":"split","run":1,"gate":"evaluator","verdict":"pass","caught":false,"leak":false,"tokens":200,"duration_ms":120000,"cost_usd":0.2}
+{"case":"b","kind":"defect","config":"split","run":1,"gate":"reviewer","verdict":"pass","caught":false,"leak":true,"tokens":50,"duration_ms":60000,"cost_usd":0.1}
+{"case":"b","kind":"defect","config":"split","run":1,"gate":"evaluator","verdict":"error","caught":false,"leak":false,"tokens":0,"duration_ms":0,"cost_usd":0}
+{"case":"c","kind":"control","config":"split","run":1,"gate":"reviewer","verdict":"pass","caught":false,"leak":false,"tokens":10,"duration_ms":60000,"cost_usd":0.1}
+{"case":"c","kind":"control","config":"split","run":1,"gate":"evaluator","verdict":"pass","caught":false,"leak":false,"tokens":20,"duration_ms":60000,"cost_usd":0.1}
+{"case":"a","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"pass","caught":true,"leak":false,"tokens":150,"duration_ms":180000,"cost_usd":0.1}
+{"case":"b","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"pass","caught":true,"leak":false,"tokens":90,"duration_ms":60000,"cost_usd":0.1}
+{"case":"c","kind":"control","config":"folded","run":1,"gate":"folded","verdict":"fail","caught":false,"leak":false,"tokens":60,"duration_ms":60000,"cost_usd":0.1}
+{"case":"d","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"error","caught":false,"leak":false,"tokens":0,"duration_ms":0,"cost_usd":0}
+EOF
+rc "$G" replay --summary "$WORK/fx.jsonl"; assert_eq 0 "$code"
+assert_contains "$out" "split   1   1/2       pass     1     1      50           380          2.0"
+# an all-error case-run (d) is neither caught nor missed and stays out of the medians
+assert_contains "$out" "folded  1   2/2       fail     0     1      90           300          1.0"; assert_contains "$out" "case d folded run 1: error"
+assert_contains "$out" "case b split run 1: missed"; assert_contains "$out" "case b folded run 1: caught"
+rm -rf "$REPO"
+export GATE_CASES_DIR="$CASES"
+
 # --- the real set: it passes on the real guards, and a weakened guard fails its case ---
 export GATE_CASES_DIR="$ROOT/tests/gate-cases"   # explicit: this test also runs in a scratch copy that has no .git
 rc "$G" run; assert_eq 0 "$code" "gate-cases: the real set fails: $out"
 assert_contains "$out" "  ok        board-spec-zero-tests (guard)"; assert_contains "$out" "  ok        stale-evidence-stamp (guard)"
+assert_contains "$out" ", 6 replay"   # t-b809: the trial's cases are listed, never run (pre-gate runs this at every close)
+# t-b809: a replay case's ticket files are the ones the gate graded: none may name the finding it is scored on (a leak makes the catch free)
+for c in "$ROOT"/tests/gate-cases/replay-*/; do
+  re="$(sed -n 's/^catch: //p' "${c}case.md")"; [[ -n "$re" ]] || continue
+  ! grep -qiE -- "$re" "${c}state/ticket/"*.md || fail "gate-cases: $(basename "$c")'s ticket files name its finding: $(grep -iE -- "$re" "${c}state/ticket/"*.md | cut -c1-300)"
+done
 assert_contains "$out" "recorded  reviewer-mirror-push-false-positive"; assert_contains "$out" "  ok        eval-verdict-worktree-copy (guard)"   # t-6be7: a run case since the warning exists
 
 # a scratch tree of the guards, weakened one line each: the case that records the miss must fail
@@ -222,4 +413,4 @@ set +e; out="$(CANON_ROOT="$weak3" "$G" run 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$out" "FAIL      eval-verdict-worktree-copy (guard)"
 
 [[ -f "$HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "gate-cases: left a temp file behind, or touched the pinned home"
-echo "gate-cases: ok (add refusals, run pass/exit/text/recorded/malformed/setup, JSON, pinned environment, the real set, three weakened guards fail their cases)"
+echo "gate-cases: ok (add refusals, run pass/exit/text/recorded/malformed/setup, JSON, pinned environment, the real set, three weakened guards fail their cases, replay: pinned env, catch/leak/verdict rules, errors, timeout, bad ref, auth probe, run never replays, summary)"

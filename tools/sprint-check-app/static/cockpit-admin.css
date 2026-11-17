@@ -269,5 +269,9 @@
   /* t-a811: which steps run in your own session and which in a fresh subagent */
   .mt-runs{display:inline-block;margin-left:6px;padding:0 7px;border:1px solid var(--border-hover);border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.03em;color:var(--text-muted);vertical-align:1px}
   .mt-runs.sub{border-color:var(--accent);color:var(--accent)}
-  .mt-card-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .mt-card-h{display:flex;flex-direction:column;align-items:flex-start;gap:4px}   /* the runs tag always on its own line under the name (t-b809, user) */
   .mt-card-h .mt-runs{margin-left:0}
+  .mt-default-card.mt-will{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}   /* t-b809: a pending preset changes this step */
+  .mt-pend{flex-basis:100%;font-size:12px}
+  .mt-pend-to{color:var(--accent);font-weight:600}
+  .mt-pend-same{color:var(--text-dim)}

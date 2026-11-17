@@ -3,6 +3,7 @@
 // needs Python: the board binary is fetched on every OS already.
 //
 //	sprint-check headless-json                     claude -p's JSON on stdin -> one TSV line (tools/sprint-headless*)
+//	sprint-check headless-usage                    claude -p's JSON on stdin -> tokens, duration_ms, cost (tools/gate-cases.sh replay)
 //	sprint-check json-strings <file>               a JSON array of strings -> one per line (--allowed-tools-file)
 //	sprint-check settings <status|add|remove> <settings.json> <allow|deny|additionalDirectories> <rule>...
 //	                                               permissions rules in .claude/settings.json (tools/skills/prompts.sh)
@@ -46,6 +47,14 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			return 1, true
 		}
 		fmt.Fprintln(stdout, formatHeadlessResult(data))
+		return 0, true
+	case "headless-usage":
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			fmt.Fprintln(stderr, "sprint-check headless-usage: cannot read stdin:", err)
+			return 1, true
+		}
+		fmt.Fprintln(stdout, formatHeadlessUsage(data))
 		return 0, true
 	case "json-strings":
 		if len(args) != 2 {
@@ -150,6 +159,31 @@ func formatHeadlessResult(data []byte) string {
 		result = strings.ReplaceAll(*r.Result, "\n", "\x02")
 	}
 	return isError + "\t" + sessionID + "\t" + result
+}
+
+// formatHeadlessUsage turns `claude -p --output-format json` into "<tokens>\t<duration_ms>\t<cost_usd>" for
+// tools/gate-cases.sh replay (t-b809). Tokens add up every model in modelUsage (input, output, cache read and cache
+// write): the top-level usage block counts only the session's last turn. Bad JSON, or no modelUsage, prints
+// "PARSE_ERROR\t\t", so a missing number never reads as a cheap run.
+func formatHeadlessUsage(data []byte) string {
+	var r struct {
+		DurationMS *int64   `json:"duration_ms"`
+		CostUSD    *float64 `json:"total_cost_usd"`
+		ModelUsage map[string]struct {
+			In          int64 `json:"inputTokens"`
+			Out         int64 `json:"outputTokens"`
+			CacheRead   int64 `json:"cacheReadInputTokens"`
+			CacheCreate int64 `json:"cacheCreationInputTokens"`
+		} `json:"modelUsage"`
+	}
+	if err := json.Unmarshal(data, &r); err != nil || len(r.ModelUsage) == 0 || r.DurationMS == nil || r.CostUSD == nil {
+		return "PARSE_ERROR\t\t"
+	}
+	var tokens int64
+	for _, u := range r.ModelUsage {
+		tokens += u.In + u.Out + u.CacheRead + u.CacheCreate
+	}
+	return fmt.Sprintf("%d\t%d\t%.4f", tokens, *r.DurationMS, *r.CostUSD)
 }
 
 // jsonStrings prints each string of a JSON array file on its own line; exit 2 with the reason otherwise.
