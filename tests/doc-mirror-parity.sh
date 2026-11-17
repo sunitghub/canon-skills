@@ -352,7 +352,7 @@ done
 # ── Check P: the mutation sweep is a non-binding pre-evaluator step (t-087c). The checklist, complete.md and the mutation-test skill
 # each name the evidence stamp and the skip-needs-a-reason row, so one cannot drop either while the others keep it.
 for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE" "$ROOT/skills/mutation-test/SKILL.md"; do
-  for frag in 'evidence.sh stamp <id> mutant-sweep -- mutant-sweep' 'mutation-test | skipped | <reason>' 'not skippable without a reason'; do
+  for frag in 'sprint evidence stamp <id> mutant-sweep -- mutant-sweep' 'mutation-test | skipped | <reason>' 'not skippable without a reason'; do
     grep -qF -- "$frag" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost '$frag' from the pre-evaluator mutation sweep (t-087c, Check P)"
   done
 done
