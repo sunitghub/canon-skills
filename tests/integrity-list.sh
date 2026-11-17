@@ -43,6 +43,12 @@ def verify(d):
   slim = next(l for l in slim.splitlines() if l.startswith("SLIM_EXCLUDE=(")).split("(")[1].rstrip(")").split()   # what a zip install leaves out
   assert not any(p == x or p.startswith(x + "/") for p in d["exec_files"] for x in slim), "exec_files names a file a zip install lacks"
   assert d["exec_files"] == sorted((p for p in tree if runs(p) and not any(p == x or p.startswith(x + "/") for x in slim)), key=lambda p: p.encode()), "exec_files differs from the tree"
+  # t-96f1: Admin > Integrity lists every Windows launcher and every script a `sprint` pass-through runs (Scripts rows, or gate rows)
+  named = [p for p in tree if p.startswith("tools/") and p.count("/") == 1 and p.endswith(".cmd")]
+  named += ["tools/" + n + ".sh" for n in ("gate-snapshot", "evidence", "subagent-log", "pre-gate-check")]
+  assert "tools/mutant-sweep.cmd" in named and "tools/doc-check.cmd" in named, named
+  missing = [p for p in named if p not in d["exec_files"]]
+  assert not missing, "Integrity would not list: %s" % missing
   return len(tree)
 n = verify(d0)
 # the comparison itself must be able to fail: one extra, one missing and one changed file are each caught
