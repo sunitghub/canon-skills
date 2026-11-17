@@ -298,7 +298,7 @@ async function finishHere(t) {
 // t-92f2: the close of a cloud ticket on this machine, as numbered steps in the card's words; tkt's own output stays under a
 // closed Details. continueFirst: not landed yet (the import dialog). merge: the base a conflicting PR must merge first. All text
 // goes in as textContent: the path and the output come from tkt and git.
-function closeStepsNode({ path = '', merge = '', fix = false, continueFirst = false, raw = '' }) {
+function closeStepsNode({ path = '', merge = '', fix = false, continueFirst = false, manual = false, id = '', raw = '' }) {
   const node = document.createElement('div'), ol = document.createElement('ol');
   node.className = 'gh-steps';
   const step = (...parts) => {
@@ -312,6 +312,8 @@ function closeStepsNode({ path = '', merge = '', fix = false, continueFirst = fa
   if (path) step('Open a session in the worktree: Resume on the card, or a terminal at', code(path));
   else step('Open a session in the worktree: Resume on the card.');
   if (fix) step('Fix what failed there, commit it, and push it to the PR branch.');
+  // t-7d84: a Manual ticket's close needs the person's own test on record first (the VM run: sprint complete refused without it)
+  if (manual) step('Test the change yourself, then tell the agent the result so it records it:', code(`sprint manual-qa ${id}`));
   step('Ask the agent to run sprint complete: it runs the evaluator there and closes the ticket.');
   step('Press Finish on the card: it removes the worktree.');
   step('Press Check & merge.');
@@ -333,7 +335,7 @@ async function landRun(t, body, doing, done) {
     const out = res.output || '';
     const path = (out.match(/^\s*worktree: (.+?)(?: \(branch [^)]*\))?\s*$/m) || [])[1] || '';
     const merge = (out.match(/git merge (origin\/\S+?),? /) || [])[1] || '';
-    updateDialog({ title: done, body: '', pre: '', table: closeStepsNode({ path, merge, fix: !!body.fix, raw: out }), escape: true }, run.gen);
+    updateDialog({ title: done, body: '', pre: '', table: closeStepsNode({ path, merge, fix: !!body.fix, manual: String(t.manual) === 'true', id: t.id, raw: out }), escape: true }, run.gen);
   } else updateDialog({ title: res.ok ? done : 'Nothing was changed', body: '', pre: res.output || '', escape: true }, run.gen);
   statusById.delete(t.id);
   await loadData();
@@ -480,7 +482,16 @@ async function importResults(t, pr) {
   // t-92f2: imported fine, but the cloud stopped before sprint complete: the close happens here (the card offers Continue here).
   if (res.ok && !fixCmd && /expected closed: the cloud sprint did not finish|^\s*next: tkt land [\w-]+( --pr \d+)?\s*$/m.test(res.output || '')) {
     updateDialog({ title: 'Imported; the cloud sprint did not close', body: 'Close it on this machine:', pre: '',
-      table: closeStepsNode({ continueFirst: true, raw: res.output }), escape: true }, shown.gen);
+      table: closeStepsNode({ continueFirst: true, manual: String(t.manual) === 'true', id: t.id, raw: res.output }), escape: true }, shown.gen);
+    statusById.delete(t.id);
+    return loadData();
+  }
+  // t-7d84: the PR's head moved after its grade (a code fix, an edited doc): say which files, and close it here; only a missing
+  // verdict is "the cloud sprint did not close". The --fix case (a cloud-closed ticket) keeps its own text below.
+  const moved = !res.ok && !fixCmd && ((res.output || '').match(/since then it changes: ([^\n]+)/) || [])[1];
+  if (moved) {
+    updateDialog({ title: 'Imported; the PR changed after its grade', body: `${moved} changed after the cloud's evaluator graded it, so there is nothing to merge yet. Close it on this machine:`, pre: '',
+      table: closeStepsNode({ continueFirst: true, manual: String(t.manual) === 'true', id: t.id, raw: res.output }), escape: true }, shown.gen);
     statusById.delete(t.id);
     return loadData();
   }

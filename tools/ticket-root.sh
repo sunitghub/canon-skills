@@ -119,7 +119,8 @@ MERGE_SAFE_LATE_ALT='LEARNINGS\.md$|LEARNINGS-archive\.md$'
 # HANDOFF.md narrative (written at complete.md step 1, before grading, but uncommitted, so past graded-head) and DECISIONS.md's row
 # (step 6, after grading). The close gate accepted them on this branch, and a close in the main checkout commits the same files to
 # main with no merge check at all. A cloud merge (merge-pr, import-results, github-status) never takes them: nobody here saw the
-# cloud's write (t-fdb1), so its HANDOFF.md passes only with the Recent block alone changed (t-dfaf). tools/sprint's close-time list
+# cloud's write (t-fdb1), so its HANDOFF.md passes only with the Recent block alone changed (t-dfaf) and its DECISIONS.md only with rows
+# added that name the ticket (t-7d84, both in late_docs_delta). tools/sprint's close-time list
 # builds from this name.
 MERGE_SAFE_CLOSE_ALT='HANDOFF\.md$|DECISIONS\.md$|DECISIONS-archive\.md$'
 # The one other late file (t-75f5): the audit log the gates append to (subagent-log.sh). A cloud session commits it after its evaluator
@@ -162,6 +163,14 @@ _handoff_block_ok() {
 late_doc_path() {
   local alt="$MERGE_SAFE_LATE_ALT"; [[ "${3:-}" == local ]] && alt+="|$MERGE_SAFE_CLOSE_ALT"
   [[ "$1" =~ ^($alt|\.tickets/$2/([^./][^/]*/)*[^./][^/]*$) ]]
+}
+
+# decisions_added_rows <git-dir> <from> <to> — t-7d84: the lines DECISIONS.md gains from <from> to <to>, one per line, CRs dropped; the
+# rows late_docs_delta accepts and merge-pr / import-results print. Exits non-zero when git cannot tell.
+decisions_added_rows() {
+  local d
+  d="$(git -C "$1" -c core.quotepath=off diff -U0 --no-renames "$2" "$3" -- DECISIONS.md 2>/dev/null)" || return 1
+  printf '%s\n' "$d" | awk '/^\+\+\+ /{ next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }'
 }
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> [local] — t-fdb1: prints the files changed from graded to head, one per line.
@@ -211,6 +220,23 @@ late_docs_delta() {
       rm -f "$t1" "$t2"
     fi
     $same && other="$(printf '%s\n' "$other" | grep -vx 'HANDOFF.md' || true)"
+  fi
+  # t-7d84: a cloud close writes its DECISIONS.md row at complete.md step 6, after the grade (user, 2026-11-17: accept it). DECISIONS.md
+  # passes only when it is a file at both ends, lines were added and none removed, and every added line is a table row (`| YYYY-MM-DD |`)
+  # that names this ticket (it may cite others too). An edit, a removal, a row for another ticket only, or any other line keeps it refused.
+  if [[ $'\n'"$other"$'\n' == *$'\nDECISIONS.md\n'* ]]; then
+    local dns dadd ddel _dr drows dok=false
+    if git -C "$dir" cat-file -e "$graded:DECISIONS.md" 2>/dev/null && git -C "$dir" cat-file -e "$head:DECISIONS.md" 2>/dev/null \
+      && dns="$(git -C "$dir" diff --numstat --no-renames "$graded" "$head" -- DECISIONS.md 2>/dev/null)"; then
+      read -r dadd ddel _dr <<< "$dns"
+      if [[ "$dadd" =~ ^[0-9]+$ && "$dadd" -gt 0 && "$ddel" == 0 ]] && drows="$(decisions_added_rows "$dir" "$graded" "$head")"; then
+        dok=true
+        while IFS= read -r ln; do
+          [[ "$ln" =~ ^\|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ \| ]] && [[ "$ln" =~ (^|[^A-Za-z0-9-])$id([^A-Za-z0-9]|$) ]] || { dok=false; break; }
+        done <<< "$drows"
+      fi
+    fi
+    $dok && other="$(printf '%s\n' "$other" | grep -vx 'DECISIONS.md' || true)"
   fi
   # A name is not the content: a symlink (120000) or submodule (160000) under an allowed name points somewhere else.
   local raw; raw="$(git -C "$dir" -c core.quotepath=off diff --raw --no-renames "$graded" "$head" 2>&1)" \

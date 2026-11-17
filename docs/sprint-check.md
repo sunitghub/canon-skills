@@ -390,7 +390,7 @@ sprint agent without leaving the browser — no second terminal.
   **Stop**, then **Merged** or **Not merged** and why. It runs `tkt merge <id>`, which refuses, changing nothing, when the
   evaluator did not pass on the branch's head (late docs after it are allowed: the ticket's folder, LEARNINGS.md and, since
   0.60.2 (`t-2a95`), the HANDOFF.md and DECISIONS.md the close itself writes, committed or not; a merge from GitHub still
-  takes only the first two), the worktree has other uncommitted changes, the
+  takes only the first two, plus DECISIONS.md rows that only add lines naming the ticket, `t-7d84`), the worktree has other uncommitted changes, the
   branch is already in main, or the merge conflicts (the files are named, and the way out: merge main into the branch in
   the worktree, reopen, close again). Since 0.45.0 (`t-e1a2`) the branch merges into the project's **default branch**
   (origin/HEAD, else `main` or `master`), whatever branch the main checkout is on: the report says `merge: into main`, and

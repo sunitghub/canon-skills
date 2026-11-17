@@ -6479,12 +6479,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl03').locator('.ag-pill-go .ag-pl')).toHaveText('Results ready');
       await expect(cloudRow(page, 't-cl04').locator('.ag-pill-go .ag-pl')).toHaveText('Merge ready');
       await expect(cloudRow(page, 't-cl05').locator('.ag-pill, .ag-ring')).toHaveCount(0);           // unknown: a dim hollow ring
-      await expect(cloudRow(page, 't-cl05')).toHaveAttribute('title', /GitHub could not be checked/);
+      await expect(cloudRow(page, 't-cl05')).toHaveAttribute('aria-label', /GitHub could not be checked/);
       await expect(cloudRow(page, 't-cl05').locator('.sdot')).toHaveCSS('opacity', '0.55');          // dimmer than the sent row's ring
       await expect(cloudRow(page, 't-cl01').locator('.sdot')).toHaveCSS('opacity', '1');
       // id, age (right-aligned), the tooltip carries the title and the issue; the age follows the server's age_s
       await expect(cloudRow(page, 't-cl01').locator('.ag-t1')).toHaveText('t-cl01Export to CSV');
-      await expect(cloudRow(page, 't-cl01')).toHaveAttribute('title', /Export to CSV · GitHub issue #11 · sent to GitHub/);
+      await expect(cloudRow(page, 't-cl01')).toHaveAttribute('aria-label', /Export to CSV: sent to GitHub, waiting for a cloud session, GitHub issue #11/);
       await expect(cloudRow(page, 't-cl01').locator('.ag-age')).toHaveText('2m');
       await expect(cloudRow(page, 't-cl03').locator('.ag-age')).toHaveText('1h');
       await expect(cloudRow(page, 't-cl02')).toHaveAttribute('aria-label', /t-cl02 Tighten address validation: working on GitHub, GitHub issue #12/);
@@ -6518,10 +6518,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(cloudRow(page, id)).toHaveClass(/st-idle/);
         await expect(cloudRow(page, id).locator('.sdot')).toBeVisible();
       }
-      await expect(cloudRow(page, 't-cl06')).toHaveAttribute('title', /closed here; nothing is open on GitHub \(tkt take-back <id> clears this\)/);
-      await expect(cloudRow(page, 't-cl07')).toHaveAttribute('title', /no activity for 7 days; if the session is gone, tkt take-back <id> clears this/);
+      await expect(cloudRow(page, 't-cl06')).toHaveAttribute('aria-label', /closed here; nothing is open on GitHub \(tkt take-back <id> clears this\)/);
+      await expect(cloudRow(page, 't-cl07')).toHaveAttribute('aria-label', /no activity for 7 days; if the session is gone, tkt take-back <id> clears this/);
       await expect(cloudRow(page, 't-cl06').locator('.ag-age')).toHaveText('19d');
-      await expect(cloudRow(page, 't-cl02')).toHaveAttribute('title', /working on GitHub/);
+      await expect(cloudRow(page, 't-cl02')).toHaveAttribute('aria-label', /working on GitHub/);
+      await expect(cloudRow(page, 't-cl02')).not.toHaveAttribute('title', /./);   // t-7d84 (user): no native tooltip over the row's status line
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -6540,7 +6541,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl08').locator('.ag-ring, .ag-pill')).toHaveCount(0);
       await expect(cloudRow(page, 't-cl08')).toHaveClass(/st-idle/);
       await expect(cloudRow(page, 't-cl08').locator('.sdot')).toBeVisible();
-      await expect(cloudRow(page, 't-cl08')).toHaveAttribute('title', /imported; the cloud sprint did not finish: Continue here \(tkt land <id>\)/);
+      await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish: Continue here \(tkt land <id>\)/);
       await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -6658,7 +6659,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl08').locator('.ag-d')).toHaveText('<img src=x onerror=window.__pwned=1>');   // shown as text
       await expect(page.locator('#ag-list img')).toHaveCount(0);
       expect(await page.evaluate(() => window.__pwned), 'nothing ran from a row').toBeUndefined();
-      await expect(cloudRow(page, 't-cl08')).not.toHaveAttribute('title', /<b>/);                     // the issue number is digits or nothing
+      await expect(cloudRow(page, 't-cl08')).not.toHaveAttribute('aria-label', /<b>/);                     // the issue number is digits or nothing
       await expect(cloudRow(page, 't-cl08').locator('.ag-age')).toHaveText('\u2013');                  // no usable age: a dash
       expect(errors, 'a bad row never breaks the list').toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -19572,6 +19573,40 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(det.locator('summary')).toHaveText('Details');
     await expect(det.locator('pre')).toHaveText(landOut);
     expect(bodies).toEqual([{ pr: 58 }]);
+  });
+
+  // t-7d84: protects Continue here for a Manual ticket: its close needs the person's own test on record first, so Worktree ready
+  // names `sprint manual-qa <id>` before sprint complete (the plain ticket above has no such step: 4 steps).
+  test('Worktree ready for a Manual ticket adds the manual-qa step before sprint complete (t-7d84)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh30m');
+    ghTicket(id, { github: 'acme/app#57', manual: true });
+    await routeStatus(page, id, { stage: 'results-ready', pr: 58, land: true });
+    const landOut = `land: ${id} at PR #58 head 9c41e2a2\n  worktree: /w/land-${id} (branch land/${id})`;
+    await page.route(`**/api/ticket/${id}/github/land`, r => json(r, { ok: true, exit_code: 0, output: landOut }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Worktree ready');
+    const steps = page.locator('#gh-dialog-table .gh-steps ol > li');
+    await expect(steps).toHaveCount(5);
+    await expect(steps.nth(1)).toContainText('Test the change yourself');
+    await expect(steps.nth(1).locator('code.gh-steps-path')).toHaveText(`sprint manual-qa ${id}`);
+    await expect(steps.nth(2)).toContainText('sprint complete');
+  });
+
+  // t-7d84: protects Import results when the PR changed after its grade (a code fix, an edited doc): the title says so, the body
+  // names the files, and the steps start with Continue here; "the cloud sprint did not close" stays for a missing verdict.
+  test('an import whose PR changed after its grade names the files and the close here (t-7d84)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh21m');
+    ghTicket(id, { github: 'acme/app#57' });
+    await routeStatus(page, id, { stage: 'results-ready', pr: 58 });
+    const out = '  evaluator: pass  graded-head: def5678\n  PR #58 head abc1234 does NOT match graded-head def5678; since then it changes: tools/x.sh, DECISIONS.md';
+    await page.route(`**/api/ticket/${id}/github/import`, r => json(r, { ok: false, exit_code: 1, output: out }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Imported; the PR changed after its grade');
+    await expect(page.locator('#gh-dialog-body')).toContainText('tools/x.sh, DECISIONS.md changed after');
+    await expect(page.locator('#gh-dialog-table .gh-steps ol > li').first()).toContainText('Continue here');
   });
 
   // Prod path: the card's Close here (t-d0a5), for a cloud run that stopped before its close: PR open, nothing came back.

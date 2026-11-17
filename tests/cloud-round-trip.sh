@@ -356,6 +356,17 @@ cd "$X" && "$TKT" export "$id" >/dev/null 2>&1 && git checkout -q -b decision sw
 STUB_PR_HEAD="$(git -C "$X" rev-parse decision)"
 rc=0; out="$(STUB_PR_FILES="DECISIONS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
 assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "since then it changes: DECISIONS.md"
+# t-7d84: protects Import results: a cloud close's DECISIONS row naming this ticket, written after the grade, is the graded code, and
+# import-results prints the row. Graded on the commit that has DECISIONS.md; the head only appends the row. The fixture's report is restored.
+cp "$X/.tickets/$id/eval-report.md" "$W/eval-report.keep"
+DROW="| 2026-11-17 | **\`$id\`: a cloud rule.** | x |"
+cd "$X" && git checkout -q decision && printf 'graded-head: %s\n## Verdict\npass: all criteria met\n' "$(git rev-parse HEAD)" > ".tickets/$id/eval-report.md" \
+  && printf '%s\n' "$DROW" >> DECISIONS.md && git add DECISIONS.md && git commit -qm "the cloud's row" && "$TKT" export "$id" >/dev/null 2>&1 \
+  && git push -qf origin "HEAD:refs/pull/58/head" && STUB_PR_HEAD="$(git rev-parse HEAD)" && git checkout -q sweep && cd "$L"
+rc=0; out="$(STUB_PR_FILES="DECISIONS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 0 ]] || fail "t-7d84: a head that only appended this ticket's DECISIONS row should import with rc 0: $out"
+assert_contains "$out" "graded-head plus late docs only: DECISIONS.md"; assert_contains "$out" "  + DECISIONS.md: $DROW"
+cp "$W/eval-report.keep" "$X/.tickets/$id/eval-report.md"
 git -C "$X" push -qf origin "sweep:refs/pull/58/head"
 # a plain ticket that was never sent (no github: line) coming back through import-results does not gain runs: github
 cd "$X" && pid="$("$TKT" create "plain, never sent" -t task)" && "$TKT" export "$pid" >/dev/null 2>&1; cd "$L"
