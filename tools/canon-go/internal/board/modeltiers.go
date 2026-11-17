@@ -134,7 +134,7 @@ func canonPresetIDs() []string {
 }
 
 // presetsView (t-f5fa): canon's presets (read from the seed every time) then the person's `my_presets`, each resolved for the agents Admin
-// lists (common.ResolvePreset, the one owner of the rule): {id, name, desc, source, picks, notes}.
+// lists (common.ResolvePreset, the one owner of the rule): {id, name, desc, source, picks, notes, default}.
 func presetsView(doc map[string]any, agents []map[string]string) []map[string]any {
 	ids := []string{}
 	for _, a := range agents {
@@ -154,7 +154,9 @@ func presetsView(doc map[string]any, agents []map[string]string) []map[string]an
 				continue
 			}
 			picks, notes := common.ResolvePreset(doc, p, ids, cp)
-			out = append(out, map[string]any{"id": p["id"], "name": p["name"], "desc": p["desc"], "source": source, "picks": picks, "notes": notes})
+			isDefault, _ := p["default"].(bool) // the canon preset the seed's own defaults equal (TestSeedDefaultsAreTheDefaultPreset)
+			out = append(out, map[string]any{"id": p["id"], "name": p["name"], "desc": p["desc"], "source": source, "picks": picks, "notes": notes,
+				"default": source == "canon" && isDefault})
 		}
 	}
 	seed := common.LoadModelTiers("", modelTiersPath)

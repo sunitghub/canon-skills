@@ -902,6 +902,10 @@ copilot_bad="$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json;
 
 # t-d40b: retire and Remove-with-a-move go through the same validation and land in the data dir, never the seed.
 tiers_act() { curl -s -w '\n%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$2" "$B/api/admin/model-tiers/$1"; }
+# the start a registry saved before the seed moved the checkers to 5.5 (t-b809) has: Claude Code's evaluator on Sonnet 5, Copilot's reviewer on
+# Copilot's own claude-sonnet-5 id (which a Claude Code retire must leave alone)
+old_start="$(curl -s "$B/api/admin/model-tiers" | python3 -c 'import sys,json; d=json.load(sys.stdin); d["defaults"]["evaluator"]["claude"]="claude-sonnet-5"; d["defaults"]["reviewer"]["copilot"]="claude-sonnet-5"; print(json.dumps(d))')"
+[[ "$(tiers_post "$old_start")" == 200 ]] || fail "sprint-check-api: the Sonnet 5 start was refused"
 [[ "$(tiers_act retire '{"old":"claude-sonnet-5","new":"claude-sonnet-5-5"}' | tail -1)" == 200 ]] || fail "sprint-check-api: retire sonnet 5 -> 5.5 was rejected"
 tiers_json | python3 -c 'import sys,json
 d=json.load(sys.stdin); m={e["id"]:e for e in d["models"]["anthropic"]}

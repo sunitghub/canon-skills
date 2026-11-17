@@ -246,7 +246,7 @@ function mtPresetMatches(p){
 function mtRenderPresets(){
   const el=document.getElementById('mt-preset'); if(!el) return;
   const list=mtOpts.presets||[], last=list.find(p=>p.id===mtPresetLast&&mtPresetMatches(p)), cur=last||list.find(mtPresetMatches), shown=list.find(p=>p.id===mtPresetPend)||cur;
-  const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}</option>`;
+  const opt=p=>`<option value="${escAttr(p.id)}"${shown&&shown===p?' selected':''}>${esc(p.name)}${p.default?' (default)':''}</option>`;   // default: the preset a fresh install equals
   const group=(src,label)=>{ const g=list.filter(p=>p.source===src); return g.length?`<optgroup label="${escAttr(label)}">${g.map(opt).join('')}</optgroup>`:''; };
   let h=`<div class="mt-preset-row"><label class="setting-k" for="mt-preset-sel">Preset</label>
     <select id="mt-preset-sel" aria-describedby="mt-preset-d"><option value=""${shown?'':' selected'}>Custom</option>${group('canon','canon')}${group('yours','Yours')}</select>

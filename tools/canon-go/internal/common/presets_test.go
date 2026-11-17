@@ -169,6 +169,47 @@ func TestSeedPresetsWellFormed(t *testing.T) {
 	}
 }
 
+// t-b809 (user): the Preset list marks one canon preset "(default)"; it must be exactly what a fresh install's seed defaults hold, for
+// both agents, so the label cannot drift from the seed (the defaults and the preset are two copies of one fact). Prod path: Admin › Model
+// tiers' Preset list (board presetsView) on a fresh install.
+func TestSeedDefaultsAreTheDefaultPreset(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "sprint-check-app", "model-tiers.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seed map[string]any
+	if err := json.Unmarshal(raw, &seed); err != nil {
+		t.Fatal(err)
+	}
+	var def map[string]any
+	for _, r := range seed["presets"].([]any) {
+		if p := r.(map[string]any); p["default"] == true {
+			if def != nil {
+				t.Fatalf("two presets are marked default: %v and %v", def["id"], p["id"])
+			}
+			def = p
+		}
+	}
+	if def == nil {
+		t.Fatal("no seed preset is marked default")
+	}
+	cp := map[string][]string{}
+	for _, m := range seed["copilot_models"].([]any) {
+		cp["copilot"] = append(cp["copilot"], m.(map[string]any)["id"].(string))
+	}
+	picks, notes := ResolvePreset(seed, def, []string{"claude", "copilot"}, cp)
+	defaults := seed["defaults"].(map[string]any)
+	for _, step := range TierSteps {
+		per, _ := defaults[step].(map[string]any)
+		for _, agent := range []string{"claude", "copilot"} {
+			want, _ := per[agent].(string)
+			if got := picks[step][agent]; got != want {
+				t.Errorf("%s · %s: the default preset %v picks %q, the seed default is %q (notes %v)", step, agent, def["id"], got, want, notes)
+			}
+		}
+	}
+}
+
 // t-f5fa mutation triage: the cases the sweep showed untested. A current Second eval pick never makes a family unavailable to the
 // Evaluator (candidates are tried against the floors only); an "off" tier is Off whatever the current pick; a kept pick that pairs the two
 // evaluators is caught in a later round; an id that is not claude-<family>-… never counts as a family.
