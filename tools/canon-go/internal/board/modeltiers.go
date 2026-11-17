@@ -116,7 +116,7 @@ func tierOptionsView() map[string]any {
 		agents = append(agents, map[string]string{"id": a, "label": common.TierAgentLabel[a]})
 	}
 	return map[string]any{"ok": true, "steps": steps, "agents": agents, "registry_agent": common.RegistryAgent, "options": tierOptions(doc),
-		"presets": presetsView(doc, agents)}
+		"presets": presetsView(doc, agents), "user_file": modelTiersUserFile()} // t-b809 (user): where a saved preset goes, named beside Save
 }
 
 // canonPresetIDs are the seed's preset ids: a person's preset may not reuse one (the dropdown and Delete key on the id).

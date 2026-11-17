@@ -11,6 +11,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - Changed: Admin › Model tiers shows each step's tag (your session, fresh subagent, light work) on its own line under the step name, on every card (t-b809).
 - Changed: the Preset list marks **Balanced (default)**, and a fresh install's defaults now equal it: Spec check, Reviewer and Evaluator start on Sonnet 5.5 (were Sonnet 5), for Claude Code and Copilot CLI. Saved picks are untouched (t-b809).
 - New: while a preset waits for Apply, Model tiers' step cards show it: a step that changes is outlined with "→ <model> on Apply", the others say "No change"; nothing is disabled, and Cancel clears it (t-b809).
+- Changed: Save current as preset names the file it saves to (your own Model tiers file, shared by every project) (t-b809).
 - Measured: folding the reviewer into the evaluator used about 30% fewer tokens and half the minutes per close on canon's own code, but the trial was inconclusive (today's split gates caught none of the original misses), so the close is unchanged (t-b809).
 
 ## [0.65.1] - 2026-11-17

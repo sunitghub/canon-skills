@@ -708,6 +708,10 @@ func TestPresetsNeverReachTheUserFile(t *testing.T) {
 	if strings.Contains(string(b), `"presets"`) || !strings.Contains(string(b), `"my_presets"`) {
 		t.Errorf("the user file = %s; want my_presets and no presets", b)
 	}
+	// t-b809 (user): the Save hint names the file a saved preset goes to: the user file under CANON_HOME, never the seed
+	if uf := tierOptionsView()["user_file"]; uf != modelTiersUserFile() || !strings.HasPrefix(fmt.Sprint(uf), dir) {
+		t.Errorf("user_file = %v; want %s under %s", uf, modelTiersUserFile(), dir)
+	}
 	view := tierOptionsView()["presets"].([]map[string]any)
 	if len(view) != 2 || view[0]["source"] != "canon" || view[1]["source"] != "yours" || view[1]["name"] != "Team" {
 		t.Fatalf("presets = %v", view)

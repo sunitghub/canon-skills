@@ -14483,6 +14483,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '4' },
       { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '5' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '6' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
+    user_file: '/home/u/.canon/cockpit/model-tiers.json',   // t-b809: named in the Save hint
     // t-f5fa: the board's resolved presets (common.ResolvePreset): one matching FIXTURE's picks, one that changes Build, with a note
     presets: [
       { id: 'current', name: 'Current', desc: 'What FIXTURE holds.', source: 'canon', default: true, picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] },
@@ -14569,6 +14570,14 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-preset-cancel').click();
     await expect(page.locator('.mt-pend')).toHaveCount(0);
     await expect(page.locator('.mt-will')).toHaveCount(0);
+  });
+
+  // t-b809 (user): Save current as preset names where it saves: the person's own file, shared by every project.
+  test('Model tiers Save as preset names the file it saves to (t-b809)', async ({ page }) => {
+    await openModelTiers(page);
+    await page.locator('#mt-preset-save').click();
+    await expect(page.locator('#mt-preset-where code')).toHaveText('/home/u/.canon/cockpit/model-tiers.json');
+    await expect(page.locator('#mt-preset-where')).toContainText('your own file for every project');
   });
 
   // t-b809 (user): the Preset list names the preset a fresh install equals (the board's `default`), and only that one.
