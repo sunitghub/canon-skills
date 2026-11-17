@@ -1745,7 +1745,7 @@ cmd_sync_issues() {
 _decision_rows_lines() {
   [[ $'\n'"$4"$'\n' == *$'\nDECISIONS.md\n'* ]] || return 0
   local r; r="$(decisions_added_rows "$1" "$2" "$3")" || return 0
-  [[ -z "$r" ]] || printf '%s\n' "$r" | sed 's/^/  + DECISIONS.md: /'
+  [[ -z "$r" ]] || printf '%s\n' "$r" | LC_ALL=C tr -d '\000-\011\013-\037\177' | sed 's/^/  + DECISIONS.md: /'   # no control character reaches the terminal
 }
 # _same_repo <a> <b> — t-59ab: two owner/repo names are the same GitHub repo: GitHub ignores case, and a github: line may be spelled
 # otherwise than the origin URL (sunithex/todo-demo vs sunithex/ToDo-Demo). Both must be non-empty.

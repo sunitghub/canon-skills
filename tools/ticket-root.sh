@@ -170,7 +170,8 @@ late_doc_path() {
 decisions_added_rows() {
   local d
   d="$(git -C "$1" -c core.quotepath=off diff -U0 --no-renames "$2" "$3" -- DECISIONS.md 2>/dev/null)" || return 1
-  printf '%s\n' "$d" | awk '/^\+\+\+ /{ next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }'
+  # only lines inside a hunk: before the first @@ are the ---/+++ headers; an added line whose text starts "++ " also shows as "+++ "
+  printf '%s\n' "$d" | awk '/^@@/{ h = 1; next } !h { next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }'
 }
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> [local] — t-fdb1: prints the files changed from graded to head, one per line.
@@ -225,15 +226,20 @@ late_docs_delta() {
   # passes only when it is a file at both ends, lines were added and none removed, and every added line is a table row (`| YYYY-MM-DD |`)
   # that names this ticket (it may cite others too). An edit, a removal, a row for another ticket only, or any other line keeps it refused.
   if [[ $'\n'"$other"$'\n' == *$'\nDECISIONS.md\n'* ]]; then
-    local dns dadd ddel _dr drows dok=false
+    local dns dadd ddel _dr drows dok=false ln nrows=0
     if git -C "$dir" cat-file -e "$graded:DECISIONS.md" 2>/dev/null && git -C "$dir" cat-file -e "$head:DECISIONS.md" 2>/dev/null \
       && dns="$(git -C "$dir" diff --numstat --no-renames "$graded" "$head" -- DECISIONS.md 2>/dev/null)"; then
       read -r dadd ddel _dr <<< "$dns"
-      if [[ "$dadd" =~ ^[0-9]+$ && "$dadd" -gt 0 && "$ddel" == 0 ]] && drows="$(decisions_added_rows "$dir" "$graded" "$head")"; then
+      # 1 to 3 rows, each canon's shape `| YYYY-MM-DD | **…** … | … |` (four cell bars), no control character, naming this ticket; and every
+      # line git counts as added must be one of them (t-7d84 reviewer + security review: a "++ " line hid as a diff header)
+      if [[ "$dadd" =~ ^[0-9]+$ && "$dadd" -ge 1 && "$dadd" -le 3 && "$ddel" == 0 ]] && drows="$(decisions_added_rows "$dir" "$graded" "$head")"; then
         dok=true
         while IFS= read -r ln; do
-          [[ "$ln" =~ ^\|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ \| ]] && [[ "$ln" =~ (^|[^A-Za-z0-9-])$id([^A-Za-z0-9]|$) ]] || { dok=false; break; }
+          nrows=$((nrows + 1))
+          [[ "$ln" =~ ^\|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ \|\ \*\*[^|]+\|\ [^|]+\ \|$ ]] && [[ ! "$ln" =~ [[:cntrl:]] ]] \
+            && [[ "$ln" =~ (^|[^A-Za-z0-9-])$id([^A-Za-z0-9-]|$) ]] || { dok=false; break; }
         done <<< "$drows"
+        [[ "$nrows" == "$dadd" ]] || dok=false
       fi
     fi
     $dok && other="$(printf '%s\n' "$other" | grep -vx 'DECISIONS.md' || true)"
