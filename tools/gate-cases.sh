@@ -246,16 +246,17 @@ replay_verdict() {
 # Runs in $R_WT with the pinned env; killed by its own PID after GATE_REPLAY_TIMEOUT seconds (default 1800).
 replay_call() {
   local gate="$1" prompt agent out err pid waited=0 limit="${GATE_REPLAY_TIMEOUT:-1800}" rc=0 parsed
-  prompt="$(sed -e "s|{{ID}}|$R_ID|g" -e "s|{{BASE}}|$R_BASE|g" -e "s|{{REF}}|$CANON_ROOT/skills/sprint/reference|g" -e "s|{{GITREAD}}|$CANON_ROOT/tools/git-read|g" "$2")"
+  prompt="$(sed -e "s|{{ID}}|$R_ID|g" -e "s|{{BASE}}|$R_BASE|g" -e "s|{{REF}}|$CANON_ROOT/skills/sprint/reference|g" "$2")"
   case "$gate" in reviewer) agent=canon-reviewer ;; *) agent=canon-evaluator ;; esac
   out="$R_TMP/out.json"; err="$R_TMP/err.txt"
   R_VERDICT=none R_CAUGHT=false R_LEAK=false R_TOKENS=0 R_MS=0 R_COST=0 R_ERR=""
-  # HOME stays real so claude keeps its login; canon's own state, temp and config go to scratch, and the gate scope makes
-  # canon update, skills.sh and uninstall refuse (tools/gate-scope-lib.sh), as at a real close.
+  # HOME stays real so claude keeps its login; canon's own state, temp and config go to scratch. A live gate-scope record (made in
+  # cmd_replay, as gate-snapshot.sh pre does at a real close) makes canon update, skills.sh and uninstall refuse the real home.
+  # Bash is allowed as at a real close (t-b809: without it the evaluator grades everything not-run and fails a clean control).
   ( cd "$R_WT" && exec env CANON_HOME="$R_TMP/canon-home" TMPDIR="$R_TMP/tmp" XDG_CONFIG_HOME="$R_TMP/xdg" CANON_GATE_SCOPE_DIR="$R_TMP/scope" \
       CANON_TICKETS_DIR="$R_WT/.tickets" claude -p "$prompt" --agent "$agent" --model "$R_MODEL" --output-format json \
       --permission-mode dontAsk --add-dir "$CANON_ROOT/skills/sprint/reference" \
-      --allowedTools "Bash($CANON_ROOT/tools/git-read:*)" Read Grep Glob LS --disallowedTools Write Edit NotebookEdit ) >"$out" 2>"$err" &
+      --allowedTools Bash Read Grep Glob LS --disallowedTools Write Edit NotebookEdit ) >"$out" 2>"$err" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
     if (( waited >= limit )); then kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; R_VERDICT=error; R_ERR="timeout after ${limit}s"; return 0; fi
@@ -287,9 +288,12 @@ replay_row() {  # one JSONL row for the current call
     "$(json_str "$R_REPORT")" "$([[ -z "$R_ERR" ]] || printf ',"error":%s' "$(json_str "$R_ERR")")" >> "$R_OUT"
 }
 
+repo_print() { git -C "$R_ROOT" rev-parse HEAD; git -C "$R_ROOT" symbolic-ref -q HEAD || true; git -C "$R_ROOT" status --porcelain; }
+
 R_TMP=""
 replay_cleanup() {
   [[ -n "$R_TMP" ]] || return 0
+  CANON_GATE_SCOPE_DIR="$R_TMP/scope" gate_scope_remove "$R_TMP/snap" || true
   [[ ! -d "$R_TMP/wt" ]] || git -C "$R_ROOT" worktree remove --force "$R_TMP/wt" >/dev/null 2>&1 || true
   case "$R_TMP" in "${R_TMPBASE}"/gate-replay.*) rm -rf "$R_TMP" ;; esac
   R_TMP=""
@@ -365,6 +369,8 @@ cmd_replay() {
     echo "gate-cases: claude -p did not answer (not logged in?); no case was run" >&2; exit 2
   fi
   git -C "$R_ROOT" worktree prune
+  source "$SCRIPT_DIR/gate-scope-lib.sh"
+  R_PRINT="$(repo_print)"
   trap replay_cleanup EXIT
   trap 'replay_cleanup; exit 130' INT TERM
   local failed=0 run gate gates
@@ -382,6 +388,7 @@ cmd_replay() {
       fi
       R_TMP="$(mktemp -d "$R_TMPBASE/gate-replay.XXXXXX")"
       mkdir -p "$R_TMP/canon-home" "$R_TMP/tmp" "$R_TMP/xdg" "$R_TMP/scope"
+      CANON_GATE_SCOPE_DIR="$R_TMP/scope" gate_scope_create "$R_TMP/snap" >/dev/null || die "could not register the gate scope in $R_TMP/scope"
       git -C "$R_ROOT" worktree add --detach --quiet "$R_TMP/wt" "$ref"
       R_WT="$R_TMP/wt"
       mkdir -p "$R_WT/.tickets/$R_ID" "$R_WT/.claude"
@@ -390,9 +397,12 @@ cmd_replay() {
       for gate in $gates; do
         R_REPORT="${R_OUT%.jsonl}-reports/$s-$config-$run-$gate.md"
         replay_call "$gate" "$SCRIPT_DIR/gate-replay/$gate.md"
+        # as gate-snapshot.sh post does at a real close: a gate that changed the real checkout stops the whole replay
+        if [[ "$(repo_print)" != "$R_PRINT" ]]; then R_VERDICT=error; R_ERR="the gate changed the real checkout $R_ROOT (git status, HEAD or branch); replay stopped"; fi
         [[ "$R_VERDICT" != error ]] || failed=1
         replay_row "$gate"
         echo "gate-cases: $s $config run $run $gate: $R_VERDICT, caught $R_CAUGHT, $R_TOKENS tokens${R_ERR:+ ($R_ERR)}" >&2
+        [[ "$R_ERR" != *"replay stopped" ]] || { echo "gate-cases: results in $R_OUT"; exit 1; }
       done
       replay_cleanup
     done

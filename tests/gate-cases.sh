@@ -222,7 +222,9 @@ for ((i = 0; i < ${#args[@]}; i++)); do [[ "${args[$i]}" == --agent ]] && agent=
 if [[ "$agent" == probe ]]; then exit "${STUB_AUTH_RC:-0}"; fi
 n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
 { printf 'arg=%s\n' "${args[@]}"; printf 'pwd=%s\nhome=%s\ncanon_home=%s\ntmpdir=%s\nxdg=%s\nscope=%s\ntickets=%s\npid=%s\n' "$PWD" "$HOME" "$CANON_HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$CANON_GATE_SCOPE_DIR" "$CANON_TICKETS_DIR" "$$"
-  [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"; } > "$log"
+  [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"
+  cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'; } > "$log"
+[[ -z "${STUB_DIRTY:-}" ]] || : > "$STUB_DIRTY"
 case "${STUB_MODE:-ok}" in
   sleep) exec sleep 60 ;;
   fail) [[ "$n" == "${STUB_FAIL_CALL:-1}" ]] && { echo "boom" >&2; exit 3; } ;;
@@ -253,8 +255,8 @@ assert_contains "$(row 1)" '"case":"rp","kind":"defect","config":"split","run":1
 assert_contains "$(row 2)" '"gate":"evaluator","model":"claude-sonnet-5-5","verdict":"pass","caught":false'
 c1="$STUB/calls/1"
 assert_grep "^arg=canon-reviewer$" "$c1"; assert_grep "^arg=claude-sonnet-5-5$" "$c1"; assert_grep "^arg=dontAsk$" "$c1"; assert_grep "^arg=Write$" "$c1"; assert_grep "^arg=Edit$" "$c1"
-grep -qxF "arg=Bash($ROOT/tools/git-read:*)" "$c1" || fail "replay: the Bash allowlist is not the git-read wrapper alone"; assert_grep "^arg=canon-evaluator$" "$STUB/calls/2"
-assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^agents=linked$" "$c1"
+assert_grep "^arg=Bash$" "$c1"; assert_grep "^arg=canon-evaluator$" "$STUB/calls/2"
+assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^agents=linked$" "$c1"
 for k in canon_home tmpdir xdg scope; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "$TMPDIR"/gate-replay.* ]] || fail "replay: $k was not pinned to scratch: $v"; done
 [[ "$(sed -n 's/^pwd=//p' "$c1")" == "$TMPDIR"/gate-replay.*/wt ]] || fail "replay: the gate did not run in the scratch worktree: $(sed -n 's/^pwd=//p' "$c1")"
 grep -q "^arg=.*Base ref: \`$BASE_SHA\`" "$c1" || grep -q "Base ref: \`$BASE_SHA\`" "$c1" || fail "replay: the prompt does not name the base"
@@ -290,6 +292,11 @@ mkcase badref "ref: 0123456789abcdef0123456789abcdef01234567" "fix: $FIX_SHA" 'c
 reset; rp badref --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_eq 1 "$code"; assert_eq 0 "$(calls)"
 assert_contains "$(row 1)" '"gate":"-"'; assert_contains "$(row 1)" 'does not resolve'
 rm -rf "$GATE_CASES_DIR/badref" "$GATE_CASES_DIR/rp2"
+# a gate that changes the real checkout stops the replay at once (gate-snapshot post's check), with an error row
+mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
+reset; set +e; out="$(STUB_DIRTY="$REPO/dirty.txt" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; assert_eq 1 "$(wc -l < "$WORK/r.jsonl" | tr -d ' ')"
+assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; rm -f "$REPO/dirty.txt"; rm -rf "$GATE_CASES_DIR/rp2"
 # the auth probe fails: exit 2 before any case
 reset; set +e; out="$(STUB_AUTH_RC=1 PATH="$SP" "$G" replay rp --config split --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "not logged in"; assert_eq 0 "$(calls)"; [[ ! -s "$WORK/r.jsonl" ]] || fail "replay wrote rows after a failed auth probe"
