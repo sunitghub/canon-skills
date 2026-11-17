@@ -5,6 +5,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+unset CANON_TICKETS_DIR   # t-597f: a full-suite stamp sets it; the land case must resolve tickets itself (manual-qa honours it)
 
 W="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/tkt-land.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
