@@ -13804,6 +13804,22 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       // before the first answer: the model and stage only; a pi session (no model): the counts only; never "undefined"
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-haiku-5.5', stage: 'plan' }, cwd: '/tmp/proj' }, '*'));
       await expect(page.locator('#paneMeter')).toHaveText('Model Haiku 5.5 · plan');
+      // a date-suffixed id with a one-number version is that version, not "4.20250514" (reviewer, t-45b1)
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-4-20250514', stage: 'build' }, cwd: '/tmp/proj' }, '*'));
+      await expect(page.locator('#paneMeter')).toHaveText('Model Sonnet 4 · build');
+      // narrow pane, every field: A−/A+ stay on the fields' row (never alone on a row), no field is cut, no sideways scroll, the folder below them all
+      await page.setViewportSize({ width: 700, height: 600 });
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj' }, '*'));
+      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(5);
+      const narrow = await page.evaluate(() => { const m = document.getElementById('paneMeter').getBoundingClientRect(), f = document.querySelector('.fontctl').getBoundingClientRect(), c = document.getElementById('paneCwd').getBoundingClientRect();
+        const cut = [...document.querySelectorAll('#paneMeter .pi-f')].some(e => { const r = e.getBoundingClientRect(); return r.right > m.right + 1 || e.scrollWidth > e.clientWidth + 1; });
+        return { fontBesideFields: f.top < m.bottom && f.left >= m.right - 1, cwdBelow: c.top >= Math.max(m.bottom, f.bottom) - 1, cut, noScroll: (h => h.scrollWidth <= h.clientWidth)(document.querySelector('header')) };   // the header's own width (xterm refits on its own resize)
+      });
+      expect(narrow).toEqual({ fontBesideFields: true, cwdBelow: true, cut: false, noScroll: true });
+      await page.setViewportSize({ width: 420, height: 600 });
+      expect(await page.evaluate(() => { const m = document.getElementById('paneMeter').getBoundingClientRect();
+        return { cut: [...document.querySelectorAll('#paneMeter .pi-f')].some(e => e.getBoundingClientRect().right > m.right + 1), noScroll: (h => h.scrollWidth <= h.clientWidth)(document.querySelector('header')) }; })).toEqual({ cut: false, noScroll: true });
+      await page.setViewportSize({ width: 1280, height: 720 });
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: '', stage: '', cache_pct: 50, llm_calls: 3, tool_calls: 4, sub_agents: 1 }, cwd: '/tmp/proj' }, '*'));
       await expect(page.locator('#paneMeter')).toHaveText('Cache 50%LLM calls 3Tool calls 4Subagents 1');
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
@@ -18882,7 +18898,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
   });
 
   // t-a811: Factory › GitHub's workflow is a looping flowchart: Next lights each box in turn and wraps Merge → Send, Back goes the other
-  // way, All steps shows the list, and Play moves one stage every 5 s (counting down) until any other control stops it.
+  // way, All steps shows the list, and Play moves one stage every 3 s (counting down) until any other control stops it.
   test('Factory GitHub workflow: a looping flowchart with Next, Back, All steps and Play (t-a811) @webkit', async ({ page }) => {
     const projects = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' }];
     await page.route('**/api/projects', r => json(r, projects));
@@ -18910,13 +18926,17 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#gh-steps > li')).toHaveCount(5);
     await expect(page.locator('#gh-steps')).toBeVisible();
     await page.locator('#gh-flow-all').click();
-    // Play: one stage per 5 s, counting down, looping; Next stops it
+    // Play: one stage per 3 s (user, 2026-11-17), counting down, looping; Next stops it
     const play = page.locator('#gh-flow-play');
+    // the secondary controls take the accent hover (t-45b1 fold-in): the border changes from its resting colour
+    const rest = await play.evaluate(el => getComputedStyle(el).borderColor);
+    await play.hover(); await expect.poll(() => play.evaluate(el => getComputedStyle(el).borderColor)).not.toBe(rest);
+    await expect(play).toHaveClass(/\bb-accent\b/); await expect(page.locator('#gh-flow-back')).toHaveClass(/\bb-accent\b/); await expect(page.locator('#gh-flow-all')).toHaveClass(/\bb-accent\b/);
     await play.click();
-    await expect(play).toHaveText('❚❚ Pause · 5s');
-    await page.clock.runFor(1000); await expect(play).toHaveText('❚❚ Pause · 4s');
-    await page.clock.runFor(4000); await expect(lit).toHaveText('Send');      // Merge → Send after 5 s
-    await page.clock.runFor(5000); await expect(lit).toHaveText('Work');
+    await expect(play).toHaveText('❚❚ Pause · 3s');
+    await page.clock.runFor(1000); await expect(play).toHaveText('❚❚ Pause · 2s');
+    await page.clock.runFor(2000); await expect(lit).toHaveText('Send');      // Merge → Send after 3 s
+    await page.clock.runFor(3000); await expect(lit).toHaveText('Work');
     await next.click();
     await expect(play).toHaveText('▶ Play');
     await expect(lit).toHaveText('Guard');

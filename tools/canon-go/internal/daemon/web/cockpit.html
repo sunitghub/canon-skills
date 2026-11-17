@@ -68,7 +68,11 @@
   /* t-d0ed: no width cap (a 33-character path lost its last letter to one); when the pane is too narrow the START of the path is clipped,
      so the folder name stays: the span is rtl and its text is an ltr run (bdo), or the leading slash would jump to the end. */
   .paneinfo.cwd{flex:1 1 100%;order:99;margin-left:0;direction:rtl;text-align:left;color:var(--text)}   /* t-45b1: the folder is the header's second row, full width, cut from the left */
-  .paneinfo .pi-f{margin-right:14px}
+  /* t-45b1: the fields take the room left on row 1 and wrap among themselves; on a pane too narrow for 220px beside the start controls they
+     move under them together with A−/A+ (never A−/A+ alone on a row), and no field is ever cut. The folder stays the last row. */
+  #paneMeter{flex:1 1 220px;display:flex;flex-wrap:wrap;gap:2px 14px;white-space:normal;overflow:visible}
+  #paneMeter[hidden]{display:none}
+  .paneinfo .pi-f{white-space:nowrap}
   .paneinfo .pi-k{color:var(--dim)}
   .paneinfo .pi-f b{font-weight:600;color:var(--text)}
   /* t-74d6: stale-daemon banner — the board detects a version-drifted daemon
@@ -102,7 +106,7 @@
     <span class="paneinfo cwd" id="paneCwd" hidden><bdo dir="ltr" id="paneCwdText"></bdo></span>
     <div class="spacer"></div>
     <span class="agent-hint" id="agentHint"></span>
-    <span class="paneinfo" id="paneMeter" title="Cache share of input, LLM calls, tool calls, sub-agents (this session)" hidden></span>
+    <span class="paneinfo" id="paneMeter" title="This session: its model and stage (plan, then build), the cache share of input, LLM calls, tool calls and sub-agents" hidden></span>
     <span class="fontctl" title="Terminal font size">
       <button id="fontDec" type="button" title="Smaller terminal font">A−</button>
       <span class="fc-val" id="fontVal"></span>
@@ -123,7 +127,7 @@
 <script>
 // t-45b1: a model id as people say it (claude-sonnet-5-5 or claude-sonnet-5.5 -> Sonnet 5.5); an alias or another vendor's id stays as written.
 function modelName(id){
-  var m = /^claude-([a-z]+)-(\d+)(?:[-.](\d+))?(?:-\d{8})?$/.exec(String(id));
+  var m = /^claude-([a-z]+)-(\d+)(?:[-.](\d{1,2})(?!\d))?(?:-\d{8})?$/.exec(String(id));   // a minor is 1-2 digits: claude-sonnet-4-20250514 is Sonnet 4, not 4.20250514
   if(!m) return String(id);
   return m[1].charAt(0).toUpperCase() + m[1].slice(1) + " " + m[2] + (m[3] ? "." + m[3] : "");
 }

@@ -157,7 +157,7 @@ function facTab(which){
 
 // t-a811: Factory › GitHub's workflow as a looping flowchart: one box lit, its text below, Next/Back, and Play (one stage every
 // FLOW_STEP_MS, looping) that any other control stops. The step text comes from the list (#gh-steps), which stays in the DOM.
-export const FLOW_STEP_MS=5000;
+export const FLOW_STEP_MS=3000;   // user, 2026-11-17: 3 s per stage
 let flowAt=0, flowPlay=0, flowLeft=0;
 function flowSteps(){ return [...document.querySelectorAll('#gh-steps > li')]; }
 function flowRender(){
