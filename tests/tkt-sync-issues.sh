@@ -34,7 +34,6 @@ echo "unexpected gh api call: $*" >&2; exit 9
 SH
 chmod +x "$stub/gh"
 export PATH="$stub:$PATH" STUB_LOG="$stub/log" STUB_DIR="$stub"
-T=$'\t'
 
 # mklist <n:kind:labels>...: the listing for those issues, from their issue-N files.
 mklist() {
