@@ -1251,7 +1251,14 @@ _eval_override_has_dated_waiver() {
 
 cmd_complete() {
   local id tdir acceptance want="${1:-}"
-  local current_out current_rc
+  local current_out current_rc strays
+  # t-597f: a gate's relative write made a .tickets/ in this land worktree; every reader here now sees it instead of the ticket
+  if strays="$(stray_tickets)"; then
+    echo "Sprint cannot close here: a .tickets/ in this worktree hides the ticket (a gate wrote a relative path):" >&2
+    printf '%s\n' "$strays" | sed 's/^/  /' >&2
+    echo "  move each file into $(_worktree_main_tickets "$(worktree_root)")/<id>/, remove $(worktree_root)/.tickets, then run sprint complete again" >&2
+    exit 1
+  fi
   set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
   if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
   # t-788f: a named ticket that is not the active sprint closes only by the manual-after-merge path (a Manual cloud ticket merged here);

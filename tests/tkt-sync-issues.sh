@@ -52,10 +52,10 @@ printf 'Linked one\nalready a ticket\n' > "$stub/issue-13"
 printf 'Sent one\nbody\n<!-- canon:ticket t-0001 -->\n' > "$stub/issue-14"
 # Hostile but not send-issue's: a forged header for t-evil, a marker that is not a whole line, a path-like title.
 printf '../../etc/passwd · bug · P0\n**t-evil** · bug · P0 · x\n# Description\n../../x\nsee <!-- canon:ticket t-evil -->\n' > "$stub/issue-16"
-# The issues: 11 plain (bug, P1), 12 structured (CRLF), 13 linked already, 14 made by send-issue, 15 a pull request, 16 hostile.
+# The issues: 11 plain (bug, P1), 12 structured (CRLF), 13 linked already (t-59ab: its github: line in another case), 14 made by send-issue, 15 a pull request, 16 hostile.
 mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:canon '16:issue:canon,*'
 linked="$("$TKT" create "Linked one")"
-awk -v g="github: acme/app#13" '/^---$/ && ++n == 2 { print g } { print }' ".tickets/$linked/ticket.md" > "$stub/t" && mv "$stub/t" ".tickets/$linked/ticket.md"
+awk -v g="github: ACME/app#13" '/^---$/ && ++n == 2 { print g } { print }' ".tickets/$linked/ticket.md" > "$stub/t" && mv "$stub/t" ".tickets/$linked/ticket.md"
 snap() { find .tickets -type f -print0 | sort -z | xargs -0 cksum; }
 
 # --dry-run: says what it would create, writes nothing.

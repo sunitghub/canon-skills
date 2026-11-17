@@ -60,6 +60,32 @@ project_root() {
   dirname "$(tickets_dir)"
 }
 
+# ticket_path <path> — t-597f: a `.tickets/…` path named from a folder with no .tickets of its own (a land worktree: its tickets are
+# the main checkout's, t-cd06) is that path in the project's ticket folder, so the close docs' relative paths work there. Any other
+# path is printed unchanged.
+ticket_path() {
+  if [[ "$1" == .tickets/* && ! -e .tickets ]]; then echo "$(tickets_dir)/${1#.tickets/}"; else echo "$1"; fi
+}
+
+# stray_tickets — t-597f: in a linked worktree, a .tickets/ that is not the worktree's own (the land worktree keeps .tickets/ out with
+# sparse-checkout; elsewhere, files git does not track) for tickets the main checkout holds: a gate wrote a relative path, and every
+# reader there now sees that folder instead of the ticket. Prints the stray files and returns 0 when there are any.
+stray_tickets() {
+  local wt main d id files="" sparse=false
+  wt="$(worktree_root 2>/dev/null)" || return 1
+  [[ -f "$wt/.git" && -d "$wt/.tickets" ]] || return 1
+  main="$(_worktree_main_tickets "$wt")"; [[ -n "$main" && -d "$main" ]] || return 1
+  git -C "$wt" sparse-checkout list 2>/dev/null | grep -qxF '!/.tickets/' && sparse=true
+  for d in "$wt"/.tickets/*/; do
+    [[ -d "$d" ]] || continue; id="$(basename "$d")"; [[ -f "$main/$id/ticket.md" ]] || continue
+    if $sparse; then files+="$(find "$d" -type f)"$'\n'
+    else files+="$(git -C "$wt" ls-files --others -- ".tickets/$id")"$'\n'; fi
+  done
+  files="$(printf '%s' "$files" | grep . || true)"
+  [[ -n "$files" ]] || return 1
+  printf '%s\n' "$files"
+}
+
 # worktree_root — the caller's OWN worktree top-level directory (t-01a4),
 # distinct from project_root(): project_root() always redirects to the MAIN
 # checkout (.tickets/ lives only there, t-cd06), but a per-worktree gate needs
