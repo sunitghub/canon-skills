@@ -226,6 +226,7 @@ n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
   cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'
   echo "remotes=$(git remote | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
 [[ -z "${STUB_DIRTY:-}" ]] || echo "# dirtied by the stub" >> "$STUB_DIRTY"
+[[ -z "${STUB_GIT_NOISE:-}" ]] || { sleep 1.1; git -C "$STUB_GIT_NOISE" status >/dev/null; : > "$STUB_GIT_NOISE/.git/noise.tmp"; rm -f "$STUB_GIT_NOISE/.git/noise.tmp"; }
 case "${STUB_MODE:-ok}" in
   sleep) exec sleep 60 ;;
   fail) [[ "$n" == "${STUB_FAIL_CALL:-1}" ]] && { echo "boom" >&2; exit 3; } ;;
@@ -293,6 +294,10 @@ mkcase badref "ref: 0123456789abcdef0123456789abcdef01234567" "fix: $FIX_SHA" 'c
 reset; rp badref --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_eq 1 "$code"; assert_eq 0 "$(calls)"
 assert_contains "$(row 1)" '"gate":"-"'; assert_contains "$(row 1)" 'does not resolve'
 rm -rf "$GATE_CASES_DIR/badref" "$GATE_CASES_DIR/rp2"
+# git's own writes inside .git (an index refresh, a lock file) are not a change: a stub that runs git status and touches .git is no stop
+reset; reply canon-evaluator 'pass: fine'
+set +e; out="$(STUB_GIT_NOISE="$REPO" PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code" "replay stopped on git's own .git writes: $out"
 # a gate that changes the real checkout stops the replay at once (gate-snapshot post's check), with an error row
 mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
 reset; set +e; out="$(STUB_DIRTY="$REPO/dirty.txt" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e

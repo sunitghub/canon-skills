@@ -293,7 +293,8 @@ replay_row() {  # one JSONL row for the current call
 repo_print() {
   local gd; gd="$(git -C "$R_ROOT" rev-parse --absolute-git-dir)"
   git -C "$R_ROOT" rev-parse HEAD; git -C "$R_ROOT" symbolic-ref -q HEAD || true; git -C "$R_ROOT" status --porcelain
-  cat "$gd/config" "$gd"/hooks/* 2>/dev/null | cksum; ls -la "$gd/hooks" 2>/dev/null
+  # names and contents only: `ls -la` would list `..`, the .git folder, whose time changes on every index refresh (a false stop, t-b809)
+  cat "$gd/config" "$gd"/hooks/* 2>/dev/null | cksum; ls "$gd/hooks" 2>/dev/null
 }
 
 R_TMP=""
