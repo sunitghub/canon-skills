@@ -9,7 +9,7 @@
 #   gate-cases.sh replay <case>... --config split|folded [--runs N] [--model m] [--out f] --yes
 #                     t-b809: re-run today's close gates on a past commit (a `replay` case) with `claude -p`, to score a gate change such as
 #                     folding the reviewer into the evaluator. Spends money: without --yes it prints the call count and exits 2. One JSONL row
-#                     per gate call (verdict, caught, leak, tokens, duration_ms, cost_usd); prompts in tools/gate-replay/. Never run by `run`.
+#                     per gate call (verdict, caught, leak, tokens, duration_ms, cost_usd); prompts in tools/gate-replay.md. Never run by `run`.
 #   gate-cases.sh replay --summary <results.jsonl>   per config and run: catches, the control's verdict, tokens and minutes per close
 # A case is case.md (frontmatter: gate, kind, miss, source, and for a run case cmd, expect_exit, expect_text; for a recorded case expect; for a
 # replay case ref (the commit the gate graded), base, ticket, fix (the commit that fixed the finding), catch (a regex for the finding; empty
@@ -212,7 +212,7 @@ replay_problem() {
     return
   fi
   [[ "$(field "$f" fix)" =~ ^[0-9a-f]{7,40}$ ]] || { echo "a replay case needs fix (the commit that fixed the finding, 7 to 40 hex digits)"; return; }
-  printf '' | grep -qiE -- "$catch" 2>/dev/null || rc=$?
+  grep -qiE -- "$catch" </dev/null 2>/dev/null || rc=$?   # 1 = no match (a valid regex), 2 = a bad one
   [[ "$rc" -le 1 ]] || echo "catch is not a valid regex: $catch"
 }
 
@@ -237,16 +237,29 @@ replay_verdict() {
     v="$(grep -oE '^[^A-Za-z]*(YES|NO)([^A-Za-z]|$)' "$2" | tail -n 1 | grep -oE 'YES|NO')" || v=""
     case "$v" in YES) echo pass ;; NO) echo fail ;; *) echo none ;; esac
   else
-    v="$(grep -oE '^(pass|fail):' "$2" | head -n 1)" || v=""
+    v="$(grep -m 1 -oE '^(pass|fail):' "$2")" || v=""
     case "$v" in pass:) echo pass ;; fail:) echo fail ;; *) echo none ;; esac
   fi
 }
 
-# replay_call <gate> <prompt file> → sets R_VERDICT R_CAUGHT R_LEAK R_TOKENS R_MS R_COST R_ERR and writes the reply to $R_REPORT.
+# replay_prompt <gate>: that gate's section of tools/gate-replay.md with {{SHARED}} replaced by the `shared` section (one copy of the rules
+# every gate shares); nothing when the gate has no section. Placeholders {{ID}}/{{BASE}}/{{REF}} are filled by replay_call.
+replay_prompt() {
+  awk -v g="## $1" '
+    FNR == NR { if ($0 == "## shared") { sh = 1; next } if (/^## /) sh = 0; if (sh) S = S $0 "\n"; next }
+    $0 == g { on = 1; next }
+    /^## / { on = 0 }
+    on { if ($0 == "{{SHARED}}") printf "%s", S; else print }
+  ' "$SCRIPT_DIR/gate-replay.md" "$SCRIPT_DIR/gate-replay.md"
+}
+
+# replay_call <gate> → sets R_VERDICT R_CAUGHT R_LEAK R_TOKENS R_MS R_COST R_ERR and writes the reply to $R_REPORT.
 # Runs in $R_WT with the pinned env; killed by its own PID after GATE_REPLAY_TIMEOUT seconds (default 1800).
 replay_call() {
-  local gate="$1" prompt agent out err pid waited=0 limit="${GATE_REPLAY_TIMEOUT:-1800}" rc=0 parsed
-  prompt="$(sed -e "s|{{ID}}|$R_ID|g" -e "s|{{BASE}}|$R_BASE|g" -e "s|{{REF}}|$CANON_ROOT/skills/sprint/reference|g" "$2")"
+  local gate="$1" prompt agent out err pid waited=0 limit="${GATE_REPLAY_TIMEOUT:-1800}" rc=0 parsed tt ft
+  prompt="$(replay_prompt "$gate")"
+  [[ -n "$prompt" ]] || { R_VERDICT=error; R_ERR="no prompt for $gate in tools/gate-replay.md"; return 0; }
+  prompt="$(sed -e "s|{{ID}}|$R_ID|g" -e "s|{{BASE}}|$R_BASE|g" -e "s|{{REF}}|$CANON_ROOT/skills/sprint/reference|g" <<<"$prompt")"
   case "$gate" in reviewer) agent=canon-reviewer ;; *) agent=canon-evaluator ;; esac
   out="$R_TMP/out.json"; err="$R_TMP/err.txt"
   R_VERDICT=none R_CAUGHT=false R_LEAK=false R_TOKENS=0 R_MS=0 R_COST=0 R_ERR=""
@@ -273,12 +286,15 @@ replay_call() {
   R_VERDICT="$(replay_verdict "$gate" "$R_REPORT")"
   if [[ -n "$R_CATCH" ]]; then
     case "$gate" in
-      reviewer) triage_text < "$R_REPORT" | grep -qiE -- "$R_CATCH" && R_CAUGHT=true ;;
-      folded) triage_text '## Reviewer findings (advisory)' < "$R_REPORT" | grep -qiE -- "$R_CATCH" && R_CAUGHT=true ;;
+      reviewer) tt="$(triage_text < "$R_REPORT")" ;;
+      folded) tt="$(triage_text '## Reviewer findings (advisory)' < "$R_REPORT")" ;;
+      *) tt="" ;;
     esac
+    # captured first, never `| grep -q` under pipefail (a writer killed by SIGPIPE would lose a real catch; tests/pipefail-early-exit.sh)
+    if grep -qiE -- "$R_CATCH" <<<"$tt"; then R_CAUGHT=true; fi
     # a fail counts only when its Findings or its fail: line name the defect: a passing criteria row that mentions it is not a catch (t-b809 trial)
-    if [[ "$gate" != reviewer && "$R_VERDICT" == fail ]] \
-      && awk '/^## Findings/ { on = 1; next } /^## / { on = 0 } on || /^[^A-Za-z]*fail:/' "$R_REPORT" | grep -qiE -- "$R_CATCH"; then R_CAUGHT=true; fi
+    ft="$(awk '/^## Findings/ { on = 1; next } /^## / { on = 0 } on || /^[^A-Za-z]*fail:/' "$R_REPORT")"
+    if [[ "$gate" != reviewer && "$R_VERDICT" == fail ]] && grep -qiE -- "$R_CATCH" <<<"$ft"; then R_CAUGHT=true; fi
   fi
   [[ -z "$R_FIX" ]] || ! grep -qi -- "${R_FIX:0:7}" "$R_REPORT" || R_LEAK=true
   return 0
@@ -369,7 +385,8 @@ cmd_replay() {
   command -v claude >/dev/null 2>&1 || die "claude is not on PATH"
   source "$SCRIPT_DIR/platform-lib.sh"
   R_BOARD="$(board_helper_bin)" || exit 2
-  "$R_BOARD" --help 2>/dev/null | grep -q headless-usage || die "the board binary has no headless-usage; build or update it"
+  local bh; bh="$("$R_BOARD" --help 2>/dev/null)" || true
+  grep -q headless-usage <<<"$bh" || die "the board binary has no headless-usage; build or update it"
   R_ROOT="$(git -C "$dir" rev-parse --show-toplevel)"
   R_TMPBASE="${TMPDIR:-/tmp}"; R_TMPBASE="${R_TMPBASE%/}"
   if [[ -z "$out" ]]; then out="$(mktemp -d "$R_TMPBASE/gate-replay-out.XXXXXX")/replay.jsonl"; fi
@@ -412,7 +429,7 @@ cmd_replay() {
       [[ -e "$R_WT/.claude/agents" ]] || ln -s "$CANON_ROOT/agents" "$R_WT/.claude/agents"
       for gate in $gates; do
         R_REPORT="${R_OUT%.jsonl}-reports/$s-$config-$run-$gate.md"
-        replay_call "$gate" "$SCRIPT_DIR/gate-replay/$gate.md"
+        replay_call "$gate"
         # as gate-snapshot.sh post does at a real close: a gate that changed the real checkout stops the whole replay
         if [[ "$(repo_print)" != "$R_PRINT" ]]; then R_VERDICT=error; R_ERR="the gate changed the real checkout $R_ROOT (git status, HEAD or branch); replay stopped"; fi
         [[ "$R_VERDICT" != error ]] || failed=1

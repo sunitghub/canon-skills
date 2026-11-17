@@ -264,6 +264,9 @@ for k in canon_home tmpdir xdg; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "
 [[ "$(sed -n 's/^pwd=//p' "$c1")" == "$TMPDIR"/gate-replay.*/wt ]] || fail "replay: the gate did not run in the scratch worktree: $(sed -n 's/^pwd=//p' "$c1")"
 grep -q "^arg=.*Base ref: \`$BASE_SHA\`" "$c1" || grep -q "Base ref: \`$BASE_SHA\`" "$c1" || fail "replay: the prompt does not name the base"
 grep -q "{{" "$c1" && fail "replay: a prompt placeholder was left unfilled"
+# one prompt file (tools/gate-replay.md): each gate gets its own section plus the shared rules, exactly once
+for cf in "$c1" "$STUB/calls/2"; do assert_count 1 "Do not run the full suite" "$cf"; assert_count 1 "Base ref:" "$cf"; done
+grep -q "advisory reviewer gate" "$c1" && grep -q "binding evaluator gate" "$STUB/calls/2" || fail "replay: a gate got another gate's prompt"
 assert_eq "$REPO_STATUS" "$(git -C "$REPO" status --porcelain)"
 [[ -z "$(ls -A "$TMPDIR")" && -z "$(ls -A "$WORK/scope")" ]] || fail "replay left scratch or a scope record behind: $(ls -A "$TMPDIR" "$WORK/scope")"
 assert_file_exists "$WORK/r-reports/rp-split-1-reviewer.md"
@@ -387,7 +390,7 @@ assert_contains "$out" ", 6 replay"   # t-b809: the trial's cases are listed, ne
 # t-b809: a replay case's ticket files are the ones the gate graded: none may name the finding it is scored on (a leak makes the catch free)
 for c in "$ROOT"/tests/gate-cases/replay-*/; do
   re="$(sed -n 's/^catch: //p' "${c}case.md")"; [[ -n "$re" ]] || continue
-  ! grep -qiE -- "$re" "${c}state/ticket/"*.md || fail "gate-cases: $(basename "$c")'s ticket files name its finding: $(grep -iE -- "$re" "${c}state/ticket/"*.md | head -c 300)"
+  ! grep -qiE -- "$re" "${c}state/ticket/"*.md || fail "gate-cases: $(basename "$c")'s ticket files name its finding: $(grep -iE -- "$re" "${c}state/ticket/"*.md | cut -c1-300)"
 done
 assert_contains "$out" "recorded  reviewer-mirror-push-false-positive"; assert_contains "$out" "  ok        eval-verdict-worktree-copy (guard)"   # t-6be7: a run case since the warning exists
 
