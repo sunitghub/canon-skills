@@ -35,7 +35,7 @@ names for a case that applies.
    - A criterion only a person can judge starts with `[manual]` (`sprint manual-qa` records it). A fix changing a criterion amends it, same step.
    - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
      command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
-     one that repeats another, is not added. Each path, variant or theme a line names is graded on its own.
+     one that repeats another, is not added. Each path, variant or theme a line names is graded alone.
      Evidence lives in `.tickets/<id>/evidence/`, written with
      `sprint evidence stamp <id> <name> -- <command>` on a clean tracked tree.
    - A new `tests/*.sh` is added to `scripts/test.sh` in the same commit (`scripts/test.sh --list` prints its label): an unregistered file never runs, and only a close gate has caught it; t-a6d9 will lint it (t-0b89, t-014f; class: new-test-not-registered; id: P-071).
