@@ -16,7 +16,7 @@ use_fresh_board "$tmp/bin"
 traps="$tmp/traps"; mkdir -p "$traps"
 for t in python3 python powershell.exe; do printf '#!/usr/bin/env bash\ntouch "%s/ran-%s"\nexit 0\n' "$traps" "$t" > "$traps/$t"; done
 chmod +x "$traps"/*
-no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(ls "$traps" | grep ran-)"; }
+no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(cd "$traps" && echo ran-*)"; }
 
 proj="$tmp/proj"; mkdir -p "$proj/.claude"
 settings="$proj/.claude/settings.json"
@@ -32,7 +32,7 @@ assert_contains "$out" "added install deny rules"
 for r in "Bash(brew install:*)" "Bash(winget install:*)"; do grep -qF "\"$r\"" "$settings" || fail "$r not written"; done
 grep -q '"model": "opus"' "$settings" && grep -q '"ask"' "$settings" || fail "other keys lost: $(cat "$settings")"
 out="$(run offer_subagent_log_permission)"
-assert_contains "$out" "added Bash(subagent-log.sh:*)"
+assert_contains "$out" "added Bash(sprint subagent-log:*)"
 # Already present: silent, and the file stays byte-for-byte the same.
 before="$(cat "$settings")"
 assert_eq "" "$(run offer_install_deny_rules)"
@@ -50,10 +50,10 @@ assert_eq "$before" "$(cat "$settings")"
 # (macOS and util-linux spell it differently); stdin stays open a while so the answer, not an EOF, is what the prompt reads.
 # SKILLS_SH_NO_TTY (scripts/test.sh exports it so no suite prompts) is cleared for this one deliberate terminal.
 pty() { if script -q /dev/null true </dev/null >/dev/null 2>&1; then script -q /dev/null "$@"; else script -qec "$(printf '%q ' "$@")" /dev/null; fi; }
-grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "setup: the subagent-log rule should be present"
+grep -qF '"Bash(sprint subagent-log:*)"' "$settings" || fail "setup: the subagent-log rule should be present"
 { printf 'y\n'; sleep 3; } | ( unset SKILLS_SH_NO_TTY; PATH="$traps:$PATH" pty bash -c 'source "$1/tools/skills/project.sh"; source "$1/tools/skills/prompts.sh"
   offer_remove_subagent_log_permission "$2"' _ "$ROOT" "$proj" ) >/dev/null 2>&1 || true
-! grep -qF '"Bash(subagent-log.sh:*)"' "$settings" || fail "remove sprint kept the subagent-log rule: $(cat "$settings")"
+! grep -qF '"Bash(sprint subagent-log:*)"' "$settings" || fail "remove sprint kept the subagent-log rule: $(cat "$settings")"
 grep -qF '"Bash(brew install:*)"' "$settings" || fail "remove sprint dropped the install deny rules: $(cat "$settings")"
 
 # An invalid file or a symlinked one: refused, nothing written.
@@ -89,13 +89,13 @@ fp() { SKILLS_SH_ASSUME_YES=1 HOME="$tmp/fhome" PATH="$traps:$ROOT/tools:$PATH" 
 mkdir -p "$tmp/fhome"
 out="$(fp "$SKILLS" add sprint "$flow" 2>&1)" || fail "skills add sprint failed with no Python: $out"
 grep -qF '"Bash(brew install:*)"' "$flow/.claude/settings.json" || fail "skills add sprint did not write the install deny rules: $out"
-grep -qF '"Bash(subagent-log.sh:*)"' "$flow/.claude/settings.json" || fail "skills add sprint did not write the subagent-log rule: $out"
+grep -qF '"Bash(sprint subagent-log:*)"' "$flow/.claude/settings.json" || fail "skills add sprint did not write the subagent-log rule: $out"
 out="$(fp "$SKILLS" refresh "$flow" 2>&1)" || fail "skills refresh failed with no Python: $out"
 ( cd "$flow" && id="$(fp tkt create "flow check" 2>/dev/null | tail -1)" && [ -n "$id" ] && fp tkt start "$id" >/dev/null 2>&1 ) \
   || fail "tkt create/start failed with no Python"
 flow2="$tmp/flow2"; mkdir -p "$flow2"; git -C "$flow2" init -q     # sprint start refuses while another ticket is active
 ( cd "$flow2" && fp sprint start "flow sprint" >/dev/null 2>&1 ) || fail "sprint start failed with no Python"
-[ "$(ls "$flow/.tickets" | grep -c '^t-')" -ge 1 ] && [ "$(ls "$flow2/.tickets" | grep -c '^t-')" -ge 1 ] \
+compgen -G "$flow/.tickets/t-*" >/dev/null && compgen -G "$flow2/.tickets/t-*" >/dev/null \
   || fail "tickets not created in the flow"
 no_trap_ran "end to end"
 

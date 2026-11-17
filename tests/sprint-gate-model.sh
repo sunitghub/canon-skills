@@ -105,7 +105,7 @@ assert_eq "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier
 assert_eq "model: opus (Admin Reviewer default, claude)" "$(gm reviewer)"                           # Lite changes only the evaluator
 
 # 4. complete-checklist.md tells the agent to pass the printed model, inside its cap
-assert_contains "$(cat "$ROOT/skills/sprint/reference/complete-checklist.md")" "the model \`gate-snapshot.sh pre\` printed"
+assert_contains "$(cat "$ROOT/skills/sprint/reference/complete-checklist.md")" "the model \`sprint gate-snapshot pre\` printed"
 words="$(wc -w < "$ROOT/skills/sprint/reference/complete-checklist.md" | tr -d ' ')"
 (( words <= 900 )) || fail "complete-checklist.md is $words words (cap 900)"
 

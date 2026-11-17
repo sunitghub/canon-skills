@@ -19,7 +19,7 @@ complete-checklist 900 words
 handoff 80 block-lines
 learnings 80 block-lines
 release-zip 4480 kb
-release-zip-files 310 files" "$rows"
+release-zip-files 312 files" "$rows"
 
 # --help names the helper: a bash caller checks for it, as canon_event checks for `event <kind>` (an older board takes a word for a port)
 [[ "$("$BOARD" --help 2>&1)" == *"caps [--json]"* ]] || fail "caps: --help does not list caps"

@@ -374,7 +374,7 @@ A="$(sed -n '1s/^HEAD \([0-9a-f]*\) .*/\1/p' "$ED/full.log")"
 assert_contains "$out" "covered full.log exit=1 (HEAD ${A:0:7}; only tests/board-spec-baseline.json changed since; re-guarded at $(git rev-parse --short=7 HEAD) by guard.log over 2 report(s))$os_txt cmd: bash tests/run-board-spec.sh --out"
 guard "$REPO/$D/board-spec-webkit-run1.json" "$REPO/$D/board-spec-chromium-run1.json"; want_covered            # absolute paths, any order
 # t-278d: the hint's recipe (guard under its own name, reports inside evidence/) is accepted; the old way (the run's own log name) is not.
-covered_setup; ev check "$ID"; assert_contains "$out" "hint: to cover it"; assert_contains "$out" "evidence.sh stamp $ID board-spec-guard -- node tests/board-spec-guard.js"
+covered_setup; ev check "$ID"; assert_contains "$out" "hint: to cover it"; assert_contains "$out" "sprint evidence stamp $ID board-spec-guard -- node tests/board-spec-guard.js"
 ev stamp "$ID" board-spec-guard -- node tests/board-spec-guard.js "$D/board-spec-chromium-run1.json" "$D/board-spec-webkit-run1.json"; assert_eq 0 "$code"
 ev check "$ID"; assert_contains "$out" "covered full.log exit=1 ("; assert_contains "$out" "by board-spec-guard.log over 2 report(s))"
 [[ "$out" != *"hint:"* ]] || fail "evidence: a covered run should carry no hint: $out"
@@ -539,7 +539,7 @@ need skills/sprint/reference/eval.md 'a base-control run names the base commit, 
 need skills/sprint/reference/eval.md '25 minutes from the epoch you stamped in step 1' "the 25-minute budget"
 need skills/sprint/reference/eval.md 'every item without evidence is `not-run`' "a spent budget fails closed"
 need skills/sprint/reference/eval.md 'Evidence reuse: <n> of <m>' "the report line"
-need skills/sprint/reference/start.md 'evidence.sh stamp <id> <name> -- <command>' "the builder writes evidence with the stamp tool"
+need skills/sprint/reference/start.md 'sprint evidence stamp <id> <name> -- <command>' "the builder writes evidence with the stamp tool"
 need skills/sprint/reference/start.md 'an `(uncommitted)` stamp is never reusable' "an uncommitted stamp is never reusable"
 need skills/sprint/reference/complete.md "the evaluator's elapsed minutes" "the eval row records evaluator minutes"
 need skills/sprint/reference/complete.md 'run `sprint check-evidence <id>`' "the evidence pre-flight before dispatch"

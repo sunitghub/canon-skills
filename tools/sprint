@@ -692,7 +692,7 @@ _gate_eval_report_authentic() {
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
   if [[ ! -f "$jsonl" ]]; then
     echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
-    echo "After a real evaluator subagent run, log it with subagent-log.sh (it records a run that happened; it does not create one)."
+    echo "After a real evaluator subagent run, log it with sprint subagent-log (it records a run that happened; it does not create one)."
     _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
@@ -738,7 +738,7 @@ _gate_eval_report_authentic() {
     # non-canon writer) are skipped above. Say so, or the closer sees only the generic line.
     if (( malformed > 0 )); then
       echo "Note: $malformed entr$([[ $malformed -eq 1 ]] && echo y || echo ies) in .claude/subagent-runs.jsonl ha$([[ $malformed -eq 1 ]] && echo s || echo ve) no ISO \"ts\" field (e.g. an integer \"timestamp\") and $([[ $malformed -eq 1 ]] && echo is || echo are) ignored."
-      echo "After a real evaluator subagent run, log it with subagent-log.sh --agent-type evaluator (it records a run that happened; it does not create one) — do not hand-edit the file."
+      echo "After a real evaluator subagent run, log it with sprint subagent-log --agent-type evaluator (it records a run that happened; it does not create one) — do not hand-edit the file."
     fi
     return 1
   fi
@@ -1603,7 +1603,7 @@ cmd_check_evidence() {
     name="${f##*/}"
     if [[ ! "$name" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]]; then
       bad=$((bad + 1)); n=$((n + 1))
-      echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name evidence.sh stamp never writes; rename it, or move it into a subfolder"
+      echo "  REFUSE  $(printf '%s' "$name" | LC_ALL=C tr -c 'A-Za-z0-9._-' '?'): a name sprint evidence stamp never writes; rename it, or move it into a subfolder"
     fi
   done
   # t-aa24: the user's manual-QA record (not a log: evidence.sh check never lists it) and the criteria tagged [manual] that need it
@@ -1642,7 +1642,7 @@ cmd_check_evidence() {
   fi
   if (( bad )); then
     echo "check-evidence: $bad of $n log(s) would fail or mislead the evaluator; do not dispatch it yet."
-    echo "  stale      re-stamp at HEAD (evidence.sh stamp, from a plain clone for the full suite)"
+    echo "  stale      re-stamp at HEAD (sprint evidence stamp, from a plain clone for the full suite)"
     echo "  exit=N     fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
     echo "             \`node tests/board-spec-guard.js <the run's --out dir>/board-spec-*-run*.json\` at HEAD (the run log becomes covered)"
     echo "  unstamped  stamp it, or move a history or off-tree log into a subfolder of evidence/ (never scanned)"
@@ -2039,7 +2039,7 @@ cmd_gate_cost() {
       if (ti ~ /^high/) ti = "high-risk"   # t-63a7: rows logged before the tier was named high-risk
       G[k] = (ty == "" ? "-" : ty) "\t" (ti == "" ? "-" : ti) "\t" (mo == "" ? "-" : mo) }
     END {
-      if (n == 0) { print "No measured gate runs yet: log them with subagent-log.sh --tokens N --minutes M --tool-uses K."; exit }
+      if (n == 0) { print "No measured gate runs yet: log them with sprint subagent-log --tokens N --minutes M --tool-uses K."; exit }
       start = (n > last) ? n - last + 1 : 1
       for (i = start; i <= n; i++) {
         g = G[i]; if (!(g in C)) order[++ng] = g
@@ -2529,6 +2529,10 @@ Usage:
   sprint manual-qa <id> --by "<who>" --step "<what>|pass|fail|n/a" ...
                             Records the user's manual testing in
                             evidence/manual-qa.md for the evaluator (t-aa24)
+  sprint gate-snapshot | evidence | subagent-log | pre-gate-check <args>
+                            Run tools/<name>.sh with the same arguments and
+                            exit code; the names the close docs give, so they
+                            run from PowerShell through sprint.cmd (t-96f1)
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
@@ -2538,7 +2542,8 @@ EOF
 main() {
   local cmd="${1:-help}"
   shift || true
-  case "$cmd" in help|--help|-h) ;; *) require_project_folder sprint ;; esac   # t-b2ff
+  # t-96f1: the close's .sh tools skip the project check: each script resolves its own folder, so the output stays the script's.
+  case "$cmd" in help|--help|-h|gate-snapshot|evidence|subagent-log|pre-gate-check) ;; *) require_project_folder sprint ;; esac   # t-b2ff
 
   case "$cmd" in
     start) cmd_start "$@" ;;
@@ -2561,6 +2566,8 @@ main() {
     gate-cost) cmd_gate_cost "$@" ;;
     token-spend) cmd_token_spend "$@" ;;
     decisions) cmd_decisions "$@" ;;
+    # t-96f1: run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file association)
+    gate-snapshot|evidence|subagent-log|pre-gate-check) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac

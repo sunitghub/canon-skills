@@ -248,24 +248,26 @@ offer_install_deny_rules() {
   return 0
 }
 
-# Adds a Bash permission rule for tools/subagent-log.sh (invoked bare via PATH, per skills/sprint/reference/complete.md) so sprint
+# Adds a Bash permission rule for `sprint subagent-log` (tools/subagent-log.sh run through sprint, per skills/sprint/reference/complete.md; t-96f1) so sprint
 # close stops repeatedly prompting for it — reported on Windows but not actually OS-specific.
+SUBAGENT_LOG_RULE='Bash(sprint subagent-log:*)'   # one owner: the offer and its remover
+
 offer_subagent_log_permission() {
   local project_dir="$1"
   local settings="$project_dir/.claude/settings.json"
-  local rule="Bash(subagent-log.sh:*)"
+  local rule="$SUBAGENT_LOG_RULE"
   local status
 
-  _settings_ready "the subagent-log.sh permission rule" || return 0
+  _settings_ready "the sprint subagent-log permission rule" || return 0
   status="$(_settings status "$settings" allow "$rule")"
   if [ "$status" = "invalid" ]; then
-    echo "  [fail]  $settings is not valid JSON (or a symlink) — skipping subagent-log.sh permission check"
+    echo "  [fail]  $settings is not valid JSON (or a symlink) — skipping the sprint subagent-log permission check"
     return 0
   fi
   [ "$status" = "present" ] && return 0
 
-  if ! _prompt_or_auto_yes "Add a Bash permission rule for subagent-log.sh to $settings, so sprint close stops prompting for it?"; then
-    echo "  [skip]  add \"$rule\" to permissions.allow in $settings to stop repeated subagent-log.sh prompts at sprint close"
+  if ! _prompt_or_auto_yes "Add a Bash permission rule for sprint subagent-log to $settings, so sprint close stops prompting for it?"; then
+    echo "  [skip]  add \"$rule\" to permissions.allow in $settings to stop repeated sprint subagent-log prompts at sprint close"
     return 0
   fi
 
@@ -305,7 +307,7 @@ offer_remove_canon_dir_access() {
 offer_remove_subagent_log_permission() {
   local project_dir="$1"
   local settings="$project_dir/.claude/settings.json"
-  local rule="Bash(subagent-log.sh:*)"
+  local rule="$SUBAGENT_LOG_RULE"
 
   [ -f "$settings" ] || return 0
   CANON_BOARD="$(board_helper_bin 2>/dev/null)" || return 0
@@ -315,14 +317,14 @@ offer_remove_subagent_log_permission() {
     return 0
   fi
 
-  printf "Remove the subagent-log.sh permission rule from %s? [y/N] (auto-skips in 15s) " "$settings" > /dev/tty
+  printf "Remove the sprint subagent-log permission rule from %s? [y/N] (auto-skips in 15s) " "$settings" > /dev/tty
   _read_tty_answer || { echo "" > /dev/tty; return 0; }
   [[ "$answer" =~ ^[Yy]$ ]] || return 0
 
   if [ "$(_settings remove "$settings" allow "$rule")" = ok ]; then
-    echo "  $settings — removed subagent-log.sh permission rule." > /dev/tty
+    echo "  $settings — removed the sprint subagent-log permission rule." > /dev/tty
   else
-    echo "  $settings — could not remove the subagent-log.sh permission rule; left as is." > /dev/tty
+    echo "  $settings — could not remove the sprint subagent-log permission rule; left as is." > /dev/tty
   fi
 }
 

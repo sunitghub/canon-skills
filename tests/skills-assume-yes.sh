@@ -49,7 +49,7 @@ trap 'rm -rf "$tmp_home" "$project" "$project2" "$project3"' EXIT
 
 SKILLS_SH_ASSUME_YES=1 "$SKILLS" add sprint "$project3" >/dev/null
 assert_file_exists "$project3/.claude/settings.json"
-assert_count 1 "Bash(subagent-log.sh:*)" "$project3/.claude/settings.json"
+assert_count 1 "Bash(sprint subagent-log:*)" "$project3/.claude/settings.json"
 
 # --- C4 regression: offer_tkt_path (PATH edit) is UNAFFECTED ----------------
 # It never checks SKILLS_SH_ASSUME_YES — this ticket deliberately leaves it

@@ -94,7 +94,7 @@ Once every survivor is killed or triaged and any test fix is committed, re-run t
 on that clean commit, before the evaluator is dispatched:
 
 ```bash
-evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id>/mutation-report.md
+sprint evidence stamp <id> mutant-sweep -- mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id>/mutation-report.md
 ```
 
 The log in `.tickets/<id>/evidence/mutant-sweep.log` names the commit that was swept; re-stamp after any later tracked

@@ -4,7 +4,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
-RULE='Bash(subagent-log.sh:*)'
+RULE='Bash(sprint subagent-log:*)'
 
 # Sandbox HOME (offer_tkt_path would otherwise touch the real ~/.zshrc/.bashrc) and put
 # canon's tools on PATH so offer_tkt_path's own prompt never fires — each interactive
