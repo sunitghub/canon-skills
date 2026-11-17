@@ -14578,6 +14578,13 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-preset-save').click();
     await expect(page.locator('#mt-preset-where code')).toHaveText('/home/u/.canon/cockpit/model-tiers.json');
     await expect(page.locator('#mt-preset-where')).toContainText('your own file for every project');
+    // t-96f1 (user): on its own line right under the Save button's row, above the name input, never inside that input's row
+    const order = await page.evaluate(() => {
+      const w = document.getElementById('mt-preset-where');
+      return { prevHasSave: !!w.previousElementSibling?.querySelector('#mt-preset-save'), nextHasName: !!w.nextElementSibling?.querySelector('#mt-preset-name'),
+        inNameRow: !!w.closest('.mt-preset-row') };
+    });
+    expect(order).toEqual({ prevHasSave: true, nextHasName: true, inNameRow: false });
   });
 
   // t-b809 (user): the Preset list names the preset a fresh install equals (the board's `default`), and only that one.

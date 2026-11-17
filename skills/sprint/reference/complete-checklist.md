@@ -16,37 +16,37 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 ## Steps
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
-   refresh docs.
-   - **Pre-gate:** `tools/pre-gate-check.sh <id>` first; non-zero: stop.
+   docs.
+   - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
    - **Interim commit** (specific paths, no `git add -A`) before any gate.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
      `code-reviewer` are separate.
-   - Gates run in turn, never in parallel. No push to `origin/main` until both gates report.
-2. **Reviewer** (advisory). `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
-   `Agent` with `subagent_type: "canon-reviewer"`; after, before fix commits: `gate-snapshot.sh post …` (differs: stop,
-   show PRE hash), `subagent-log.sh --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
+   - Gates run in turn, never in parallel; no push to `origin/main` until both report.
+2. **Reviewer** (advisory). `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
+   `Agent` with `subagent_type: "canon-reviewer"`; after (before fix commits): `sprint gate-snapshot post …` (differs: stop,
+   show PRE hash), `sprint subagent-log --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
    - **Mutation sweep** (shell, JS, Python, Go logic): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
-     `evidence.sh stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
+     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
-     `CANON_TICKETS_DIR=<project>/.tickets evidence.sh stamp <id> test-sh -- <project test command>`
+     `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
      (canon: `scripts/test.sh`); re-stamp after tracked changes.
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
-     write a run-id yourself.
-   - `subagent-log.sh --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
+     hand-write one.
+   - `sprint subagent-log --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
    - Row: `verdict: pass — … (model: <m> — <source>; <N>m)`.
    - `sprint second-eval <id>` names a model: complete.md "Second evaluator".
-4. **Tests:** a Test Plan line per criterion; each ✓ with dated evidence. Re-run evaluator-claimed "pre-existing failure" in the real tree.
+4. **Tests:** a Test Plan line per criterion; each ✓ with dated evidence. Re-run a claimed "pre-existing failure" in the real tree.
 5. **Acceptance:** every criterion and QA "Tested locally" box met.
 6. **DECISIONS.md:** one row (rule, falsifier, id); `sprint decisions related|archive|mark` routes the rest.
 7. **Conventions:** propose a convention line; ask first.
@@ -59,7 +59,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Gate dispatch inputs
 
-- **Model:** pass the model `gate-snapshot.sh pre` printed (`sprint gate-model <id> <role>`: Admin's default for this agent,
+- **Model:** pass the model `sprint gate-snapshot pre` printed (`sprint gate-model <id> <role>`: Admin's default for this agent,
   fail-safes applied). `ticket rule:` (a `Gate model:` line, `session` = your alias; a Lite evaluator): complete.md "Model tier for
   gates". `none:`: omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`. Source: `Gate model override`,
   `Admin Reviewer|Evaluator default`, `definition floor`.

@@ -8,6 +8,7 @@
   .mt-preset-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
   .mt-preset-row select{border:1px solid var(--accent);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600}
   .mt-preset-row .setting-d{margin:0;flex:1;min-width:180px}
+  .setting-d.mt-preset-where{max-width:none;margin:0 0 8px}   /* t-96f1: its own line under the Save button row */
   .mt-preset-row input{border:1px solid var(--border-muted);border-radius:8px;padding:6px 9px;background:var(--bg);color:var(--text);min-width:200px}
   .mt-preset-box{border:1px solid var(--accent);border-radius:12px;padding:12px;background:var(--panel)}
   .mt-preset-rows,.mt-preset-notes{margin:8px 0;padding-left:18px;font-size:12.5px;color:var(--text-body)}

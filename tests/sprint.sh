@@ -16,6 +16,26 @@ assert_gate_notice() { # <output> <file> <evaluator|reviewer>
 # ...and the skill says it once up front, where a model that never opens complete.md still reads it.
 grep -q 'Gate reports are never hand-written' "$ROOT/skills/sprint/SKILL.md" || fail "skills/sprint/SKILL.md must say gate reports are never hand-written"
 
+# t-96f1: the close docs name `sprint <tool>` (PowerShell opens a bare .sh by file association; sprint.cmd starts Git Bash). Prod path:
+# every pre-gate, gate snapshot, evidence stamp and gate log a close runs. Same output and exit code as the script, outside a project too.
+outside="$(mktemp -d)"
+for n in gate-snapshot evidence subagent-log pre-gate-check; do
+  for args in "--bogus" ""; do
+    want="$(cd "$outside" && bash "$ROOT/tools/$n.sh" $args 2>&1)" && wc=0 || wc=$?
+    got="$(cd "$outside" && "$SPRINT" "$n" $args 2>&1)" && gc=0 || gc=$?
+    assert_eq "$want" "$got"; assert_eq "$wc" "$gc"
+  done
+done
+want="$(cd "$ROOT" && bash tools/evidence.sh neutral)"; [[ -n "$want" ]] || fail "t-96f1: evidence.sh neutral printed nothing"
+assert_eq "$want" "$(cd "$ROOT" && "$SPRINT" evidence neutral)"   # a success path
+rm -rf "$outside"
+help="$("$SPRINT" help)"
+assert_contains "$help" "sprint gate-snapshot | evidence | subagent-log | pre-gate-check <args>"
+for f in "$ROOT/tools/sprint" "$ROOT/tools/evidence.sh" "$ROOT/tools/gate-snapshot.sh"; do   # hints the agent acts on name the sprint form
+  ! grep -nE "(log (it|them) with|run '|never writes|re-stamp at HEAD \(|overwrites it\): )(tools/)?(subagent-log|evidence|gate-snapshot)\.sh" "$f" \
+    || fail "t-96f1: $f still tells the agent to run a .sh tool bare"
+done
+
 project="$(make_project)"
 trap 'rm -rf "$project"' EXIT
 cd "$project"

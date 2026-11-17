@@ -37,7 +37,7 @@ names for a case that applies.
      command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
      one that repeats another, is not added. Each path, variant or theme a line names is graded on its own.
      Evidence lives in `.tickets/<id>/evidence/`, written with
-     `evidence.sh stamp <id> <name> -- <command>` on a clean tracked tree.
+     `sprint evidence stamp <id> <name> -- <command>` on a clean tracked tree.
    - A new `tests/*.sh` is added to `scripts/test.sh` in the same commit (`scripts/test.sh --list` prints its label): an unregistered file never runs, and only a close gate has caught it; t-a6d9 will lint it (t-0b89, t-014f; class: new-test-not-registered; id: P-071).
 7. **plan.md:** `## Approach` (lean, re-read after every compaction), `## Files`, `## Decisions` (answer
    each ticket open question or write `carried forward: <question>`), and the tier with a one-line reason.

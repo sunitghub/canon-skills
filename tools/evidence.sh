@@ -422,7 +422,7 @@ for i in "${!FILES[@]}"; do
       LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; $what; re-guarded at ${graded:0:7} by $(safe "${g% *}") over ${g##* } report(s))${SHOWNS[$i]}"
     elif [[ "$(line2_of "${FILES[$i]}")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]]; then
       # t-278d: the recipe, so the next stamp neither overwrites the run's log nor leaves its reports outside evidence/.
-      LINES[$i]+=$'\n'"  hint: to cover it, keep the run's --out folder inside .tickets/$id/evidence/, then stamp the guard under its OWN name, never this log's (that overwrites it): evidence.sh stamp $id board-spec-guard -- node tests/board-spec-guard.js <those reports>"
+      LINES[$i]+=$'\n'"  hint: to cover it, keep the run's --out folder inside .tickets/$id/evidence/, then stamp the guard under its OWN name, never this log's (that overwrites it): sprint evidence stamp $id board-spec-guard -- node tests/board-spec-guard.js <those reports>"
     fi
   fi
   echo "${LINES[$i]}"

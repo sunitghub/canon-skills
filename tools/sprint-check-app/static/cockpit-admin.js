@@ -256,7 +256,9 @@ function mtRenderPresets(){
     <select id="mt-preset-sel" aria-describedby="mt-preset-d"><option value=""${shown?'':' selected'}>Custom</option>${group('canon','canon')}${group('yours','Yours')}</select>
     <span class="setting-d" id="mt-preset-d">${shown?esc(shown.desc||(shown.source==='yours'?'Your saved picks.':'')):'Your own picks: they match no preset.'}</span>
     <button type="button" class="btn b-neutral" id="mt-preset-save">Save current as preset\u2026</button>${shown&&shown.source==='yours'&&!mtPresetPend?`<button type="button" class="btn b-danger" id="mt-preset-del">Delete</button>`:''}</div>`;
-  if(mtPresetSaving) h+=`<div class="mt-preset-row"><input type="text" id="mt-preset-name" maxlength="40" placeholder="Preset name" aria-label="Preset name"><button type="button" class="btn b-primary" id="mt-preset-name-ok">Save</button><button type="button" class="btn b-close" id="mt-preset-name-x">Cancel</button><span class="setting-d" id="mt-preset-where">Saves the current picks for ${esc(mtAgentsListed().map(mtAgentLabel).join(' and '))}${mtOpts.user_file?` in <code>${esc(mtOpts.user_file)}</code>, your own file for every project`:''}.</span></div>`;
+  // t-96f1 (user): where it saves goes on its own line under the Save button's row, not squeezed beside the name input.
+  if(mtPresetSaving) h+=`<p class="setting-d mt-preset-where" id="mt-preset-where">Saves the current picks for ${esc(mtAgentsListed().map(mtAgentLabel).join(' and '))}${mtOpts.user_file?` in <code>${esc(mtOpts.user_file)}</code>, your own file for every project`:''}.</p>`;
+  if(mtPresetSaving) h+=`<div class="mt-preset-row"><input type="text" id="mt-preset-name" maxlength="40" placeholder="Preset name" aria-label="Preset name"><button type="button" class="btn b-primary" id="mt-preset-name-ok">Save</button><button type="button" class="btn b-close" id="mt-preset-name-x">Cancel</button></div>`;
   const pend=list.find(p=>p.id===mtPresetPend);
   if(pend){
     const rows=[];

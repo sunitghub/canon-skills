@@ -202,7 +202,7 @@ for fn in offer_install_deny_rules offer_subagent_log_permission; do
   out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 lib "$p12" "$ROOT" "$fn" 2>&1)"
   assert_contains "$out" "[ok]"
 done
-grep -qF '"Bash(brew install:*)"' "$p12/.claude/settings.json" && grep -qF '"Bash(subagent-log.sh:*)"' "$p12/.claude/settings.json" \
+grep -qF '"Bash(brew install:*)"' "$p12/.claude/settings.json" && grep -qF '"Bash(sprint subagent-log:*)"' "$p12/.claude/settings.json" \
   || fail "the rules were not written with a placeholder python3: $(cat "$p12/.claude/settings.json")"
 [[ ! -e "$stubbin/ran" ]] || fail "a settings edit ran python3"
 # With no board binary yet, both skip honestly (never a false [ok], never a write), and `skills.sh add sprint` says so.

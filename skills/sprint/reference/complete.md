@@ -118,7 +118,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 
    **Pre-gate check (deterministic, binding on tool failure, t-014f).** Before the mutation sweep and any gate, on the clean
-   interim commit, run `tools/pre-gate-check.sh <id>`. It runs `shellcheck` on the changed `.sh`, `node --check` on the changed
+   interim commit, run `sprint pre-gate-check <id>`. It runs `shellcheck` on the changed `.sh`, `node --check` on the changed
    `.js` and `go vet` on the changed Go packages, stamped through `evidence.sh` as `evidence/pre-gate.log`, and prints one
    line. A failing tool exits non-zero: fix it and re-run before dispatching anything (`sprint check-evidence` refuses the
    non-zero log). A missing tool prints `<tool> skipped | no <tool>`, never a pass. The line also lists unreferenced symbols
@@ -135,7 +135,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    throwaway copies (the real tree is never written), and writes `.tickets/<id>/mutation-report.md`; kill or triage every
    survivor (fix a test, delete a redundant check, or mark it equivalent with a reason) and commit any test fix in the
    interim commit below. Then, on that clean commit, stamp the final sweep into `evidence/`:
-   `evidence.sh stamp <id> mutant-sweep -- mutant-sweep --map <file>=<test> [--map …] --report .tickets/<id>/mutation-report.md`
+   `sprint evidence stamp <id> mutant-sweep -- mutant-sweep --map <file>=<test> [--map …] --report .tickets/<id>/mutation-report.md`
    (re-stamp after any later tracked change; the re-run rewrites the report, so append the triage again). Survivors still exit 0; a canary leak (exit 4) or a failed merge-base (exit 2)
    leaves a non-zero log, which `sprint check-evidence` refuses before step 3, so fix it first. **Non-binding** — it never
    blocks `sprint complete` and does not replace the evaluator's own mutants — **but not skippable without a reason**:
@@ -324,7 +324,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
   `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --no-extensions --no-mcp --tools read,bash,grep,find,ls --model "<provider>/<current session model>" "<gate prompt>"`.
-  **Prefix it with the scope env** `gate-snapshot.sh pre` wrote beside the snapshot (`env $(cat .tickets/<id>/gate-snapshot.txt.scope) pi -p …`: `CANON_HOME` and `TMPDIR` in the gate's scratch scope, t-b7df): a subprocess is the one dispatch whose environment the orchestrator can set. Leave `HOME` alone (pi's own config lives there); the guard still refuses `canon update` on a real `HOME`.
+  **Prefix it with the scope env** `sprint gate-snapshot pre` wrote beside the snapshot (`env $(cat .tickets/<id>/gate-snapshot.txt.scope) pi -p …`: `CANON_HOME` and `TMPDIR` in the gate's scratch scope, t-b7df): a subprocess is the one dispatch whose environment the orchestrator can set. Leave `HOME` alone (pi's own config lives there); the guard still refuses `canon update` on a real `HOME`.
   `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
   reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
   explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
@@ -378,7 +378,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
    `review-notes.md` exists) — t-072d.
 
-5. **What to pass for `<id>` in `subagent-log.sh`:** the gate matches only on the log entry's
+5. **What to pass for `<id>` in `sprint subagent-log`:** the gate matches only on the log entry's
    timestamp, never on `agent_id` — so a harness-provided dispatch id is not required. Use
    whichever is available: (a) a trailing `agentId: <id>` token if the raw Agent-call result
    exposes one, (b) otherwise a stable synthetic id such as `reviewer-<ticket-id>` or the
@@ -391,7 +391,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    YES → pass, NO → fail; evaluator `pass` → pass, anything else → fail). A dispatch that dies
    on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
    never guess one. In Claude Code the totals are in the background task's completion notice
-   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`subagent-log.sh` warns when a Claude Code gate row has no `--tokens`). Log from the notification that says the agent completed; one that says it "stopped with background work of its own still running" is interim and its figures are partial. A row logged early is replaced by calling `subagent-log.sh` again with the same `--agent-id`.
+   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`sprint subagent-log` warns when a Claude Code gate row has no `--tokens`). Log from the notification that says the agent completed; one that says it "stopped with background work of its own still running" is interim and its figures are partial. A row logged early is replaced by calling `sprint subagent-log` again with the same `--agent-id`.
    Pass `--model <id>` too (t-3a14): the model this dispatch resolved to and passed (the Admin
    default's registry id, e.g. `claude-sonnet-5-5`, never its alias; the ticket's `Gate model:`; or the agent's floor), not one read back from the report.
    Leave it out when the model is unknown; never write a guessed one.
@@ -415,13 +415,13 @@ Opus` default, scoped only to the two close-gate dispatches below.
    close path in `docs/setup.md` › Claude cloud sessions: `tkt export <id>` without closing, then on the user's
    machine import, evaluate the PR head, `sprint complete`, `tkt merge-pr`.
 
-7. **Snapshot the repo before AND after every subagent dispatch** with `gate-snapshot.sh` (bare — it is on PATH, same as `sprint`/`tkt`) — a gate is
+7. **Snapshot the repo before AND after every subagent dispatch** with `sprint gate-snapshot` (a `sprint` subcommand: PowerShell opens a bare `.sh` file by file association instead of running it, t-96f1) — a gate is
    read-only by contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition,
-   and an after-only check misses a discard (see below). Immediately **before** dispatching run `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt --role reviewer|evaluator` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it; `--role` names the gate for the `gate.started` event, t-8854): it records
+   and an after-only check misses a discard (see below). Immediately **before** dispatching run `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer|evaluator` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it; `--role` names the gate for the `gate.started` event, t-8854): it records
    the branch, HEAD, every ref, every branch and tag with its sha (a branch checked out in another worktree keeps only its name: a commit there is that session's work, not the gate's), the
    porcelain lines (untracked files expanded), a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of the project's
    `.claude/subagent-runs.jsonl` (only this project's own `.tickets/` and that audit log are excluded from the tree comparison), and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
-   Immediately **after** the gate completes, before reading its report, run `gate-snapshot.sh post .tickets/<id>/gate-snapshot.txt`, and only then `subagent-log.sh` (its append to `.claude/subagent-runs.jsonl` is a change the tool flags; run the next `pre` after it). Exit 0 means nothing moved; exit 1 names each
+   Immediately **after** the gate completes, before reading its report, run `sprint gate-snapshot post .tickets/<id>/gate-snapshot.txt`, and only then `sprint subagent-log` (its append to `.claude/subagent-runs.jsonl` is a change the tool flags; run the next `pre` after it). Exit 0 means nothing moved; exit 1 names each
    difference (`BRANCH changed`, `HEAD moved`, `refs changed`, `working-tree paths changed`, `uncommitted content … changed`, the audit log). On any difference:
    - **Stop and surface it to the user with the PRE recovery hash** — do not silently continue, and do not auto-apply the stash (its content may conflict with
      changes made since). Do not "repair" on your own beyond what the user asks: a rename or junk commits are undone by hand (`git branch -m` back, `git reset
@@ -515,9 +515,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
    A `YES` does not clear its `Consider` items: reproduce each one, then fix it, ticket it or dismiss it with a reason (t-79bf; class: verdict-read-not-considers; id: P-066).
 
-   **Log the subagent run.** Immediately after the reviewer subagent completes (and after `gate-snapshot.sh post`, step 7), run
-   `subagent-log.sh --agent-id <id> --agent-type reviewer <cost flags, (5)>` (bare — it's on PATH, same as
-   `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
+   **Log the subagent run.** Immediately after the reviewer subagent completes (and after `sprint gate-snapshot post`, step 7), run
+   `sprint subagent-log --agent-id <id> --agent-type reviewer <cost flags, (5)>`. This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
    evaluator's own log call (step 3) — required now that no `SubagentStop` hook does this
    automatically. `_gate_eval_report` (step 3) matches by timestamp only, not `agent_type` or
    `agent_id`, so this reviewer entry isn't what satisfies that specific gate — the evaluator's
@@ -539,7 +538,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    the evaluator subagent, stop closeout and report the blocker.
 
    **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only but for the events it writes). It first runs the cap check (t-c990): a `tools/caps.tsv` file this branch changed that is over its cap refuses here and again at `sprint complete` (and writes `budget.exceeded` on each run); one the branch did not change, and `LEARNINGS.md` always, only warn. It runs
-   `evidence.sh check` at HEAD and exits 1, naming each log and its fix, unless every top-level log in `.tickets/<id>/evidence/` is
+   `sprint evidence check` at HEAD and exits 1, naming each log and its fix, unless every top-level log in `.tickets/<id>/evidence/` is
    `fresh` with `exit=0` or `covered`. On exit 1, do not dispatch: re-stamp or fix what it names, and move a log kept for history or
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
    or failing log otherwise costs a failed evaluator run and a point of `eval_fail_count` (t-f889).
@@ -547,10 +546,10 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    board-spec log (`tests/run-board-spec.sh` with plain flags) and a mutation sweep whose `--map` tests are all `go -C tools/canon-go test` with plain arguments
    (package paths, `-v`, `-race`, `-short`, `-count`, `-timeout`, `-run NAME`), a suite that none of that command's sources names, directly or through
    another suite, leaves the log `fresh`, and the line says which files were outside its scope. A deleted suite, a mapped file, a source that builds a
-   `tests/` path at run time (`evidence.sh scope-audit` lists it) and any other argument keep the log stale. The full suite,
+   `tests/` path at run time (`sprint evidence scope-audit` lists it) and any other argument keep the log stale. The full suite,
    pre-gate and every other command stay stale on any change, and the evaluator is still dispatched on every tracked change to the graded head.
 
-   **Manual QA (t-aa24).** A user's by-hand testing is evidence the evaluator can only see if it is recorded: `.tickets/<id>/evidence/manual-qa.md`, written by `sprint manual-qa <id> --by "<who>" --step "<what>|pass" [--step "<what>|fail|n/a" ...]` (header: `HEAD <sha> <UTC time>`, `By: <who> on <machine>`, one table row per step; it refuses an empty record, a bad result, more than 60 steps, a symlink). `sprint check-evidence` lists it (fresh by `evidence.sh`'s own rule for logs, which ignores the evidence-neutral files, `evidence.sh neutral` lists them; stale, failing or malformed is refused) and refuses to clear the dispatch while a criterion tagged `[manual]` in `acceptance.md ## Criteria` has no fresh record, printing the criterion and the command: ask the user what they tested and what they saw, record it, and re-run the pre-flight. Paste the pre-flight's output into the evaluator's prompt so it never depends on memory that a record exists; the evaluator reads it as the user's own report (`eval.md` step 5b), grades the `[manual]` criteria it covers from it plus one cheap spot check, and says so in Findings. A criterion or a Test Plan line that a reviewer's fix changes is amended in `acceptance.md` in the same step: the evaluator grades what is written (t-154b: correct code failed on a criterion nobody updated, a second 6.7-minute run).
+   **Manual QA (t-aa24).** A user's by-hand testing is evidence the evaluator can only see if it is recorded: `.tickets/<id>/evidence/manual-qa.md`, written by `sprint manual-qa <id> --by "<who>" --step "<what>|pass" [--step "<what>|fail|n/a" ...]` (header: `HEAD <sha> <UTC time>`, `By: <who> on <machine>`, one table row per step; it refuses an empty record, a bad result, more than 60 steps, a symlink). `sprint check-evidence` lists it (fresh by `evidence.sh`'s own rule for logs, which ignores the evidence-neutral files, `sprint evidence neutral` lists them; stale, failing or malformed is refused) and refuses to clear the dispatch while a criterion tagged `[manual]` in `acceptance.md ## Criteria` has no fresh record, printing the criterion and the command: ask the user what they tested and what they saw, record it, and re-run the pre-flight. Paste the pre-flight's output into the evaluator's prompt so it never depends on memory that a record exists; the evaluator reads it as the user's own report (`eval.md` step 5b), grades the `[manual]` criteria it covers from it plus one cheap spot check, and says so in Findings. A criterion or a Test Plan line that a reviewer's fix changes is amended in `acceptance.md` in the same step: the evaluator grades what is written (t-154b: correct code failed on a criterion nobody updated, a second 6.7-minute run).
 
    **Retry budget.** Before dispatching, read `eval_fail_count` from `.tickets/<id>/ticket.md`
    (absent on tickets predating this field means 0). If it is already 3, do not dispatch
@@ -594,7 +593,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    (`verdict: pass —`, bold, a heading) is refused, exit 1, with the count unchanged: ask the same evaluator to fix only that line
    (t-c723).
 
-   **Log the subagent run.** Immediately after the evaluator subagent completes (and after `gate-snapshot.sh post`, step 7), read the
+   **Log the subagent run.** Immediately after the evaluator subagent completes (and after `sprint gate-snapshot post`, step 7), read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
    trusting it, verify it's genuine:** run `date +%s` yourself and diff against the run-id's
    embedded epoch (the number before the `-`). **What this measures (t-a29b):** `eval.md` step 8
@@ -611,8 +610,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    plausible-looking fabrication too, which the after-the-fact ±60min jsonl-window check below
    cannot; the 300s threshold value itself is unchanged by t-a29b, only what it measures). Once
    verified, run
-   `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator <cost flags, (5)>` (bare — it's on
-   PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
+   `sprint subagent-log --agent-id <evaluator-run-id> --agent-type evaluator <cost flags, (5)>`. `sprint complete`'s close gate (`_gate_eval_report`)
    hard-fails if `.claude/subagent-runs.jsonl` doesn't exist, or exists but has no entry within
    ±60 minutes of that `evaluator-run-id` — this CLI call is what satisfies that check now that
    no hook does it automatically. Skipping it risks a confusing close-time failure on an
@@ -662,9 +660,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    <id>`. It prints `skip: <reason>` (no Second eval model in Admin > Model tiers for the agent: Off is the default; `Second eval: off` on
    the Sign-off line; not high-risk without `Second eval: on`), or the model to use: never the Evaluator's (Admin refuses that pick) and
    never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more exactly as the binding
-   evaluator (`gate-snapshot.sh pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
+   evaluator (`sprint gate-snapshot pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
    file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is `.tickets/<id>/eval-report-2.md` (eval.md: a named report file replaces `eval-report.md`
-   everywhere, so the binding report and its run-id are never touched); then `gate-snapshot.sh post …` and `subagent-log.sh --agent-id
+   everywhere, so the binding report and its run-id are never touched); then `sprint gate-snapshot post …` and `sprint subagent-log --agent-id
    <its run-id> --agent-type evaluator2` with the cost flags. Run `sprint eval-compare <id>`: it lists each Criteria or Test Plan row whose
    grade differs (or that only one report has) and ends `Disagreements: <n>`. Show every difference to the user, who decides (fix it, or
    keep the binding grade with a reason); a disagreement never fails the close by itself. Record `| second-eval | ran | <model>;

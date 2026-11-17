@@ -122,7 +122,7 @@ gate_scope_guard() {
           echo "  This scope was made by an older canon: until it clears, commands that act on your registered projects are blocked unless HOME and CANON_HOME point inside it (t-b7df)."
           echo "  This is not a fault in your install."
         fi
-        echo "  It clears when the gate ends (gate-snapshot.sh post), or on its own after ${ttl}s if the gate crashed."
+        echo "  It clears when the gate ends (sprint gate-snapshot post), or on its own after ${ttl}s if the gate crashed."
       fi
     } >&2
     return 1
