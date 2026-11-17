@@ -45,6 +45,24 @@ func TestFormatHeadlessResult(t *testing.T) {
 	}
 }
 
+// Protects tools/gate-cases.sh replay (t-b809): its rows' tokens, duration_ms and cost_usd come from this line. The
+// first input is a real `claude -p --output-format json` reply (2026-11-17), trimmed to the fields that matter.
+func TestFormatHeadlessUsage(t *testing.T) {
+	real := `{"duration_ms":1513,"total_cost_usd":0.0030145700000000003,"usage":{"input_tokens":2,"output_tokens":4,"cache_read_input_tokens":11457,"cache_creation_input_tokens":14489},"modelUsage":{"claude-haiku-5-5":{"inputTokens":2,"outputTokens":4,"cacheReadInputTokens":11457,"cacheCreationInputTokens":14489,"costUSD":0.0030145700000000003}},"is_error":false,"result":"ok"}`
+	for _, tc := range []struct{ name, input, want string }{
+		{"real reply", real, "25952\t1513\t0.0030"},
+		{"two models add up", `{"duration_ms":10,"total_cost_usd":1.5,"modelUsage":{"a":{"inputTokens":1,"outputTokens":2,"cacheReadInputTokens":3,"cacheCreationInputTokens":4},"b":{"inputTokens":10,"outputTokens":20,"cacheReadInputTokens":30,"cacheCreationInputTokens":40}}}`, "110\t10\t1.5000"},
+		{"no modelUsage", `{"duration_ms":10,"total_cost_usd":0.1,"usage":{"input_tokens":5}}`, "PARSE_ERROR\t\t"},
+		{"no duration", `{"total_cost_usd":0.1,"modelUsage":{"a":{"inputTokens":1}}}`, "PARSE_ERROR\t\t"},
+		{"no cost", `{"duration_ms":10,"modelUsage":{"a":{"inputTokens":1}}}`, "PARSE_ERROR\t\t"},
+		{"not JSON", `not json`, "PARSE_ERROR\t\t"},
+	} {
+		if got := formatHeadlessUsage([]byte(tc.input)); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
 // Protects sprint-headless-eval --allowed-tools-file.
 func TestJSONStrings(t *testing.T) {
 	dir := t.TempDir()
