@@ -6425,7 +6425,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('t-10ac: a Claude row leads with the Claude mark in its orange in both themes; another agent keeps its lettered tile', async ({ page }) => {
+    test('t-10ac, t-4358: a Claude row leads with the Claude mark in its orange in both themes; a Copilot row with its own mark; Pi keeps its lettered tile', async ({ page }) => {
       await openShell(page, stateRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       const claude = page.locator('#ag-list .ag-row', { hasText: 't-ccc3' }).locator('.ag-i svg.ag-mk-claude path');
@@ -6435,7 +6435,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       const copilot = page.locator('#ag-list .ag-row', { hasText: XID });
       await expect(copilot.locator('svg.ag-mk-claude')).toHaveCount(0);   // the Copilot row has no Claude mark ...
-      await expect(copilot.locator('.ag-badge')).toHaveText('C');         // ... it keeps its lettered tile
+      // t-4358: ... it leads with its own mark (canon's glyph, not GitHub's mascot), not the lettered tile, sized like Claude's, in both themes
+      await expect(copilot.locator('.ag-i svg.ag-mk-copilot')).toHaveCount(1);
+      await expect(copilot.locator('.ag-badge')).toHaveCount(0);
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        expect(await copilot.locator('svg.ag-mk-copilot rect').evaluate(r => r.getAttribute('fill')), `the Copilot tile, ${theme}`).toBe('#8957e5');
+        const box = sel => page.locator(sel).first().evaluate(el => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
+        expect(await box('#ag-list svg.ag-mk-copilot'), `same box as the Claude mark, ${theme}`).toEqual(await box('#ag-list svg.ag-mk-claude'));
+      }
+      expect(await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).agentMark('pi'))).toContain('ag-badge');   // Pi keeps its tile
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -7706,7 +7715,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(claude.locator('.scr-id[aria-label="Scratch session"] svg.ag-mk-claude')).toHaveCount(1);
       await expect(claude.locator('.scr-id svg.scr-badge')).toHaveCount(1);
       const cop = icon('Copilot scratch');
-      await expect(cop.locator('.scr-id .ag-badge')).toHaveText('C');
+      await expect(cop.locator('.scr-id svg.ag-mk-copilot')).toHaveCount(1);   // t-4358: its own mark, not the "C" tile
+      await expect(cop.locator('.scr-id .ag-badge')).toHaveCount(0);
       await expect(cop.locator('.scr-id svg.scr-badge')).toHaveCount(1);
       await expect(page.locator('#ag-list .ag-row').filter({ hasText: 'Terminal' }).locator('.ag-i svg.scr-ico[aria-label="Terminal"]')).toHaveCount(1);
       const tk = page.locator('#ag-list .ag-row').filter({ hasText: 't-d4k4' }).locator('.ag-i');
