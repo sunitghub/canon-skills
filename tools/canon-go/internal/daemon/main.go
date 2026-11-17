@@ -1180,6 +1180,8 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Shared        bool          `json:"shared"`             // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
 		Meter         *sessionMeter `json:"meter,omitempty"`    // t-d00c: cache %, LLM/tool calls, sub-agents from the claude transcript
 		SuUntil       string        `json:"su_until,omitempty"` // t-a4f8: a Terminal whose full shell (su) is on: when it ends, RFC 3339
+		Model         string        `json:"model,omitempty"`    // t-45b1: the session's own model (the Plan pick at spawn, the Build pick after the switch)
+		Stage         string        `json:"stage,omitempty"`    // t-45b1: plan | switching | build (empty for pi and terminal)
 		convID        string        // t-b1c8: never sent; the id meterFor reads by
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
@@ -1192,6 +1194,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Session: se.sid, Ticket: se.ticket, ProjectRoot: se.projectRoot,
 			Cwd: se.cwd, Agent: se.agent, Status: se.status,
 			Started: se.started.UTC().Format(time.RFC3339), convID: se.convID,
+			Model: se.model, Stage: se.stage,
 		}
 		info.State, info.StateSecs, info.IdleSecs, info.Signal = sessionStateLocked(se, time.Now())
 		info.Title = se.title

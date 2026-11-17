@@ -9592,3 +9592,32 @@ func TestTicketStatusFallsBackWhenTheWorktreeCopyHasNone(t *testing.T) {
 		t.Fatalf("got %q, want main's in_progress", got)
 	}
 }
+
+// t-45b1: the /sessions row carries the session's own model and stage, so the Cockpit pane header can show which model runs and
+// whether the Build switch happened. Prod path: the board's pane header (board-cockpit.js postPaneInfo) for every Cockpit session.
+func TestSessionsRowCarriesModelAndStage(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	s, se, _, base := buildSwitchSessionAs(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "")
+	row := func() map[string]any {
+		t.Helper()
+		r, err := http.Get(base + "/sessions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var rows []map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&rows); err != nil || len(rows) != 1 {
+			t.Fatalf("sessions: %v %v", rows, err)
+		}
+		return rows[0]
+	}
+	if got := row(); got["model"] != "haiku" || got["stage"] != "plan" {
+		t.Fatalf("before the switch: model %v stage %v, want haiku plan", got["model"], got["stage"])
+	}
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if got := row(); got["model"] != "sonnet" || got["stage"] != "build" {
+		t.Fatalf("after the switch: model %v stage %v, want sonnet build", got["model"], got["stage"])
+	}
+}

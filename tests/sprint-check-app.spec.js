@@ -11838,7 +11838,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
           window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'force-end'}, '*');
           setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${forceEndDelayMs});
         } else if(d.type === 'pane-info'){
-          window.__paneInfo = { meter: d.meter, cwd: d.cwd };   // t-1917: what the board sends for the pane header
+          window.__paneInfo = { info: d.info, cwd: d.cwd };   // t-1917, t-45b1: what the board sends for the pane header
         }
       });
     </script></body></html>`;
@@ -12569,7 +12569,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await page.route('**/api/v1/sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: v1SessionsBody(rows) }));
       const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' };
-      rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook', meter: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 } }];
+      rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook', model: 'claude-sonnet-5-5', stage: 'build', meter: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 } }];
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       const chip = page.locator('#ck-state-chip'), reaper = page.locator('#ck-reaper');
       const paneInfo = () => page.frameLocator('#ck-iframe').locator('body').evaluate(() => window.__paneInfo || null);
@@ -12579,7 +12579,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toBeHidden();   // t-fe82: working lives in the Agents sidebar
       // t-d00c, t-1917: the ambient token meter and the session's folder go to the pane header (the page), not the bar
-      await expect.poll(paneInfo).toEqual({ meter: '87% cache · 42 calls · 130 tools · 2 sub', cwd: PROJECT_ROOT });
+      // t-45b1: each field on its own (the page labels them), the session's model and stage included
+      await expect.poll(paneInfo).toEqual({ info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 }, cwd: PROJECT_ROOT });
       await expect(page.locator('#ck-meter')).toHaveCount(0);
       // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto save"; the sentence is the tooltip.
       await expect(reaper).toHaveText('Auto save');
@@ -12604,7 +12605,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toBeHidden();
       await expect(reaper).toBeHidden();
-      await expect.poll(paneInfo).toMatchObject({ meter: '' });   // t-d00c: no meter on a row without one, not "0%"
+      await expect.poll(paneInfo).toEqual({ info: { model: '', stage: '' }, cwd: PROJECT_ROOT });   // t-d00c, t-45b1: no meter fields on a row without one (not "0%"), no model on an old daemon
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {
@@ -13794,8 +13795,18 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(page.locator('#killBtn')).toBeHidden();
       await expect(page.locator('.status')).toBeHidden();
       await expect(page.locator('#paneMeter')).toBeHidden();   // nothing sent yet: no empty chip
-      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '87% cache · 42 calls · 130 tools', cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
-      await expect(page.locator('#paneMeter')).toHaveText('87% cache · 42 calls · 130 tools');
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
+      // t-45b1: labelled fields on row 1 (Subagents shown at 0, the model by its name), the folder alone on row 2
+      await expect(page.locator('#paneMeter')).toHaveText('Model Sonnet 5.5 · buildCache 87%LLM calls 42Tool calls 130Subagents 0');
+      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(5);
+      const rows2 = await page.evaluate(() => { const m = document.getElementById('paneMeter').getBoundingClientRect(), c = document.getElementById('paneCwd').getBoundingClientRect(), h = document.querySelector('header').getBoundingClientRect(); return { cwdBelow: c.top >= m.bottom - 1, cwdLeft: Math.abs(c.left - h.left) < 20, cwdWide: c.width > h.width * 0.8 }; });
+      expect(rows2).toEqual({ cwdBelow: true, cwdLeft: true, cwdWide: true });
+      // before the first answer: the model and stage only; a pi session (no model): the counts only; never "undefined"
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-haiku-5.5', stage: 'plan' }, cwd: '/tmp/proj' }, '*'));
+      await expect(page.locator('#paneMeter')).toHaveText('Model Haiku 5.5 · plan');
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: '', stage: '', cache_pct: 50, llm_calls: 3, tool_calls: 4, sub_agents: 1 }, cwd: '/tmp/proj' }, '*'));
+      await expect(page.locator('#paneMeter')).toHaveText('Cache 50%LLM calls 3Tool calls 4Subagents 1');
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
       await expect(page.locator('#paneCwdText')).toHaveText('/tmp/proj <img src=x onerror=1>');   // text, never markup
       expect(await page.locator('#paneMeter').evaluate(el => getComputedStyle(el).color), 'the meter is --dim, not the faint grey').toBe('rgb(139, 152, 169)');
       expect(await page.locator('#startBtn').evaluate(el => getComputedStyle(el).whiteSpace), 'Run agent stays on one line').toBe('nowrap');
@@ -13803,18 +13814,18 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       // t-d0ed: a path that fits is never cut (no ellipsis); one that does not fit is clipped at the START, keeping the folder name,
       // with the whole path as the tooltip. (A 33-character path lost its last letter to the old 34ch cap.)
       const fits = '/Users/sunitjoshi/Developer/canon';
-      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), fits);
+      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: null, cwd: c }, '*'), fits);
       await expect(page.locator('#paneCwdText')).toHaveText(fits);
       expect(await page.locator('#paneCwd').evaluate(el => el.scrollWidth <= el.clientWidth), 'a short path is not clipped').toBe(true);
       expect(await page.locator('#paneCwd').evaluate(el => getComputedStyle(el).color), 'the folder is brighter than the meter').toBe('rgb(230, 237, 243)');   // --text; the meter is --dim
       const long = '/Users/sunitjoshi/' + 'a-very-long-folder-name/'.repeat(12) + 'canon-site';
       await page.setViewportSize({ width: 700, height: 600 });
-      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: c }, '*'), long);
+      await page.evaluate(c => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: null, cwd: c }, '*'), long);
       await expect(page.locator('#paneCwd')).toHaveAttribute('title', long);
       const clip = await page.locator('#paneCwd').evaluate(el => ({ dir: getComputedStyle(el).direction, inner: getComputedStyle(el.firstElementChild).direction, over: el.scrollWidth > el.clientWidth, ell: getComputedStyle(el).textOverflow }));
       expect(clip).toEqual({ dir: 'rtl', inner: 'ltr', over: true, ell: 'ellipsis' });   // the end of the path is what stays visible
       await page.setViewportSize({ width: 1280, height: 720 });
-      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', meter: '', cwd: '' }, '*'));
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: null, cwd: '' }, '*'));
       await expect(page.locator('#paneMeter')).toBeHidden();   // an empty meter hides, as before a start
       // A refused stream shows in the terminal, since the state text is hidden here.
       await page.route('**/session/*/stream', r => r.fulfill({ status: 500, body: 'no' }));

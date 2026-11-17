@@ -10,7 +10,7 @@
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--ui)}
   #app{display:flex;flex-direction:column;height:100vh}
-  header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border)}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border)}
   .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
   .brand .sq{width:18px;height:18px;border-radius:5px;background:var(--accent);display:inline-block}
   .start{display:flex;align-items:center;gap:8px;margin-left:6px}
@@ -67,7 +67,10 @@
   .paneinfo{font-family:var(--mono);font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   /* t-d0ed: no width cap (a 33-character path lost its last letter to one); when the pane is too narrow the START of the path is clipped,
      so the folder name stays: the span is rtl and its text is an ltr run (bdo), or the leading slash would jump to the end. */
-  .paneinfo.cwd{flex:0 1 auto;margin-left:10px;direction:rtl;text-align:left;color:var(--text)}   /* the folder is the thing to read; the meter beside it is a step softer */
+  .paneinfo.cwd{flex:1 1 100%;order:99;margin-left:0;direction:rtl;text-align:left;color:var(--text)}   /* t-45b1: the folder is the header's second row, full width, cut from the left */
+  .paneinfo .pi-f{margin-right:14px}
+  .paneinfo .pi-k{color:var(--dim)}
+  .paneinfo .pi-f b{font-weight:600;color:var(--text)}
   /* t-74d6: stale-daemon banner — the board detects a version-drifted daemon
      and relays it in; the Restart button calls the token-gated /shutdown. */
   .stale-banner{display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -117,6 +120,14 @@
 
 <script src="/web/vendor/xterm.js" integrity="sha384-f/1U6Z9wM4D71a5eRXEZnyOTMOvjqxr2XLwh+Go1OvIl3L3tOcvUrzudnhbECwl4"></script>
 <script src="/web/vendor/xterm-addon-fit.js" integrity="sha384-txoiwu4RR2GD3qySbaj+BbzibkLbSJRcfqGYMu6z1EqHil4A2dyBiBW5dlacG6OR"></script>
+<script>
+// t-45b1: a model id as people say it (claude-sonnet-5-5 or claude-sonnet-5.5 -> Sonnet 5.5); an alias or another vendor's id stays as written.
+function modelName(id){
+  var m = /^claude-([a-z]+)-(\d+)(?:[-.](\d+))?(?:-\d{8})?$/.exec(String(id));
+  if(!m) return String(id);
+  return m[1].charAt(0).toUpperCase() + m[1].slice(1) + " " + m[2] + (m[3] ? "." + m[3] : "");
+}
+</script>
 <script>
 (function(){
   "use strict";
@@ -438,8 +449,19 @@ function canonPrefixKeys(emit) {
         .catch(function(){ try{ toParent({ source: "canon-cockpit", type: "end-scratch-failed", reason: "Couldn't reach the daemon." }); }catch(e){} });
     } else if(d.type === "pane-info"){
       // t-1917: the board owns the daemon row and sends the meter and the session's folder; the text is set, never parsed as markup.
-      var pm = document.getElementById("paneMeter"), pc = document.getElementById("paneCwd");
-      pm.textContent = typeof d.meter === "string" ? d.meter : ""; pm.hidden = !pm.textContent;
+      // t-45b1: row 1 is labelled fields (model and stage, then the meter), built with text nodes only; row 2 is the folder.
+      var pm = document.getElementById("paneMeter"), pc = document.getElementById("paneCwd"), info = d.info && typeof d.info === "object" ? d.info : null;
+      pm.textContent = "";
+      var add = function(k, v){ var f = document.createElement("span"); f.className = "pi-f"; var kk = document.createElement("span"); kk.className = "pi-k"; kk.textContent = k + " "; var b = document.createElement("b"); b.textContent = v; f.appendChild(kk); f.appendChild(b); pm.appendChild(f); };
+      var num = function(v){ return typeof v === "number" && isFinite(v) ? String(v) : null; };
+      if(info){
+        if(typeof info.model === "string" && info.model) add("Model", modelName(info.model) + (typeof info.stage === "string" && info.stage ? " \u00b7 " + info.stage : ""));
+        if(num(info.cache_pct) !== null) add("Cache", num(info.cache_pct) + "%");
+        if(num(info.llm_calls) !== null) add("LLM calls", num(info.llm_calls));
+        if(num(info.tool_calls) !== null) add("Tool calls", num(info.tool_calls));
+        if(num(info.sub_agents) !== null) add("Subagents", num(info.sub_agents));
+      }
+      pm.hidden = !pm.childNodes.length;
       var pt = document.getElementById("paneCwdText");
       pt.textContent = typeof d.cwd === "string" ? d.cwd : ""; pc.title = pt.textContent; pc.hidden = !pt.textContent;
     } else if(d.type === "set-title"){
