@@ -137,6 +137,7 @@ out="$(STUB_HEAD="$H2" "$TKT" land "$id" < /dev/null 2>&1)" || fail "second land
 [[ "$out" != *"node_modules"* ]] || fail "land named what the worktree already has: $out"
 # t-597f: this PR head tracks .tickets/, so land keeps it out of the worktree (the main checkout's copy is the one every reader uses)
 [[ ! -e "$WT/.tickets" ]] || fail "t-597f: the land worktree has its own .tickets/ from the PR"
+assert_contains "$out" "  tests: CANON_TICKETS_DIR='$P/.tickets' (the worktree has no .tickets/)"   # true now: land kept it out
 rmdir "$P/node_modules"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
 sed -i.bak 's/^status: .*/status: closed/' "$f"

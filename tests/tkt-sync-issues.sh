@@ -56,6 +56,9 @@ mklist 11:issue:canon,bug,P1 12:issue:canon 13:issue:canon 14:issue:canon 15:pr:
 linked="$("$TKT" create "Linked one")"
 awk -v g="github: ACME/app#13" '/^---$/ && ++n == 2 { print g } { print }' ".tickets/$linked/ticket.md" > "$stub/t" && mv "$stub/t" ".tickets/$linked/ticket.md"
 snap() { find .tickets -type f -print0 | sort -z | xargs -0 cksum; }
+# t-59ab (reviewer): a ticket linked to the same number in ANOTHER repo does not count: #11 is still made below
+other="$("$TKT" create "Other repo's eleven")"
+awk -v g="github: otherorg/app#11" '/^---$/ && ++n == 2 { print g } { print }' ".tickets/$other/ticket.md" > "$stub/t" && mv "$stub/t" ".tickets/$other/ticket.md"
 
 # --dry-run: says what it would create, writes nothing.
 before="$(snap)"; : > "$STUB_LOG"

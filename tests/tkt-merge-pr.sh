@@ -108,6 +108,10 @@ refuses() {
 }
 
 # Refusals, one check each.
+# t-59ab (reviewer): case is ignored, the name is not: a github: line for another repo still finds no PR here
+sed -i.bak 's|^github: Acme/App#21$|github: other/app#21|' "$f"; rm -f "$f.bak"
+refuses "a github: line for another repo" "line to find its PR by" -- --yes
+sed -i.bak 's|^github: other/app#21$|github: Acme/App#21|' "$f"; rm -f "$f.bak"; grep -q '^github: Acme/App#21$' "$f" || fail "setup: github line not restored"
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 refuses "a failing verdict" "no passing evaluator verdict" -- --yes
 [[ ! -e ".tickets/$id/github.md" ]] || fail "a refusal before the PR was read wrote the GitHub trail (t-1dec)"
