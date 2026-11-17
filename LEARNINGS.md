@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-17-2026 05:20
+learnings-sweep last run: 11-17-2026 16:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-17 | [t-b809](.tickets/t-b809/learnings.md) | A replay trial must score catches by hand against "a real defect later fixed", not the original report's wording: today's gates found real bugs (t-f7e6's unguarded land markers, t-788f's missing acceptance.md) that no catch regex matched, while a passing criteria row matched one by accident | UNPROMOTED |
 | 2026-11-17 | [t-7ef7](.tickets/t-7ef7/learnings.md) | A cloud session cannot watch its own workflow run, so a CI ticket built there must be landed and graded where the run is visible; and a CI step must match the repo as it is: npm ci needs a committed lockfile, which canon gitignores | UNPROMOTED |
 | 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | UNPROMOTED |
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | UNPROMOTED |
