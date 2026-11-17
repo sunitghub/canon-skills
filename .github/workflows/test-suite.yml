@@ -30,8 +30,10 @@ jobs:
         with:
           node-version: 22.23.5
           package-manager-cache: false
+      # package-lock.json is gitignored, so npm ci has nothing to install from; nothing pins the versions here either, so no package
+      # install script runs (--ignore-scripts). The job is read-only and secret-free.
       - name: Install npm dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund --ignore-scripts
       - name: Run scripts/test.sh
         continue-on-error: true
         run: |

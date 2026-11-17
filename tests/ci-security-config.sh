@@ -133,6 +133,8 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
     } | sed "s/^/$name: /" || true
   done
   case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { grep -qE 'run:.*scripts/test\.sh|^[[:space:]]+bash scripts/test\.sh' "$wf" || echo "test-suite.yml: does not run scripts/test.sh"; grep -qE '^[[:space:]]+pull_request:' "$wf" || echo "test-suite.yml: not run on pull_request"; } ;; esac
+  # the lockfile is gitignored: npm ci cannot run, and an unpinned install never runs package scripts (t-7ef7)
+  case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { ! grep -qE '^[[:space:]]+run:[[:space:]]*npm ci' "$wf" || echo "test-suite.yml: npm ci with a gitignored package-lock.json"; ! grep -qE '^[[:space:]]+run:[[:space:]]*npm (install|i)( |$)' "$wf" || grep -qE '^[[:space:]]+run:[[:space:]]*npm install .*--ignore-scripts' "$wf" || echo "test-suite.yml: npm install runs package scripts"; } ;; esac
   # two scheduled workflows never share a minute (t-93ff: a different minute from govulncheck's)
   cat "$r/$WFD"/*.yml "$r/$WFD"/*.yaml 2>/dev/null | grep -E '^[[:space:]]+- cron:' | sort | uniq -d | sed 's/^ */cron shared by two workflows: /' || true
   [[ ! -e "$r/.github/dependabot.yml" && ! -e "$r/.github/dependabot.yaml" ]] || echo "dependabot config present"
@@ -186,6 +188,8 @@ plant "$S: top-level permissions not the block form" $S 's/^permissions:$/permis
 plant "$S: a step failure is swallowed" $S 's/bash scripts\/test\.sh --jobs 4/bash scripts\/test.sh --jobs 4 || true/'
 plant "$S: not advisory" $S '/continue-on-error:/d'
 plant "$S: checkout keeps its credentials" $S '/persist-credentials:/d'
+plant "$S: npm ci with a gitignored package-lock.json" $S 's/run: npm install --no-audit --no-fund --ignore-scripts/run: npm ci/'
+plant "$S: npm install runs package scripts" $S 's/ --ignore-scripts//'
 plant "$S: has a schedule" $S 's/^  workflow_dispatch:/  workflow_dispatch:\n  schedule:\n    - cron: "5 5 * * 1"/'
 plant "$S: a \${{ }} expression present" $S 's/^(          bash scripts\/test\.sh.*)$/\1 ${{ github.ref }}/'
 plant "$S: pull_request_target present" $S 's/^  pull_request:/  pull_request_target:/'
