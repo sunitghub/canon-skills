@@ -205,7 +205,7 @@ REPO="$WORK/repo"; mkdir -p "$REPO"; git -C "$REPO" init -q; git -C "$REPO" conf
 printf 'a\n' > "$REPO/x.txt"; git -C "$REPO" add x.txt; git -C "$REPO" commit -qm base; BASE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 printf 'b\n' > "$REPO/x.txt"; git -C "$REPO" commit -qam graded; REF_SHA="$(git -C "$REPO" rev-parse HEAD)"
 printf 'c\n' > "$REPO/x.txt"; git -C "$REPO" commit -qam fix; FIX_SHA="$(git -C "$REPO" rev-parse HEAD)"
-export GATE_CASES_DIR="$REPO/tests/gate-cases"
+export GATE_CASES_DIR="$REPO/tests/gate-cases" CANON_GATE_SCOPE_DIR="$WORK/scope"   # the registry replay registers in, as a real close's
 mkcase() {  # mkcase <slug> <extra frontmatter lines...>: a replay case on the scratch repo
   local s="$1"; shift; mkdir -p "$GATE_CASES_DIR/$s/state/ticket"
   { printf -- '---\ngate: evaluator\nkind: replay\nmiss: a FIFO .gitignore blocks forever\nticket: t-abcd\nbase: %s\n' "$BASE_SHA"
@@ -223,7 +223,8 @@ if [[ "$agent" == probe ]]; then exit "${STUB_AUTH_RC:-0}"; fi
 n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
 { printf 'arg=%s\n' "${args[@]}"; printf 'pwd=%s\nhome=%s\ncanon_home=%s\ntmpdir=%s\nxdg=%s\nscope=%s\ntickets=%s\npid=%s\n' "$PWD" "$HOME" "$CANON_HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$CANON_GATE_SCOPE_DIR" "$CANON_TICKETS_DIR" "$$"
   [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"
-  cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'; } > "$log"
+  cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'
+  echo "remotes=$(git remote | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
 [[ -z "${STUB_DIRTY:-}" ]] || : > "$STUB_DIRTY"
 case "${STUB_MODE:-ok}" in
   sleep) exec sleep 60 ;;
@@ -256,13 +257,13 @@ assert_contains "$(row 2)" '"gate":"evaluator","model":"claude-sonnet-5-5","verd
 c1="$STUB/calls/1"
 assert_grep "^arg=canon-reviewer$" "$c1"; assert_grep "^arg=claude-sonnet-5-5$" "$c1"; assert_grep "^arg=dontAsk$" "$c1"; assert_grep "^arg=Write$" "$c1"; assert_grep "^arg=Edit$" "$c1"
 assert_grep "^arg=Bash$" "$c1"; assert_grep "^arg=canon-evaluator$" "$STUB/calls/2"
-assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^agents=linked$" "$c1"
-for k in canon_home tmpdir xdg scope; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "$TMPDIR"/gate-replay.* ]] || fail "replay: $k was not pinned to scratch: $v"; done
+assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^remotes=$" "$c1"; assert_grep "^gitdir=\.git$" "$c1"; assert_grep "^agents=linked$" "$c1"
+for k in canon_home tmpdir xdg; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "$TMPDIR"/gate-replay.* ]] || fail "replay: $k was not pinned to scratch: $v"; done
 [[ "$(sed -n 's/^pwd=//p' "$c1")" == "$TMPDIR"/gate-replay.*/wt ]] || fail "replay: the gate did not run in the scratch worktree: $(sed -n 's/^pwd=//p' "$c1")"
 grep -q "^arg=.*Base ref: \`$BASE_SHA\`" "$c1" || grep -q "Base ref: \`$BASE_SHA\`" "$c1" || fail "replay: the prompt does not name the base"
 grep -q "{{" "$c1" && fail "replay: a prompt placeholder was left unfilled"
 assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; assert_eq "$REPO_STATUS" "$(git -C "$REPO" status --porcelain)"
-[[ -z "$(ls -A "$TMPDIR")" ]] || fail "replay left scratch behind: $(ls -A "$TMPDIR")"
+[[ -z "$(ls -A "$TMPDIR")" && -z "$(ls -A "$WORK/scope")" ]] || fail "replay left scratch or a scope record behind: $(ls -A "$TMPDIR" "$WORK/scope")"
 assert_file_exists "$WORK/r-reports/rp-split-1-reviewer.md"
 # a reviewer finding only under Noted is not a catch; an evaluator pass that mentions it is not a catch; a fail that names it is
 reset

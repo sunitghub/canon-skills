@@ -253,7 +253,7 @@ replay_call() {
   # HOME stays real so claude keeps its login; canon's own state, temp and config go to scratch. A live gate-scope record (made in
   # cmd_replay, as gate-snapshot.sh pre does at a real close) makes canon update, skills.sh and uninstall refuse the real home.
   # Bash is allowed as at a real close (t-b809: without it the evaluator grades everything not-run and fails a clean control).
-  ( cd "$R_WT" && exec env CANON_HOME="$R_TMP/canon-home" TMPDIR="$R_TMP/tmp" XDG_CONFIG_HOME="$R_TMP/xdg" CANON_GATE_SCOPE_DIR="$R_TMP/scope" \
+  ( cd "$R_WT" && exec env CANON_HOME="$R_TMP/canon-home" TMPDIR="$R_TMP/tmp" XDG_CONFIG_HOME="$R_TMP/xdg" \
       CANON_TICKETS_DIR="$R_WT/.tickets" claude -p "$prompt" --agent "$agent" --model "$R_MODEL" --output-format json \
       --permission-mode dontAsk --add-dir "$CANON_ROOT/skills/sprint/reference" \
       --allowedTools Bash Read Grep Glob LS --disallowedTools Write Edit NotebookEdit ) >"$out" 2>"$err" &
@@ -293,8 +293,7 @@ repo_print() { git -C "$R_ROOT" rev-parse HEAD; git -C "$R_ROOT" symbolic-ref -q
 R_TMP=""
 replay_cleanup() {
   [[ -n "$R_TMP" ]] || return 0
-  CANON_GATE_SCOPE_DIR="$R_TMP/scope" gate_scope_remove "$R_TMP/snap" || true
-  [[ ! -d "$R_TMP/wt" ]] || git -C "$R_ROOT" worktree remove --force "$R_TMP/wt" >/dev/null 2>&1 || true
+  gate_scope_remove "$R_TMP/snap" || true
   case "$R_TMP" in "${R_TMPBASE}"/gate-replay.*) rm -rf "$R_TMP" ;; esac
   R_TMP=""
 }
@@ -368,7 +367,6 @@ cmd_replay() {
   if ! claude -p "Reply with exactly: ok" --model haiku --output-format json >/dev/null 2>&1; then
     echo "gate-cases: claude -p did not answer (not logged in?); no case was run" >&2; exit 2
   fi
-  git -C "$R_ROOT" worktree prune
   source "$SCRIPT_DIR/gate-scope-lib.sh"
   R_PRINT="$(repo_print)"
   trap replay_cleanup EXIT
@@ -387,9 +385,14 @@ cmd_replay() {
         R_VERDICT=error; R_ERR="ref $ref or base $R_BASE does not resolve"; replay_row "-"; failed=1; continue
       fi
       R_TMP="$(mktemp -d "$R_TMPBASE/gate-replay.XXXXXX")"
-      mkdir -p "$R_TMP/canon-home" "$R_TMP/tmp" "$R_TMP/xdg" "$R_TMP/scope"
-      CANON_GATE_SCOPE_DIR="$R_TMP/scope" gate_scope_create "$R_TMP/snap" >/dev/null || die "could not register the gate scope in $R_TMP/scope"
-      git -C "$R_ROOT" worktree add --detach --quiet "$R_TMP/wt" "$ref"
+      mkdir -p "$R_TMP/canon-home" "$R_TMP/tmp" "$R_TMP/xdg"
+      # in the registry a real close uses (the caller's CANON_GATE_SCOPE_DIR, else /tmp's default), never one only the gate's env names:
+      # the gate could unset that variable and find no scope (t-b809 security review)
+      gate_scope_create "$R_TMP/snap" >/dev/null || die "could not register the gate scope"
+      # a separate clone (objects shared read-only, no remote), never a worktree: a gate with Bash must not reach the real .git's
+      # config, hooks or refs (t-b809 security review)
+      git clone --quiet --shared --no-checkout "$R_ROOT" "$R_TMP/wt" && git -C "$R_TMP/wt" remote remove origin \
+        && git -C "$R_TMP/wt" -c advice.detachedHead=false checkout --quiet --detach "$ref" || die "could not clone $R_ROOT at $ref"
       R_WT="$R_TMP/wt"
       mkdir -p "$R_WT/.tickets/$R_ID" "$R_WT/.claude"
       cp -R "$dir/$s/state/ticket"/. "$R_WT/.tickets/$R_ID/"

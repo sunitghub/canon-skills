@@ -8,5 +8,6 @@ This is a replay: these steps differ, and only these.
 - Do not run `sprint`, `tkt`, `evidence.sh` or `subagent-log.sh`.
 - Base ref: `{{BASE}}`. Use git read-only (diff, log, show, status); never commit, check out, reset or push.
 - You may run tests and probes as a real close does. Write only inside this worktree's untracked scratch or a fresh `mktemp -d`; any command that could touch user state runs with `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` set to a fresh `mktemp -d` in that same command. Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon. Run long commands in the foreground with a timeout and leave nothing running.
+- Do not run the full suite (`scripts/test.sh`) or the full board spec: at a real close they come from the builder's stamps, and in a replay they fail for reasons outside the diff. Run the specific tests the criteria name instead. Grade an item that needs a full run `not-run (replay)`; such an item alone never makes the verdict fail.
 
 Your reply's verdict line starts the line with `pass:` or `fail:` and a one-line summary.
