@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.67.1] - 2026-11-17
+
+- Fixed: closing a cloud ticket here (**Continue here**, `tkt land`) in a project that commits its `.tickets/` folder. The PR brought the cloud's closed copy of the ticket into the land worktree, so the card showed Done, the Cockpit showed "out on GitHub", the close read the wrong ticket, and **Finish** refused. `tkt land` now keeps `.tickets/` out of that worktree (git sparse-checkout, that worktree only), so everything there uses the main checkout's ticket and **Finish** works with no manual step (t-597f).
+- Fixed: a gate's report could land in the worktree instead of the ticket. `sprint gate-snapshot pre --role <gate>` now prints the absolute path the gate must write its report to; `sprint gate-snapshot post` and `sprint complete` stop, naming the files, if a gate wrote a stray `.tickets/` in a land worktree (t-597f).
+- Fixed: **Check & merge** (`tkt merge-pr`) said "the ticket has no github: … line" when the ticket's repo name differed from the origin's only in case (`todo-demo` vs `ToDo-Demo`). GitHub ignores case, and now so does canon; a different repo still does not match (t-59ab).
+- Note: the land worktree's sparse-checkout sets `extensions.worktreeConfig=true` in the project's git config; it is harmless and stays after **Finish**.
+
 ## [0.67.0] - 2026-11-17
 
 - Fixed: on Windows, every close step that ran a canon `.sh` tool from PowerShell (Copilot CLI's shell) opened Windows' "Select an app" dialog instead of running it. The close now runs them as `sprint` subcommands, which start Git Bash through `sprint.cmd` on any shell: `sprint pre-gate-check`, `sprint gate-snapshot pre|post`, `sprint evidence stamp|check`, `sprint subagent-log`. Each takes the same arguments and prints the same output as its script. The skills and gate docs name only these forms (t-96f1).
