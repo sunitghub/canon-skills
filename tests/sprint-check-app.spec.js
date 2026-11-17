@@ -14485,7 +14485,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
     // t-f5fa: the board's resolved presets (common.ResolvePreset): one matching FIXTURE's picks, one that changes Build, with a note
     presets: [
-      { id: 'current', name: 'Current', desc: 'What FIXTURE holds.', source: 'canon', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] },
+      { id: 'current', name: 'Current', desc: 'What FIXTURE holds.', source: 'canon', default: true, picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' } }, notes: [] },
       { id: 'eco', name: 'Economy', desc: 'Haiku builds.', source: 'canon', picks: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-haiku', copilot: 'claude-haiku-4.5' } },
         notes: ['Copilot CLI · Plan: no opus model, so claude-sonnet-5.5'] },
     ],
@@ -14548,6 +14548,24 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     for (const agent of ['claude', 'copilot']) {
       if (agent === 'copilot') await page.locator('#mt-agent').selectOption('copilot');
       for (const [step, tag] of Object.entries(want)) await expect(page.locator(`#mt-step-${step} .mt-runs`)).toHaveText(tag);
+    }
+  });
+
+  // t-b809 (user): the Preset list names the preset a fresh install equals (the board's `default`), and only that one.
+  test('Model tiers Preset list marks the default preset (t-b809)', async ({ page }) => {
+    await openModelTiers(page);
+    await expect(page.locator('#mt-preset-sel option[value="current"]')).toHaveText('Current (default)');
+    await expect(page.locator('#mt-preset-sel option[value="eco"]')).toHaveText('Economy');
+  });
+
+  // t-b809 (user): the tag is on its own line under the step name on every card, whatever the name's length, so the cards read alike.
+  test('Model tiers runs tag sits on the second line of every step card (t-b809) @webkit', async ({ page }) => {
+    await openModelTiers(page);
+    for (const step of ['plan', 'build', 'speccheck', 'reviewer', 'evaluator', 'evaluator2', 'light']) {
+      const name = await page.locator(`#mt-step-${step} .mt-card-h .setting-k`).boundingBox();
+      const tag = await page.locator(`#mt-step-${step} .mt-runs`).boundingBox();
+      expect(tag.y, step).toBeGreaterThanOrEqual(name.y + name.height - 1);
+      expect(Math.abs(tag.x - name.x), step).toBeLessThan(2);
     }
   });
 
@@ -15405,10 +15423,14 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub(sonnetHaikuRetire)) }));
       let applied = null;
       await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      // the checkers on Sonnet 5, as a registry saved before the seed moved them to 5.5 (t-b809): retiring it must move them
+      const start = JSON.parse(canonical);
+      for (const step of ['speccheck', 'reviewer', 'evaluator']) start.defaults[step].claude = 'claude-sonnet-5';
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: start })).ok()).toBe(true);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
       await page.locator('#nav-admin').click();
-      await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5');   // the seed starts on Sonnet 5
+      await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5');
       await page.locator('#mt-sources .mt-rf-all').click();
       const prop = page.locator('#mt-proposal .mt-prop');
       await expect(prop.locator('header b')).toHaveText('2 to retire');
@@ -15473,6 +15495,10 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   test('Model Tiers: Remove on the alias and default holder asks where they go; Legacy lists it and Restore returns it (t-d40b)', async ({ page }) => {
     const canonical = readCanonicalModelTiers();
     try {
+      // the checkers on Sonnet 5, as a registry saved before the seed moved them to 5.5 (t-b809): Sonnet 5 holds defaults to move
+      const start = JSON.parse(canonical);
+      for (const step of ['speccheck', 'reviewer', 'evaluator']) start.defaults[step].claude = 'claude-sonnet-5';
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: start })).ok()).toBe(true);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
       await page.locator('#nav-admin').click();
