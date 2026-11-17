@@ -16,7 +16,7 @@ use_fresh_board "$tmp/bin"
 traps="$tmp/traps"; mkdir -p "$traps"
 for t in python3 python powershell.exe; do printf '#!/usr/bin/env bash\ntouch "%s/ran-%s"\nexit 0\n' "$traps" "$t" > "$traps/$t"; done
 chmod +x "$traps"/*
-no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(ls "$traps" | grep ran-)"; }
+no_trap_ran() { ! ls "$traps"/ran-* >/dev/null 2>&1 || fail "$1: ran $(cd "$traps" && echo ran-*)"; }
 
 proj="$tmp/proj"; mkdir -p "$proj/.claude"
 settings="$proj/.claude/settings.json"
@@ -95,7 +95,7 @@ out="$(fp "$SKILLS" refresh "$flow" 2>&1)" || fail "skills refresh failed with n
   || fail "tkt create/start failed with no Python"
 flow2="$tmp/flow2"; mkdir -p "$flow2"; git -C "$flow2" init -q     # sprint start refuses while another ticket is active
 ( cd "$flow2" && fp sprint start "flow sprint" >/dev/null 2>&1 ) || fail "sprint start failed with no Python"
-[ "$(ls "$flow/.tickets" | grep -c '^t-')" -ge 1 ] && [ "$(ls "$flow2/.tickets" | grep -c '^t-')" -ge 1 ] \
+compgen -G "$flow/.tickets/t-*" >/dev/null && compgen -G "$flow2/.tickets/t-*" >/dev/null \
   || fail "tickets not created in the flow"
 no_trap_ran "end to end"
 
