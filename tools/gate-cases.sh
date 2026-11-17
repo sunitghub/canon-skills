@@ -220,7 +220,7 @@ replay_problem() {
 # (the folded report's `## Reviewer findings (advisory)`) only that section is read; without one, the `## Triage` section.
 triage_text() {
   awk -v sec="${1:-## Triage}" '
-    index($0, sec) == 1 { on = 1; keep = (sec != "## Triage"); next }
+    index($0, sec) == 1 { on = 1; keep = 0; next }   # only Act On and Consider count, in either section (criterion 2)
     on && /^## / { on = 0 }
     !on { next }
     { line = $0; sub(/^[^A-Za-z]*/, "", line) }
