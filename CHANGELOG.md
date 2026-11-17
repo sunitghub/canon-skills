@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-11-17
+
+- Fixed: on Windows, every close step that ran a canon `.sh` tool from PowerShell (Copilot CLI's shell) opened Windows' "Select an app" dialog instead of running it. The close now runs them as `sprint` subcommands, which start Git Bash through `sprint.cmd` on any shell: `sprint pre-gate-check`, `sprint gate-snapshot pre|post`, `sprint evidence stamp|check`, `sprint subagent-log`. Each takes the same arguments and prints the same output as its script. The skills and gate docs name only these forms (t-96f1).
+- New: `mutant-sweep` and `doc-check` have Windows launchers (`tools/mutant-sweep.cmd`, `tools/doc-check.cmd`), so the mutation sweep and the doc audit run from PowerShell too (t-96f1).
+- Changed: `skills add sprint` offers the permission rule `Bash(sprint subagent-log:*)` (was `Bash(subagent-log.sh:*)`), so Claude Code stops asking at each gate log. A project that already has the old rule keeps it; it no longer matches and can be removed (t-96f1).
+- Changed: Admin › Model tiers shows where **Save current as preset** saves on its own line under the Preset row, no longer squeezed beside the name box (t-96f1).
+- Known: `skills.sh list` and `pipeline.sh resolve`, which sprint start runs, still open the app picker from PowerShell; run sprint start from Git Bash on Windows until t-a844.
+
 ## [0.66.0] - 2026-11-17
 
 - New: `tools/gate-cases.sh replay` re-runs today's reviewer and evaluator (`claude -p`) on past commits whose gates missed something, in a separate clone under a live gate scope, and scores each call: caught, leak, tokens, minutes, cost. `--config split|folded` compares the two gates against one evaluator doing both jobs; `--summary` prints the table. Six cases from canon's history are in `tests/gate-cases/`. It spends money, so it never runs without `--yes` and `run` only lists it (t-b809).
