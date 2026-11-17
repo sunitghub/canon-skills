@@ -9,10 +9,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT/tests/helpers.sh"
 WFD=.github/workflows
-EXPECTED="govulncheck.yml vendored-updates.yml"
+EXPECTED="govulncheck.yml vendored-updates.yml test-suite.yml binaries-released.yml"
+ADVISORY="test-suite.yml binaries-released.yml"   # t-7ef7: the only workflows that may carry continue-on-error (advisory until a ticket makes them required)
 
 check_common() {   # check_common <workflow file>: the rules every workflow keeps
-  local wf="$1"
+  local wf="$1" adv=0
+  [[ " $ADVISORY " == *" $(basename "$wf") "* ]] && adv=1
   # every `uses:` names an action at a full 40-hex commit SHA
   grep -nE '^[[:space:]-]*uses:' "$wf" | grep -vE 'uses:[[:space:]]*[^@[:space:]]+@[0-9a-f]{40}([[:space:]]|$)' \
     | sed 's/^/action not pinned to a full SHA: /' || true
@@ -25,7 +27,9 @@ check_common() {   # check_common <workflow file>: the rules every workflow keep
   ! grep -qE 'secrets\.' "$wf" || echo "secrets referenced"
   ! grep -qE 'GITHUB_TOKEN|github\.token' "$wf" || echo "GITHUB_TOKEN used"
   ! grep -qE '@latest' "$wf" || echo "@latest present"
-  ! grep -qE 'continue-on-error|\|\|[[:space:]]*true' "$wf" || echo "a step failure is swallowed"
+  if (( adv )); then ! grep -qE '\|\|[[:space:]]*true' "$wf" || echo "a step failure is swallowed"   # advisory: continue-on-error allowed, `|| true` not
+  else ! grep -qE 'continue-on-error|\|\|[[:space:]]*true' "$wf" || echo "a step failure is swallowed"; fi
+  ! grep -qE '\$\{\{' "$wf" || echo "a \${{ }} expression present"
   ! grep -qE '(gh[[:space:]]+(issue|pr|release|api)|git[[:space:]]+(commit|push|tag))([[:space:]]|$)' "$wf" || echo "a write command (issue, PR, commit) present"
 }
 
@@ -120,6 +124,17 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
         } | sed "s/^/$name: /" ;;
     esac
   done
+  # advisory workflows: no cron, and a bare continue-on-error only on the step that runs the check
+  for name in $ADVISORY; do wf="$r/$WFD/$name"; [[ -f "$wf" ]] || continue
+    { grep -qE '^[[:space:]]+- cron:' "$wf" && echo "has a schedule"
+      grep -qE '^[[:space:]]+persist-credentials:[[:space:]]*false[[:space:]]*$' "$wf" || echo "checkout keeps its credentials"
+      grep -qE '^[[:space:]]+continue-on-error:[[:space:]]*true[[:space:]]*$' "$wf" || echo "not advisory (no continue-on-error: true)"
+      grep -qE 'GITHUB_STEP_SUMMARY' "$wf" || echo "no job summary"
+    } | sed "s/^/$name: /" || true
+  done
+  case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { grep -qE 'run:.*scripts/test\.sh|^[[:space:]]+bash scripts/test\.sh' "$wf" || echo "test-suite.yml: does not run scripts/test.sh"; grep -qE '^[[:space:]]+pull_request:' "$wf" || echo "test-suite.yml: not run on pull_request"; } ;; esac
+  # the lockfile is gitignored: npm ci cannot run, and an unpinned install never runs package scripts (t-7ef7)
+  case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { ! grep -qE '^[[:space:]]+run:[[:space:]]*npm ci' "$wf" || echo "test-suite.yml: npm ci with a gitignored package-lock.json"; ! grep -qE '^[[:space:]]+run:[[:space:]]*npm (install|i)( |$)' "$wf" || grep -qE '^[[:space:]]+run:[[:space:]]*npm install .*--ignore-scripts' "$wf" || echo "test-suite.yml: npm install runs package scripts"; } ;; esac
   # two scheduled workflows never share a minute (t-93ff: a different minute from govulncheck's)
   cat "$r/$WFD"/*.yml "$r/$WFD"/*.yaml 2>/dev/null | grep -E '^[[:space:]]+- cron:' | sort | uniq -d | sed 's/^ */cron shared by two workflows: /' || true
   [[ ! -e "$r/.github/dependabot.yml" && ! -e "$r/.github/dependabot.yaml" ]] || echo "dependabot config present"
@@ -139,7 +154,7 @@ plant() {   # plant <expected substring> <workflow | "dependabot"> <sed expressi
   local out; out="$(check "$d")"
   [[ "$out" == *"$1"* ]] || fail "ci-security-config: planting '$3' in $2 should report '$1', got: ${out:-nothing}"
 }
-G=govulncheck.yml; V=vendored-updates.yml
+G=govulncheck.yml; V=vendored-updates.yml; S=test-suite.yml; B=binaries-released.yml
 plant "$G: action not pinned to a full SHA" $G 's/(checkout@)[0-9a-f]{40}/\1v7.0.1/'
 plant "$G: no top-level permissions" $G '/^permissions:/,/^  contents: read/d'
 plant "$G: permission beyond contents: read" $G 's/^  contents: read/  contents: write/'
@@ -166,6 +181,22 @@ plant "$V: no schedule" $V '/- cron:/d'
 plant "$V: no workflow_dispatch" $V '/workflow_dispatch:/d'
 plant "cron shared by two workflows" $V 's/"41 6 \* \* 1"/"17 6 * * 1"/'
 plant "missing $WFD/$V" $V rm
+# t-7ef7: the two advisory workflows
+plant "$S: action not pinned to a full SHA" $S 's/(setup-node@)[0-9a-f]{40}/\1v7.1.0/'
+plant "$S: permission beyond contents: read" $S 's/^  contents: read/  contents: write/'
+plant "$S: top-level permissions not the block form" $S 's/^permissions:$/permissions: write-all/'
+plant "$S: a step failure is swallowed" $S 's/bash scripts\/test\.sh --jobs 4/bash scripts\/test.sh --jobs 4 || true/'
+plant "$S: not advisory" $S '/continue-on-error:/d'
+plant "$S: checkout keeps its credentials" $S '/persist-credentials:/d'
+plant "$S: npm ci with a gitignored package-lock.json" $S 's/run: npm install --no-audit --no-fund --ignore-scripts/run: npm ci/'
+plant "$S: npm install runs package scripts" $S 's/ --ignore-scripts//'
+plant "$S: has a schedule" $S 's/^  workflow_dispatch:/  workflow_dispatch:\n  schedule:\n    - cron: "5 5 * * 1"/'
+plant "$S: a \${{ }} expression present" $S 's/^(          bash scripts\/test\.sh.*)$/\1 ${{ github.ref }}/'
+plant "$S: pull_request_target present" $S 's/^  pull_request:/  pull_request_target:/'
+plant "$B: action not pinned to a full SHA" $B 's/(checkout@)[0-9a-f]{40}/\1v7.0.1/'
+plant "$B: a step failure is swallowed" $B 's/--download 2>&1/--download 2>\&1 || true/'
+plant "$B: no job summary" $B 's/GITHUB_STEP_SUMMARY/GITHUB_ENV/'
+plant "missing $WFD/$B" $B rm
 plant "dependabot config present" dependabot ""
 # the generated canon-gate template (t-04f4)
 plant "$TPL: action not pinned to a full SHA" $TPL '1,/(checkout@)[0-9a-f]{40}/s/(checkout@)[0-9a-f]{40}/\1v7.0.1/'

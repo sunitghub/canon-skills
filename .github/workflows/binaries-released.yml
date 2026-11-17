@@ -1,0 +1,39 @@
+# t-7ef7: a push to main that changes the Go source or the release manifest must come with its release
+# (scripts/check-binaries-released.sh --download). ADVISORY for now: continue-on-error, the result goes to the job summary.
+# The public mirror canon-skills carries this file too: keep it read-only, secret-free, no privileged PR trigger, no schedule.
+# Pins are updated by hand (no Dependabot config, t-8493): docs/ci-security.md.
+name: binaries-released
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/canon-go/**"
+      - "tools/cockpit-daemon.sha256"
+
+permissions:
+  contents: read
+
+jobs:
+  binaries-released:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the prebuilt binaries are released
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bash scripts/check-binaries-released.sh --download 2>&1 | tee "$RUNNER_TEMP/released.log"
+      - name: Summarize
+        if: always()
+        run: |
+          {
+            echo "## check-binaries-released.sh --download (advisory)"
+            echo '```'
+            cat "$RUNNER_TEMP/released.log" 2>/dev/null || echo "No output: the check did not run."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

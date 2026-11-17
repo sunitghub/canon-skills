@@ -1,0 +1,68 @@
+# t-7ef7: run canon's full suite (scripts/test.sh) on a Linux runner. ADVISORY for now: the suite has macOS assumptions, so the job
+# never fails the run (continue-on-error) and the job summary lists the failing suites; a later ticket makes it required.
+# The public mirror canon-skills carries this file too: keep it read-only, secret-free, no privileged PR trigger, no schedule.
+# Pins are updated by hand (no Dependabot config, t-8493): docs/ci-security.md.
+name: test-suite
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/canon-go/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.5
+          package-manager-cache: false
+      # package-lock.json is gitignored, so npm ci has nothing to install from; nothing pins the versions here either, so no package
+      # install script runs (--ignore-scripts). The job is read-only and secret-free.
+      - name: Install npm dependencies
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Run scripts/test.sh
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          bash scripts/test.sh --jobs 4 2>&1 | tee "$RUNNER_TEMP/test.log"
+      - name: Summarize failing suites
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/test.log"
+          {
+            echo "## scripts/test.sh on ubuntu-latest (advisory)"
+            if [ ! -f "$log" ]; then echo "No test log: the run stopped before the suite started."; exit 0; fi
+            echo
+            echo "### Failing suites, with their first FAIL line"
+            if grep -q '^FAILED: ' "$log"; then
+              awk '
+                /^==> / { cur = substr($0, 5); next }
+                /FAIL/ && !/^FAILED: / && cur != "" && !(cur in first) { first[cur] = $0 }
+                /^FAILED: / { f = substr($0, 9); label = f; sub(/ \(exit [0-9]+\)$/, "", label);
+                              printf "- **%s**: `%s`\n", f, (label in first ? first[label] : "(no FAIL line)") }
+              ' "$log"
+            else
+              echo "None."
+            fi
+            echo
+            echo "### Slowest 10 (s)"
+            echo '```'
+            sed -n '/^== slowest 10/,/^== total/p' "$log" | sed '/^== total/d;/^== slowest/d'
+            echo '```'
+            echo
+            sed -n '/^== total/p' "$log"
+          } >> "$GITHUB_STEP_SUMMARY"

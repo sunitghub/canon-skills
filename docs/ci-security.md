@@ -75,6 +75,22 @@ version updates on, which `t-8493` keeps off. `tests/ci-security-config.sh` (in 
 permissions widen, `pull_request_target` or a secret appears, the pins below loosen, the scan is made non-fatal, or a
 Dependabot config is added.
 
+## Advisory workflows (`t-7ef7`)
+
+Two workflows run canon's own checks on GitHub. Both are **advisory**: the check step has `continue-on-error: true`, so a
+red result never fails the run or blocks a merge yet, and the result is written to the job summary
+(`$GITHUB_STEP_SUMMARY`). They keep every rule above (`contents: read`, SHA-pinned actions, `persist-credentials: false`,
+no secrets, no `${{ }}` in a `run:`, no schedule); `tests/ci-security-config.sh` allows `continue-on-error` in these two
+files only, and still rejects `|| true`.
+
+- `.github/workflows/test-suite.yml` runs `scripts/test.sh --jobs 4` on `ubuntu-latest` for every pull request, every push
+  to `main` and on demand. The summary lists the failing suites with their first FAIL line and the slowest 10, so the first
+  runs show which suites assume macOS. Making it required is a later ticket. It installs with `npm install --no-audit --no-fund
+  --ignore-scripts`, not `npm ci`: `package-lock.json` is gitignored, and with no lockfile pinning the versions, no package's
+  install script may run on the runner (`tests/ci-security-config.sh` checks both).
+- `.github/workflows/binaries-released.yml` runs `scripts/check-binaries-released.sh --download` on a push to `main` that
+  changes `tools/canon-go/**` or `tools/cockpit-daemon.sha256`: a Go change without its release shows up in the summary.
+
 ## Pins
 
 `actions/checkout` and `actions/setup-go` are pinned to full commit SHAs (release tag in a trailing comment), and
