@@ -682,7 +682,7 @@ func TestPresetsNeverReachTheUserFile(t *testing.T) {
 	modelTiersPath, copilotBin = seedFile, "canon-test-no-such-copilot"
 	defer func() { modelTiersPath, copilotBin = old, oldBin }()
 	doc := regDoc()
-	doc["presets"] = []any{map[string]any{"id": "balanced", "name": "Balanced", "tiers": map[string]any{"plan": "top", "speccheck": "mid", "build": "mid",
+	doc["presets"] = []any{map[string]any{"id": "balanced", "name": "Balanced", "default": true, "tiers": map[string]any{"plan": "top", "speccheck": "mid", "build": "mid",
 		"reviewer": "mid", "evaluator": "mid", "evaluator2": "off", "light": "cheap"}}}
 	raw, _ := json.Marshal(doc)
 	if err := os.WriteFile(seedFile, raw, 0o644); err != nil {
@@ -718,6 +718,10 @@ func TestPresetsNeverReachTheUserFile(t *testing.T) {
 	}
 	if _, ok := picks["plan"]["copilot"]; ok {
 		t.Error("Copilot CLI is not listed here, yet the preset resolved it")
+	}
+	// t-b809: the seed's default flag reaches the Preset list ("Balanced (default)"); a person's own preset is never the default
+	if view[0]["default"] != true || view[1]["default"] != false {
+		t.Errorf("default flags = %v, %v; want true for canon's Balanced, false for the person's", view[0]["default"], view[1]["default"])
 	}
 	if view[0]["id"] != "balanced" || view[1]["id"] != "team" || view[0]["notes"] == nil || tierOptionsView()["ok"] != true {
 		t.Errorf("the view lost a field: %v", view)
