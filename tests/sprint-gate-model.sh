@@ -65,9 +65,14 @@ mkdir -p "$W/loose/.tickets/notes"; printf '# Plan\n' > "$W/loose/plan.md"; cp "
 for f in "$W/loose/gate-snapshot.txt" "$W/loose/.tickets/notes/gate-snapshot.txt"; do
   out="$("$ROOT/tools/gate-snapshot.sh" pre "$f" --role reviewer)" || fail "pre outside a ticket failed: $f"
   "$ROOT/tools/gate-snapshot.sh" post "$f" >/dev/null
+  [[ "$out" != *"writes its report"* ]] || fail "t-597f: a report path printed for a file outside a ticket folder: $f"   # no ticket.md there
   [[ "$f" == */notes/* ]] && continue                                                                   # .tickets/<name> with a plan.md is a ticket
   assert_eq "" "$(grep dispatch <<<"$out" || true)"
 done
+# t-597f: pre with no --role (as before roles existed) still works and names no report
+out="$("$ROOT/tools/gate-snapshot.sh" pre "$W/loose/gate-snapshot.txt")" || fail "t-597f: pre with no --role failed"
+"$ROOT/tools/gate-snapshot.sh" post "$W/loose/gate-snapshot.txt" >/dev/null
+[[ "$out" != *"writes its report"* ]] || fail "t-597f: pre with no --role printed a report path"
 rm -f "$W/loose/plan.md"; mkdir -p "$W/loose/.tickets/t-ab99"
 out="$("$ROOT/tools/gate-snapshot.sh" pre "$W/loose/.tickets/t-ab99/gate-snapshot.txt" --role reviewer)" || fail "pre in a folder with no plan.md failed"
 "$ROOT/tools/gate-snapshot.sh" post "$W/loose/.tickets/t-ab99/gate-snapshot.txt" >/dev/null
@@ -142,7 +147,13 @@ rc=0; out="$(cd "$LW" && "$SPRINT" gate-snapshot post ".tickets/$id/gate-snapsho
 assert_eq 1 "$rc"; assert_contains "$out" "hides the ticket"; assert_contains "$out" ".tickets/$id/eval-report.md"
 rc=0; out="$(cd "$LW" && "$SPRINT" complete 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "Sprint cannot close here"; assert_contains "$out" ".tickets/$id/eval-report.md"
-rm -rf "$LW/.tickets"; (cd "$LW" && "$SPRINT" gate-snapshot post ".tickets/$id/gate-snapshot.txt" >/dev/null 2>&1) || fail "t-597f: post after the move failed"
+rm -rf "$LW/.tickets"
+# a .tickets/ there that holds no ticket the main checkout has is not this guard's (nothing to name): post goes on
+mkdir -p "$LW/.tickets/t-zz99"; echo x > "$LW/.tickets/t-zz99/note.md"
+(cd "$LW" && "$ROOT/tools/gate-snapshot.sh" pre "$project/.tickets/$id/gate-snapshot.txt" >/dev/null 2>&1)
+out="$(cd "$LW" && "$ROOT/tools/gate-snapshot.sh" post "$project/.tickets/$id/gate-snapshot.txt" 2>&1)" || fail "t-597f: post stopped on a .tickets/ with no main ticket in it: $out"
+rm -rf "$LW/.tickets"
+(cd "$LW" && "$SPRINT" gate-snapshot pre ".tickets/$id/gate-snapshot.txt" >/dev/null 2>&1); (cd "$LW" && "$SPRINT" gate-snapshot post ".tickets/$id/gate-snapshot.txt" >/dev/null 2>&1) || fail "t-597f: post after the move failed"
 git worktree remove --force "$LW"
 # ...but an adopted worktree's own .tickets/ copy (t-3abc), on a branch that is not land/<id>, is legitimate: post goes on
 AW="$W/adopted-wt"; git worktree add -q "$AW" -b "sprint/$id"; mkdir -p "$AW/.tickets"; cp -R "$project/.tickets/$id" "$AW/.tickets/"
