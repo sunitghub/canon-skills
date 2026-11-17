@@ -261,12 +261,16 @@ const AGENT_NAME={claude:'Claude',copilot:'Copilot',pi:'Pi',term:'Terminal'};
 // t-10ac: the mark that leads a Claude row, inline SVG in its brand orange, the same in both themes. A simplified shape: swap in the official
 // asset and check its usage rules before a release leans on it. (The bare GitHub mark for the cloud rows is t-761b's.)
 const CLAUDE_ORANGE='#d97757';   // a brand colour, the same in both themes: not a theme variable (the theme guard reads CSS; this is an SVG attribute)
-// t-f183: an agent's mark in one place, for ticket rows and scratch rows. A new agent's own icon is one entry here (Copilot's later);
-// an agent without one gets the lettered tile.
+// t-f183: an agent's mark in one place, for ticket rows and scratch rows. A new agent's own icon is one entry here; an agent without one
+// gets the lettered tile.
 const agentTile=agent=>`<span class="ag-badge">${esc(agentName(agent).charAt(0)||'?')}</span>`;
-const AGENT_MARK={claude:()=>markClaude()};
+const AGENT_MARK={claude:()=>markClaude(),copilot:()=>markCopilot()};
 export const agentMark=agent=>(AGENT_MARK[agent]||(()=>agentTile(agent)))();
 const markClaude=()=>'<svg class="ag-mark ag-mk-claude" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l4 4M15 15l4 4M19 5l-4 4M5 19l4-4" fill="none" stroke="'+CLAUDE_ORANGE+'" stroke-width="2.6" stroke-linecap="round"/></svg>';
+// t-4358: Copilot CLI's mark is canon's own glyph, a `>_` prompt on a violet tile, not GitHub's mascot or icon: GitHub's brand rules need
+// its Brand team's approval for any public use of a mascot, and Copilot has no standalone logo (brand.github.com, checked 2026-11-17).
+const COPILOT_VIOLET='#8957e5';   // the same in both themes (an SVG attribute, like CLAUDE_ORANGE); white glyph on it reads in both
+const markCopilot=()=>'<svg class="ag-mark ag-mk-copilot" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="3" width="21" height="18" rx="5" fill="'+COPILOT_VIOLET+'"/><path d="M7 9l3.5 3L7 15M12.5 15.5H17" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
 function stateGlyph(state){

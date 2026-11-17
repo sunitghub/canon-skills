@@ -86,6 +86,13 @@ func TestCockpitPaneHeader(t *testing.T) {
 			t.Fatalf("the cockpit page lacks %q", want)
 		}
 	}
+	// t-4358: the agent picker reads Claude Code, Copilot CLI, Pi; Claude Code is first, so it stays the default. Prod path: Run sprint's picker.
+	sel := page[strings.Index(page, `<select id="agentSel"`):]
+	sel = sel[:strings.Index(sel, "</select>")]
+	c, cp, pi := strings.Index(sel, `<option value="claude">Claude Code</option>`), strings.Index(sel, `<option value="copilot">Copilot CLI</option>`), strings.Index(sel, `<option value="pi">Pi</option>`)
+	if c < 0 || cp < 0 || pi < 0 || !(c < cp && cp < pi) || strings.Contains(sel, "selected") {
+		t.Fatalf("agent picker order: claude %d, copilot %d, pi %d (want Claude Code, Copilot CLI, Pi, Claude Code first): %s", c, cp, pi, sel)
+	}
 	i := strings.Index(page, `d.type === "pane-info"`)
 	if strings.Contains(page[i:i+1800], "innerHTML") { // t-45b1: the handler grew; still text only
 		t.Fatal("pane-info must set text, never markup")
