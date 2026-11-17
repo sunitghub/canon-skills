@@ -274,6 +274,11 @@ rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(ro
 reset; reply canon-evaluator $'## Findings\n- x.txt:1 blocks on a named pipe\nfail: criterion 1'
 rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"gate":"folded","model":"claude-sonnet-5-5","verdict":"fail","caught":true'
 assert_grep "^arg=canon-evaluator$" "$STUB/calls/1"; grep -q "Reviewer findings (advisory)" "$STUB/calls/1" || fail "replay: the folded prompt was not sent"
+# a fail for another reason whose passing criteria row names it is not a catch (the trial's t-c723 folded run 2)
+reset; reply canon-evaluator $'## Criteria\n| 1 | pass | handles the named pipe |\n## Findings\n- the full suite is not-run\n## Verdict\nfail: criterion 2 not-run'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 2)" '"verdict":"fail","caught":false'
+reset; reply canon-evaluator $'## Criteria\n| 1 | fail | x |\n## Verdict\nfail: x.txt:1 blocks on a FIFO'
+rp rp --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 2)" '"verdict":"fail","caught":true'
 # folded: the advisory section's Consider is a catch; its Noted is not; the leak flag reads the fix sha
 reset; reply canon-evaluator $'## Reviewer findings (advisory)\n- Act On: none\n- Consider: x.txt:1 FIFO read blocks\n- Noted: none\n## Verdict\npass: fine'
 rp rp --config folded --runs 1 --yes --out "$WORK/r.jsonl"; assert_contains "$(row 1)" '"verdict":"pass","caught":true,"leak":false'

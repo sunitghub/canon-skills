@@ -276,7 +276,9 @@ replay_call() {
       reviewer) triage_text < "$R_REPORT" | grep -qiE -- "$R_CATCH" && R_CAUGHT=true ;;
       folded) triage_text '## Reviewer findings (advisory)' < "$R_REPORT" | grep -qiE -- "$R_CATCH" && R_CAUGHT=true ;;
     esac
-    if [[ "$gate" != reviewer && "$R_VERDICT" == fail ]] && grep -qiE -- "$R_CATCH" "$R_REPORT"; then R_CAUGHT=true; fi
+    # a fail counts only when its Findings or its fail: line name the defect: a passing criteria row that mentions it is not a catch (t-b809 trial)
+    if [[ "$gate" != reviewer && "$R_VERDICT" == fail ]] \
+      && awk '/^## Findings/ { on = 1; next } /^## / { on = 0 } on || /^[^A-Za-z]*fail:/' "$R_REPORT" | grep -qiE -- "$R_CATCH"; then R_CAUGHT=true; fi
   fi
   [[ -z "$R_FIX" ]] || ! grep -qi -- "${R_FIX:0:7}" "$R_REPORT" || R_LEAK=true
   return 0
