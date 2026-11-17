@@ -321,17 +321,18 @@ replay_summary() {
       tok[cr] += v("tokens"); ms[cr] += v("duration_ms")
       if (v("caught") == "true") caught[cr] = 1
       if (v("leak") == "true") leak[k]++
-      if (v("verdict") == "error") err[k]++
+      if (v("verdict") == "error") err[k]++; else ok[cr] = 1
       if (v("kind") == "control" && (v("gate") == "evaluator" || v("gate") == "folded")) ctl[k] = ctl[k] (ctl[k] == "" ? "" : ",") v("verdict")
     }
     END {
       printf "%-7s %-3s %-9s %-8s %-5s %-6s %-12s %-12s %-9s\n", "config", "run", "caught", "control", "leaks", "errors", "tok/close", "tok total", "min/close"
       for (i = 1; i <= no; i++) {
         k = order[i]; split(k, kk, SUBSEP); n = split(ckeys[k], cl, " "); got = 0; ex = 0; ts = ""; mss = ""; tt = 0
-        for (j = 1; j <= n; j++) { cr = k SUBSEP cl[j]; if (kind[cr] == "defect") { ex++; if (cr in caught) got++ } ts = ts " " tok[cr]; mss = mss " " ms[cr]; tt += tok[cr] }
+        # a case-run whose every row is an error is neither a catch nor a miss, and its 0 tokens stay out of the medians (criterion 4)
+        for (j = 1; j <= n; j++) { cr = k SUBSEP cl[j]; if (!(cr in ok)) continue; if (kind[cr] == "defect") { ex++; if (cr in caught) got++ } ts = ts " " tok[cr]; mss = mss " " ms[cr]; tt += tok[cr] }
         printf "%-7s %-3s %-9s %-8s %-5d %-6d %-12d %-12d %-9.1f\n", kk[1], kk[2], got "/" ex, (ctl[k] == "" ? "-" : ctl[k]), leak[k], err[k], med(ts), tt, med(mss) / 60000
       }
-      for (cr in cs) { split(cr, p, SUBSEP); if (kind[cr] == "defect") printf "case %s %s run %s: %s\n", p[3], p[1], p[2], ((cr in caught) ? "caught" : "missed") | "sort" }
+      for (cr in cs) { split(cr, p, SUBSEP); if (kind[cr] == "defect") printf "case %s %s run %s: %s\n", p[3], p[1], p[2], (!(cr in ok) ? "error" : (cr in caught) ? "caught" : "missed") | "sort" }
     }' "$1"
 }
 
@@ -401,7 +402,10 @@ cmd_replay() {
       # a separate clone (objects shared read-only, no remote), never a worktree: a gate with Bash must not reach the real .git's
       # config, hooks or refs (t-b809 security review)
       git clone --quiet --shared --no-checkout "$R_ROOT" "$R_TMP/wt" && git -C "$R_TMP/wt" remote remove origin \
-        && git -C "$R_TMP/wt" -c advice.detachedHead=false checkout --quiet --detach "$ref" || die "could not clone $R_ROOT at $ref"
+        && git -C "$R_TMP/wt" -c advice.detachedHead=false checkout --quiet --detach "$ref" \
+        && git -C "$R_TMP/wt" for-each-ref --format='delete %(refname)' | git -C "$R_TMP/wt" update-ref --stdin \
+        || die "could not clone $R_ROOT at $ref"
+      # no branch or tag is left (the clone copies them): `git log --all` must not reach the fix commit (t-b809 reviewer)
       R_WT="$R_TMP/wt"
       mkdir -p "$R_WT/.tickets/$R_ID" "$R_WT/.claude"
       cp -R "$dir/$s/state/ticket"/. "$R_WT/.tickets/$R_ID/"

@@ -224,7 +224,7 @@ n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
 { printf 'arg=%s\n' "${args[@]}"; printf 'pwd=%s\nhome=%s\ncanon_home=%s\ntmpdir=%s\nxdg=%s\nscope=%s\ntickets=%s\npid=%s\n' "$PWD" "$HOME" "$CANON_HOME" "$TMPDIR" "$XDG_CONFIG_HOME" "$CANON_GATE_SCOPE_DIR" "$CANON_TICKETS_DIR" "$$"
   [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"
   cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'
-  echo "remotes=$(git remote | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
+  echo "remotes=$(git remote | tr '\n' ' ')"; echo "refs=$(git for-each-ref --format='%(refname)' | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
 [[ -z "${STUB_DIRTY:-}" ]] || echo "# dirtied by the stub" >> "$STUB_DIRTY"
 [[ -z "${STUB_GIT_NOISE:-}" ]] || { sleep 1.1; git -C "$STUB_GIT_NOISE" status >/dev/null; : > "$STUB_GIT_NOISE/.git/noise.tmp"; rm -f "$STUB_GIT_NOISE/.git/noise.tmp"; }
 case "${STUB_MODE:-ok}" in
@@ -258,12 +258,12 @@ assert_contains "$(row 2)" '"gate":"evaluator","model":"claude-sonnet-5-5","verd
 c1="$STUB/calls/1"
 assert_grep "^arg=canon-reviewer$" "$c1"; assert_grep "^arg=claude-sonnet-5-5$" "$c1"; assert_grep "^arg=dontAsk$" "$c1"; assert_grep "^arg=Write$" "$c1"; assert_grep "^arg=Edit$" "$c1"
 assert_grep "^arg=Bash$" "$c1"; assert_grep "^arg=canon-evaluator$" "$STUB/calls/2"
-assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^remotes=$" "$c1"; assert_grep "^gitdir=\.git$" "$c1"; assert_grep "^agents=linked$" "$c1"
+assert_grep "^home=$HOME$" "$c1"; assert_grep "^ticket=present$" "$c1"; assert_grep "^scope_home=$(cd "$HOME" && pwd -P)$" "$c1"; assert_grep "^remotes=$" "$c1"; assert_grep "^refs=$" "$c1"; assert_grep "^gitdir=\.git$" "$c1"; assert_grep "^agents=linked$" "$c1"
 for k in canon_home tmpdir xdg; do v="$(sed -n "s/^$k=//p" "$c1")"; [[ "$v" == "$TMPDIR"/gate-replay.* ]] || fail "replay: $k was not pinned to scratch: $v"; done
 [[ "$(sed -n 's/^pwd=//p' "$c1")" == "$TMPDIR"/gate-replay.*/wt ]] || fail "replay: the gate did not run in the scratch worktree: $(sed -n 's/^pwd=//p' "$c1")"
 grep -q "^arg=.*Base ref: \`$BASE_SHA\`" "$c1" || grep -q "Base ref: \`$BASE_SHA\`" "$c1" || fail "replay: the prompt does not name the base"
 grep -q "{{" "$c1" && fail "replay: a prompt placeholder was left unfilled"
-assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; assert_eq "$REPO_STATUS" "$(git -C "$REPO" status --porcelain)"
+assert_eq "$REPO_STATUS" "$(git -C "$REPO" status --porcelain)"
 [[ -z "$(ls -A "$TMPDIR")" && -z "$(ls -A "$WORK/scope")" ]] || fail "replay left scratch or a scope record behind: $(ls -A "$TMPDIR" "$WORK/scope")"
 assert_file_exists "$WORK/r-reports/rp-split-1-reviewer.md"
 # a reviewer finding only under Noted is not a catch; an evaluator pass that mentions it is not a catch; a fail that names it is
@@ -294,7 +294,7 @@ assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"claude reported an err
 reset; set +e; out="$(STUB_MODE=sleep GATE_REPLAY_TIMEOUT=2 PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"timeout after 2s"'
 spid="$(sed -n 's/^pid=//p' "$STUB/calls/1")"; ! kill -0 "$spid" 2>/dev/null || fail "replay: the timed-out call $spid is still running"
-assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"
+[[ -z "$(ls -A "$TMPDIR")" ]] || fail "replay left scratch behind after a timeout: $(ls -A "$TMPDIR")"
 mkcase badref "ref: 0123456789abcdef0123456789abcdef01234567" "fix: $FIX_SHA" 'catch: fifo'
 reset; rp badref --config split --runs 1 --yes --out "$WORK/r.jsonl"; assert_eq 1 "$code"; assert_eq 0 "$(calls)"
 assert_contains "$(row 1)" '"gate":"-"'; assert_contains "$(row 1)" 'does not resolve'
@@ -307,7 +307,7 @@ assert_eq 0 "$code" "replay stopped on git's own .git writes: $out"
 mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
 reset; set +e; out="$(STUB_DIRTY="$REPO/dirty.txt" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; assert_eq 1 "$(wc -l < "$WORK/r.jsonl" | tr -d ' ')"
-assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; rm -f "$REPO/dirty.txt"
+[[ -z "$(ls -A "$TMPDIR")" ]] || fail "replay left scratch behind after a stop: $(ls -A "$TMPDIR")"; rm -f "$REPO/dirty.txt"
 reset; set +e; out="$(STUB_DIRTY="$REPO/.git/hooks/pre-commit" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; rm -f "$REPO/.git/hooks/pre-commit"
 reset; set +e; out="$(STUB_DIRTY="$REPO/.git/config" PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
@@ -344,10 +344,12 @@ cat > "$WORK/fx.jsonl" <<'EOF'
 {"case":"a","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"pass","caught":true,"leak":false,"tokens":150,"duration_ms":180000,"cost_usd":0.1}
 {"case":"b","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"pass","caught":true,"leak":false,"tokens":90,"duration_ms":60000,"cost_usd":0.1}
 {"case":"c","kind":"control","config":"folded","run":1,"gate":"folded","verdict":"fail","caught":false,"leak":false,"tokens":60,"duration_ms":60000,"cost_usd":0.1}
+{"case":"d","kind":"defect","config":"folded","run":1,"gate":"folded","verdict":"error","caught":false,"leak":false,"tokens":0,"duration_ms":0,"cost_usd":0}
 EOF
 rc "$G" replay --summary "$WORK/fx.jsonl"; assert_eq 0 "$code"
 assert_contains "$out" "split   1   1/2       pass     1     1      50           380          2.0"
-assert_contains "$out" "folded  1   2/2       fail     0     0      90           300          1.0"
+# an all-error case-run (d) is neither caught nor missed and stays out of the medians
+assert_contains "$out" "folded  1   2/2       fail     0     1      90           300          1.0"; assert_contains "$out" "case d folded run 1: error"
 assert_contains "$out" "case b split run 1: missed"; assert_contains "$out" "case b folded run 1: caught"
 rm -rf "$REPO"
 export GATE_CASES_DIR="$CASES"
