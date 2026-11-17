@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+- New: `tools/gate-cases.sh replay` re-runs today's reviewer and evaluator (`claude -p`) on past commits whose gates missed something, in a separate clone under a live gate scope, and scores each call: caught, leak, tokens, minutes, cost. `--config split|folded` compares the two gates against one evaluator doing both jobs; `--summary` prints the table. Six cases from canon's history are in `tests/gate-cases/`. It spends money, so it never runs without `--yes` and `run` only lists it (t-b809).
+- New: `canon-go headless-usage` reads the tokens, duration and cost from a `claude -p --output-format json` reply (t-b809).
+- Measured: folding the reviewer into the evaluator used about 30% fewer tokens and half the minutes per close on canon's own code, but the trial was inconclusive (today's split gates caught none of the original misses), so the close is unchanged (t-b809).
+
 ## [0.65.1] - 2026-11-17
 
 - New: a Copilot CLI row in the Agents sidebar (ticket and scratch) leads with its own mark, a `>_` prompt on a violet tile, instead of a lettered "C". It is canon's own drawing: GitHub's brand rules need its approval for any public use of the Copilot mascot. Pi and Terminal keep their tiles (t-4358).
