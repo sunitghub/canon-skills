@@ -144,6 +144,11 @@ rc=0; out="$(cd "$LW" && "$SPRINT" complete 2>&1)" || rc=$?
 assert_eq 1 "$rc"; assert_contains "$out" "Sprint cannot close here"; assert_contains "$out" ".tickets/$id/eval-report.md"
 rm -rf "$LW/.tickets"; (cd "$LW" && "$SPRINT" gate-snapshot post ".tickets/$id/gate-snapshot.txt" >/dev/null 2>&1) || fail "t-597f: post after the move failed"
 git worktree remove --force "$LW"
+# ...but an adopted worktree's own .tickets/ copy (t-3abc), on a branch that is not land/<id>, is legitimate: post goes on
+AW="$W/adopted-wt"; git worktree add -q "$AW" -b "sprint/$id"; mkdir -p "$AW/.tickets"; cp -R "$project/.tickets/$id" "$AW/.tickets/"
+(cd "$AW" && "$SPRINT" gate-snapshot pre ".tickets/$id/gate-snapshot.txt" --role reviewer >/dev/null 2>&1) || fail "t-597f: pre in an adopted worktree failed"
+out="$(cd "$AW" && "$SPRINT" gate-snapshot post ".tickets/$id/gate-snapshot.txt" 2>&1)" || fail "t-597f: post refused an adopted worktree's own .tickets/: $out"
+git worktree remove --force "$AW"
 echo "sprint-gate-model: a land worktree's snapshot, report paths and stray .tickets/ guard (t-597f)"
 
 echo "sprint-gate-model: ok"

@@ -67,15 +67,17 @@ ticket_path() {
   if [[ "$1" == .tickets/* && ! -e .tickets ]]; then echo "$(tickets_dir)/${1#.tickets/}"; else echo "$1"; fi
 }
 
-# stray_tickets — t-597f: in a linked worktree, a .tickets/ that is not the worktree's own (the land worktree keeps .tickets/ out with
-# sparse-checkout; elsewhere, files git does not track) for tickets the main checkout holds: a gate wrote a relative path, and every
-# reader there now sees that folder instead of the ticket. Prints the stray files and returns 0 when there are any.
+# stray_tickets — t-597f: in a tkt land worktree (it never has a .tickets/ of its own: land keeps a tracked one out with sparse-checkout,
+# and a land/<id> branch of a project that ignores .tickets has none), a .tickets/ for tickets the main checkout holds: a gate wrote a
+# relative path, and every reader there now sees that folder instead of the ticket. Prints the stray files and returns 0 when there are
+# any. Any other worktree's own .tickets/ is legitimate (an adopted worktree's copy, t-3abc; one that tracks its own, t-f7e6).
 stray_tickets() {
   local wt main d id files="" sparse=false
   wt="$(worktree_root 2>/dev/null)" || return 1
   [[ -f "$wt/.git" && -d "$wt/.tickets" ]] || return 1
   main="$(_worktree_main_tickets "$wt")"; [[ -n "$main" && -d "$main" ]] || return 1
   git -C "$wt" sparse-checkout list 2>/dev/null | grep -qxF '!/.tickets/' && sparse=true
+  $sparse || [[ "$(git -C "$wt" symbolic-ref -q --short HEAD 2>/dev/null)" == land/* ]] || return 1
   for d in "$wt"/.tickets/*/; do
     [[ -d "$d" ]] || continue; id="$(basename "$d")"; [[ -f "$main/$id/ticket.md" ]] || continue
     if $sparse; then files+="$(find "$d" -type f)"$'\n'
