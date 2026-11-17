@@ -288,7 +288,13 @@ replay_row() {  # one JSONL row for the current call
     "$(json_str "$R_REPORT")" "$([[ -z "$R_ERR" ]] || printf ',"error":%s' "$(json_str "$R_ERR")")" >> "$R_OUT"
 }
 
-repo_print() { git -C "$R_ROOT" rev-parse HEAD; git -C "$R_ROOT" symbolic-ref -q HEAD || true; git -C "$R_ROOT" status --porcelain; }
+# the real checkout as a gate could change it: HEAD, branch, status, and the .git config and hooks (a --shared clone's alternates
+# name the real .git, and a gate with Bash can write anywhere it can name; this only detects, an OS sandbox would prevent)
+repo_print() {
+  local gd; gd="$(git -C "$R_ROOT" rev-parse --absolute-git-dir)"
+  git -C "$R_ROOT" rev-parse HEAD; git -C "$R_ROOT" symbolic-ref -q HEAD || true; git -C "$R_ROOT" status --porcelain
+  cat "$gd/config" "$gd"/hooks/* 2>/dev/null | cksum; ls -la "$gd/hooks" 2>/dev/null
+}
 
 R_TMP=""
 replay_cleanup() {

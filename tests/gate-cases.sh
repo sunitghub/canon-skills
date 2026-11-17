@@ -225,7 +225,7 @@ n=$(($(ls "$STUB/calls" | wc -l) + 1)); log="$STUB/calls/$n"
   [[ -f ".tickets/t-abcd/acceptance.md" ]] && echo "ticket=present"; [[ -L .claude/agents ]] && echo "agents=linked"
   cat "$CANON_GATE_SCOPE_DIR"/* 2>/dev/null | sed -n 's/^home=/scope_home=/p'
   echo "remotes=$(git remote | tr '\n' ' ')"; echo "gitdir=$(git rev-parse --git-common-dir)"; } > "$log"
-[[ -z "${STUB_DIRTY:-}" ]] || : > "$STUB_DIRTY"
+[[ -z "${STUB_DIRTY:-}" ]] || echo "# dirtied by the stub" >> "$STUB_DIRTY"
 case "${STUB_MODE:-ok}" in
   sleep) exec sleep 60 ;;
   fail) [[ "$n" == "${STUB_FAIL_CALL:-1}" ]] && { echo "boom" >&2; exit 3; } ;;
@@ -297,7 +297,12 @@ rm -rf "$GATE_CASES_DIR/badref" "$GATE_CASES_DIR/rp2"
 mkcase rp2 "ref: $REF_SHA" "fix: $FIX_SHA" 'catch: fifo'
 reset; set +e; out="$(STUB_DIRTY="$REPO/dirty.txt" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; assert_eq 1 "$(wc -l < "$WORK/r.jsonl" | tr -d ' ')"
-assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; rm -f "$REPO/dirty.txt"; rm -rf "$GATE_CASES_DIR/rp2"
+assert_eq 1 "$(git -C "$REPO" worktree list | wc -l | tr -d ' ')"; rm -f "$REPO/dirty.txt"
+reset; set +e; out="$(STUB_DIRTY="$REPO/.git/hooks/pre-commit" PATH="$SP" "$G" replay rp rp2 --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'; rm -f "$REPO/.git/hooks/pre-commit"
+reset; set +e; out="$(STUB_DIRTY="$REPO/.git/config" PATH="$SP" "$G" replay rp --config folded --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$(row 1)" '"error":"the gate changed the real checkout'
+git -C "$REPO" init -q; git -C "$REPO" config user.email t@example.invalid; git -C "$REPO" config user.name t; rm -rf "$GATE_CASES_DIR/rp2"
 # the auth probe fails: exit 2 before any case
 reset; set +e; out="$(STUB_AUTH_RC=1 PATH="$SP" "$G" replay rp --config split --runs 1 --yes --out "$WORK/r.jsonl" 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "not logged in"; assert_eq 0 "$(calls)"; [[ ! -s "$WORK/r.jsonl" ]] || fail "replay wrote rows after a failed auth probe"
