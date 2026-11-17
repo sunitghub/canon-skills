@@ -9621,3 +9621,37 @@ func TestSessionsRowCarriesModelAndStage(t *testing.T) {
 		t.Fatalf("after the switch: model %v stage %v, want sonnet build", got["model"], got["stage"])
 	}
 }
+
+// t-45b1 (evaluator): a pi session has no model or stage of its own, so its /sessions row carries neither key and the pane header shows
+// the counts only. Prod path: the board's pane header for a pi session.
+func TestSessionsRowPiHasNoModelOrStage(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab13")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	t.Setenv("COCKPIT_PI_BIN", bin)
+	if code := startSessionAgent(t, ts.URL, "t-ab13", "pi", bootTok); code != http.StatusOK {
+		t.Fatalf("pi: want 200, got %d", code)
+	}
+	r, err := http.Get(ts.URL + "/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	var rows []map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&rows); err != nil || len(rows) != 1 {
+		t.Fatalf("sessions: %v %v", rows, err)
+	}
+	if rows[0]["agent"] != "pi" {
+		t.Fatalf("agent %v, want pi", rows[0]["agent"])
+	}
+	for _, k := range []string{"model", "stage"} {
+		if v, ok := rows[0][k]; ok {
+			t.Fatalf("a pi row carries %s=%v; it has none of its own", k, v)
+		}
+	}
+}

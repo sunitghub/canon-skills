@@ -18932,9 +18932,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const rest = await play.evaluate(el => getComputedStyle(el).borderColor);
     await play.hover(); await expect.poll(() => play.evaluate(el => getComputedStyle(el).borderColor)).not.toBe(rest);
     await expect(play).toHaveClass(/\bb-accent\b/); await expect(page.locator('#gh-flow-back')).toHaveClass(/\bb-accent\b/); await expect(page.locator('#gh-flow-all')).toHaveClass(/\bb-accent\b/);
+    await page.clock.pauseAt(new Date('2026-11-17T10:30:00Z'));   // paused: only runFor moves time, so each read below is exact
     await play.click();
-    await expect(play).toHaveText('❚❚ Pause · 3s');
-    await page.clock.runFor(1000); await expect(play).toHaveText('❚❚ Pause · 2s');
+    // read once, never retried: a retrying toHaveText would wait out a 5 s countdown until it reads 3 (evaluator, t-45b1)
+    expect(await play.textContent()).toBe('❚❚ Pause · 3s');
+    await page.clock.runFor(1000); expect(await play.textContent()).toBe('❚❚ Pause · 2s');
     await page.clock.runFor(2000); await expect(lit).toHaveText('Send');      // Merge → Send after 3 s
     await page.clock.runFor(3000); await expect(lit).toHaveText('Work');
     await next.click();
