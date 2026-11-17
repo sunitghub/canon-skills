@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-11-17
+
+- New: the Cockpit pane header has two rows. Row 1 shows the session's **Model** by name and its stage (`Model Sonnet 5.5 · plan`, then `· build` once the Build switch happens), then **Cache**, **LLM calls**, **Tool calls** and **Subagents**, each labelled; the font size stays on the right. Row 2 is the session's folder (the worktree, for a worktree session) on its own line. A Pi session shows the counts only. On a narrow pane the fields wrap among themselves and nothing is cut (t-45b1).
+- Changed: the Cockpit daemon's `/sessions` rows carry the session's `model` and `stage` (t-45b1). Daemon release.
+- Changed: Factory › GitHub's **Back**, **Play** and **All steps** take the accent hover like other sub-actions, and **Play** moves one stage every 3 seconds (was 5) (t-45b1).
+
 ## [0.64.1] - 2026-11-17
 
 - New: Factory › GitHub shows the GitHub workflow as a looping flowchart (Send → Work → Guard → Return → Merge, and back to Send). **Next step** and **Back** move one box at a time, **All steps** shows the list, and **Play** moves one stage every 5 seconds, counting down, until you press anything else (t-a811).
