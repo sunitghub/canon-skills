@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-17-2026 03:05
+learnings-sweep last run: 11-17-2026 04:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | UNPROMOTED |
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | UNPROMOTED |
 | 2026-11-16 | [t-a811](.tickets/t-a811/learnings.md) | A spec that passes with the guard reverted proves the code was dead, not that the guard holds: the card already ignored clicks on buttons, so the stopPropagation calls were removed and the real guard (the id is a button) revert-proven; and a locale bug hides when the suite runs without a UTF-8 locale: pin LC_ALL in the test that guards it | UNPROMOTED |
 | 2026-11-16 | [t-a7e0](.tickets/t-a7e0/learnings.md) | A spec that accepts either of two outcomes ("next look now" or "checking now…") cannot pin the one a guard decides: move the wording into a pure function and check it at exact times; and test each half of an "or" criterion (hover or focus) on its own | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-17-2026 03:05
 | 2026-11-09 | [t-52a1](.tickets/t-52a1/learnings.md) | Reordering a pipeline leaves restated copies stale: the reviewer found the Wrapup Gates example rows and a wrapup-gates.md note still in the old order, and the full suite (not the targeted tests) flagged the new order assertion's `grep \| head` under pipefail-early-exit; grep every restatement of the order before the reviewer, and run the full suite on a new test line before the stamp. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-09 | [t-f74e](.tickets/t-f74e/learnings.md) | Editing every line of a tracked file to add an id resets `git blame` for those lines (the promotion dates all read today until the id commits were listed in `.git-blame-ignore-revs`); and a review that quotes example ids is itself a citation to a counter that greps for them. Check a derived date and a derived count on the real data after a mass edit. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-09 | [t-1219](.tickets/t-1219/learnings.md) | A recurrence count that matches on a ticket id reports references as recurrences: the first real run read 7 promoted lines Failing again on 0 mentions of their class. Run a new measure on the real data before trusting its verdict word, and keep the weaker signal beside it, not in it. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-09 | [t-0ca2](.tickets/t-0ca2/learnings.md) | When a gate prompt's label list changes, the shape check that enforces it must accept both lists or closed tickets' reports start failing: choose the list by the labels a report started with, and run the check over every closed report before and after (800 reports, same result). A mandate line in the same prompt ("not correctness") can contradict the new list: read the whole file. | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
