@@ -187,7 +187,11 @@ function mtRender(){
       // t-3425: a checker on the builder's model is allowed, only noted (the step it checks is the board's, steps[].checks)
       const built=st.checks?(mtData.defaults[st.checks]||{})[mtAgent]||'':'';
       const note=built&&built===cur?`<div class="setting-d mt-used mt-same">Same model as ${esc(((mtOpts.steps||[]).find(x=>x.id===st.checks)||{}).label||st.checks)}: the check runs on the model that made what it checks.</div>`:'';
-      return `<div class="mt-default-card" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div></div>${note}</div>`;
+      // t-b809 (user): while a preset waits for Apply, each card says what it becomes or that it stays (never disabled: it stays editable)
+      const pend=mtPresetPend?(mtOpts.presets||[]).find(p=>p.id===mtPresetPend):null, to=pend?((pend.picks||{})[st.id]||{})[mtAgent]:undefined;
+      const will=pend&&to!==undefined&&to!==cur;
+      const pendNote=!pend?'':will?`<div class="setting-d mt-pend mt-pend-to">\u2192 ${esc(mtModelName(st.id,mtAgent,to))} on Apply</div>`:'<div class="setting-d mt-pend mt-pend-same">No change</div>';
+      return `<div class="mt-default-card${will?' mt-will':''}" id="mt-step-${st.id}"><div class="mt-card-h"><div class="setting-k">${esc(mtStepLabel(st))}</div>${ui.runs?`<span class="mt-runs${ui.runs==='fresh subagent'?' sub':''}">${esc(ui.runs)}</span>`:''}</div><div class="setting-d">${esc(ui.used||'')}</div><div class="mt-picker-row"><div class="mt-picker"><select data-step="${st.id}" data-agent="${mtAgent}" aria-label="${escAttr(mtStepLabel(st)+' model for '+mtAgentLabel(mtAgent))}">${body}</select><span class="mt-prov">${esc(mtAgentLabel(mtAgent))}</span></div>${pendNote}</div>${note}</div>`;   // inside the picker row: the card's subgrid keeps 4 rows
     }).join('');
     box.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
   }

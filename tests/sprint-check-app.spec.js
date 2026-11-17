@@ -14551,6 +14551,26 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     }
   });
 
+  // t-b809 (user): while a preset waits for Apply, the step cards show it: a changing card is outlined with "→ <model> on Apply", the others
+  // say "No change", none is disabled; Cancel clears it. Prod path: Admin › Model tiers' Preset list.
+  test('Model tiers step cards preview a pending preset (t-b809)', async ({ page }) => {
+    await openModelTiers(page);
+    await expect(page.locator('.mt-pend')).toHaveCount(0);
+    await page.locator('#mt-preset-sel').selectOption('eco');
+    await expect(page.locator('#mt-step-build')).toHaveClass(/mt-will/);
+    await expect(page.locator('#mt-step-build .mt-pend-to')).toHaveText('\u2192 Haiku Test on Apply');
+    for (const step of ['plan', 'speccheck', 'reviewer', 'evaluator', 'evaluator2', 'light']) {
+      await expect(page.locator(`#mt-step-${step} .mt-pend-same`), step).toHaveText('No change');
+      await expect(page.locator(`#mt-step-${step}`), step).not.toHaveClass(/mt-will/);
+      await expect(page.locator(`#mt-step-${step} select`), step).toBeEnabled();
+    }
+    await page.locator('#mt-agent').selectOption('copilot');
+    await expect(page.locator('#mt-step-build .mt-pend-to')).toHaveText('\u2192 Claude Haiku 4.5 on Apply');
+    await page.locator('#mt-preset-cancel').click();
+    await expect(page.locator('.mt-pend')).toHaveCount(0);
+    await expect(page.locator('.mt-will')).toHaveCount(0);
+  });
+
   // t-b809 (user): the Preset list names the preset a fresh install equals (the board's `default`), and only that one.
   test('Model tiers Preset list marks the default preset (t-b809)', async ({ page }) => {
     await openModelTiers(page);
