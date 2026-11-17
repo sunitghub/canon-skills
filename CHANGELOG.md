@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.65.1] - 2026-11-17
+
+- New: a Copilot CLI row in the Agents sidebar (ticket and scratch) leads with its own mark, a `>_` prompt on a violet tile, instead of a lettered "C". It is canon's own drawing: GitHub's brand rules need its approval for any public use of the Copilot mascot. Pi and Terminal keep their tiles (t-4358).
+- Changed: the Cockpit's agent picker reads Claude Code, Copilot CLI, Pi; Claude Code stays the default (t-4358). Daemon release.
+
 ## [0.65.0] - 2026-11-17
 
 - New: the Cockpit pane header has two rows. Row 1 shows the session's **Model** by name and its stage (`Model Sonnet 5.5 · plan`, then `· build` once the Build switch happens), then **Cache**, **LLM calls**, **Tool calls** and **Subagents**, each labelled; the font size stays on the right. Row 2 is the session's folder (the worktree, for a worktree session) on its own line. A Pi session shows the counts only. On a narrow pane the fields wrap among themselves and nothing is cut (t-45b1).
