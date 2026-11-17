@@ -2542,10 +2542,8 @@ EOF
 main() {
   local cmd="${1:-help}"
   shift || true
-  # t-96f1: the close's .sh tools, run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file
-  # association). Before the project check: each script resolves its own folder, so the output stays the script's.
-  case "$cmd" in gate-snapshot|evidence|subagent-log|pre-gate-check) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;; esac
-  case "$cmd" in help|--help|-h) ;; *) require_project_folder sprint ;; esac   # t-b2ff
+  # t-96f1: the close's .sh tools skip the project check: each script resolves its own folder, so the output stays the script's.
+  case "$cmd" in help|--help|-h|gate-snapshot|evidence|subagent-log|pre-gate-check) ;; *) require_project_folder sprint ;; esac   # t-b2ff
 
   case "$cmd" in
     start) cmd_start "$@" ;;
@@ -2568,6 +2566,8 @@ main() {
     gate-cost) cmd_gate_cost "$@" ;;
     token-spend) cmd_token_spend "$@" ;;
     decisions) cmd_decisions "$@" ;;
+    # t-96f1: run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file association)
+    gate-snapshot|evidence|subagent-log|pre-gate-check) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
