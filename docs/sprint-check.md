@@ -173,8 +173,9 @@ sprint agent without leaving the browser — no second terminal.
   close the tab and reattaches (scrollback replayed) when you reopen;
   **End session** saves and ends it, and **End without saving** in its dialog (**Just end** for a scratch session) stops it with no orphaned
   process (the board's pane has no Kill button; the standalone page keeps one, `t-1917`). The pane
-  is a rounded card whose header holds only the agent picker, **Run sprint** (**Run agent** for a
-  scratch session), the session's folder, the cache meter and the font size; the top bar keeps Back,
+  is a rounded card whose header has two rows: the agent picker, **Run sprint** (**Run agent** for a
+  scratch session), the session's **Model** and stage (plan, then build after the switch), **Cache**, **LLM calls**,
+  **Tool calls**, **Subagents** and the font size; then the session's folder on its own line (`t-45b1`); the top bar keeps Back,
   the id or SCRATCH tag, the tab pills, **Auto save** and **End session**, and shows a **Needs you**
   chip only when the agent is waiting on you. The state itself is in the Agents list. A reopened tab only
   reattaches once you press **Run sprint** again; until then **End session**

@@ -120,7 +120,7 @@ function fmtWait(secs) {
 export function renderSessionStateChip() {
   const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
   // A Terminal is not an agent: no working state and no auto-save countdown.
-  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; postPaneInfo('', ''); return; }
+  if (!sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) { chip.hidden = true; reaper.hidden = true; postPaneInfo(null, ''); return; }
   const row = cockpitState.daemonRow || null;
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   let st = row ? ckRowState(row) : 'running';
@@ -139,13 +139,16 @@ export function renderSessionStateChip() {
   reaper.textContent = reaperText;
   if (reaperTip) reaper.title = reaperTip; else reaper.removeAttribute('title');
   reaper.hidden = !reaperText;
-  // t-d00c, t-1917: the ambient token meter and the session's folder show in the pane's own header strip, not in the bar. The board
-  // owns the daemon row, so it sends the text in; sub-agents are named only when there are some.
+  // t-d00c, t-1917, t-45b1: the session's model and stage, the ambient meter and its folder show in the pane's own header (two rows).
+  // The board owns the daemon row, so it sends the fields in, each on its own; the page labels them.
   const mt = row && row.meter && typeof row.meter === 'object' ? row.meter : null;
-  postPaneInfo(mt ? [mt.cache_pct + '% cache', mt.llm_calls + ' calls', mt.tool_calls + ' tools'].concat(mt.sub_agents > 0 ? [mt.sub_agents + ' sub'] : []).join(' \u00b7 ') : '', row && typeof row.cwd === 'string' ? row.cwd : '');
+  const str = v => (typeof v === 'string' ? v : '');
+  postPaneInfo({ model: str(row && row.model), stage: str(row && row.stage),
+    ...(mt ? { cache_pct: mt.cache_pct, llm_calls: mt.llm_calls, tool_calls: mt.tool_calls, sub_agents: mt.sub_agents } : {}) },
+  str(row && row.cwd));
 }
-// Sent on every render (the 5 s poll): a reloaded pane has no memory, so there is nothing to dedupe.
-function postPaneInfo(meter, cwd) { postToTab(cockpitState, { type: 'pane-info', meter, cwd }); }
+// Sent on every render (the 5 s poll): a reloaded pane has no memory, so there is nothing to dedupe. info is null when nothing shows.
+function postPaneInfo(info, cwd) { postToTab(cockpitState, { type: 'pane-info', info, cwd }); }
 export async function refreshSessionStateChip() {
   const tab = cockpitState, id = activeTabId;
   if (!tab || !document.getElementById('cockpit-overlay').classList.contains('open') || !sessionIsLive()) { renderSessionStateChip(); return; }

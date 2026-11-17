@@ -77,14 +77,17 @@ func TestCockpitPaneHeader(t *testing.T) {
 		`▶ Run sprint</button>`,                                  // a ticket session keeps Run sprint
 		`id="killBtn"`, `id="statusText"`,                        // still there for the standalone page
 		`id="paneMeter"`, `id="paneCwd"`, `d.type === "pane-info"`,
-		"pm.textContent = typeof d.meter", "pt.textContent = typeof d.cwd", `id="paneCwdText"`, "direction:rtl", "color:var(--text)",
+		"pt.textContent = typeof d.cwd", `id="paneCwdText"`, "direction:rtl", "color:var(--text)",
+		// t-45b1: two rows: labelled fields from the board's separate values (text nodes only), the folder alone on the second row
+		`add("Model", modelName(info.model)`, `add("Cache",`, `add("LLM calls",`, `add("Tool calls",`, `add("Subagents",`,
+		"header{display:flex;flex-wrap:wrap", ".paneinfo.cwd{flex:1 1 100%;order:99",
 	} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("the cockpit page lacks %q", want)
 		}
 	}
 	i := strings.Index(page, `d.type === "pane-info"`)
-	if strings.Contains(page[i:i+700], "innerHTML") {
+	if strings.Contains(page[i:i+1800], "innerHTML") { // t-45b1: the handler grew; still text only
 		t.Fatal("pane-info must set text, never markup")
 	}
 }
