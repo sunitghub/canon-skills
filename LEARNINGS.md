@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-17-2026 04:40
+learnings-sweep last run: 11-17-2026 05:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-17 | [t-7ef7](.tickets/t-7ef7/learnings.md) | A cloud session cannot watch its own workflow run, so a CI ticket built there must be landed and graded where the run is visible; and a CI step must match the repo as it is: npm ci needs a committed lockfile, which canon gitignores | UNPROMOTED |
 | 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | UNPROMOTED |
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | UNPROMOTED |
 | 2026-11-16 | [t-a811](.tickets/t-a811/learnings.md) | A spec that passes with the guard reverted proves the code was dead, not that the guard holds: the card already ignored clicks on buttons, so the stopPropagation calls were removed and the real guard (the id is a button) revert-proven; and a locale bug hides when the suite runs without a UTF-8 locale: pin LC_ALL in the test that guards it | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-17-2026 04:40
 | 2026-11-09 | [t-77e0](.tickets/t-77e0/learnings.md) | A worked example written from memory shipped a wrong fact (tkt exits 1 on an unknown id, not 2) until the reviewer ran it, and a seed text I planned to leave in one place was pinned identical to the board's copy by tests/ticket-skeleton.sh, which only the full suite ran; run the example's command before writing it, and grep tests for the exact text before choosing which copies to change. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-09 | [t-52a1](.tickets/t-52a1/learnings.md) | Reordering a pipeline leaves restated copies stale: the reviewer found the Wrapup Gates example rows and a wrapup-gates.md note still in the old order, and the full suite (not the targeted tests) flagged the new order assertion's `grep \| head` under pipefail-early-exit; grep every restatement of the order before the reviewer, and run the full suite on a new test line before the stamp. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-09 | [t-f74e](.tickets/t-f74e/learnings.md) | Editing every line of a tracked file to add an id resets `git blame` for those lines (the promotion dates all read today until the id commits were listed in `.git-blame-ignore-revs`); and a review that quotes example ids is itself a citation to a counter that greps for them. Check a derived date and a derived count on the real data after a mass edit. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-09 | [t-1219](.tickets/t-1219/learnings.md) | A recurrence count that matches on a ticket id reports references as recurrences: the first real run read 7 promoted lines Failing again on 0 mentions of their class. Run a new measure on the real data before trusting its verdict word, and keep the weaker signal beside it, not in it. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
