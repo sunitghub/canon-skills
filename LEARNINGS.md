@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-17-2026 16:30
+learnings-sweep last run: 11-17-2026 13:06
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-17 | [t-96f1](.tickets/t-96f1/learnings.md) | A pass-through test run only from a mktemp folder cannot catch a project check moved in front of it (the check never refuses a temp folder): test a guarded order from a folder the guard refuses (/etc) | UNPROMOTED |
 | 2026-11-17 | [t-b809](.tickets/t-b809/learnings.md) | A replay trial must score catches by hand against "a real defect later fixed", not the original report's wording: today's gates found real bugs (t-f7e6's unguarded land markers, t-788f's missing acceptance.md) that no catch regex matched, while a passing criteria row matched one by accident | UNPROMOTED |
 | 2026-11-17 | [t-7ef7](.tickets/t-7ef7/learnings.md) | A cloud session cannot watch its own workflow run, so a CI ticket built there must be landed and graded where the run is visible; and a CI step must match the repo as it is: npm ci needs a committed lockfile, which canon gitignores | UNPROMOTED |
 | 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | UNPROMOTED |
