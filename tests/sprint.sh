@@ -18,12 +18,16 @@ grep -q 'Gate reports are never hand-written' "$ROOT/skills/sprint/SKILL.md" || 
 
 # t-96f1: the close docs name `sprint <tool>` (PowerShell opens a bare .sh by file association; sprint.cmd starts Git Bash). Prod path:
 # every pre-gate, gate snapshot, evidence stamp and gate log a close runs. Same output and exit code as the script, outside a project too.
+# /etc: a folder the project check refuses (a mktemp folder never is), so running that check first fails here (t-96f1 evaluator).
 outside="$(mktemp -d)"
-for n in gate-snapshot evidence subagent-log pre-gate-check; do
-  for args in "--bogus" ""; do
-    want="$(cd "$outside" && bash "$ROOT/tools/$n.sh" $args 2>&1)" && wc=0 || wc=$?
-    got="$(cd "$outside" && "$SPRINT" "$n" $args 2>&1)" && gc=0 || gc=$?
-    assert_eq "$want" "$got"; assert_eq "$wc" "$gc"
+( cd /etc && "$SPRINT" status >/dev/null 2>&1 ) && fail "t-96f1: setup: sprint must refuse /etc as a project"
+for dir in "$outside" /etc; do
+  for n in gate-snapshot evidence subagent-log pre-gate-check; do
+    for args in "--bogus" ""; do
+      want="$(cd "$dir" && bash "$ROOT/tools/$n.sh" $args 2>&1)" && wc=0 || wc=$?
+      got="$(cd "$dir" && "$SPRINT" "$n" $args 2>&1)" && gc=0 || gc=$?
+      assert_eq "$want" "$got"; assert_eq "$wc" "$gc"
+    done
   done
 done
 want="$(cd "$ROOT" && bash tools/evidence.sh neutral)"; [[ -n "$want" ]] || fail "t-96f1: evidence.sh neutral printed nothing"
