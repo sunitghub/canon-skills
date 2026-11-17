@@ -1739,10 +1739,16 @@ cmd_sync_issues() {
     canon_event github.synced tkt "$root" "count=$made"
   fi
 }
+# _same_repo <a> <b> — t-59ab: two owner/repo names are the same GitHub repo: GitHub ignores case, and a github: line may be spelled
+# otherwise than the origin URL (sunithex/todo-demo vs sunithex/ToDo-Demo). Both must be non-empty.
+_same_repo() {
+  [[ -n "$1" && -n "$2" ]] || return 1
+  [[ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" == "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" ]]
+}
 # _sync_blocker <issue>: why this run would not make a ticket for it ("linked <ticket> <status>" or "send-issue"), nothing when it
 # would. The one rule behind the skip lines, --only's check and the create loop (the caller's $repo and $tmp).
 _sync_blocker() {
-  local k; k="$(awk -v k="$repo#$1" '$1 == k { print $2, $3; exit }' "$tmp/linked")"
+  local k; k="$(awk -v k="$repo#$1" 'tolower($1) == tolower(k) { print $2, $3; exit }' "$tmp/linked")"   # t-59ab: GitHub names ignore case
   if [[ -n "$k" ]]; then echo "linked $k"; return 0; fi
   [[ "$(tail -n +2 "$tmp/issue-$1" | grep -c '^<!-- canon:ticket ' || true)" == 0 ]] || echo send-issue
 }
@@ -1954,7 +1960,7 @@ _fixes_prs() {
 _resolve_pr() {
   local label="$1" file="$2" repo="$3" pr="$4" issue found
   [[ -n "$pr" ]] && { printf '%s\n' "$pr"; return 0; }
-  issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* ]] && issue="${issue##*#}" || issue=""
+  issue="$(get_field "$file" github)"; _same_repo "${issue%#*}" "$repo" && issue="${issue##*#}" || issue=""
   [[ "$issue" =~ ^[0-9]+$ ]] || issue=""
   [[ -n "$issue" ]] || { echo "$label: the ticket has no github: $repo#<n> line to find its PR by; pass --pr N" >&2; return 1; }
   found="$(_fixes_prs "$repo" "$issue" open 2>&1)" || { echo "$label: gh could not list PRs on $repo: $found" >&2; return 1; }
@@ -2198,7 +2204,7 @@ cmd_merge_pr() {
   repo="$(_gh_origin_repo "$root" merge-pr)" || exit 1
   command -v gh >/dev/null 2>&1 || { echo "merge-pr: needs the GitHub CLI: install gh, then run: gh auth login" >&2; exit 1; }
   local graded; graded="$(_eval_pass_head merge-pr "$tdir" "$id" "import the results first")" || exit 1
-  local issue=""; issue="$(get_field "$file" github)"; [[ "$issue" == "$repo#"* && "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
+  local issue=""; issue="$(get_field "$file" github)"; _same_repo "${issue%#*}" "$repo" && [[ "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
   # t-e7fb: the retry a refused local update names. A ticket already recorded as merged runs only that update again: nothing is
   # merged, recorded or logged a second time.
   if ! $check && [[ -n "$(get_field "$file" merged)" ]]; then
@@ -3618,6 +3624,15 @@ cmd_land() {
   [[ "$(git -C "$root" rev-parse FETCH_HEAD)" == "$head" ]] || { echo "land: PR #$pr moved while fetching it; run land again" >&2; exit 1; }
   mkdir -p "$(dirname "$wt")" && git -C "$root" worktree add -q -b "$branch" "$wt" "$head" < /dev/null \
     || { echo "land: could not create the worktree at $wt" >&2; exit 1; }
+  # t-597f: a PR that tracks .tickets/ (a project that commits its tickets) would give the worktree its own copy, and tickets_dir
+  # would read it there (the cloud's closed ticket) while --finish reads the main checkout's. Keep it out of this worktree only
+  # (per-worktree sparse-checkout: git status stays clean and a plain worktree remove works), so t-cd06 sends every reader to main.
+  if [[ -n "$(git -C "$root" ls-tree -d --name-only "$head" .tickets 2>/dev/null)" ]]; then
+    local sp_out
+    sp_out="$(git -C "$wt" sparse-checkout set --no-cone '/*' '!/.tickets/' < /dev/null 2>&1)" || {
+      git -C "$root" worktree remove --force "$wt" < /dev/null >/dev/null 2>&1; git -C "$root" branch -q -D "$branch" < /dev/null 2>/dev/null
+      echo "land: could not keep .tickets/ out of $wt (git sparse-checkout: ${sp_out:-no output}); nothing was made" >&2; exit 1; }
+  fi
   # t-74d8: the close runs in this worktree, and its gates need canon's agents (and skills) there; best effort, never fails land
   [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true
   printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"

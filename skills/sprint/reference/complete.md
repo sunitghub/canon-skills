@@ -417,7 +417,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
 7. **Snapshot the repo before AND after every subagent dispatch** with `sprint gate-snapshot` (a `sprint` subcommand: PowerShell opens a bare `.sh` file by file association instead of running it, t-96f1) — a gate is
    read-only by contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition,
-   and an after-only check misses a discard (see below). Immediately **before** dispatching run `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer|evaluator` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it; `--role` names the gate for the `gate.started` event, t-8854): it records
+   and an after-only check misses a discard (see below). Immediately **before** dispatching run `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer|evaluator` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it; `--role` names the gate for the `gate.started` event, t-8854; from a land worktree, which has no `.tickets/` of its own, the path is the main checkout's, t-597f). With `--role` it also prints `the gate writes its report to <absolute path>`: give the gate that path, never `.tickets/<id>/…`, which a gate resolves from its own folder and, in a land worktree, turns into a `.tickets/` that hides the ticket (`post` and `sprint complete` then stop and name the files). It records
    the branch, HEAD, every ref, every branch and tag with its sha (a branch checked out in another worktree keeps only its name: a commit there is that session's work, not the gate's), the
    porcelain lines (untracked files expanded), a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of the project's
    `.claude/subagent-runs.jsonl` (only this project's own `.tickets/` and that audit log are excluded from the tree comparison), and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
@@ -661,7 +661,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    the Sign-off line; not high-risk without `Second eval: on`), or the model to use: never the Evaluator's (Admin refuses that pick) and
    never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more exactly as the binding
    evaluator (`sprint gate-snapshot pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
-   file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is `.tickets/<id>/eval-report-2.md` (eval.md: a named report file replaces `eval-report.md`
+   file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is the absolute `eval-report-2.md` path that `pre --role evaluator2` printed (eval.md: a named report file replaces `eval-report.md`
    everywhere, so the binding report and its run-id are never touched); then `sprint gate-snapshot post …` and `sprint subagent-log --agent-id
    <its run-id> --agent-type evaluator2` with the cost flags. Run `sprint eval-compare <id>`: it lists each Criteria or Test Plan row whose
    grade differs (or that only one report has) and ends `Disagreements: <n>`. Show every difference to the user, who decides (fix it, or

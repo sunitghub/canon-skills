@@ -269,7 +269,7 @@ Start checklist — rules that need no reference read (each owned by the step na
    its `skip_on` column (today `lite`: a `demo: true` ticket). Delete an old `.tickets/<id>/spec-review.md` first (a failed re-run must not leave the last verdict), then
    `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role speccheck`; the `Agent` tool with
    `subagent_type: "canon-spec-checker"` (fallback `general-purpose`), told to follow `skills/sprint/reference/spec-check.md` for the
-   ticket and to write `.tickets/<id>/spec-review.md`; then `sprint gate-snapshot post …` (exit 1: stop and show the person what it names,
+   ticket and to write the absolute report path `pre` printed (`<project>/.tickets/<id>/spec-review.md`, t-597f); then `sprint gate-snapshot post …` (exit 1: stop and show the person what it names,
    as for a close gate) and `sprint subagent-log --agent-id <id>
    --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: the one `sprint gate-snapshot pre … --role speccheck` printed (`sprint gate-model`, t-c723): a ticket's `Gate model:`, else Admin > Model tiers' Spec check default for the agent; `none:` means omit it (the agent file's floor). It never blocks and you never apply its findings yourself: put them in the brief, and the person decides. A failed or
    refused dispatch is said in the brief, not retried in a loop. Then produce:

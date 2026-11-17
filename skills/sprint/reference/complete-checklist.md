@@ -65,7 +65,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
   `Admin Reviewer|Evaluator default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; follow `reference/review.md` (reviewer) or
   `reference/eval.md` (evaluator); the `Model:` designation; write
-  `.tickets/<id>/review-notes.md` / `eval-report.md` and return the verdict line; read-only except
+  `pre`'s report path and return the verdict line; read-only except
   that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
 - `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the session never types one).

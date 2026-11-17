@@ -5,6 +5,7 @@
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+unset CANON_TICKETS_DIR   # t-597f: a full-suite stamp sets it; the land case must resolve tickets itself (manual-qa honours it)
 
 W="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/tkt-land.XXXXXX")" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
@@ -134,7 +135,10 @@ git add -f node_modules/k .tickets/keep/k; git commit -qm "tracks both"; H2="$(g
 git checkout -q main; mkdir -p "$P/node_modules"
 printf 'graded-head: %s\nfail: one criterion\n' "$H2" > ".tickets/$id/eval-report.md"
 out="$(STUB_HEAD="$H2" "$TKT" land "$id" < /dev/null 2>&1)" || fail "second land failed: $out"
-[[ "$out" != *"  tests: "* ]] || fail "land named what the worktree already has: $out"
+[[ "$out" != *"node_modules"* ]] || fail "land named what the worktree already has: $out"
+# t-597f: this PR head tracks .tickets/, so land keeps it out of the worktree (the main checkout's copy is the one every reader uses)
+[[ ! -e "$WT/.tickets" ]] || fail "t-597f: the land worktree has its own .tickets/ from the PR"
+assert_contains "$out" "  tests: CANON_TICKETS_DIR='$P/.tickets' (the worktree has no .tickets/)"   # true now: land kept it out
 rmdir "$P/node_modules"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 echo more > "$WT/g.txt"; git -C "$WT" add g.txt; git -C "$WT" commit -qm "fix found while closing"; NEWHEAD="$(git -C "$WT" rev-parse HEAD)"
 sed -i.bak 's/^status: .*/status: closed/' "$f"
@@ -208,4 +212,42 @@ printf 'graded-head: %s\npass: all met\n' "$PRHEAD" > ".tickets/$id/eval-report.
 out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "finish failed: $out"
 ! git show-ref --verify --quiet "refs/heads/land/$id" || fail "land/$id kept although its head is the one land started from: $out"
 echo "land: finish deletes land/<id> at its start head even when the PR moved (t-92f2)"
+# t-597f: protects `tkt land` / the card's Continue here, Resume and Finish in a project that commits .tickets/ (the user's ToDo-Demo):
+# the PR head carries the cloud's closed copy of the ticket. The land worktree must have no .tickets/ of its own, stay clean, and leave
+# every read and write to the main checkout, so the close there ends in a plain --finish with no manual step.
+id="$("$TKT" create "Tracked tickets" -t bug)"; f=".tickets/$id/ticket.md"; WT="$W/project-worktrees/land-$id"
+awk '/^---$/ && ++n == 2 { print "github: acme/app#28" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"; echo plan > ".tickets/$id/plan.md"
+# the PR head: the earlier PR plus the cloud's closed copy of this ticket, committed (built in a scratch index: .tickets/ is gitignored here)
+printf -- '---\nid: %s\nstatus: closed\n---\n# the cloud copy\n' "$id" > "$W/cloudcopy"
+GIT_INDEX_FILE="$W/idx" git read-tree "$PRHEAD"; blob="$(git hash-object -w "$W/cloudcopy")"
+GIT_INDEX_FILE="$W/idx" git update-index --add --cacheinfo "100644,$blob,.tickets/$id/ticket.md"
+TH="$(git commit-tree "$(GIT_INDEX_FILE="$W/idx" git write-tree)" -p "$PRHEAD" -m "cloud close commits its ticket")"
+git push -qf origin "$TH:refs/pull/9/head"; echo 9 > "$W/prlist"
+sparse_main="$(git config --get core.sparseCheckout || echo off)"
+# A git that refuses sparse-checkout: land says so and leaves nothing behind.
+cat > "$W/bin/git-sparse-fail" <<SH
+#!/usr/bin/env bash
+[[ " \$* " == *" sparse-checkout "* ]] && { echo "sparse not supported here" >&2; exit 128; }
+exec "$W/bin/git.real" "\$@"
+SH
+cp "$W/bin/git" "$W/bin/git.real"; cp "$W/bin/git-sparse-fail" "$W/bin/git"; chmod +x "$W/bin/git"
+refuses "a git that cannot set sparse-checkout" "sparse not supported here" STUB_HEAD="$TH" --
+mv "$W/bin/git.real" "$W/bin/git"
+out="$(STUB_HEAD="$TH" "$TKT" land "$id" < /dev/null 2>&1)" || fail "t-597f: land of a PR that tracks .tickets failed: $out"
+[[ ! -e "$WT/.tickets" ]] || fail "t-597f: the land worktree has its own .tickets/"
+[[ -z "$(git -C "$WT" status --short)" ]] || fail "t-597f: the land worktree is not clean: $(git -C "$WT" status --short)"
+[[ "$(git config --get core.sparseCheckout || echo off)" == "$sparse_main" ]] || fail "t-597f: sparse-checkout leaked into the main checkout"
+[[ -f "$WT/f.txt" ]] || fail "t-597f: the sparse worktree lost a code file"
+assert_contains "$(cd "$WT" && "$TKT" show "$id")" "in_progress"
+[[ "$(cd "$WT" && "$SPRINT" current 2>/dev/null)" == *"$id"* ]] || fail "t-597f: sprint current from the worktree does not name $id"
+(cd "$WT" && "$SPRINT" subagent-log --agent-id t597f-probe --agent-type evaluator --ticket "$id" >/dev/null 2>&1) || fail "t-597f: subagent-log failed in the worktree"
+grep -q t597f-probe "$P/.claude/subagent-runs.jsonl" || fail "t-597f: subagent-log did not write the main checkout's log"
+(cd "$WT" && "$SPRINT" manual-qa "$id" --by tester --step "probe|pass" >/dev/null 2>&1) || fail "t-597f: manual-qa failed in the worktree"
+[[ -f "$P/.tickets/$id/evidence/manual-qa.md" ]] || fail "t-597f: manual-qa did not write the main checkout's ticket"
+[[ ! -e "$WT/.tickets" && ! -e "$WT/.claude/subagent-runs.jsonl" ]] || fail "t-597f: a write landed in the worktree"
+sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
+printf 'graded-head: %s\npass: all met\n' "$TH" > ".tickets/$id/eval-report.md"
+out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "t-597f: finish failed: $out"
+[[ ! -e "$WT" ]] || fail "t-597f: worktree still there"
+echo "land: a PR that tracks .tickets/ gives a worktree with none, every read and write in main, and a plain finish (t-597f)"
 echo "tkt land: ok"

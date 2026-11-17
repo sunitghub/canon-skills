@@ -28,7 +28,9 @@ git checkout -q -b claude/pr7; echo change > change.txt; git add change.txt; git
 git push -q origin "HEAD:refs/pull/7/head"; git checkout -q main
 
 id="$("$TKT" create "Cloud ticket" -t bug)"; f=".tickets/$id/ticket.md"
-awk '/^---$/ && ++n == 2 { print "github: acme/app#21" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
+# t-59ab: protects Check & merge (`tkt merge-pr`): the github: line is spelled in another case than origin (acme/app), as a send on the
+# user's VM wrote it (sunithex/todo-demo vs sunithex/ToDo-Demo); GitHub ignores case, so every merge-pr case below must still find PR #7
+awk '/^---$/ && ++n == 2 { print "github: Acme/App#21" } { print }' "$f" > "$W/t" && mv "$W/t" "$f"
 eval_ok() { printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "${1:-$PRHEAD}" > ".tickets/$id/eval-report.md"; }
 eval_ok
 
@@ -106,6 +108,10 @@ refuses() {
 }
 
 # Refusals, one check each.
+# t-59ab (reviewer): case is ignored, the name is not: a github: line for another repo still finds no PR here
+sed -i.bak 's|^github: Acme/App#21$|github: other/app#21|' "$f"; rm -f "$f.bak"
+refuses "a github: line for another repo" "line to find its PR by" -- --yes
+sed -i.bak 's|^github: other/app#21$|github: Acme/App#21|' "$f"; rm -f "$f.bak"; grep -q '^github: Acme/App#21$' "$f" || fail "setup: github line not restored"
 printf 'graded-head: %s\nfail: one criterion\n' "$PRHEAD" > ".tickets/$id/eval-report.md"
 refuses "a failing verdict" "no passing evaluator verdict" -- --yes
 [[ ! -e ".tickets/$id/github.md" ]] || fail "a refusal before the PR was read wrote the GitHub trail (t-1dec)"

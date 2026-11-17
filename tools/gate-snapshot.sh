@@ -43,6 +43,8 @@ if [[ ( "$mode" != pre && "$mode" != post ) || -z "$file" || "$role" == "?" ]]; 
   exit 2
 fi
 
+file="$(ticket_path "$file")"   # t-597f: `.tickets/<id>/…` from a land worktree is the main checkout's ticket folder
+
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || root=""
 if [[ -z "$root" ]] || ! git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>&1; then
   echo "gate-snapshot: $mode skipped — no git repository or no commit yet, so there is nothing to compare."
@@ -112,6 +114,17 @@ print_gate_model() {
   esac
 }
 
+# print_report_path — t-597f: where this gate writes its report, as an absolute path in the ticket's folder, for the dispatch prompt: a
+# gate told `.tickets/<id>/…` writes it relative to its own folder, and in a land worktree that makes a .tickets/ there.
+print_report_path() {
+  local tdir name
+  case "$role" in reviewer) name=review-notes.md ;; evaluator) name=eval-report.md ;; evaluator2) name=eval-report-2.md ;;
+    speccheck) name=spec-review.md ;; *) return 0 ;; esac
+  tdir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)" || return 0
+  [[ "$(basename "$(dirname "$tdir")")" == .tickets && -f "$tdir/ticket.md" ]] || return 0
+  echo "gate-snapshot: the gate writes its report to $tdir/$name (give the gate this absolute path)"
+}
+
 spec_docs() { cat "$(dirname "$file")/acceptance.md" "$(dirname "$file")/plan.md" 2>/dev/null | digest; }   # the two files the spec check grades
 
 if [[ "$mode" == pre ]]; then
@@ -137,10 +150,19 @@ if [[ "$mode" == pre ]]; then
     echo "gate-snapshot: gate scope active until post: canon update, skills.sh and uninstall refuse real HOME/CANON_HOME meanwhile; a pi gate runs under: env \$(cat $file.scope) pi -p …"
   fi
   print_gate_model
+  print_report_path
   emit_gate_started
   exit 0
 fi
 
+# t-597f: a gate that wrote `.tickets/<id>/…` relative to a land worktree made a .tickets/ there; it hides the ticket from every reader
+# in that worktree (and .tickets/ is outside the comparison below). Said before anything else; post again once moved (the scope stays).
+if [[ "$mode" == post ]] && strays="$(stray_tickets)"; then
+  echo "gate-snapshot: post stopped — a .tickets/ in this worktree hides the ticket (a gate wrote a relative path):" >&2
+  printf '%s\n' "$strays" | sed 's/^/  /' >&2
+  echo "  move each file into $(_worktree_main_tickets "$(worktree_root)")/<id>/, remove $(worktree_root)/.tickets, then run post again" >&2
+  exit 1
+fi
 if [[ "$mode" == post ]]; then gate_scope_remove "$file" || true; ! wt_write_ok "$file.scope" || rm -f "$file.scope"; fi   # t-f7e6 (evaluator): the removal too   # t-b7df: the gate is over, its scope ends
 if [[ ! -f "$file" ]]; then
   echo "gate-snapshot: no pre snapshot at $file — run 'sprint gate-snapshot pre $file' before the dispatch." >&2
