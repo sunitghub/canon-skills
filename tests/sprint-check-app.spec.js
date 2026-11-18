@@ -17830,6 +17830,36 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-status')).toHaveText('');
   });
 
+  // Prod path: the Send panel holds Create issue while the ticket has no plan or no criteria (t-6555): the CLI's fixed `needs:` lines, a note
+  // naming what is missing with a button that opens that doc, and a save in Ticket details re-reads the preview, which enables Create issue.
+  test('Send panel: Create issue waits for the plan and the criteria; a save re-reads the preview (t-6555)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh6n');
+    ghTicket(id);
+    let written = false, previews = 0;
+    const pv = () => 'repo: acme/app (PRIVATE)\ntitle: ' + id + ': GitHub test\n--- body ---\n# Description\nx\n'
+      + (written ? '' : `send-issue: warning: ${id} has no plan (plan.md ## Approach is empty): the session will draft it and wait for your approval\nsend-issue: needs: plan\n`);
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview*`, r => { previews++; return json(r, { ok: true, exit_code: 0, output: pv() }); });
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-needs')).toContainText('Write the plan first');
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await expect(page.locator('#ck-gh-preview')).not.toContainText('needs:');   // the token is for the board, not the preview
+    await expect(page.locator('#ck-gh-note')).toHaveCount(0);                     // its warning is folded into the needs note
+    await page.locator('[data-gh-needs="plan"]').click();
+    await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+    await expect(page.locator('#m-id')).toHaveText(id);
+    await expect.poll(() => page.evaluate(async () => (await import('/static/board-modal.js')).modalState.activeDoc)).toBe(`${id}/plan.md`);
+    written = true;
+    const before = previews;
+    await page.evaluate(i => window.dispatchEvent(new CustomEvent('canon:doc-saved', { detail: { id: i } })), id);   // what saveEdit sends
+    await expect.poll(() => previews).toBe(before + 1);
+    await expect(page.locator('#ck-gh-needs')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
   // Prod path: the Send panel for a Manual ticket (t-e790). It goes only on purpose: a notice, the exact checkbox, Create disabled until it
   // is ticked, and the preview and the send carry the flag. A non-Manual ticket's panel shows neither and sends no flag.
   test('Send panel: a Manual ticket goes only with "Send it. Will test after merged" ticked (t-e790)', async ({ page }) => {

@@ -151,7 +151,11 @@ Ticket: $tdir/ticket.md
 Agent next steps:
 1. Read DECISIONS.md, HANDOFF.md, and ticket.md.
 2. Fill in acceptance.md — add criteria and test-plan checklist items.
-3. Fill in plan.md — write the approach, then wait for explicit approval before coding.
+$(if grep -qiE '^[[:space:]]*[-*] \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null; then
+  echo "3. The plan in plan.md is already approved (its Sign-off is ticked): build it without waiting for another approval."   # t-6555: sent approved
+else
+  echo "3. Fill in plan.md — write the approach, then wait for explicit approval before coding."
+fi)
 EOF
   _unpromoted_line "$root"
   _recurrence_line "$root"
