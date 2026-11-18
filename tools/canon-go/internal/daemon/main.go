@@ -851,12 +851,14 @@ const promptSuggestionEnv = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
 
 // sessionEnv is the environment a session's process starts with: the restricted Terminal's own (termEnv); every agent
 // gets COCKPIT_TICKET and COCKPIT_AGENT; a claude session also gets prompt suggestions off, replacing any inherited value.
-func sessionEnv(kind, ticket string, environ []string) []string {
+// t-25f1: COCKPIT_SESSION is the session id, which tools/work-beat writes into .tickets/ACTIVE.beat so clearOwnBeat can tell
+// this session's beat from another agent's.
+func sessionEnv(kind, ticket, sid string, environ []string) []string {
 	if kind == "term" {
 		return termEnv(environ)
 	}
 	claude := kind != "pi" && kind != "copilot"
-	env := make([]string, 0, len(environ)+3)
+	env := make([]string, 0, len(environ)+4)
 	for _, kv := range environ {
 		if claude && strings.HasPrefix(kv, promptSuggestionEnv+"=") {
 			continue
@@ -868,7 +870,7 @@ func sessionEnv(kind, ticket string, environ []string) []string {
 		agent = kind // pi
 	}
 	// t-3425: COCKPIT_AGENT names the agent, so sprint approve can name the Build model the switch will type (or that pi has none)
-	env = append(env, "COCKPIT_TICKET="+ticket, "COCKPIT_AGENT="+agent)
+	env = append(env, "COCKPIT_TICKET="+ticket, "COCKPIT_AGENT="+agent, "COCKPIT_SESSION="+sid)
 	if claude {
 		env = append(env, promptSuggestionEnv+"=false")
 	}
@@ -1094,7 +1096,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	bin := resolveSpawnBin(program)
 	c := p.Command(bin, args...)
 	c.Dir = cwd
-	c.Env = sessionEnv(kind, ticket, os.Environ())
+	c.Env = sessionEnv(kind, ticket, sid, os.Environ())
 	if err := c.Start(); err != nil {
 		p.Close()
 		os.RemoveAll(hookDir)
@@ -1126,6 +1128,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
 	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
 	se.onNaturalExit = func() {
+		clearOwnBeat(se)         // t-25f1: the agent is gone, so its "Working" beat goes too
 		s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
 		s.snapshotRemove(se.sid) // the agent exited on its own: nothing to resume
 		time.AfterFunc(s.cfg.sessionReapTTL, func() {
@@ -2218,6 +2221,7 @@ func (s *server) killSession(se *session) {
 	se.closePty()
 	se.markDone()
 	se.cleanup()
+	clearOwnBeat(se) // t-25f1: every explicit end (End, Save & End, reaper, Kill) lands here; the card shows Resume at once
 	// t-5a4b: what changed, kept for the board. t-67a6: counted in s.recording before the entry
 	// goes, so whoever sees the session gone and waits on s.recording waits for this record too.
 	s.recordChangesAsync(se)
@@ -2226,6 +2230,37 @@ func (s *server) killSession(se *session) {
 	s.mu.Unlock()
 	if !s.shuttingDown.Load() {
 		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
+	}
+}
+
+// clearOwnBeat — t-25f1: removes <se.ticketsDir>/ACTIVE.beat (the board's "an agent is on this ticket" label, tools/work-beat)
+// when it names this session's ticket and this session's id, so a card shows Resume as soon as its session ends, also on
+// Windows, where the beat has no pid and only a 10-minute clock would expire it. A beat with no session= line (an agent
+// outside the Cockpit, an older canon) or another session's id is never touched. Best effort: any read error leaves it.
+func clearOwnBeat(se *session) {
+	if se.ticket == "" || se.sid == "" || se.ticketsDir == "" {
+		return
+	}
+	p := filepath.Join(se.ticketsDir, "ACTIVE.beat")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return
+	}
+	var ticket, sess string
+	for _, ln := range strings.Split(string(b), "\n") {
+		k, v, ok := strings.Cut(strings.TrimRight(ln, "\r"), "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "ticket":
+			ticket = v
+		case "session":
+			sess = v
+		}
+	}
+	if ticket == se.ticket && sess == se.sid {
+		_ = os.Remove(p)
 	}
 }
 

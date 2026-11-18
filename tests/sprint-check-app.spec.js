@@ -12187,6 +12187,101 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  // t-25f1: protects Resume on a card after End. A tab still mid-End (its 'ended' reply lost or late) or whose session the daemon
+  // no longer lists is not switched to (that showed its old "Ending without saving…" pane with nothing running): Resume opens a
+  // fresh tab; a tab whose session is still listed keeps the plain switch (the positive control).
+  const tabProbe = (page, id) => page.evaluate(async (tid) => {
+    const c = await import('/static/board-cockpit.js');
+    const tab = c.cockpitTabs[tid];
+    return { same: !!tab && tab === window.__oldTab, ending: !!(tab && tab._ending), frames: document.querySelectorAll(`#ck-term iframe[data-tab-id="${tid}"]`).length };
+  }, id);
+  const keepOldTab = (page, id) => page.evaluate(async (tid) => { window.__oldTab = (await import('/static/board-cockpit.js')).cockpitTabs[tid]; }, id);
+  const resumeTab = (page, id) => page.evaluate(async (tid) => { await (await import('/static/board-cockpit-rail.js')).openCockpit(tid); }, id);
+
+  for (const [label, listed] of [['opens a fresh tab, not the ended pane, once the daemon dropped the session', false], ['still saving (listed) keeps the plain switch', true]]) {
+    test(`Resume on a tab mid-End ${label} (t-25f1)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, listed ? 'lcsaving' : 'lcstuck');
+      try {
+        writeTicket(id, 'in_progress');
+        await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 600000 }));   // 'ended' never comes in time
+        await waitTabLive(page, id);
+        await page.locator('#ck-end-session').click();
+        await page.locator('#ck-leave-skip').click();
+        await expect(page.locator('#ck-term-msg')).toHaveText('Ending without saving…');
+        await keepOldTab(page, id);
+        expect((await tabProbe(page, id)).ending).toBe(true);
+        if (!listed) await stubSessions(page, []);   // the kill happened; only the 'ended' reply was lost (the VM case)
+        await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
+        await resumeTab(page, id);
+        await expect.poll(() => tabProbe(page, id)).toEqual(listed ? { same: true, ending: true, frames: 1 } : { same: false, ending: false, frames: 1 });
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        if (!listed) await expect(page.locator('#ck-term-msg')).not.toHaveText('Ending without saving…');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  }
+
+  // A live tab is never torn down on the sessions list (a list that misses it would kill a working session): Resume on a running
+  // tab that the daemon does not list keeps the plain switch.
+  test('Resume on a running tab keeps it even when the sessions list misses it (t-25f1)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lcmiss');
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, []);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await waitTabLive(page, id);
+      await keepOldTab(page, id);
+      await resumeTab(page, id);
+      await expect.poll(() => tabProbe(page, id)).toEqual({ same: true, ending: false, frames: 1 });
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
+  for (const [label, initialStatus, sessionsStatus] of [['an idle tab (no session started yet)', 'idle', 200], ['a failed sessions lookup', 'running', 500]]) {
+    test(`Resume keeps the plain switch for ${label} (t-25f1)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, initialStatus === 'idle' ? 'lcidle' : 'lcfail');
+      try {
+        writeTicket(id, 'in_progress');
+        await stubSessions(page, []);
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus }));
+        await expect.poll(() => page.evaluate(async (tid) => (await import('/static/board-cockpit.js')).cockpitTabs[tid]?.status, id)).toBe(initialStatus);
+        await keepOldTab(page, id);
+        if (sessionsStatus !== 200) await page.route('**/api/v1/sessions', route => route.fulfill({ status: sessionsStatus, contentType: 'application/json', body: '{"error":"x"}' }));
+        await resumeTab(page, id);
+        await expect.poll(() => tabProbe(page, id)).toEqual({ same: true, ending: false, frames: 1 });
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  }
+
+  // t-25f1 (t-447a): protects the card after Save & End: the ended session's row ("done · waiting") goes at teardown, not at the next
+  // sessions poll (held here, so only the teardown can remove it).
+  test('Save & End drops the ended session from the card at once (t-25f1, t-447a)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lcrow');
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'awaiting-input', state: 'done' }]);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await waitTabLive(page, id);
+      await page.route('**/api/v1/sessions', () => {});   // the next poll never answers: only the teardown can drop the row
+      await page.evaluate(async (tid) => {   // the card's session row, as a sessions poll applies it
+        const { state } = await import('/static/board-core.js');   // set directly: this test's id is not t-xxxx, which applyCardSessions keeps
+        state.cockpitRows = new Map([[tid, { session: 's1', ticket: tid, project_root: state.gitRoot, agent: 'claude', status: 'awaiting-input', state: 'done' }]]);
+      }, id);
+      expect(await page.evaluate(async (tid) => (await import('/static/board-core.js')).state.cockpitRows.has(tid), id)).toBe(true);
+      await page.locator('#ck-end-session').click();
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+      expect(await page.evaluate(async (tid) => (await import('/static/board-core.js')).state.cockpitRows.has(tid), id)).toBe(false);
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
+
   test('re-clicking Back mid-teardown does not reopen the modal or restart the end sequence (t-9eda)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'lcreend');
     try {

@@ -38,6 +38,12 @@ assert_eq "$id" "$(field ticket)"
 now="$(date +%s)"; ts="$(field ts)"; (( now - ts < 30 )) || fail "work-beat: ts $ts is not now ($now)"
 assert_eq "$(hostname | tr -d '[:space:]')" "$(field host)"
 grep -qx 'pid=[0-9]*' .tickets/ACTIVE.beat || fail "work-beat: pid line is not 'pid=<digits or empty>': $(beat)"
+# t-25f1: a Cockpit agent (COCKPIT_SESSION set by the daemon) adds session=<id>, which the daemon's end matches; outside the Cockpit,
+# or with an id that is not a plain token, there is no session line
+[[ -z "$(field session)" ]] || fail "work-beat: a session line without COCKPIT_SESSION: $(beat)"
+COCKPIT_SESSION=s-ab12-9 "$BEAT" touch; assert_eq s-ab12-9 "$(field session)"
+COCKPIT_SESSION='x y/../z' "$BEAT" touch; [[ -z "$(field session)" ]] || fail "work-beat: wrote an unsafe session id: $(beat)"
+"$BEAT" touch
 assert_eq 4 "$(wc -l < .tickets/ACTIVE.beat | tr -d ' ')"
 
 # sprint continue refreshes it (a beat made old by hand becomes now).
