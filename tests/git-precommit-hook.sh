@@ -243,9 +243,14 @@ rec_commit() {   # rec_commit <msg> <paths...>: stage the paths, commit through 
 printf 'more\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "ticket notes" .tickets
 assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "Records only (.tickets/, HANDOFF, LEARNINGS, DECISIONS): test suite skipped."
 [[ "$rec_out" != *"suite ran"* ]] || fail "t-7db9: the suite ran for a .tickets-only commit"
-for f in HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md; do printf 'x\n' > "$rec_project/$f"; done
-rec_commit "docs records" HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md
+for f in HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md; do printf 'x\n' > "$rec_project/$f"; done
+rec_commit "docs records" HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md DECISIONS-archive.md
 assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"
+mkdir -p "$rec_project/docs"; printf 'x\n' > "$rec_project/docs/HANDOFF.md"; rec_commit "a HANDOFF.md not at the root" docs/HANDOFF.md
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a docs/HANDOFF.md commit skipped the suite (records are root-level only)"; assert_contains "$rec_out" "suite ran"
+git -C "$rec_project" reset -q; rm -rf "$rec_project/docs"
+set +e; rec_out="$(cd "$rec_project" && git -c user.email=t@t -c user.name=t commit --allow-empty -m "empty" 2>&1)"; rec_rc=$?; set -e
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: an empty commit skipped the suite"; assert_contains "$rec_out" "suite ran"   # nothing staged keeps the suite
 printf 'echo bye\n' >> "$rec_project/tool.sh"; rec_commit "code" tool.sh
 [[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a code commit skipped a failing suite"; assert_contains "$rec_out" "BLOCKED — test suite failed"
 printf 'y\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "code and records" tool.sh .tickets
@@ -265,7 +270,7 @@ assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"; assert_c
 
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$scratch_home"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$nogit_project" "$scratch_home"' EXIT
 printf '# Claude\n' > "$nogit_project/CLAUDE.md"
 printf '# Agents\n' > "$nogit_project/AGENTS.md"
 nogit_output="$("$SKILLS" add sprint "$nogit_project" 2>&1)"
@@ -275,7 +280,7 @@ assert_contains "$("$SKILLS" status "$nogit_project" 2>&1)" "[skipped — not a 
 
 # ── Remove uninstalls the hook (t-0bcd) ─────────────────────────────────────
 remove_project="$(make_project)"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$scratch_home"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$nogit_project" "$remove_project" "$scratch_home"' EXIT
 "$SKILLS" add sprint "$remove_project" >/dev/null
 assert_file_exists "$remove_project/.git/hooks/pre-commit"
 "$SKILLS" remove sprint "$remove_project" >/dev/null
@@ -283,7 +288,7 @@ assert_file_exists "$remove_project/.git/hooks/pre-commit"
 
 # ── A linked worktree (.git is a FILE): add, status and remove use the common hooks dir (t-80fc) ──
 wt_main="$(make_project)"; wt_tree="$(mktemp -d)"; rm -rf "$wt_tree"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$scratch_home"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$scratch_home"' EXIT
 git -C "$wt_main" -c user.email=t@t -c user.name=t commit -q --allow-empty -m seed
 git -C "$wt_main" worktree add -q "$wt_tree"
 [[ -f "$wt_tree/.git" ]] || fail "expected the linked worktree to have a .git FILE"
@@ -300,7 +305,7 @@ assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)         
 assert_contains "$("$SKILLS" status "$wt_tree" 2>&1)" "pre-commit (git)          [not wired]"
 # a .git pointer whose git dir is gone skips cleanly, as "not a git repo"
 broken="$(mktemp -d)"; printf 'gitdir: %s/missing\n' "$broken" > "$broken/.git"
-trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$broken" "$scratch_home"' EXIT
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$nogit_project" "$remove_project" "$wt_main" "$wt_tree" "$broken" "$scratch_home"' EXIT
 broken_out="$("$SKILLS" add sprint "$broken" 2>&1)" || fail "skills.sh add failed on a broken .git pointer: $(printf '%s' "$broken_out" | tail -3)"
 assert_contains "$broken_out" "$broken/.git/hooks/pre-commit not found (not a git repo?)"
 
