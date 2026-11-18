@@ -247,6 +247,11 @@ assert_contains "$out" "nothing to commit or push"; [[ "$out" != *pushed* ]] || 
 echo ahead > b.txt; git commit -qam "ahead"; out="$("$TKT" commit-push "$id" --file a.txt --message x)" || fail "t-5273: stale file with a commit ahead: $out"
 assert_contains "$out" "a.txt is no longer changed: left out"; assert_contains "$out" "pushed feat/new to origin"
 assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse feat/new)"
+# a NEW branch whose every ticked file is left out still goes to origin (the push makes the branch)
+git checkout -q -b feat/leftout; echo phantom > a.txt; git checkout -q -- a.txt
+out="$("$TKT" commit-push "$id" --file a.txt --message x)" || fail "t-5273: a new branch with every file left out: $out"
+assert_contains "$out" "a.txt is no longer changed: left out"; assert_contains "$out" "(new branch, tracking origin/feat/leftout)"
+git checkout -q feat/new
 mkdir -p docs; echo d > docs/x.txt; git add docs; git commit -qm docs; git push -q origin HEAD:feat/new; echo secret > ig.txt; echo ig.txt >> .git/info/exclude
 refuses "is not one of this checkout's changes" --file docs --message "chore: x"          # a clean tracked folder
 refuses "is not one of this checkout's changes" --file . --message "chore: x"             # the whole checkout
