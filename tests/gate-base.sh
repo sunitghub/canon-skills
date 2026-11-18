@@ -37,6 +37,8 @@ PY
 mkdir -p "$W/bin"; ln -sf "$SPRINT" "$W/bin/sprint"
 assert_eq "$BASE" "$(ms "$W/bin:/usr/bin:/bin")"
 assert_eq "$BASE" "$(ms "/usr/bin:/bin")"   # no sprint on PATH: mutant-sweep's own origin/HEAD lookup
+mkdir -p "$W/old"; printf '#!/bin/sh\necho "Unknown command: $1" >&2; exit 1\n' > "$W/old/sprint"; chmod +x "$W/old/sprint"
+assert_eq "$BASE" "$(ms "$W/old:/usr/bin:/bin")"   # an older sprint without base-ref: mutant-sweep falls back to its own lookup
 echo "gate-base: a master repository's gates find their base (sprint base-ref, pre-gate, skill-eval-scope, mutant-sweep, headless default)"
 
 # 2. a main repository: unchanged

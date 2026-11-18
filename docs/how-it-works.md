@@ -166,8 +166,9 @@ announcing loudly that it did. Off by default (canon never *silently* reduces ga
 `--no-cache` always wins. Both PASS and FAIL are cached; edit the code to force a fresh grade. See
 **[Headless CI grading → Verdict Caching](headless-ci.md)**.
 
-> **No remote?** The base ref defaults to `origin/main` → `main`. If neither resolves (e.g. your
-> branch is `master`, or there's no remote), it silently falls back to diffing against the repo's
+> **No remote?** The base ref defaults to origin's default branch (`sprint base-ref`: origin/HEAD, else
+> `origin/main` or `origin/master`), then the local default branch. If none resolves (e.g. there's no
+> remote and no `main` or `master`), it silently falls back to diffing against the repo's
 > **root commit** — which makes the whole tree look "changed." Tag a real baseline
 > (`git tag seed <commit>`) and pass `--base-ref seed` so the diff means "what this sprint
 > changed." Verified end-to-end on Windows-on-ARM (Git Bash `MINGW64_NT…ARM64`), where the

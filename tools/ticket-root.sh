@@ -228,9 +228,6 @@ _default_branch() {
   [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
 }
 
-# gate_base <root> — t-99d2: the close gates' base, the one owner of the rule: `git merge-base HEAD origin/<default branch>`, where the
-# default branch is origin/HEAD's (else main, else master: _default_branch). Prints the commit; on failure prints the reason (naming the
-# branch it looked for) and returns 1. A master repo used to fail here, as every caller hard-coded origin/main.
 # _base_branch <root> — t-99d2: the branch the gates compare against: _default_branch (origin/HEAD, else local main, else master), else
 # the remote's own main or master when only those refs exist (a clone without origin/HEAD or a local default branch).
 _base_branch() {
@@ -249,6 +246,9 @@ default_base_ref() {
   else return 1; fi
 }
 
+# gate_base <root> — t-99d2: the close gates' base, the one owner of the rule: `git merge-base HEAD origin/<default branch>`, where the
+# default branch is origin/HEAD's (else main, else master: _default_branch). Prints the commit; on failure prints the reason (naming the
+# branch it looked for) and returns 1. A master repo used to fail here, as every caller hard-coded origin/main.
 gate_base() {
   local root="${1:-.}" b out
   b="$(_base_branch "$root")" || { echo "no default branch: origin/HEAD is not set and there is no main or master, local or on origin"; return 1; }

@@ -605,6 +605,14 @@ assert_contains "$main_prompt" "derive changed files from: $PIN_TOOLS/git-read d
 if [[ "$main_prompt" == *"origin/main"* ]]; then fail "eval: fell back to main but still referenced origin/main"; fi
 git -C "$WORK" branch -D main >/dev/null 2>&1 || true
 
+# 15c2 (t-99d2). a master repo: only origin/master exists, so the default base is origin/master (was "could not resolve")
+git -C "$WORK" update-ref -d refs/remotes/origin/main 2>/dev/null || true; git -C "$WORK" update-ref refs/remotes/origin/master HEAD
+for tool in "$SPRINT_HEADLESS_EVAL"; do
+  (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$tool" t-ev01 >/dev/null)
+  assert_contains "$(cat "$PROMPT_CAP")" "derive changed files from: $PIN_TOOLS/git-read diff --name-only origin/master HEAD"
+done
+git -C "$WORK" update-ref -d refs/remotes/origin/master
+
 # 15d. --model works with the ticket-id form
 git -C "$WORK" update-ref refs/remotes/origin/main HEAD
 : > "$ARGS_CAP"

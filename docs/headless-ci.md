@@ -28,7 +28,7 @@ Everything else about the ticket stays exactly as normal — `tkt ci <id> off` s
 tools/sprint-headless <ticket-id> --base-ref <ref>
 ```
 
-`--base-ref` (or `$GITHUB_BASE_REF`) points at the PR's target branch. When omitted it defaults to `origin/main` (then `main`, else a clear error) — convenient for local runs; in CI always pass it explicitly (the workflow template does), so the diff base is never ambiguous.
+`--base-ref` (or `$GITHUB_BASE_REF`) points at the PR's target branch. When omitted it defaults to origin's default branch (`origin/<default>`, from origin/HEAD, else `origin/main` or `origin/master`; then the local default branch, else a clear error) — convenient for local runs; in CI always pass it explicitly (the workflow template does), so the diff base is never ambiguous.
 
 Exit code 0 means all three gates passed; exit code 1 means a gate failed, or the invocation itself errored (auth, rate limit, dispatch failure — hard-fail, fail closed). The full grading summary, including each gate's individual verdict, prints to stdout.
 
@@ -158,7 +158,7 @@ sprint-headless-eval <ticket-id|spec-file> [--base-ref <ref>] [--model <model>]
 
 Pass **a ticket id** (`t-xxxx`) to grade that ticket's `.tickets/<id>/acceptance.md` and write `eval-report.md` **into the ticket folder** — every artifact stays ticket-self-contained, and its `## QA` items are not graded (per `eval.md`, QA is the human's attestation). Or pass **any markdown spec file** with `- [ ]` criteria; its `eval-report.md` is written next to it.
 
-`--base-ref` (or `$GITHUB_BASE_REF`) defaults to `origin/main` (then `main`, else a clear error) when omitted; an explicit `--base-ref` and `$GITHUB_BASE_REF` take precedence, in that order. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
+`--base-ref` (or `$GITHUB_BASE_REF`) defaults to origin's default branch (then the local default branch, else a clear error) when omitted (`sprint base-ref`'s rule, t-99d2); an explicit `--base-ref` and `$GITHUB_BASE_REF` take precedence, in that order. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
 
 The evaluator grades each criterion with pass/fail/partial/not-run and `file:line` evidence, writes `eval-report.md` (in the ticket folder, or next to the spec file), and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
 

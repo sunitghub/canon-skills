@@ -526,7 +526,10 @@ def gate_base():
     sp = shutil.which('sprint')
     if sp:
         r = subprocess.run([sp, 'base-ref'], capture_output=True, text=True)
-        return r, ('sprint base-ref: ' + (r.stdout.strip() or r.stderr.strip() or 'failed') + '; pass --base <ref>')
+        out = (r.stdout + r.stderr).strip()
+        # an older sprint without base-ref says so (unknown command / usage): use the lookup below instead of stopping
+        if r.returncode == 0 or any(k in out for k in ('no default branch', 'no origin/', 'no common ancestor')):
+            return r, ('sprint base-ref: ' + (out or 'failed') + '; pass --base <ref>')
     h = git('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD')
     b = h.stdout.strip()[len('origin/'):] if h.returncode == 0 and h.stdout.strip().startswith('origin/') else ''
     if not b:
