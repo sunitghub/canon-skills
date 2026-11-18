@@ -116,7 +116,7 @@ grep -qF 'class: <slug>]` (repeat the label' "$ROOT/skills/sprint/reference/revi
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
 base_ref_commands() {
-  grep -oE 'git diff --name-only <base-ref> HEAD|git diff --name-only \$\(git merge-base HEAD origin/main\) HEAD' "$1" | sort -u
+  grep -oE 'git diff --name-only <base-ref> HEAD|git diff --name-only \$\(sprint base-ref\) HEAD' "$1" | sort -u   # t-99d2: was merge-base HEAD origin/main
 }
 
 shared_baseref="$(base_ref_commands "$SHARED")"

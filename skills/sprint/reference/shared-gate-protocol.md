@@ -36,7 +36,7 @@ rules, canon's frame that **"the tests pass" is a claim, and it needs its own ev
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
 - The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), an alias with its id as the caller gives it (e.g. `sonnet (claude-sonnet-5-5)`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition of your own. Record it verbatim as the report's `Model: <designation>` line, which the close requires (`sprint complete` blocks an `eval-report.md`, or an existing `review-notes.md`, without a `^Model:` line). If the dispatch prompt omits it, emit the line with the model you are actually running on.
-- Base ref (optional — only present for a headless CI dispatch grading an existing PR/diff; absent for a normal interactive sprint close, in which case the standard `git merge-base HEAD origin/main` derivation below applies unchanged).
+- Base ref (optional — only present for a headless CI dispatch grading an existing PR/diff; absent for a normal interactive sprint close, in which case the standard `sprint base-ref` (the merge-base of HEAD and origin's default branch) derivation below applies unchanged).
 
 ## Tools
 
@@ -145,17 +145,17 @@ git diff --name-only <base-ref> HEAD
 ```
 Otherwise (normal interactive sprint close), run:
 ```
-git diff --name-only $(git merge-base HEAD origin/main) HEAD
+git diff --name-only $(sprint base-ref) HEAD
 ```
 Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git.
 
 **No tracked-file diff (e.g. a git-history rewrite, `t-4c24`).** The diff-then-read flow finds nothing and a vacuous empty-diff pass is not evidence. Pass an explicit pre-rewrite `Base ref` and instruct the gate to verify live git, remote, and checksum state directly instead of reading changed files.
 
-**Soft freeze while a gate is in flight.** This base ref is derived *live* when the subagent runs, not pinned at dispatch — so the orchestrator must **not advance `origin/main` between dispatching a reviewer/evaluator and reading back its report**. A push that lands mid-run shifts `merge-base HEAD origin/main` forward; and if the pushed commit is the sprint's *own* HEAD, the merge-base converges to HEAD and `git diff --name-only HEAD HEAD` is **empty** — the gate would then grade nothing. Treat dispatching a gate as a freeze on `origin/main` pushes until it has reported (canon's normal flow already pushes only after close, so this just makes the ordering explicit). If a push already landed mid-run, do **not** trust a re-run `merge-base`: prefer the sprint's fork point — the parent of the ticket's first commit, `git diff --name-only <ticket's first commit>^ HEAD` — and note the drift explicitly in your report. (This recovery is still git-derived, so it does not violate the "never trust an invoker-passed file list" rule above.)
+**Soft freeze while a gate is in flight.** This base ref is derived *live* when the subagent runs, not pinned at dispatch — so the orchestrator must **not advance origin's default branch between dispatching a reviewer/evaluator and reading back its report**. A push that lands mid-run shifts `sprint base-ref` forward; and if the pushed commit is the sprint's *own* HEAD, the merge-base converges to HEAD and `git diff --name-only HEAD HEAD` is **empty** — the gate would then grade nothing. Treat dispatching a gate as a freeze on `origin/<default branch>` pushes until it has reported (canon's normal flow already pushes only after close, so this just makes the ordering explicit). If a push already landed mid-run, do **not** trust a re-run `merge-base`: prefer the sprint's fork point — the parent of the ticket's first commit, `git diff --name-only <ticket's first commit>^ HEAD` — and note the drift explicitly in your report. (This recovery is still git-derived, so it does not violate the "never trust an invoker-passed file list" rule above.)
 
 **Folder without git (tier 0).** If `git rev-parse --is-inside-work-tree` fails (or git is not installed) **and** `.tickets/<id>/changes.json` exists, canon's cockpit recorded what changed since the session started (added / modified / deleted / renamed paths, taken from a snapshot at start). Use its `files[].path` as your changed-files list and read those files; if `complete` is `false` or `total` exceeds the listed files, say so in your report — the list may be partial. Do not try to run git there.
 
-If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers:
+If that fails — `sprint base-ref` finds no base (no remote default branch, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers:
 - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and read those real changed files rather than falling back to ticket artifacts.
 - If `HEAD` does not resolve (zero commits) or git itself is unavailable: log a warning noting no git baseline is available and treat every file currently in the working tree as the changed-file set (excluding `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`).
 

@@ -227,7 +227,7 @@ MARK="$WORK/ran"
 bounded "$TOOL" --base nope --map weak.sh="touch '$MARK'"
 assert_eq 2 "$code"; assert_contains "$out" "--base nope is not a commit"
 bounded "$TOOL" --map weak.sh="touch '$MARK'"   # no origin/main here
-assert_eq 2 "$code"; assert_contains "$out" "git merge-base HEAD origin/main failed"
+assert_eq 2 "$code"; assert_contains "$out" "pass --base <ref>"   # t-99d2: the reason now comes from sprint base-ref (or its own lookup)
 printf '#!/usr/bin/env bash\necho x\n' > "$WORK/x.sh"   # exists, so only the guard can refuse it
 for bad in ../x.sh "$WORK/x.sh"; do
   bounded "$TOOL" --base "$BASE" --map "$bad=touch '$MARK'"
