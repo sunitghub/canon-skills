@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-18-2026 10:23
+learnings-sweep last run: 11-18-2026 11:17
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-18 | [t-edda](.tickets/t-edda/learnings.md) | Git Bash rewrites any argument that looks like an absolute path (`!/.tickets/` became `!C:/Program Files/Git/.tickets/`) before calling a native git: set MSYS_NO_PATHCONV/MSYS2_ARG_CONV_EXCL on such calls and read the stored value back. | UNPROMOTED |
 | 2026-11-18 | [t-25f1](.tickets/t-25f1/learnings.md) | A "session is gone" check that reads a list must never tear down a live tab the list misses: the full board spec caught two existing tests failing; scope such a check to the state that proves an end began (mid-End). | UNPROMOTED |
 | 2026-11-18 | [t-8bd8](.tickets/t-8bd8/learnings.md) | A guard keyed on the cwd misses a command that runs elsewhere: `tkt land --finish` runs from the main checkout, so the land-worktree check must take the worktree path (the spec check caught it before code). | UNPROMOTED |
 | 2026-11-18 | [t-8990](.tickets/t-8990/learnings.md) | A record step that takes its base from the branch checked out cannot refuse "another branch": derive the base from the default branch (origin/HEAD), or the guard is a tautology (the reviewer caught it publishing a feature branch). | UNPROMOTED |
@@ -80,6 +81,5 @@ learnings-sweep last run: 11-18-2026 10:23
 | 2026-11-10 | [t-8d45](.tickets/t-8d45/learnings.md) | A test that compares numbers as strings passes or fails with the length of the temp path inside every fixture line: only the full suite in a clean clone caught it, so compare numbers as numbers and run a changed test once under a long TMPDIR; and a stream's first frame must carry its start cursor, or a client that drops before its first event loses what arrived meanwhile. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-10 | [t-3620](.tickets/t-3620/learnings.md) | A promoted line whose tag has text after `id: P-nnn` is silently not counted by `promoted-report`: after placing a rule, run the report and find its id; and a YES review plus a mutation sweep still held real gaps (a guard no test fails on, a mixed PROMOTED.md block) that only reading each Consider, Noted and survivor found. | `promoted → skills/promote-learnings/SKILL.md` |
 | 2026-11-10 | [t-e151](.tickets/t-e151/learnings.md) | A ticket filed from an old sighting may already be fixed (reproduce first), and an edit to a gate file such as `tools/sprint` makes `sprint complete` refuse until a release carries it, so plan a gate-file fix as commit, release, then close; the new `run_fail` test cannot tell stdout from stderr. | `promoted → skills/sprint/reference/start.md` |
-| 2026-11-10 | [t-ca73](.tickets/t-ca73/learnings.md) | A reader of any path inside a cloned repo's `.tickets/` needs Lstat (regular only), a size cap and an O_NONBLOCK open: the loader read a symlink's target and a FIFO hung every tickets request, and no earlier test used anything but regular files; the sibling readers (a themed file, the logbook) already had the check, so grep for bare `os.ReadFile` on repo-controlled paths when adding a route. | `promoted → standards/efficiency-notes.md` |
 
 <!-- canon:learnings:END -->
