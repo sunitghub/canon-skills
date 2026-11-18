@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.4] - 2026-11-18
+
+- Fixed: the GitHub card read a cloud session that was still closing as stopped and offered **Close here**, and never offered **Import results** when the PR already held the evaluator's pass but the cloud's close had stalled. A PR from this repository whose head carries the ticket's eval-report.md now reads *results ready* (until you import it); while the newer of the launch and the PR's last push is under an hour old the card says *cloud working · last push N min ago* and offers only PR ↗; after an hour with nothing back it offers Close here and the Agents sidebar's Cloud row turns dim **quiet** at the same moment. The Cloud row's age now counts the last push (t-cd57). Daemon release.
+
 ## [0.68.3] - 2026-11-18
 
 - Fixed: **Import results** and **Check & merge** refused a cloud close whose DECISIONS.md row was written without bold (`| 2026-11-18 | t-xxxx: … | … |`), sending a correct ticket to a local close. Bold is now optional; the protections stay (rows only added, 1-3 of them, each naming the ticket, no control characters). A fresh project's first decision is accepted too, when the PR creates DECISIONS.md with exactly the header `sprint start` writes (t-00d3).
