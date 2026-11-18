@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.67.3] - 2026-11-18
+
+- Fixed: in a project that commits its `.tickets/` folder, main was left with uncommitted ticket changes after every cloud ticket (the merge record, the GitHub trail, the close). **Check & merge** and the Manual close after a merge (**Test & close**) now commit just that ticket's folder, plus `HANDOFF.md` when canon's Recent block is its only change, as `chore: record <id> merge of #N` or `chore: record <id> close`, and push it to origin, never forced. Your other staged or changed files are left as they were. On another branch, a main behind origin, or a refusing hook or push, nothing is committed and one line says what to do. A project that ignores `.tickets/` is unchanged (t-8990).
+- Fixed: **Commit and push** refused when a ticked file had become clean again (its change undone or already committed). It now leaves that file out, names it in a line and in the board's toast, and commits and pushes the rest; with every ticked file left out it still pushes what is ahead, or says there is nothing to commit or push (t-5273).
+
 ## [0.67.2] - 2026-11-17
 
 - Fixed: a cloud ticket that recorded a decision could not be merged without closing it again on this machine. The cloud close writes its DECISIONS.md row after its evaluator grades, so **Import results** and **Check & merge** refused the PR ("does NOT match graded-head … DECISIONS.md"). They now accept a DECISIONS.md change that only adds table rows naming the ticket (one to three rows, canon's row shape, no control characters) and print each row they accept; an edited or removed row, a row for another ticket, or any other change still needs the close here (t-7d84).
