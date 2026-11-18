@@ -2374,17 +2374,6 @@ cmd_merge() {
   _merge_branch
 }
 
-# _default_branch <root> — t-e1a2: the project's default branch: origin/HEAD's, else main, else master (the first that exists
-# locally). Prints it; returns 1 with nothing printed when none is there.
-_default_branch() {
-  local b
-  b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"
-  if [[ -z "$b" ]]; then
-    for b in main master; do git -C "$1" rev-parse -q --verify "refs/heads/$b^{commit}" >/dev/null 2>&1 && break || b=""; done
-  fi
-  [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
-}
-
 # _merge_branch — t-2906: merges a closed ticket's worktree branch into the branch checked out in the main checkout, through
 # _merge_core (the same checks, report, question and tests as merge-pr). Reads cmd_merge's locals. The merge commit is built
 # from objects only (merge-tree, commit-tree) and must hold exactly the tree the tests ran on; then the main checkout's branch
@@ -2813,8 +2802,6 @@ cmd_pr_ready() {
 
 # _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
 # git accepts it as a branch name and it cannot be read as an option.
-_branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
-
 # _ff_strip_fields — t-41ff: a ticket.md on stdin without the frontmatter lines canon keeps per machine, to compare a local
 # ticket.md with the merged one.
 # t-e790: with "manual", a Manual ticket's status:, manual: and closed: count as local too: it stays open here, untested, while the cloud's copy

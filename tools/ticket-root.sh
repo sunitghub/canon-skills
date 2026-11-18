@@ -165,6 +165,20 @@ late_doc_path() {
   [[ "$1" =~ ^($alt|\.tickets/$2/([^./][^/]*/)*[^./][^/]*$) ]]
 }
 
+# _branch_ok <name> — a usable branch name (not an option, git's ref format).
+_branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
+
+# _default_branch <root> — t-e1a2: the project's default branch: origin/HEAD's, else main, else master (the first that exists
+# locally). Prints it; returns 1 with nothing printed when none is there.
+_default_branch() {
+  local b
+  b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"
+  if [[ -z "$b" ]]; then
+    for b in main master; do git -C "$1" rev-parse -q --verify "refs/heads/$b^{commit}" >/dev/null 2>&1 && break || b=""; done
+  fi
+  [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
+}
+
 # record_ticket_commit <root> <id> <base> <message> — t-8990: in a project that tracks .tickets/, the cloud paths (merge-pr, the
 # Manual close after a merge) leave the ticket's folder (merged:, github.md, the close records) and canon's HANDOFF Recent block
 # changed on main. This commits exactly those paths as <message> and pushes the base branch to origin, never forced, so main is
