@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.1] - 2026-11-18
+
+- Fixed: on Windows, **Continue here** (`tkt land`) gave the land worktree its own copy of the ticket in a project that commits `.tickets/`, so the close there read and wrote the cloud's copy. Git Bash had rewritten the sparse-checkout pattern `!/.tickets/` into `!C:/Program Files/Git/.tickets/`, which keeps nothing out. That call now runs without path conversion, the stored pattern is read back, and land refuses, leaving nothing behind, unless it is exactly right (t-edda).
+- Changed: a land worktree made by an earlier version with that converted pattern is recognised: `sprint complete`, `sprint gate-snapshot post` and **Finish** stop and print the one-line PowerShell repair (`git -C <worktree> sparse-checkout set --no-cone "/*" "!/.tickets/"`) instead of closing the wrong copy (t-edda).
+
 ## [0.68.0] - 2026-11-18
 
 - Fixed: after End, Save & End, the idle reaper, Kill, or the agent exiting on its own, the ticket's card showed **● Working** for up to 10 minutes (on Windows, where no process can be checked) instead of **▶ Resume**. The Cockpit now gives each agent its session id (`COCKPIT_SESSION`), the "agent is on this ticket" heartbeat records it, and ending that session removes exactly its own heartbeat, so the card shows Resume at once on every OS. A heartbeat from another agent, or one with no session id, is never touched (t-25f1). Daemon release.
