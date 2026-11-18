@@ -46,21 +46,26 @@ git checkout -q -- HANDOFF.md
 # 4. another branch, and a base behind origin: one line, nothing committed
 echo x >> .tickets/t-ab12/ticket.md; before="$(up HEAD)"
 git checkout -q -b side; rec "$P" t-ab12 main x; assert_contains "$out" "is on side, not main"; assert_eq "$before" "$(up HEAD)"; git checkout -q main
+git checkout -q --detach; rec "$P" t-ab12 main x; assert_contains "$out" "is on a detached HEAD, not main"; assert_eq "$before" "$(up HEAD)"; git checkout -q main
+rec "$P" "../t-ab12" main x; assert_eq "" "$out"; mkdir -p "$W/nogit"; rec "$W/nogit" t-ab12 main x; assert_eq "" "$out"   # (set -e: each returned 0)
 C="$W/c2"; git clone -q "$W/origin.git" "$C" 2>/dev/null; echo more >> "$C/app.txt"; git -C "$C" commit -qam ahead; git -C "$C" push -q origin main; git fetch -q origin
 rec "$P" t-ab12 main x; assert_contains "$out" "behind origin/main"; assert_eq "$before" "$(up HEAD)"
 git merge -q --ff-only origin/main
 
 # 5. a refusing pre-commit hook: nothing committed, the index of the ticket folder as it was (an already staged entry kept)
-echo y >> .tickets/t-ab12/github.md; git add .tickets/t-ab12/github.md; idx="$(git ls-files -s -- .tickets/t-ab12)"; head="$(up HEAD)"
+echo y >> .tickets/t-ab12/github.md; git add .tickets/t-ab12/github.md; echo n > .tickets/t-ab12/new.md; idx="$(git ls-files -s -- .tickets/t-ab12)"; head="$(up HEAD)"
 printf '#!/bin/sh\necho "hook says no" >&2\nexit 1\n' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
 rec "$P" t-ab12 main x; assert_contains "$out" "could not commit"; assert_contains "$out" "hook says no"
 assert_eq "$head" "$(up HEAD)"; assert_eq "$idx" "$(git ls-files -s -- .tickets/t-ab12)"; $RECORDED && fail "recorded on a refused commit"
-rm .git/hooks/pre-commit
+assert_eq "?? .tickets/t-ab12/new.md" "$(git status --porcelain -- .tickets/t-ab12/new.md)"; rm .git/hooks/pre-commit .tickets/t-ab12/new.md
 
 # 6. a refused push: the commit stays here and the line says how to push it
 printf '#!/bin/sh\nexit 1\n' > "$W/origin.git/hooks/pre-receive"; chmod +x "$W/origin.git/hooks/pre-receive"
 rec "$P" t-ab12 main "chore: record t-ab12 close"; assert_contains "$out" "the push was refused"; assert_contains "$out" "push it: git push origin main"
 assert_eq "chore: record t-ab12 close" "$(git log -1 --format=%s)"; rm "$W/origin.git/hooks/pre-receive"
+# no origin: committed, and the line says there is nothing to push to
+git remote rename origin up; echo w >> .tickets/t-ab12/ticket.md; rec "$P" t-ab12 main "chore: record t-ab12 close"
+assert_contains "$out" "no origin to push to"; $RECORDED || fail "RECORDED not set without an origin"; git remote rename up origin; git push -q origin main
 
 # 7. a project that ignores .tickets/ (canon's own repo): nothing at all — decided by what git tracks, not by .gitignore's current text
 printf '.tickets/\n' > .gitignore; git rm -rq --cached .tickets; git add .gitignore; git commit -qm ignore; head="$(up HEAD)"
