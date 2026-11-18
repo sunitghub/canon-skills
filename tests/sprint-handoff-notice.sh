@@ -18,7 +18,7 @@ run_notice() {   # <folder> [main checkout] [mark|stale <ticket dir>]: the notic
   # project_root is the main checkout, worktree_root the folder being closed (a worktree sprint fills the worktree's own file); with no
   # second argument they are the same folder
   # t-f7e6: _handoff_mark checks wt_write_ok (tools/platform-lib.sh, which tools/sprint loads); without it the write fails closed
-  ( source "$ROOT/tools/platform-lib.sh" && cd "$1" && MAIN="${2:-$1}" && project_root() { echo "$MAIN"; } && worktree_root() { pwd; } && eval "$fn" \
+  ( source "$ROOT/tools/platform-lib.sh" && source "$ROOT/tools/ticket-root.sh" && cd "$1" && MAIN="${2:-$1}" && project_root() { echo "$MAIN"; } && worktree_root() { pwd; } && eval "$fn" \
     && case "${3:-focus}" in mark) _handoff_mark "$4" ;; stale) _notice_handoff_stale "$4" ;; *) _notice_handoff_focus ;; esac; echo "rc=$?" )
 }
 NOTE='HANDOFF.md: Current Focus is empty; the wrapup step "refresh HANDOFF.md" fills it (this never blocks the close)'
@@ -41,6 +41,12 @@ main_empty="$(mk mainempty $'## Current Focus\n\n## In Progress\n')"; wt_full="$
 out="$(run_notice "$wt_full" "$main_empty")"; assert_eq "rc=0" "$out"
 main_full="$(mk mainfull $'## Current Focus\nmain has text\n')"; wt_empty="$(mk wtempty $'## Current Focus\n\n## In Progress\n')"
 out="$(run_notice "$wt_empty" "$main_full")"; assert_contains "$out" "$NOTE"
+# t-8bd8: in a tkt land worktree the notice reads the main checkout's HANDOFF.md (the close writes it there): main empty -> the notice,
+# although the worktree's own copy has text
+L="$work/land"; git init -q -b main "$L" && printf '## Current Focus\n\n## In Progress\n' > "$L/HANDOFF.md"
+git -C "$L" -c user.name=t -c user.email=t@t commit -q --allow-empty -m b && git -C "$L" worktree add -q -b land/t-ab12 "$work/land-wt"
+printf '## Current Focus\nthe worktree copy\n' > "$work/land-wt/HANDOFF.md"
+out="$(run_notice "$(cd "$work/land-wt" && pwd -P)" "$L")"; assert_contains "$out" "$NOTE"
 # t-10ac: the narrative unchanged since the plan was approved gets one line; changed, never marked, no markers or an empty focus get none
 H=$'# Handoff\n<!-- canon:handoff:BEGIN -->\n## Current Focus\nBuilding t-l17n.\n\n## In Progress\nSprint started; plan NOT yet approved.\n\n<!-- canon:handoff:END -->\n'
 STALE='HANDOFF.md: the narrative has not changed since this plan was approved'
@@ -60,4 +66,4 @@ out="$(run_notice "$d3" "$d3" stale "$td3")"; assert_eq "rc=0" "$out"           
 grep -q '^  _notice_handoff_stale "$tdir"$' "$SPRINT" || fail "sprint complete no longer calls _notice_handoff_stale"
 grep -q '_handoff_mark "$(dirname "$plan")"' "$SPRINT" || fail "sprint approve no longer takes the Handoff mark"
 grep -q '^  _notice_handoff_focus$' "$SPRINT" || fail "sprint complete no longer calls _notice_handoff_focus"
-echo "sprint-handoff-notice: ok (empty, comment-only and CRLF notice; filled, missing section and missing file silent; unchanged-since-approval notice, refreshed/unmarked/no-marker/empty silent; never blocks; called from complete and approve)"
+echo "sprint-handoff-notice: ok (land worktree reads main; empty, comment-only and CRLF notice; filled, missing section and missing file silent; unchanged-since-approval notice, refreshed/unmarked/no-marker/empty silent; never blocks; called from complete and approve)"
