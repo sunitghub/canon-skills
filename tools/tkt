@@ -3648,9 +3648,9 @@ cmd_land() {
     # `!C:/Program Files/Git/.tickets/`, which keeps nothing out. These two switch that off (no effect outside MSYS); the read-back
     # below refuses whatever git stored if it is still not exactly the two lines asked for.
     if sp_out="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' git -C "$wt" sparse-checkout set --no-cone '/*' '!/.tickets/' < /dev/null 2>&1)"; then
-      sp_list="$(git -C "$wt" sparse-checkout list 2>&1)" || sp_out="git sparse-checkout list failed: $sp_list"
-      [[ "$sp_list" == $'/*\n!/.tickets/' ]] || sp_out="git stored $(printf '%s' "$sp_list" | paste -sd, - | sed 's/,/, /g'), not /*, !/.tickets/"
-      [[ "$sp_list" == $'/*\n!/.tickets/' ]] && sp_out=""
+      if ! sp_list="$(git -C "$wt" sparse-checkout list 2>&1)"; then sp_out="git sparse-checkout list failed: ${sp_list:-no output}"
+      elif [[ "$sp_list" != $'/*\n!/.tickets/' ]]; then sp_out="git stored $(printf '%s' "$sp_list" | paste -sd, - | sed 's/,/, /g'), not /*, !/.tickets/"
+      else sp_out=""; fi
     else sp_out="${sp_out:-no output}"; fi
     if [[ -n "$sp_out" ]]; then
       git -C "$root" worktree remove --force "$wt" < /dev/null >/dev/null 2>&1; git -C "$root" branch -q -D "$branch" < /dev/null 2>/dev/null

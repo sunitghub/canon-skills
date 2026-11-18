@@ -76,7 +76,7 @@ stray_tickets() {
   wt="$(worktree_root 2>/dev/null)" || return 1
   [[ -f "$wt/.git" && -d "$wt/.tickets" ]] || return 1
   main="$(_worktree_main_tickets "$wt")"; [[ -n "$main" && -d "$main" ]] || return 1
-  [[ $'\n'"$(git -C "$wt" sparse-checkout list 2>/dev/null)"$'\n' == *$'\n!/.tickets/\n'* ]] && sparse=true   # no early-exit pipe (pipefail)
+  [[ "$(land_sparse_state "$wt")" == ok ]] && sparse=true   # t-edda: the one reader of the pattern
   $sparse || [[ "$(git -C "$wt" symbolic-ref -q --short HEAD 2>/dev/null)" == land/* ]] || return 1
   for d in "$wt"/.tickets/*/; do
     [[ -d "$d" ]] || continue; id="$(basename "$d")"; [[ -f "$main/$id/ticket.md" ]] || continue

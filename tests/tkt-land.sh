@@ -302,6 +302,10 @@ refuses "a land worktree whose .tickets pattern was converted (t-edda)" "sparse-
 assert_contains "$out" "worktree kept"
 git -C "$WT" checkout -q -- ".tickets/$id/ticket.md"; git -C "$WT" sparse-checkout set --no-cone '/*' '!/.tickets/'   # the repair the line names
 [[ ! -e "$WT/.tickets" ]] || fail "t-edda: the repair left .tickets/ in the worktree"
+# the pattern alone (a branch not named land/*) still marks a land worktree, so the guards above apply there too
+git -C "$P" worktree add -q -b other/x "$W/wt-conv" main; git -C "$W/wt-conv" sparse-checkout set --no-cone '/*' '!C:/Program Files/Git/.tickets/'
+( source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/ticket-root.sh"; _is_land_worktree "$W/wt-conv" ) || fail "t-edda: a converted pattern on another branch is not seen as a land worktree"
+git -C "$P" worktree remove --force "$W/wt-conv"; git -C "$P" branch -q -D other/x
 echo "land: a converted .tickets pattern is refused at land, and an existing one is named with its repair (t-edda)"
 refuses "close docs left in the land worktree" "has close docs that belong in the main checkout ($P): " -- --finish
 assert_contains "$out" "DECISIONS.md"; assert_contains "$out" "LEARNINGS.md"; assert_contains "$out" "worktree kept"
