@@ -6532,6 +6532,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rows = [
         { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', get since() { return ago(480); }, pending: false },
         { id: 't-cl08', title: 'Imported, sprint did not finish', state: 'unfinished', issue: '43', get since() { return ago(660); }, pending: false },
+        { id: 't-cl09', title: 'PR open, nothing for an hour', state: 'quiet', issue: '44', get since() { return ago(4000); }, pending: false },   // t-cd57
       ];
       await cloudRoute(page, () => rows);
       await stubTicketDocs(page);
@@ -6543,6 +6544,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl08').locator('.sdot')).toBeVisible();
       await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish: Continue here \(tkt land <id>\)/);
       await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish/);
+      // t-cd57: quiet (an open PR, nothing back, no push or launch for an hour) is listed, dim and ringless, and says the session may have stopped
+      await expect(cloudRow(page, 't-cl09')).toHaveClass(/st-idle/);
+      await expect(cloudRow(page, 't-cl09').locator('.ag-ring')).toHaveCount(0);
+      await expect(cloudRow(page, 't-cl09')).toHaveAttribute('aria-label', /no activity for over an hour: the session may have stopped/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

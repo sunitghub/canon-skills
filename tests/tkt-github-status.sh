@@ -218,6 +218,12 @@ printf '24\tOPEN\t%s\n' "$TE" > "$W/prs";       assert_eq "results-ready|24|OPEN
 STUB_CROSS=true; export STUB_CROSS; assert_eq "pr-open|24|OPEN|false||false" "$(st)"; unset STUB_CROSS   # a fork's report is anyone's content
 pp="$("$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).pr_pushed))')"
 [[ "$pp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || fail "t-cd57: pr_pushed is not the head's UTC time: $pp"
+# once imported (a local eval-report.md, the ticket still open) it is no longer results ready: pr-open with land, the card's Continue here
+cp "$W/c/.tickets/$id/eval-report.md" ".tickets/$id/eval-report.md"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+lc="$("$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(`${j.land}|${j.close_here}`)')"
+assert_eq "true|false" "$lc"
+rm -f ".tickets/$id/eval-report.md"
 git -C "$W/c" rm -q -r --cached ".tickets"; git -C "$W/c" commit -qm "no ticket"; TN="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TN:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TN" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # no ticket in the head at all
 # A head that is not local and cannot be fetched exits 1 here too, never a guessed stage.

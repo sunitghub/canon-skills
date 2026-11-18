@@ -3128,8 +3128,10 @@ cmd_github_status() {
     # only a PR from this very repository counts (_pr_in_repo): a fork's head is anyone's content
     local trst; trst="$(git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | sed -n 's/^status: //p' || true)"
     # t-cd57: the PR head carrying this ticket's eval-report.md is the cloud's results too, even when its close stalled before closing the
-    # copy (t-tgay): the card offers Import results instead of reading the PR as stopped. The same fork check guards both.
-    if [[ "${trst%%$'\n'*}" == closed ]] || git -C "$root" cat-file -e "$phead:$trel/eval-report.md" 2>/dev/null; then
+    # copy (t-tgay): the card offers Import results instead of reading the PR as stopped. The same fork check guards both. Only until
+    # it is imported (a local eval-report.md): after that the ticket is unfinished here, with Continue here (t-b99b).
+    if [[ "${trst%%$'\n'*}" == closed ]] \
+      || { [[ ! -f "$tdir/eval-report.md" ]] && git -C "$root" cat-file -e "$phead:$trel/eval-report.md" 2>/dev/null; }; then
       local perr prc=0; perr="$(_pr_in_repo "$repo" "$pr" 2>&1)" || prc=$?
       [[ $prc == 2 ]] && { echo "github-status: $perr" >&2; exit 1; }   # gh could not say: never a guessed stage
       [[ $prc == 0 ]] && trk=true

@@ -312,7 +312,7 @@ function syncSharedWarnings(views){
 // The board server owns the state (/api/remote-agents, project-scoped, an empty 304 when nothing changed, never waiting on GitHub); the
 // shell only asks. One answer per open project is kept: a failed poll keeps it. A hidden page does not poll.
 const CLOUD_POLL_MS=60000, CLOUD_FAST_MS=5000, CLOUD_FAST_MAX=12;   // fast while a row's status is still loading on the server
-const CLOUD_STATES={sent:'st-idle',starting:'st-working',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle',unfinished:'st-idle',quiet:'st-idle'};   // t-cd57: quiet is dim too   // the row's colour class; the two pills carry their own accent
+const CLOUD_STATES={sent:'st-idle',starting:'st-working',working:'st-working',unknown:'st-unknown','results-ready':'','imported':'','closed-here':'st-idle',stalled:'st-idle',unfinished:'st-idle',quiet:'st-idle'};   // the row's colour class; the two pills carry their own accent (t-cd57: quiet is dim)
 const cloudRows=new Map();   // project id -> {rows:[{pid,id,title,state,issue,since,pending}], at}
 let cloudTimer=0, cloudFast=0;
 let cloudNextAt=0, cloudInflight=false;   // t-a7e0: when the next poll is due, and whether one is running (the row's "next look" line)
