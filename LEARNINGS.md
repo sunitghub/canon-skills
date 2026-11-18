@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-17-2026 19:38
+learnings-sweep last run: 11-17-2026 21:28
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-17 | [t-5273](.tickets/t-5273/learnings.md) | A list shown to the user and the action on it are two reads: when the second finds an item gone (rewritten back), drop it with a line, keep refusing everything else — the exact-name check is what keeps the old guard | UNPROMOTED |
 | 2026-11-17 | [t-7d84](.tickets/t-7d84/learnings.md) | Parsing a unified diff by skipping every `+++ ` line also skips an added line whose text starts `++ `: read headers only before the first `@@`, and check the parsed count against numstat | UNPROMOTED |
 | 2026-11-17 | [t-597f](.tickets/t-597f/learnings.md) | A test that passes on its own can fail in the full suite from an inherited env var (CANON_TICKETS_DIR from the stamp): a test that resolves tickets must unset it, and a gate-criteria row written "at close" is missing when the evaluator grades | UNPROMOTED |
 | 2026-11-17 | [t-96f1](.tickets/t-96f1/learnings.md) | A pass-through test run only from a mktemp folder cannot catch a project check moved in front of it (the check never refuses a temp folder): test a guarded order from a folder the guard refuses (/etc) | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-17-2026 19:38
 | 2026-11-10 | [t-3a58](.tickets/t-3a58/learnings.md) | Adding a tab, a route and CSS broke three neighbours that only the full stamps found (the old tab-arrow test, the /api route list, the colour check that reads `#fac-…` as hex), each costing a 1.5 h restamp: before stamping, grep the tests that pin the thing you extend (tab order, route list, CSS colours). A test written for a guard can pass because another check refuses first; revert the guard in a scratch copy, and give the test a case where only that guard stands between the input and a write. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-09 | [t-7e76](.tickets/t-7e76/learnings.md) | A regression test for a reviewer's CRLF finding passed on the unfixed code because its sample line ended in a path, not the node name where the carriage return sticks; run every new test against the code without the fix before trusting it. The same sprint: a parser that echoes a hostile id in its refusal puts escape bytes on the user's terminal (print printable ASCII only), and touching an old test file puts its pre-existing shellcheck warnings in the pre-gate. | `promoted → skills/sprint/reference/complete.md` |
 | 2026-11-09 | [t-00e0](.tickets/t-00e0/learnings.md) | A new parser's first tests left 149 of 443 mutants alive (default-file validation, argument guards, line numbers and exact messages, a relative symlink) and exposed a real gap (an unreadable file exited through a bare shell error); run the mutation sweep before the reviewer, not after, pin line numbers and full messages, and note that bash 3.2 cannot parse a quote inside a heredoc in `$( )` (use `read -r -d ''`). | `promoted → standards/efficiency-notes.md` |
-| 2026-11-09 | [t-77e0](.tickets/t-77e0/learnings.md) | A worked example written from memory shipped a wrong fact (tkt exits 1 on an unknown id, not 2) until the reviewer ran it, and a seed text I planned to leave in one place was pinned identical to the board's copy by tests/ticket-skeleton.sh, which only the full suite ran; run the example's command before writing it, and grep tests for the exact text before choosing which copies to change. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->

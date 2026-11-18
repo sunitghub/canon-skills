@@ -232,6 +232,34 @@ rc=0; out="$("$TKT" commit-push "$loose" --file ".tickets/$loose/plan.md" --mess
 [[ "$rc" != 0 ]] || fail "commit-push accepted an untracked ticket file"; assert_contains "$out" "is not one of this checkout's changes"
 git checkout -q -- a.txt
 
+# t-5273: protects the Send panel's Commit and push when its list went stale: a ticked tracked file that is clean again (something
+# rewrote it back after the panel listed it, on the user's VM AGENTS.md after canon update) is left out with a line, not a refusal of
+# the whole commit; any other path that is not one of the changes is still refused, changing nothing.
+rm -f "$W/origin.git/hooks/pre-receive"; git checkout -q -- . 2>/dev/null || true; git reset -q
+echo phantom > a.txt; grep -qxF "file:  M a.txt" <<< "$("$TKT" commit-push "$id" --dry-run)" || fail "t-5273 setup: a.txt not listed"
+git checkout -q -- a.txt; echo real > b.txt
+out="$("$TKT" commit-push "$id" --file a.txt --file b.txt --message "chore: left out")" || fail "t-5273: a stale ticked file refused the commit: $out"
+assert_contains "$out" "commit-push: a.txt is no longer changed: left out"; assert_contains "$out" "committed"; assert_contains "$out" "(1 file(s))"
+assert_contains "$out" "pushed feat/new to origin"; assert_eq "real" "$(git show HEAD:b.txt)"
+echo phantom > a.txt; git checkout -q -- a.txt
+out="$("$TKT" commit-push "$id" --file a.txt --message x)" || fail "t-5273: every ticked file stale, nothing ahead, should exit 0: $out"
+assert_contains "$out" "nothing to commit or push"; [[ "$out" != *pushed* ]] || fail "t-5273: said pushed with nothing pushed: $out"
+echo ahead > b.txt; git commit -qam "ahead"; out="$("$TKT" commit-push "$id" --file a.txt --message x)" || fail "t-5273: stale file with a commit ahead: $out"
+assert_contains "$out" "a.txt is no longer changed: left out"; assert_contains "$out" "pushed feat/new to origin"
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/origin.git" rev-parse feat/new)"
+# a NEW branch whose every ticked file is left out still goes to origin (the push makes the branch)
+git checkout -q -b feat/leftout; echo phantom > a.txt; git checkout -q -- a.txt
+out="$("$TKT" commit-push "$id" --file a.txt --message x)" || fail "t-5273: a new branch with every file left out: $out"
+assert_contains "$out" "a.txt is no longer changed: left out"; assert_contains "$out" "(new branch, tracking origin/feat/leftout)"
+git checkout -q feat/new
+mkdir -p docs; echo d > docs/x.txt; git add docs; git commit -qm docs; git push -q origin HEAD:feat/new; echo secret > ig.txt; echo ig.txt >> .git/info/exclude
+refuses "is not one of this checkout's changes" --file docs --message "chore: x"          # a clean tracked folder
+refuses "is not one of this checkout's changes" --file . --message "chore: x"             # the whole checkout
+refuses "is not one of this checkout's changes" --file nope.txt --message "chore: x"      # a path that never existed
+refuses "is not one of this checkout's changes" --file ig.txt --message "chore: x"        # an untracked (ignored) file outside .tickets
+refuses "is not one of this checkout's changes" --file ".tickets/$other/ticket.md" --message "chore: x"   # a clean tracked ticket file of another ticket
+echo "tkt-commit-push: a stale ticked file is left out; other unlisted paths still refused (t-5273)"
+
 # Never forced: no push carried a force flag.
 ! grep -qE -- '(^| )(-f|--force|--force-with-lease[^ ]*|\+refs)' "$W/pushes" || fail "a push was forced: $(cat "$W/pushes")"
 [[ -s "$W/pushes" ]] || fail "the push log is empty: the shim saw no push"

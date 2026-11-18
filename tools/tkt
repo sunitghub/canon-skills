@@ -3360,7 +3360,7 @@ _cp_files() {
 # after its confirm. Commits exactly the named files (anything else already staged stays staged, uncommitted), then pushes the
 # ticket's branch to origin's branch of the same name: never forced, -u when origin has no such branch yet. t-420c: when origin has
 # commits this branch lacks, it first merges them in (_merge_origin_before_push: t-dde9's rules, a merge commit, a rewritten origin or a
-# conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists. A push
+# conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists, except a tracked file that is clean again (left out with a line, t-5273). A push
 # that fails keeps the commit and says so.
 cmd_commit_push() {
   local id="" dry=false msg="" msgset=false files=() expect=""
@@ -3415,11 +3415,19 @@ cmd_commit_push() {
     $msgset && [[ -n "$msg" ]] || { echo "commit-push: a commit needs --message; nothing changed" >&2; exit 1; }
     [[ ${#msg} -le 200 && "$msg" != *$'\n'* && "$msg" != *$'\r'* ]] \
       || { echo "commit-push: the message must be one line of at most 200 characters; nothing changed" >&2; exit 1; }
+    local kept=() gone=()
     for f in "${files[@]}"; do
       [[ -n "$f" && "$f" != -* ]] || { echo "commit-push: refused file name '$f' (empty, or starts with -); nothing changed" >&2; exit 1; }
-      grep -qxF -- "$f" <<< "$paths" \
-        || { echo "commit-push: $f is not one of this checkout's changes (tkt commit-push $id --dry-run lists them); nothing changed" >&2; exit 1; }
+      if grep -qxF -- "$f" <<< "$paths"; then kept+=("$f"); continue; fi
+      # t-5273: listed when the panel opened, clean now (something rewrote it back, e.g. canon update's project refresh): leave it out.
+      # Only exactly one tracked file, outside .tickets/, absent from git status; any other path keeps the refusal below.
+      if [[ "$f" != .tickets/* && "$(git -C "$wt" ls-files --full-name -- "$f" 2>/dev/null)" == "$f" ]] \
+        && [[ -z "$(git -C "$wt" status --porcelain=v1 -- "$f" 2>/dev/null)" ]]; then gone+=("$f"); continue; fi
+      echo "commit-push: $f is not one of this checkout's changes (tkt commit-push $id --dry-run lists them); nothing changed" >&2; exit 1
     done
+    for f in ${gone[@]+"${gone[@]}"}; do echo "commit-push: $f is no longer changed: left out"; done
+    files=(${kept[@]+"${kept[@]}"})
+    if [[ ${#files[@]} -eq 0 ]] && ! $new && [[ "$ahead" == 0 ]]; then echo "commit-push: nothing to commit or push"; return 0; fi
   elif ! $new && [[ "$ahead" == 0 ]]; then
     echo "commit-push: nothing to commit (no --file) and nothing to push on $b; nothing changed" >&2; exit 1
   fi

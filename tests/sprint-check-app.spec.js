@@ -17810,6 +17810,30 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-cp-go')).toBeDisabled();
   });
 
+  // t-5273: protects the Send panel's Commit and push when its list went stale (the VM: AGENTS.md listed, clean again by the commit):
+  // commit-push leaves the file out instead of refusing; the toast says so, and the panel reads the list again.
+  test('Commit and push names a file left out because it is no longer changed (t-5273)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gh32s');
+    ghTicket(id);
+    let cpPreviews = 0;
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'send-issue: warning: 1 file(s) in /w have uncommitted or untracked changes; the cloud session will not see them\nrepo: acme/app (PRIVATE)' }));
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => { cpPreviews++; return json(r, { ok: true, exit_code: 0, output: `commit-push: ${id} in /w\nbranch: main -> origin/main (0 commit(s) to push)\nfile:  M AGENTS.md` }); });
+    await page.route(`**/api/ticket/${id}/github/commit-push`, r => json(r, { ok: true, exit_code: 0, output: 'commit-push: AGENTS.md is no longer changed: left out\ncommit-push: nothing to commit or push' }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await page.locator('#ck-gh-cp-open').click();
+    await expect(page.locator('#ck-gh-cp-files input[type=checkbox]')).toHaveCount(1);
+    const before = cpPreviews;
+    await page.locator('#ck-gh-cp-go').click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect(page.locator('#drop-toast')).toContainText('Nothing to commit or push. Left out: AGENTS.md (no longer changed)');
+    await expect.poll(() => cpPreviews).toBeGreaterThan(before);
+  });
+
   // Prod path: the Send panel's Commit and push (t-32f9), shown for unpushed commits (a refusal) and uncommitted files (a warning).
   test('Send panel offers Commit and push for unpushed or uncommitted work; untracked unticked; nothing posts before the confirm (t-32f9)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh32');
