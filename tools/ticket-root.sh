@@ -208,7 +208,9 @@ record_ticket_commit() {
     [[ -z "$saved" ]] || printf '%s\n' "$saved" | git -C "$root" update-index --index-info 2>/dev/null
     echo "record: could not commit .tickets/$id/ ($(printf '%s' "$out" | tail -1)); nothing changed, commit it by hand"; return 0
   fi
-  sha="$(git -C "$root" rev-parse --short HEAD)"; RECORDED=true
+  sha="$(git -C "$root" rev-parse --short HEAD)"
+  # shellcheck disable=SC2034  # RECORDED is read by the callers (tkt merge-pr, sprint's Manual close)
+  RECORDED=true
   if ! git -C "$root" remote get-url origin >/dev/null 2>&1; then echo "record: committed $sha ($msg); no origin to push to"; return 0; fi
   if out="$(git -C "$root" push -q origin "refs/heads/$base:refs/heads/$base" < /dev/null 2>&1)"; then
     echo "record: committed $sha ($msg) and pushed $base to origin"
