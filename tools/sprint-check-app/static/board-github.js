@@ -1015,7 +1015,7 @@ async function showCommitPush(t, tab, gen) {
       return;
     }
     // t-5273: a ticked file that was clean again by the commit (the list went stale) is left out, not refused: say which
-    const out = res.output || '', left = [...out.matchAll(/^commit-push: (.+) is no longer changed: left out$/gm)].map(m => m[1]);
+    const out = res.output || '', left = [...out.matchAll(/^commit-push: (.+) is no longer changed: left out\r?$/gm)].map(m => m[1]);
     const lead = /nothing to commit or push/.test(out) ? 'Nothing to commit or push.' : `Pushed ${name} to origin.`;
     showToast(left.length ? `${lead} Left out: ${left.join(', ')} (no longer changed)` : lead);
     hideGithubPanel();

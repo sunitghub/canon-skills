@@ -3360,7 +3360,7 @@ _cp_files() {
 # after its confirm. Commits exactly the named files (anything else already staged stays staged, uncommitted), then pushes the
 # ticket's branch to origin's branch of the same name: never forced, -u when origin has no such branch yet. t-420c: when origin has
 # commits this branch lacks, it first merges them in (_merge_origin_before_push: t-dde9's rules, a merge commit, a rewritten origin or a
-# conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists. A push
+# conflict refused with nothing changed); --dry-run says so (_origin_merge_preview). Every --file must be one --dry-run lists, except a tracked file that is clean again (left out with a line, t-5273). A push
 # that fails keeps the commit and says so.
 cmd_commit_push() {
   local id="" dry=false msg="" msgset=false files=() expect=""
