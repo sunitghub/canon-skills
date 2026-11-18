@@ -113,4 +113,24 @@ assert_eq 2 "$(events)"
 grep -h '"kind":"close.confirmed"' "$CANON_HOME"/events/*.jsonl | grep '"tier":"manual-merged"' >/dev/null || fail "close.confirmed has no tier manual-merged"
 assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"   # the active sprint is untouched
 
+# t-8990: protects Test & close in a project that tracks .tickets/ (the user's ToDo-Demo): the close is committed as
+# "chore: record <id> close" and pushed, main is clean for the ticket, and no "Next: commit" line is printed.
+git init -q --bare -b main "$W/o.git"; git remote add origin "$W/o.git"
+sed -i.bak '/^\.tickets\/$/d' .gitignore; rm -f .gitignore.bak; git add .gitignore; git commit -qm "track tickets"
+id2="$("$TKT" create "CSV import")"; t2=".tickets/$id2"; keepf="$f"; f="$t2/ticket.md"
+# its own PR: a graded commit, then the cloud's late docs, merged with a merge commit
+git checkout -q -b pr5; echo v5 > src.txt; git commit -qam graded5; G5="$(git rev-parse HEAD)"; echo row5 >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm sweep5
+git checkout -q main; git merge -q --no-ff pr5 -m "Merge PR #5"; M5="$(git rev-parse HEAD)"
+field runs github; field github acme/app#2; field manual true; field cloud_status closed; field merged "$M5"; f="$keepf"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G5" > "$t2/eval-report.md"; cp "$W/a.ok" "$t2/acceptance.md"
+git add .tickets/"$id2"; git commit -qm "the ticket"; git push -q origin main; git branch -q -u origin/main
+"$SPRINT" manual-qa "$id2" --by tester --step "imported a CSV|pass" >/dev/null
+out="$("$SPRINT" complete "$id2" 2>&1)" || fail "t-8990: the tracked Manual close refused: $out"
+assert_contains "$out" "record: committed"; assert_contains "$out" "and pushed main to origin"
+[[ "$out" != *"Next: commit"* ]] || fail "t-8990: printed Next: commit although the close was recorded: $out"
+assert_eq "chore: record $id2 close" "$(git log -1 --format=%s)"
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/o.git" rev-parse main)"
+assert_eq "" "$(git status --porcelain -- "$t2")"
+echo "sprint-manual-merged: a tracked Manual close is recorded and pushed (t-8990)"
+
 echo "sprint-manual-merged: ok"

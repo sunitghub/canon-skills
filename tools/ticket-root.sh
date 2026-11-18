@@ -165,6 +165,59 @@ late_doc_path() {
   [[ "$1" =~ ^($alt|\.tickets/$2/([^./][^/]*/)*[^./][^/]*$) ]]
 }
 
+# record_ticket_commit <root> <id> <base> <message> — t-8990: in a project that tracks .tickets/, the cloud paths (merge-pr, the
+# Manual close after a merge) leave the ticket's folder (merged:, github.md, the close records) and canon's HANDOFF Recent block
+# changed on main. This commits exactly those paths as <message> and pushes the base branch to origin, never forced, so main is
+# clean and in sync (user decision 2026-11-17). Only when the main checkout is on <base> and <base> is at or past origin's; other
+# staged files stay staged (commit --only); a refused commit puts the index of those paths back as it was. Prints one line about
+# what it did or why not, and always returns 0: the merge or close it follows already succeeded. Sets RECORDED=true on a commit.
+record_ticket_commit() {
+  local root="$1" id="$2" base="$3" msg="$4" head saved out sha rb t1 t2
+  local paths=()
+  RECORDED=false
+  [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+  git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  # only a ticket git already tracks (a project that commits its tickets; the merged PR brought it in): never by what .gitignore says now
+  [[ -n "$(git -C "$root" ls-files -- ".tickets/$id/ticket.md" 2>/dev/null)" ]] || return 0
+  head="$(git -C "$root" symbolic-ref -q --short HEAD 2>/dev/null)" || head=""
+  [[ "$head" == "$base" ]] || { echo "record: the main checkout is on ${head:-a detached HEAD}, not $base, so .tickets/$id/ is not committed; commit it on $base by hand"; return 0; }
+  if git -C "$root" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null \
+    && ! git -C "$root" merge-base --is-ancestor "refs/remotes/origin/$base" HEAD 2>/dev/null; then
+    echo "record: $base here is behind origin/$base, so .tickets/$id/ is not committed; update $base, then commit it by hand"; return 0
+  fi
+  paths=(".tickets/$id")
+  # HANDOFF.md only when its one difference from HEAD is canon's Recent block (t-dfaf's rule; CRs ignored)
+  if git -C "$root" ls-files --error-unmatch -- HANDOFF.md >/dev/null 2>&1 && ! git -C "$root" diff --quiet HEAD -- HANDOFF.md 2>/dev/null \
+    && rb="$(recent_board 2>/dev/null)"; then
+    t1="$(mktemp)"; t2="$(mktemp)"
+    if ( set -o pipefail; git -C "$root" show HEAD:HANDOFF.md 2>/dev/null | "$rb" recent --strip | LC_ALL=C tr -d '\r' ) > "$t1" \
+      && ( set -o pipefail; "$rb" recent --strip < "$root/HANDOFF.md" | LC_ALL=C tr -d '\r' ) > "$t2" && cmp -s "$t1" "$t2"; then
+      paths+=(HANDOFF.md)
+    fi
+    rm -f "$t1" "$t2"
+  fi
+  [[ -n "$(git -C "$root" status --porcelain=v1 --untracked-files=all -- "${paths[@]}" 2>/dev/null)" ]] \
+    || { echo "record: nothing to record for $id"; return 0; }
+  saved="$(git -C "$root" ls-files -s -- "${paths[@]}" 2>/dev/null)"
+  # tracked changes, plus only the untracked files git does not ignore (a project may ignore .tickets/ and track some tickets by force;
+  # canon's own markers stay out through .tickets/.gitignore)
+  local u; u="$(git -C "$root" ls-files -z --others --exclude-standard -- "${paths[@]}" 2>/dev/null | tr '\0' '\n')"
+  if ! out="$(git -C "$root" add -u -- "${paths[@]}" 2>&1 && { [[ -z "$u" ]] || printf '%s\n' "$u" | (cd "$root" && xargs -I{} git add -- {}) 2>&1; } \
+    && git -C "$root" commit -q --only -m "$msg" -- "${paths[@]}" 2>&1)"; then
+    git -C "$root" reset -q -- "${paths[@]}" 2>/dev/null
+    [[ -z "$saved" ]] || printf '%s\n' "$saved" | git -C "$root" update-index --index-info 2>/dev/null
+    echo "record: could not commit .tickets/$id/ ($(printf '%s' "$out" | tail -1)); nothing changed, commit it by hand"; return 0
+  fi
+  sha="$(git -C "$root" rev-parse --short HEAD)"; RECORDED=true
+  if ! git -C "$root" remote get-url origin >/dev/null 2>&1; then echo "record: committed $sha ($msg); no origin to push to"; return 0; fi
+  if out="$(git -C "$root" push -q origin "refs/heads/$base:refs/heads/$base" < /dev/null 2>&1)"; then
+    echo "record: committed $sha ($msg) and pushed $base to origin"
+  else
+    echo "record: committed $sha ($msg) here; the push was refused ($(printf '%s' "$out" | tail -1)); push it: git push origin $base"
+  fi
+  return 0
+}
+
 # decisions_added_rows <git-dir> <from> <to> — t-7d84: the lines DECISIONS.md gains from <from> to <to>, one per line, CRs dropped; the
 # rows late_docs_delta accepts and merge-pr / import-results print. Exits non-zero when git cannot tell.
 decisions_added_rows() {

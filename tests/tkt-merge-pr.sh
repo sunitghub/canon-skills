@@ -617,7 +617,9 @@ recon_setup() {   # main at the base (mixed reset: --hard would delete the ticke
 tree_sig() { cksum new.txt .claude/subagent-runs.jsonl .gitignore ".tickets/$id/eval-report.md" "$f"; }
 recon_setup; cp "$f" "$W/ticket.before"
 out="$(STUB_HEAD="$H" ff_merge)"
-assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"; assert_eq "$H" "$(git rev-parse main)"
+assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
+# t-8990: this PR head tracks .tickets/, so the merge is recorded on top of it (main = H + "chore: record … merge of #7")
+assert_eq "$H" "$(git rev-parse main^)"; assert_eq "chore: record $id merge of #7" "$(git log -1 --format=%s main)"
 assert_eq "$(cat "$W/ticket.before")" "$(sed '/^merged: mergesha0\{34\}$/d' "$f")"; assert_grep '^merged: mergesha' "$f"   # the local fields kept, plus merged:
 printf 'a\nb\nc\nlocal1\n' | cmp -s - .claude/subagent-runs.jsonl || fail "audit log: $(od -c .claude/subagent-runs.jsonl)"   # merged copy had no final newline
 assert_eq same "$(cat new.txt)"; assert_eq n "$(cat newdir/x.txt)"; assert_contains "$(cat scripts/test.sh)" "echo merged"
@@ -891,3 +893,16 @@ assert_eq "$((mt + 1))" "$(grep -c ' — merged$' "$gt")"
 assert_eq "$((me + 1))" "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"github.merged"' | grep -cF "\"ticket\":\"$id\"")"
 [[ ! -e ".tickets/$id/.merge-lock" ]] || fail "the merge lock was left behind"
 echo "merge-pr raced with a poll's recording: one MERGED entry, one event (t-9807)"
+
+# t-8990: protects Check & merge in a project that tracks .tickets/ (the user's ToDo-Demo): after the merge, the ticket's folder
+# (merged:, github.md) is committed as "chore: record <id> merge of #7" and pushed; an ignored .tickets/ (everything above) gets none.
+nsmerge; git add -f ".tickets/$id" || fail "t-8990 setup: add"; git commit -qm "track this ticket" || fail "t-8990 setup: commit"
+git pull -q --no-rebase --no-edit "$W/origin.git" main 2>&1 || fail "t-8990 setup: pull"; git push -q origin HEAD:main 2>&1 || fail "t-8990 setup: push"
+out="$("$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "t-8990: merge-pr in a tracked-tickets project failed: $out"
+assert_contains "$out" "record: committed"; assert_eq "chore: record $id merge of #7" "$(git log -1 --format=%s)"
+[[ -z "$(git show --name-only --format= HEAD | grep -v "^\.tickets/$id/" || true)" ]] || fail "t-8990: the record commit touched other files: $(git show --name-only --format= HEAD)"
+assert_eq "" "$(git status --porcelain -- ".tickets/$id")"
+# the already-merged retry records too (the user's VM: the first Check & merge stopped on the local update)
+echo 'note: retry' >> "$f"; out="$("$TKT" merge-pr "$id" 2>&1)" || true
+assert_contains "$out" "is already merged; updating local"; assert_contains "$out" "record: committed"
+echo "merge-pr: a tracked ticket folder is recorded and pushed after the merge, also on the already-merged retry (t-8990)"
