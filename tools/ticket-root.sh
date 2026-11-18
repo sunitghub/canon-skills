@@ -93,11 +93,33 @@ stray_tickets() {
 # tracked one makes `git worktree remove` refuse and an ignored one is deleted with the worktree.
 LAND_CLOSE_DOCS=(DECISIONS.md DECISIONS-archive.md LEARNINGS.md LEARNINGS-archive.md HANDOFF.md)
 
-# _is_land_worktree <dir> — a tkt land worktree: a linked worktree on land/*, or one whose sparse-checkout keeps .tickets/ out.
+# land_sparse_state <worktree> — t-edda: ok when its sparse-checkout keeps .tickets/ out (`!/.tickets/`), converted when the pattern
+# names .tickets/ under some other path (Git Bash's path conversion rewrote `!/.tickets/` into `!C:/Program Files/Git/.tickets/`,
+# which keeps nothing out), none otherwise. Prints the state and sets LAND_SPARSE_STATE (and, when converted, LAND_SPARSE_BAD to the
+# stored line) for a caller that runs it outside $(…).
+land_sparse_state() {
+  local list ln; LAND_SPARSE_BAD=""; LAND_SPARSE_STATE=none
+  if list="$(git -C "$1" sparse-checkout list 2>/dev/null)"; then
+    if [[ $'\n'"$list"$'\n' == *$'\n!/.tickets/\n'* ]]; then LAND_SPARSE_STATE=ok   # no early-exit pipe (pipefail)
+    else while IFS= read -r ln; do [[ "$ln" == '!'*/.tickets/ ]] && { LAND_SPARSE_BAD="$ln"; LAND_SPARSE_STATE=converted; break; }; done <<< "$list"; fi
+  fi
+  echo "$LAND_SPARSE_STATE"
+}
+
+# land_sparse_repair <worktree> — t-edda: returns 0 and prints the repair when the worktree's .tickets/ pattern was converted; 1 otherwise.
+land_sparse_repair() {
+  land_sparse_state "$1" >/dev/null; [[ "$LAND_SPARSE_STATE" == converted ]] || return 1
+  echo "this land worktree's sparse-checkout pattern is wrong ($LAND_SPARSE_BAD: Git Bash rewrote it), so it holds the PR's own .tickets/ and a close there reads that copy, not the main checkout's."
+  echo "  repair, in PowerShell (it does not rewrite paths): git -C \"$1\" sparse-checkout set --no-cone \"/*\" \"!/.tickets/\""
+  echo "  first move any ticket edits made in $1/.tickets/ to the main checkout's copy (git refuses to drop a changed file); then run this again."
+}
+
+# _is_land_worktree <dir> — a tkt land worktree: a linked worktree on land/*, or one whose sparse-checkout names .tickets/ (kept out, or
+# t-edda: meant to be, with a converted pattern).
 _is_land_worktree() {
   [[ -f "$1/.git" ]] || return 1
   [[ "$(git -C "$1" symbolic-ref -q --short HEAD 2>/dev/null)" == land/* ]] && return 0
-  [[ $'\n'"$(git -C "$1" sparse-checkout list 2>/dev/null)"$'\n' == *$'\n!/.tickets/\n'* ]]   # no early-exit pipe (pipefail)
+  [[ "$(land_sparse_state "$1")" != none ]]
 }
 
 # land_main_root <worktree> — the main checkout's root for a linked worktree.

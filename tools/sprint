@@ -1264,8 +1264,10 @@ cmd_complete() {
     echo "  move each file into $(_worktree_main_tickets "$(worktree_root)")/<id>/, remove $(worktree_root)/.tickets, then run sprint complete again" >&2
     exit 1
   fi
+  local lwt ldocs lrep; lwt="$(worktree_root)"
+  # t-edda: a land worktree whose .tickets/ pattern Git Bash converted reads the PR's copy of the ticket: stop and say how to repair it
+  if lrep="$(land_sparse_repair "$lwt")"; then printf 'Sprint cannot close here: %s\n' "$lrep" >&2; exit 1; fi
   # t-8bd8: the close docs (the DECISIONS.md row, the learnings row, a HANDOFF note) of a land close belong in the main checkout
-  local lwt ldocs; lwt="$(worktree_root)"
   if ldocs="$(land_close_docs "$lwt")" && [[ -n "$ldocs" ]]; then
     echo "Sprint cannot close here: this land worktree has close docs that belong in the main checkout, $(land_main_root "$lwt"):" >&2
     printf '%s\n' "$ldocs" | sed 's/^/  /' >&2
