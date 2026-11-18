@@ -88,6 +88,32 @@ stray_tickets() {
   printf '%s\n' "$files"
 }
 
+# t-8bd8: the root files a close writes by a relative path (complete.md steps 6 and 8: the DECISIONS.md row, the learnings-sweep row,
+# a HANDOFF note). In a tkt land worktree they belong in the main checkout, like its .tickets (t-597f): written in the worktree, a
+# tracked one makes `git worktree remove` refuse and an ignored one is deleted with the worktree.
+LAND_CLOSE_DOCS=(DECISIONS.md DECISIONS-archive.md LEARNINGS.md LEARNINGS-archive.md HANDOFF.md)
+
+# _is_land_worktree <dir> — a tkt land worktree: a linked worktree on land/*, or one whose sparse-checkout keeps .tickets/ out.
+_is_land_worktree() {
+  [[ -f "$1/.git" ]] || return 1
+  [[ "$(git -C "$1" symbolic-ref -q --short HEAD 2>/dev/null)" == land/* ]] && return 0
+  [[ $'\n'"$(git -C "$1" sparse-checkout list 2>/dev/null)"$'\n' == *$'\n!/.tickets/\n'* ]]   # no early-exit pipe (pipefail)
+}
+
+# land_main_root <worktree> — the main checkout's root for a linked worktree.
+land_main_root() { local m; m="$(_worktree_main_tickets "$1")"; [[ -n "$m" ]] && dirname "$m"; }
+
+# land_close_docs <worktree> — t-8bd8: returns 1 unless <worktree> is a tkt land worktree; else prints each LAND_CLOSE_DOCS file at its
+# root that is changed, new or ignored-but-present (a fresh land worktree holds no ignored file, so one is a close's write), one per
+# line, nothing when there is none. Takes the path: --finish runs from the main checkout. A git failure prints its reason (refuse).
+land_close_docs() {
+  local wt="$1" out
+  _is_land_worktree "$wt" || return 1
+  out="$(git -C "$wt" -c core.quotepath=off status --porcelain=v1 --ignored --untracked-files=all -- "${LAND_CLOSE_DOCS[@]}" 2>&1)" \
+    || { echo "git could not read the status of $wt: $out"; return 0; }
+  [[ -z "$out" ]] || printf '%s\n' "$out" | cut -c4-
+}
+
 # worktree_root — the caller's OWN worktree top-level directory (t-01a4),
 # distinct from project_root(): project_root() always redirects to the MAIN
 # checkout (.tickets/ lives only there, t-cd06), but a per-worktree gate needs

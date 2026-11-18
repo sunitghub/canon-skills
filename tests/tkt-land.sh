@@ -221,6 +221,7 @@ awk '/^---$/ && ++n == 2 { print "github: acme/app#28" } { print }' "$f" > "$W/t
 printf -- '---\nid: %s\nstatus: closed\n---\n# the cloud copy\n' "$id" > "$W/cloudcopy"
 GIT_INDEX_FILE="$W/idx" git read-tree "$PRHEAD"; blob="$(git hash-object -w "$W/cloudcopy")"
 GIT_INDEX_FILE="$W/idx" git update-index --add --cacheinfo "100644,$blob,.tickets/$id/ticket.md"
+GIT_INDEX_FILE="$W/idx" git update-index --add --cacheinfo "100644,$(echo '# Learnings' | git hash-object -w --stdin),LEARNINGS.md"   # t-8bd8: a tracked close doc
 TH="$(git commit-tree "$(GIT_INDEX_FILE="$W/idx" git write-tree)" -p "$PRHEAD" -m "cloud close commits its ticket")"
 git push -qf origin "$TH:refs/pull/9/head"; echo 9 > "$W/prlist"
 sparse_main="$(git config --get core.sparseCheckout || echo off)"
@@ -245,8 +246,46 @@ grep -q t597f-probe "$P/.claude/subagent-runs.jsonl" || fail "t-597f: subagent-l
 (cd "$WT" && "$SPRINT" manual-qa "$id" --by tester --step "probe|pass" >/dev/null 2>&1) || fail "t-597f: manual-qa failed in the worktree"
 [[ -f "$P/.tickets/$id/evidence/manual-qa.md" ]] || fail "t-597f: manual-qa did not write the main checkout's ticket"
 [[ ! -e "$WT/.tickets" && ! -e "$WT/.claude/subagent-runs.jsonl" ]] || fail "t-597f: a write landed in the worktree"
+# t-8bd8: protects the close's gate dispatch, sprint complete and the card's Finish in a land worktree: the close docs (the DECISIONS.md
+# row, the learnings row, a HANDOFF note) belong in the main checkout. gate-snapshot pre says where; sprint complete and --finish refuse
+# one written in the worktree, naming it (a tracked edit stopped git's remove; an ignored one, like canon's DECISIONS.md, was deleted).
+echo '# Acceptance' > ".tickets/$id/acceptance.md"   # gate-snapshot pre digests it (a real ticket always has one)
+out="$(cd "$WT" && "$SPRINT" gate-snapshot pre "$P/.tickets/$id/gate-snapshot.txt" --role reviewer 2>&1)" || fail "t-8bd8: gate-snapshot pre failed: $out"
+assert_contains "$out" "this is a land worktree: write the close's DECISIONS.md row, LEARNINGS.md row and any HANDOFF.md note in $P/"
+(cd "$WT" && "$SPRINT" gate-snapshot post "$P/.tickets/$id/gate-snapshot.txt" >/dev/null 2>&1) || true; rm -f "$P/.tickets/$id/gate-snapshot.txt"*
+rc=0; out="$("$SPRINT" gate-snapshot pre "$W/gs-main.txt" --role reviewer 2>&1)" || rc=$?; "$SPRINT" gate-snapshot post "$W/gs-main.txt" >/dev/null 2>&1 || true
+[[ "$rc" == 0 ]] || fail "t-8bd8: gate-snapshot pre in the main checkout exited $rc: $out"
+assert_contains "$out" "gate-snapshot: pre recorded"; [[ "$out" != *"land worktree"* ]] || fail "t-8bd8: gate-snapshot named a land worktree in the main checkout: $out"
+echo "DECISIONS.md" >> "$P/.git/info/exclude"   # ignored, as in canon
+echo "| row |" >> "$WT/LEARNINGS.md"; echo "| 2026-11-18 | row |" > "$WT/DECISIONS.md"; echo note > "$WT/HANDOFF.md"
+rc=0; out="$(cd "$WT" && "$SPRINT" complete 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-8bd8: sprint complete closed with close docs in the land worktree (rc $rc): $out"
+assert_contains "$out" "this land worktree has close docs that belong in the main checkout, $P:"
+[[ "$(printf '%s\n' "$out" | tail -1)" == "  move each change into the main checkout's copy, undo it here"* ]] || fail "t-8bd8: sprint complete went past the guard: $out"
+assert_contains "$out" "  LEARNINGS.md"; assert_contains "$out" "  DECISIONS.md"; assert_contains "$out" "  HANDOFF.md"
+assert_grep '^status: in_progress$' "$f"
 sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
 printf 'graded-head: %s\npass: all met\n' "$TH" > ".tickets/$id/eval-report.md"
+refuses "close docs left in the land worktree" "has close docs that belong in the main checkout ($P): " -- --finish
+assert_contains "$out" "DECISIONS.md"; assert_contains "$out" "LEARNINGS.md"; assert_contains "$out" "worktree kept"
+[[ -f "$WT/DECISIONS.md" && -n "$(git branch --list "land/$id")" ]] || fail "t-8bd8: a refused finish lost the row or the branch"
+git -C "$WT" checkout -q -- LEARNINGS.md; rm -f "$WT/HANDOFF.md"
+# the ignored row alone (the case git's own remove deleted silently) is refused too
+refuses "an ignored close doc alone in the land worktree" "($P): DECISIONS.md" -- --finish
+rm -f "$WT/DECISIONS.md"
+# a clean land worktree passes the guard (the close goes on to its own gates), and the helper answers only for a land worktree
+out="$(cd "$WT" && "$SPRINT" complete 2>&1)" || true; [[ "$out" != *"close docs"* ]] || fail "t-8bd8: a clean land worktree was refused: $out"
+( source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/ticket-root.sh"
+  rc=0; o="$(land_close_docs "$WT")" || rc=$?; [[ "$rc" == 0 && -z "$o" ]] || fail "t-8bd8: a clean land worktree: rc $rc, '$o'"
+  echo row > "$P/DECISIONS.md"; rc=0; land_close_docs "$P" >/dev/null || rc=$?; [[ "$rc" == 1 ]] || fail "t-8bd8: the main checkout counted as a land worktree"
+  git -C "$P" worktree add -q -b feat/x "$W/wt-feat" main; echo row > "$W/wt-feat/DECISIONS.md"
+  rc=0; land_close_docs "$W/wt-feat" >/dev/null || rc=$?; [[ "$rc" == 1 ]] || fail "t-8bd8: a normal worktree counted as a land worktree"
+  git -C "$P" worktree add -q -b land/t-zz99 "$W/wt-land" main; echo row > "$W/wt-land/DECISIONS.md"   # not sparse: the branch decides
+  [[ "$(land_close_docs "$W/wt-land")" == DECISIONS.md ]] || fail "t-8bd8: a land/* worktree without sparse-checkout was missed"
+  git -C "$W/wt-feat" sparse-checkout set --no-cone '/*' '!/.tickets/' 2>/dev/null   # sparse, another branch name: the sparse rule decides
+  [[ "$(land_close_docs "$W/wt-feat")" == DECISIONS.md ]] || fail "t-8bd8: a sparse land worktree on another branch was missed"
+  rm -f "$P/DECISIONS.md"; git -C "$P" worktree remove --force "$W/wt-feat"; git -C "$P" worktree remove --force "$W/wt-land"; git -C "$P" branch -q -D feat/x land/t-zz99 )
+echo "land: close docs in the land worktree are named by gate-snapshot, refused by sprint complete and --finish (t-8bd8)"
 out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "t-597f: finish failed: $out"
 [[ ! -e "$WT" ]] || fail "t-597f: worktree still there"
 echo "land: a PR that tracks .tickets/ gives a worktree with none, every read and write in main, and a plain finish (t-597f)"

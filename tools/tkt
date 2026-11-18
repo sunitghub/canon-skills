@@ -3582,6 +3582,13 @@ cmd_land() {
     local whead; whead="$(git -C "$wt" rev-parse HEAD)" || exit 1
     [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
       || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
+    # t-8bd8: a close doc written in the worktree would stop the remove (tracked) or be deleted with it (ignored): name it, keep everything
+    local ldocs
+    if ldocs="$(land_close_docs "$wt")" && [[ -n "$ldocs" ]]; then
+      echo "land: $wt has close docs that belong in the main checkout ($root): $(printf '%s\n' "$ldocs" | paste -sd, - | sed 's/,/, /g')" >&2
+      echo "  move each change into $root/<file>, undo it in the worktree (git checkout -- <file>, or delete a new one), then: tkt land $id --finish; worktree kept" >&2
+      exit 1
+    fi
     git -C "$root" worktree remove "$wt" < /dev/null 2>&1 || { echo "land: git would not remove $wt (uncommitted work?); worktree kept" >&2; exit 1; }
     # The branch is deleted only when it holds nothing the PR does not: its head is the PR head it started from, or (t-92f2) the
     # PR's current head on origin, after a fix here was pushed to the PR branch. Commits not on the PR would otherwise be lost

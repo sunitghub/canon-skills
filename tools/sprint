@@ -1018,7 +1018,12 @@ _gate_integrity() {
 }
 
 # The project's (or, in a worktree sprint, the worktree's) HANDOFF.md: a worktree sprint fills its own copy.
-_handoff_file() { local r; r="$(worktree_root 2>/dev/null)" || r="$(project_root)"; echo "$r/HANDOFF.md"; }
+# t-8bd8: a land worktree's close docs belong in the main checkout, so its notices read the main checkout's HANDOFF.md
+_handoff_file() {
+  local r m; r="$(worktree_root 2>/dev/null)" || r="$(project_root)"
+  if _is_land_worktree "$r" && m="$(land_main_root "$r")"; then r="$m"; fi
+  echo "$r/HANDOFF.md"
+}
 # 0 when HANDOFF.md has a Current Focus section with no text (comment lines and blanks do not count); 1 otherwise, also with no file or section.
 _handoff_focus_empty() {
   [[ -f "$1" ]] || return 1
@@ -1257,6 +1262,14 @@ cmd_complete() {
     echo "Sprint cannot close here: a .tickets/ in this worktree hides the ticket (a gate wrote a relative path):" >&2
     printf '%s\n' "$strays" | sed 's/^/  /' >&2
     echo "  move each file into $(_worktree_main_tickets "$(worktree_root)")/<id>/, remove $(worktree_root)/.tickets, then run sprint complete again" >&2
+    exit 1
+  fi
+  # t-8bd8: the close docs (the DECISIONS.md row, the learnings row, a HANDOFF note) of a land close belong in the main checkout
+  local lwt ldocs; lwt="$(worktree_root)"
+  if ldocs="$(land_close_docs "$lwt")" && [[ -n "$ldocs" ]]; then
+    echo "Sprint cannot close here: this land worktree has close docs that belong in the main checkout, $(land_main_root "$lwt"):" >&2
+    printf '%s\n' "$ldocs" | sed 's/^/  /' >&2
+    echo "  move each change into the main checkout's copy, undo it here (git checkout -- <file>, or delete a new one), then run sprint complete again" >&2
     exit 1
   fi
   set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e

@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-18-2026 04:44
+learnings-sweep last run: 11-18-2026 06:35
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-18 | [t-8bd8](.tickets/t-8bd8/learnings.md) | A guard keyed on the cwd misses a command that runs elsewhere: `tkt land --finish` runs from the main checkout, so the land-worktree check must take the worktree path (the spec check caught it before code). | UNPROMOTED |
 | 2026-11-18 | [t-8990](.tickets/t-8990/learnings.md) | A record step that takes its base from the branch checked out cannot refuse "another branch": derive the base from the default branch (origin/HEAD), or the guard is a tautology (the reviewer caught it publishing a feature branch). | UNPROMOTED |
 | 2026-11-17 | [t-5273](.tickets/t-5273/learnings.md) | A list shown to the user and the action on it are two reads: when the second finds an item gone (rewritten back), drop it with a line, keep refusing everything else — the exact-name check is what keeps the old guard | UNPROMOTED |
 | 2026-11-17 | [t-7d84](.tickets/t-7d84/learnings.md) | Parsing a unified diff by skipping every `+++ ` line also skips an added line whose text starts `++ `: read headers only before the first `@@`, and check the parsed count against numstat | UNPROMOTED |
@@ -80,6 +81,5 @@ learnings-sweep last run: 11-18-2026 04:44
 | 2026-11-10 | [t-e151](.tickets/t-e151/learnings.md) | A ticket filed from an old sighting may already be fixed (reproduce first), and an edit to a gate file such as `tools/sprint` makes `sprint complete` refuse until a release carries it, so plan a gate-file fix as commit, release, then close; the new `run_fail` test cannot tell stdout from stderr. | `promoted → skills/sprint/reference/start.md` |
 | 2026-11-10 | [t-ca73](.tickets/t-ca73/learnings.md) | A reader of any path inside a cloned repo's `.tickets/` needs Lstat (regular only), a size cap and an O_NONBLOCK open: the loader read a symlink's target and a FIFO hung every tickets request, and no earlier test used anything but regular files; the sibling readers (a themed file, the logbook) already had the check, so grep for bare `os.ReadFile` on repo-controlled paths when adding a route. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-10 | [t-0b89](.tickets/t-0b89/learnings.md) | A new shell test was green alone but missing from `scripts/test.sh` (the reviewer saw it) and broke two repo guards (no-browser, pipefail) that only the full stamp ran; and 103 first-sweep survivors showed loose assertions (a field list that only checks a subset, error bodies never parsed), so assert exact bodies, headers and every allowlisted field. | `promoted → skills/sprint/reference/start-checklist.md` |
-| 2026-11-10 | [t-c543](.tickets/t-c543/learnings.md) | A page that caches what it fetched for "the same project" goes stale on anything the server reads from elsewhere (here Admin's model): a cache needs a visit-time reload, and a test that pinned "no extra GET" had to change with it. Prove each call site separately by reverting it alone. | `dismissed (covered: standards/efficiency-notes.md)` |
 
 <!-- canon:learnings:END -->

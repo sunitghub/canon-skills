@@ -15,22 +15,21 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Steps
 
-1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), then
-   docs.
+1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), docs.
    - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
-   - **Interim commit** (specific paths, no `git add -A`) before any gate.
+   - **Interim commit** (specific paths) before any gate.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
      `code-reviewer` are separate.
-   - Gates run in turn, never in parallel; no push to `origin/main` until both report.
+   - Gates run in turn; no push to `origin/main` until both report.
 2. **Reviewer** (advisory). `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
    `Agent` with `subagent_type: "canon-reviewer"`; after (before fix commits): `sprint gate-snapshot post …` (differs: stop,
    show PRE hash), `sprint subagent-log --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
-   - **Mutation sweep** (shell, JS, Python, Go logic): `skills/mutation-test/SKILL.md`
+   - **Mutation sweep** (logic files): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
      `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
      `mutation-test | skipped | <reason>`.
@@ -87,3 +86,4 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 | a waived, deferred or partial item, or the learnings cap | step 8 |
 | `manual: true` | step 1 "Manual mode" |
 | a release | step 10 "Releases" |
+| a land worktree | step 6 "Land worktree" |

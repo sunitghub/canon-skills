@@ -56,7 +56,7 @@ Input: a ticket id (`t-xxxx`). No glob.
    outranks an evaluator "No findings. Notes…" line, since the evaluator can pass while the reviewer
    found the lesson), and `status` (frontmatter — almost always
    `UNPROMOTED` at this point).
-3. Upsert into `LEARNINGS.md`'s table: if a row for this ticket id already exists, replace it in
+3. Upsert into `LEARNINGS.md`'s table (in a `tkt land` worktree, the main checkout's copy at the path `sprint gate-snapshot pre` printed, never the worktree's: t-8bd8): if a row for this ticket id already exists, replace it in
    place (don't duplicate, don't reorder past its original position unless the date changed). If
    new, insert at the top (newest first).
 4. Rewrite the top-of-file stamp (see Format below).
