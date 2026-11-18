@@ -2800,8 +2800,6 @@ cmd_pr_ready() {
   echo "Marked PR #$pr ready for review. (Undo: gh pr ready --undo $pr --repo $repo)"
 }
 
-# _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
-# git accepts it as a branch name and it cannot be read as an option.
 # _ff_strip_fields — t-41ff: a ticket.md on stdin without the frontmatter lines canon keeps per machine, to compare a local
 # ticket.md with the merged one.
 # t-e790: with "manual", a Manual ticket's status:, manual: and closed: count as local too: it stays open here, untested, while the cloud's copy

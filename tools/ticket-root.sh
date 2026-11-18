@@ -165,7 +165,8 @@ late_doc_path() {
   [[ "$1" =~ ^($alt|\.tickets/$2/([^./][^/]*/)*[^./][^/]*$) ]]
 }
 
-# _branch_ok <name> — a usable branch name (not an option, git's ref format).
+# _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
+# git accepts it as a branch name and it cannot be read as an option.
 _branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
 
 # _default_branch <root> — t-e1a2: the project's default branch: origin/HEAD's, else main, else master (the first that exists
