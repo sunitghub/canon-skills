@@ -100,7 +100,23 @@ fi
 
 # ── Test suite ───────────────────────────────────────────────────────────────
 TEST_RUNNER="$GIT_ROOT/scripts/test.sh"
-if [[ -x "$TEST_RUNNER" ]]; then
+# t-7db9: a commit of records only (.tickets/, the root HANDOFF/LEARNINGS/DECISIONS files) runs no code, so the suite proves nothing
+# about it (and a suite that cannot run here refused tkt merge-pr's record commit). --no-renames: a `git mv` of code into .tickets/
+# must show its old path too. Nothing staged keeps the suite.
+RECORDS_ONLY=0
+STAGED_PATHS="$(git diff --cached --name-only --no-renames 2>/dev/null)"
+if [ -n "$STAGED_PATHS" ]; then
+  RECORDS_ONLY=1
+  while IFS= read -r p; do
+    case "$p" in
+      .tickets/*|HANDOFF.md|LEARNINGS.md|LEARNINGS-*.md|DECISIONS.md|DECISIONS-*.md) ;;
+      *) RECORDS_ONLY=0; break ;;
+    esac
+  done <<< "$STAGED_PATHS"
+fi
+if [[ "$RECORDS_ONLY" == 1 && -x "$TEST_RUNNER" ]]; then
+  echo "[pre-commit] Records only (.tickets/, HANDOFF, LEARNINGS, DECISIONS): test suite skipped."
+elif [[ -x "$TEST_RUNNER" ]]; then
   echo "[pre-commit] Running test suite..."
   # git exports its own repo into a hook (GIT_INDEX_FILE and GIT_PREFIX always, GIT_DIR from a linked worktree, GIT_WORK_TREE when the caller set it). A suite that runs
   # `git init`/`config`/`worktree` in a temp dir would act on THIS repo instead (t-ce0b). Only the suite is cleaned: the checks

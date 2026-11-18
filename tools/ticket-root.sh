@@ -298,7 +298,9 @@ record_ticket_commit() {
     && git -C "$root" commit -q --only -m "$msg" -- "${paths[@]}" 2>&1)"; then
     git -C "$root" reset -q -- "${paths[@]}" 2>/dev/null
     [[ -z "$saved" ]] || printf '%s\n' "$saved" | git -C "$root" update-index --index-info 2>/dev/null
-    echo "record: could not commit .tickets/$id/ ($(printf '%s' "$out" | tail -1)); nothing changed, commit it by hand"; return 0
+    # t-7db9: a hook's own BLOCKED line is the reason; the last line is often the end of its suite's output
+    local why; why="$(grep -m1 '^\[pre-commit\] BLOCKED' <<< "$out" || true)"
+    echo "record: could not commit .tickets/$id/ (${why:-$(printf '%s' "$out" | tail -1)}); nothing changed, commit it by hand"; return 0
   fi
   sha="$(git -C "$root" rev-parse --short HEAD)"
   # shellcheck disable=SC2034  # RECORDED is read by the callers (tkt merge-pr, sprint's Manual close)

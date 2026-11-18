@@ -58,6 +58,17 @@ printf '#!/bin/sh\necho "hook says no" >&2\nexit 1\n' > .git/hooks/pre-commit; c
 rec "$P" t-ab12 main x; assert_contains "$out" "could not commit"; assert_contains "$out" "hook says no"
 assert_eq "$head" "$(up HEAD)"; assert_eq "$idx" "$(git ls-files -s -- .tickets/t-ab12)"; $RECORDED && fail "recorded on a refused commit"
 assert_eq "?? .tickets/t-ab12/new.md" "$(git status --porcelain -- .tickets/t-ab12/new.md)"; rm .git/hooks/pre-commit .tickets/t-ab12/new.md
+# t-7db9: canon's hook prints its reason first and its suite's output after it: the refusal names the BLOCKED line, not the suite's last line
+echo z >> .tickets/t-ab12/github.md
+printf '#!/bin/sh
+echo "[pre-commit] BLOCKED — test suite failed:"
+echo "ok 1"
+echo "test failed"
+exit 1
+' > .git/hooks/pre-commit; chmod +x .git/hooks/pre-commit
+rec "$P" t-ab12 main x; assert_contains "$out" "([pre-commit] BLOCKED — test suite failed:)"
+[[ "$out" != *"(test failed)"* ]] || fail "the refusal named the suite's last line: $out"
+rm .git/hooks/pre-commit; git checkout -q -- .tickets/t-ab12/github.md 2>/dev/null || true
 
 # 6. a refused push: the commit stays here and the line says how to push it
 printf '#!/bin/sh\nexit 1\n' > "$W/origin.git/hooks/pre-receive"; chmod +x "$W/origin.git/hooks/pre-receive"

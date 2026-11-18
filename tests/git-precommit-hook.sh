@@ -221,6 +221,48 @@ set -e
 [[ "$leak_block_rc" -ne 0 ]] || fail "expected commit -a with a hand-edit close to be blocked"
 assert_contains "$leak_block" "BLOCKED — ticket closed by direct file edit"
 
+# ── Records-only commits skip the suite (t-7db9) ────────────────────────────
+# Prod path: canon's installed pre-commit hook (scripts/pre-commit-hook-template.sh) in every project, and so tkt merge-pr's record commit.
+# The fixture suite always fails: a commit that runs it is blocked, one that skips it says so and goes through.
+rec_project="$(make_project)"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$scratch_home"' EXIT
+mkdir -p "$rec_project/scripts" "$rec_project/.tickets/t-rec1"
+printf '#!/usr/bin/env bash
+echo "suite ran"
+echo "test failed"
+exit 1
+' > "$rec_project/scripts/test.sh"; chmod +x "$rec_project/scripts/test.sh"
+printf 'echo hi\n' > "$rec_project/tool.sh"; printf 'n\n' > "$rec_project/.tickets/t-rec1/notes.md"
+git -C "$rec_project" add scripts tool.sh .tickets; git -C "$rec_project" -c user.email=t@t -c user.name=t commit -q -m base
+"$SKILLS" add sprint "$rec_project" >/dev/null
+rec_commit() {   # rec_commit <msg> <paths...>: stage the paths, commit through the hook; sets rec_rc and rec_out
+  local msg="$1"; shift
+  git -C "$rec_project" add -A -- "$@"
+  set +e; rec_out="$(cd "$rec_project" && git -c user.email=t@t -c user.name=t commit -m "$msg" 2>&1)"; rec_rc=$?; set -e
+}
+printf 'more\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "ticket notes" .tickets
+assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "Records only (.tickets/, HANDOFF, LEARNINGS, DECISIONS): test suite skipped."
+[[ "$rec_out" != *"suite ran"* ]] || fail "t-7db9: the suite ran for a .tickets-only commit"
+for f in HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md; do printf 'x\n' > "$rec_project/$f"; done
+rec_commit "docs records" HANDOFF.md LEARNINGS.md LEARNINGS-archive.md DECISIONS.md
+assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"
+printf 'echo bye\n' >> "$rec_project/tool.sh"; rec_commit "code" tool.sh
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a code commit skipped a failing suite"; assert_contains "$rec_out" "BLOCKED — test suite failed"
+printf 'y\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "code and records" tool.sh .tickets
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: code staged with records skipped the suite"; assert_contains "$rec_out" "suite ran"
+git -C "$rec_project" reset -q; git -C "$rec_project" checkout -q -- tool.sh .tickets
+git -C "$rec_project" mv tool.sh .tickets/t-rec1/tool.sh
+set +e; rec_out="$(cd "$rec_project" && git -c user.email=t@t -c user.name=t commit -m "move code into a ticket" 2>&1)"; rec_rc=$?; set -e
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a git mv of code into .tickets/ skipped the suite (rename detection)"; assert_contains "$rec_out" "suite ran"
+git -C "$rec_project" reset -q --hard
+rec_key="AKIA""ABCDEFGHIJKLMNOP"; printf 'key = %s\n' "$rec_key" > "$rec_project/.tickets/t-rec1/leak.md"; rec_commit "secret in a ticket" .tickets
+[[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a records-only commit skipped the secret scan"; assert_contains "$rec_out" "aws-access-key"
+git -C "$rec_project" reset -q; rm -f "$rec_project/.tickets/t-rec1/leak.md"
+printf '# Claude\nRun wrapup before commits.\n' > "$rec_project/CLAUDE.md"; git -C "$rec_project" add CLAUDE.md
+git -C "$rec_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m "wrapup registered"
+printf 'z\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "after a skip" .tickets
+assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"; assert_contains "$rec_out" "Run /wrapup"   # the reminder still runs after a skip
+
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
 trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$nogit_project" "$scratch_home"' EXIT
