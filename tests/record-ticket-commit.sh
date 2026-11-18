@@ -26,7 +26,7 @@ echo 'merged: abc' >> .tickets/t-ab12/ticket.md; echo '# GitHub' > .tickets/t-ab
 sed -i.bak 's/^- 11-05 21:28 .*/&\n- 11-05 21:36 · t-ab12 · merged (PR #7)/' HANDOFF.md; rm -f HANDOFF.md.bak
 echo staged > other.txt; git add other.txt; echo dirty >> app.txt
 rec "$P" t-ab12 main "chore: record t-ab12 merge of #7"
-assert_contains "$out" "and pushed main to origin"; $RECORDED || fail "RECORDED not set"
+assert_contains "$out" "and pushed main to origin"; [[ "$out" != *"earlier local"* ]] || fail "named local commits when there were none: $out"; $RECORDED || fail "RECORDED not set"
 assert_eq "chore: record t-ab12 merge of #7" "$(git log -1 --format=%s)"
 assert_eq "$(printf '%s\n' .tickets/t-ab12/github.md .tickets/t-ab12/ticket.md HANDOFF.md | sort)" "$(git show --name-only --format= HEAD | sort)"
 assert_eq "$(up HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
@@ -38,7 +38,8 @@ git reset -q other.txt; rm other.txt; git checkout -q -- app.txt
 rec "$P" t-ab12 main x; assert_contains "$out" "nothing to record for t-ab12"; $RECORDED && fail "recorded nothing"
 # 3. a HANDOFF narrative edit is left out (only the ticket folder is committed)
 sed -i.bak 's/^old$/new focus/' HANDOFF.md; rm -f HANDOFF.md.bak; echo 'cloud_status: closed' >> .tickets/t-ab12/ticket.md
-rec "$P" t-ab12 main "chore: record t-ab12 close"; assert_contains "$out" "pushed main"
+git commit -q --allow-empty -m "local merge"   # an unpushed commit on main goes with the record: the line names it
+rec "$P" t-ab12 main "chore: record t-ab12 close"; assert_contains "$out" "pushed main to origin (with 1 earlier local commit)"
 assert_eq ".tickets/t-ab12/ticket.md" "$(git show --name-only --format= HEAD)"; assert_eq " M HANDOFF.md" "$(git status --porcelain -- HANDOFF.md)"
 git checkout -q -- HANDOFF.md
 

@@ -117,13 +117,23 @@ assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"   # the active s
 # "chore: record <id> close" and pushed, main is clean for the ticket, and no "Next: commit" line is printed.
 git init -q --bare -b main "$W/o.git"; git remote add origin "$W/o.git"
 sed -i.bak '/^\.tickets\/$/d' .gitignore; rm -f .gitignore.bak; git add .gitignore; git commit -qm "track tickets"
-id2="$("$TKT" create "CSV import")"; t2=".tickets/$id2"; keepf="$f"; f="$t2/ticket.md"
-# its own PR: a graded commit, then the cloud's late docs, merged with a merge commit
-git checkout -q -b pr5; echo v5 > src.txt; git commit -qam graded5; G5="$(git rev-parse HEAD)"; echo row5 >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm sweep5
-git checkout -q main; git merge -q --no-ff pr5 -m "Merge PR #5"; M5="$(git rev-parse HEAD)"
-field runs github; field github acme/app#2; field manual true; field cloud_status closed; field merged "$M5"; f="$keepf"
-printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G5" > "$t2/eval-report.md"; cp "$W/a.ok" "$t2/acceptance.md"
-git add .tickets/"$id2"; git commit -qm "the ticket"; git push -q origin main; git branch -q -u origin/main
+# mk <title> <n>: a tracked Manual ticket with its own PR #<n>: a graded commit, then the cloud's late docs, merged with a merge commit
+mk() {
+  local nid keepf="$f" g m; nid="$("$TKT" create "$1")"; f=".tickets/$nid/ticket.md"
+  git checkout -q -b "pr$2"; echo "v$2" > src.txt; git commit -qam "graded$2"; g="$(git rev-parse HEAD)"; echo "row$2" >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "sweep$2"
+  git checkout -q main; git merge -q --no-ff "pr$2" -m "Merge PR #$2"; m="$(git rev-parse HEAD)"
+  field runs github; field github "acme/app#$2"; field manual true; field cloud_status closed; field merged "$m"; f="$keepf"
+  printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$g" > ".tickets/$nid/eval-report.md"; cp "$W/a.ok" ".tickets/$nid/acceptance.md"
+  git add ".tickets/$nid"; git commit -qm "the ticket $nid"; git push -q origin main; printf '%s\n' "$nid"
+}
+id2="$(mk "CSV import" 5)"; t2=".tickets/$id2"; git branch -q -u origin/main
+# closed on a feature branch: no record commit there and nothing pushed (the base is the default branch, never the checked-out one)
+id3="$(mk "PDF export" 6)"; git checkout -q -b feat/mine; git commit -q --allow-empty -m "wip"
+"$SPRINT" manual-qa "$id3" --by tester --step "exported|pass" >/dev/null
+out="$("$SPRINT" complete "$id3" 2>&1)" || fail "t-8990: the Manual close on a feature branch refused: $out"
+assert_contains "$out" "record: the main checkout is on feat/mine, not main"; assert_contains "$out" "Next: commit .tickets/$id3"
+assert_eq "wip" "$(git log -1 --format=%s)"; git --git-dir="$W/o.git" rev-parse -q --verify refs/heads/feat/mine >/dev/null && fail "t-8990: the feature branch was pushed"
+git checkout -q main; git add ".tickets/$id3"; git commit -qm "close $id3 by hand"; git push -q origin main
 "$SPRINT" manual-qa "$id2" --by tester --step "imported a CSV|pass" >/dev/null
 out="$("$SPRINT" complete "$id2" 2>&1)" || fail "t-8990: the tracked Manual close refused: $out"
 assert_contains "$out" "record: committed"; assert_contains "$out" "and pushed main to origin"

@@ -186,7 +186,7 @@ _default_branch() {
 # staged files stay staged (commit --only); a refused commit puts the index of those paths back as it was. Prints one line about
 # what it did or why not, and always returns 0: the merge or close it follows already succeeded. Sets RECORDED=true on a commit.
 record_ticket_commit() {
-  local root="$1" id="$2" base="$3" msg="$4" head saved out sha rb t1 t2
+  local root="$1" id="$2" base="$3" msg="$4" head saved out sha rb t1 t2 ahead note
   local paths=()
   RECORDED=false
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || return 0
@@ -226,8 +226,11 @@ record_ticket_commit() {
   # shellcheck disable=SC2034  # RECORDED is read by the callers (tkt merge-pr, sprint's Manual close)
   RECORDED=true
   if ! git -C "$root" remote get-url origin >/dev/null 2>&1; then echo "record: committed $sha ($msg); no origin to push to"; return 0; fi
+  # the push also publishes the base's other local commits (a diverged merge's merge commit): say so
+  ahead="$(git -C "$root" rev-list --count "refs/remotes/origin/$base..HEAD" 2>/dev/null || echo 1)"; ahead=$((ahead - 1)); note=""
+  (( ahead <= 0 )) || { note=" (with $ahead earlier local commit"; (( ahead == 1 )) || note+="s"; note+=")"; }
   if out="$(git -C "$root" push -q origin "refs/heads/$base:refs/heads/$base" < /dev/null 2>&1)"; then
-    echo "record: committed $sha ($msg) and pushed $base to origin"
+    echo "record: committed $sha ($msg) and pushed $base to origin$note"
   else
     echo "record: committed $sha ($msg) here; the push was refused ($(printf '%s' "$out" | tail -1)); push it: git push origin $base"
   fi
