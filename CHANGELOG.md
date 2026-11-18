@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-11-18
+
+- Fixed: after End, Save & End, the idle reaper, Kill, or the agent exiting on its own, the ticket's card showed **● Working** for up to 10 minutes (on Windows, where no process can be checked) instead of **▶ Resume**. The Cockpit now gives each agent its session id (`COCKPIT_SESSION`), the "agent is on this ticket" heartbeat records it, and ending that session removes exactly its own heartbeat, so the card shows Resume at once on every OS. A heartbeat from another agent, or one with no session id, is never touched (t-25f1). Daemon release.
+- Fixed: Resume on a tab whose End was still in flight, after the daemon had already ended the session, reopened the old end screen ("Ending without saving…") with nothing running. Resume now opens a fresh tab in that case; a tab that is still saving, running or idle keeps the plain switch (t-25f1).
+- Fixed: a session's "done · waiting" line stayed on its card after Save & End until the next poll; it now goes when the session ends (t-447a, with t-25f1).
+
 ## [0.67.4] - 2026-11-18
 
 - Fixed: closing a cloud ticket here (**Continue here**) wrote the close's DECISIONS.md row, LEARNINGS.md row and HANDOFF.md notes inside the land worktree. In a project that commits those files **Finish** refused ("uncommitted work?"); in one that ignores DECISIONS.md, Finish deleted the decision row with the worktree, silently. The close now writes them in the main checkout: `sprint gate-snapshot pre` names the path, and `sprint complete` and **Finish** refuse a close doc left in the worktree, naming each file and where it goes, with nothing removed (t-8bd8).
