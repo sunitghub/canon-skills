@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.67.2] - 2026-11-17
+
+- Fixed: a cloud ticket that recorded a decision could not be merged without closing it again on this machine. The cloud close writes its DECISIONS.md row after its evaluator grades, so **Import results** and **Check & merge** refused the PR ("does NOT match graded-head … DECISIONS.md"). They now accept a DECISIONS.md change that only adds table rows naming the ticket (one to three rows, canon's row shape, no control characters) and print each row they accept; an edited or removed row, a row for another ticket, or any other change still needs the close here (t-7d84).
+- Changed: the cloud session is told to only add its DECISIONS.md row (no archive or mark there), and its last reply and `tkt export` say to use **Continue here** if Import results asks for a re-grade (t-7d84).
+- Changed: when a PR changed after its grade, Import results says "Imported; the PR changed after its grade" and names the files; a Manual ticket's close steps (Worktree ready, Import results) include "test the change yourself" before `sprint complete` (t-7d84).
+- Changed: the Agents sidebar's Cloud row no longer shows a tooltip over its own status line (t-7d84).
+
 ## [0.67.1] - 2026-11-17
 
 - Fixed: closing a cloud ticket here (**Continue here**, `tkt land`) in a project that commits its `.tickets/` folder. The PR brought the cloud's closed copy of the ticket into the land worktree, so the card showed Done, the Cockpit showed "out on GitHub", the close read the wrong ticket, and **Finish** refused. `tkt land` now keeps `.tickets/` out of that worktree (git sparse-checkout, that worktree only), so everything there uses the main checkout's ticket and **Finish** works with no manual step (t-597f).
