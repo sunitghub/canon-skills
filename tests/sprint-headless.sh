@@ -607,10 +607,8 @@ git -C "$WORK" branch -D main >/dev/null 2>&1 || true
 
 # 15c2 (t-99d2). a master repo: only origin/master exists, so the default base is origin/master (was "could not resolve")
 git -C "$WORK" update-ref -d refs/remotes/origin/main 2>/dev/null || true; git -C "$WORK" update-ref refs/remotes/origin/master HEAD
-for tool in "$SPRINT_HEADLESS_EVAL"; do
-  (cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$tool" t-ev01 >/dev/null)
-  assert_contains "$(cat "$PROMPT_CAP")" "derive changed files from: $PIN_TOOLS/git-read diff --name-only origin/master HEAD"
-done
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 >/dev/null)
+assert_contains "$(cat "$PROMPT_CAP")" "derive changed files from: $PIN_TOOLS/git-read diff --name-only origin/master HEAD"
 git -C "$WORK" update-ref -d refs/remotes/origin/master
 
 # 15d. --model works with the ticket-id form

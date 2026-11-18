@@ -39,6 +39,12 @@ assert_eq "$BASE" "$(ms "$W/bin:/usr/bin:/bin")"
 assert_eq "$BASE" "$(ms "/usr/bin:/bin")"   # no sprint on PATH: mutant-sweep's own origin/HEAD lookup
 mkdir -p "$W/old"; printf '#!/bin/sh\necho "Unknown command: $1" >&2; exit 1\n' > "$W/old/sprint"; chmod +x "$W/old/sprint"
 assert_eq "$BASE" "$(ms "$W/old:/usr/bin:/bin")"   # an older sprint without base-ref: mutant-sweep falls back to its own lookup
+# no origin/HEAD and no local default branch (a clone made without one): the remote's own master still answers, in canon's rule and in
+# mutant-sweep's own lookup
+git remote set-head origin -d; git branch -q -D master
+assert_eq "$BASE" "$(sb)"; assert_eq "$BASE" "$(ms "/usr/bin:/bin")"
+# sprint's own call sites: suggest-tier finds the base (it said "no git baseline" in a master repo)
+out="$("$SPRINT" suggest-tier 2>&1 || true)"; [[ "$out" != *"no git baseline"* ]] || fail "suggest-tier found no base in a master repo: $out"
 echo "gate-base: a master repository's gates find their base (sprint base-ref, pre-gate, skill-eval-scope, mutant-sweep, headless default)"
 
 # 2. a main repository: unchanged
