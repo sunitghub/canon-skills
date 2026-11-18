@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.3] - 2026-11-18
+
+- Fixed: **Import results** and **Check & merge** refused a cloud close whose DECISIONS.md row was written without bold (`| 2026-11-18 | t-xxxx: … | … |`), sending a correct ticket to a local close. Bold is now optional; the protections stay (rows only added, 1-3 of them, each naming the ticket, no control characters). A fresh project's first decision is accepted too, when the PR creates DECISIONS.md with exactly the header `sprint start` writes (t-00d3).
+
 ## [0.68.2] - 2026-11-18
 
 - Fixed: in a project whose default branch is `master` (or anything but `main`), every close gate failed to find its diff base: the gates, `pre-gate-check`, `skill-eval-scope`, `mutant-sweep` and the headless tools all used `merge-base HEAD origin/main`, so a cloud session had to work around it on every close. New **`sprint base-ref`** owns the rule (the merge-base of HEAD and origin's default branch: origin/HEAD, else main or master locally, else on origin), every tool uses it, and the gate docs name it. A message that said "no origin/main" now names the branch it looked for (t-99d2).
