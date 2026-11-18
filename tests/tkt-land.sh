@@ -234,7 +234,29 @@ SH
 cp "$W/bin/git" "$W/bin/git.real"; cp "$W/bin/git-sparse-fail" "$W/bin/git"; chmod +x "$W/bin/git"
 refuses "a git that cannot set sparse-checkout" "sparse not supported here" STUB_HEAD="$TH" --
 mv "$W/bin/git.real" "$W/bin/git"
+# t-edda: protects Continue here on Windows. Git Bash converts an argument that looks like an absolute path before calling git.exe:
+# it turned `!/.tickets/` into `!C:/Program Files/Git/.tickets/` (keeps nothing out) and left the glob `/*` alone. The stub does the
+# same to `sparse-checkout set`'s pattern operands only (never -C's path), unless MSYS_NO_PATHCONV / MSYS2_ARG_CONV_EXCL is set,
+# as MSYS does; with MSYS_ALWAYS=1 it converts regardless (a git that stores something else: the read-back must refuse).
+cat > "$W/bin/git-msys" <<SH
+#!/usr/bin/env bash
+a=(); set_seen=false
+for x in "\$@"; do
+  if \$set_seen && [[ "\$x" != -* && "\$x" != *'*'* && ( "\$x" == /* || "\$x" == '!/'* ) ]] \\
+     && { [[ -n "\${MSYS_ALWAYS:-}" ]] || [[ -z "\${MSYS_NO_PATHCONV:-}" && -z "\${MSYS2_ARG_CONV_EXCL:-}" ]]; }; then
+    if [[ "\$x" == '!'* ]]; then x="!C:/Program Files/Git\${x#!}"; else x="C:/Program Files/Git\$x"; fi
+  fi
+  [[ "\$x" == set && " \${a[*]} " == *" sparse-checkout "* ]] && set_seen=true
+  a+=("\$x")
+done
+exec "$W/bin/git.real" "\${a[@]}"
+SH
+cp "$W/bin/git" "$W/bin/git.real"; cp "$W/bin/git-msys" "$W/bin/git"; chmod +x "$W/bin/git"
+refuses "a git that stores a converted .tickets pattern (t-edda)" "git stored /*, !C:/Program Files/Git/.tickets/, not /*, !/.tickets/" MSYS_ALWAYS=1 STUB_HEAD="$TH" --
+[[ ! -e "$WT" && -z "$(git branch --list "land/$id")" ]] || fail "t-edda: a refused land left its worktree or branch"
 out="$(STUB_HEAD="$TH" "$TKT" land "$id" < /dev/null 2>&1)" || fail "t-597f: land of a PR that tracks .tickets failed: $out"
+mv "$W/bin/git.real" "$W/bin/git"
+assert_eq $'/*\n!/.tickets/' "$(git -C "$WT" sparse-checkout list)"   # t-edda: under the converting stub, land asked git without conversion
 [[ ! -e "$WT/.tickets" ]] || fail "t-597f: the land worktree has its own .tickets/"
 [[ -z "$(git -C "$WT" status --short)" ]] || fail "t-597f: the land worktree is not clean: $(git -C "$WT" status --short)"
 [[ "$(git config --get core.sparseCheckout || echo off)" == "$sparse_main" ]] || fail "t-597f: sparse-checkout leaked into the main checkout"
@@ -266,6 +288,25 @@ assert_contains "$out" "  LEARNINGS.md"; assert_contains "$out" "  DECISIONS.md"
 assert_grep '^status: in_progress$' "$f"
 sed -i.bak 's/^status: .*/status: closed/' "$f"; rm -f "$f.bak"
 printf 'graded-head: %s\npass: all met\n' "$TH" > ".tickets/$id/eval-report.md"
+# t-edda: a worktree whose pattern was converted before this fix (the VM's) holds the PR's tracked .tickets/, and a ticket file there was
+# edited: sprint complete, gate-snapshot post and --finish each name the repair, and nothing is closed or removed.
+git -C "$WT" sparse-checkout set --no-cone '/*' '!C:/Program Files/Git/.tickets/'
+[[ -f "$WT/.tickets/$id/ticket.md" ]] || fail "t-edda: the converted pattern did not bring the PR's .tickets/ back (the fixture is wrong)"
+echo "edited in the worktree" >> "$WT/.tickets/$id/ticket.md"
+rc=0; out="$(cd "$WT" && "$SPRINT" complete 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-edda: sprint complete went on in a converted land worktree (rc $rc): $out"
+assert_contains "$out" "sparse-checkout pattern is wrong (!C:/Program Files/Git/.tickets/"; assert_contains "$out" 'sparse-checkout set --no-cone "/*" "!/.tickets/"'
+rc=0; out="$(cd "$WT" && "$SPRINT" gate-snapshot post "$W/gs-none.txt" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-edda: gate-snapshot post went on (rc $rc): $out"; assert_contains "$out" "sparse-checkout pattern is wrong"
+refuses "a land worktree whose .tickets pattern was converted (t-edda)" "sparse-checkout pattern is wrong (!C:/Program Files/Git/.tickets/" -- --finish
+assert_contains "$out" "worktree kept"
+git -C "$WT" checkout -q -- ".tickets/$id/ticket.md"; git -C "$WT" sparse-checkout set --no-cone '/*' '!/.tickets/'   # the repair the line names
+[[ ! -e "$WT/.tickets" ]] || fail "t-edda: the repair left .tickets/ in the worktree"
+# the pattern alone (a branch not named land/*) still marks a land worktree, so the guards above apply there too
+git -C "$P" worktree add -q -b other/x "$W/wt-conv" main; git -C "$W/wt-conv" sparse-checkout set --no-cone '/*' '!C:/Program Files/Git/.tickets/'
+( source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/ticket-root.sh"; _is_land_worktree "$W/wt-conv" ) || fail "t-edda: a converted pattern on another branch is not seen as a land worktree"
+git -C "$P" worktree remove --force "$W/wt-conv"; git -C "$P" branch -q -D other/x
+echo "land: a converted .tickets pattern is refused at land, and an existing one is named with its repair (t-edda)"
 refuses "close docs left in the land worktree" "has close docs that belong in the main checkout ($P): " -- --finish
 assert_contains "$out" "DECISIONS.md"; assert_contains "$out" "LEARNINGS.md"; assert_contains "$out" "worktree kept"
 [[ -f "$WT/DECISIONS.md" && -n "$(git branch --list "land/$id")" ]] || fail "t-8bd8: a refused finish lost the row or the branch"

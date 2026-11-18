@@ -3582,6 +3582,9 @@ cmd_land() {
     local whead; whead="$(git -C "$wt" rev-parse HEAD)" || exit 1
     [[ "$verdict" == pass && "$graded" != - && "$whead" == "$graded"* ]] \
       || { echo "land: $id has no passing evaluator verdict graded on the worktree head ${whead:0:8} (eval-report.md: ${verdict/#-/none} ${graded/#-/none}); worktree kept" >&2; exit 1; }
+    # t-edda: a worktree whose sparse pattern Git Bash converted holds the PR's own .tickets/: say how to repair it, keep everything
+    local lrep
+    if lrep="$(land_sparse_repair "$wt")"; then printf 'land: %s\n' "$lrep" >&2; echo "  worktree kept" >&2; exit 1; fi
     # t-8bd8: a close doc written in the worktree would stop the remove (tracked) or be deleted with it (ignored): name it, keep everything
     local ldocs
     if ldocs="$(land_close_docs "$wt")" && [[ -n "$ldocs" ]]; then
@@ -3640,10 +3643,19 @@ cmd_land() {
   # would read it there (the cloud's closed ticket) while --finish reads the main checkout's. Keep it out of this worktree only
   # (per-worktree sparse-checkout: git status stays clean and a plain worktree remove works), so t-cd06 sends every reader to main.
   if [[ -n "$(git -C "$root" ls-tree -d --name-only "$head" .tickets 2>/dev/null)" ]]; then
-    local sp_out
-    sp_out="$(git -C "$wt" sparse-checkout set --no-cone '/*' '!/.tickets/' < /dev/null 2>&1)" || {
+    local sp_out sp_list
+    # t-edda: Git Bash converts an argument that looks like an absolute path before calling git.exe, and it turned `!/.tickets/` into
+    # `!C:/Program Files/Git/.tickets/`, which keeps nothing out. These two switch that off (no effect outside MSYS); the read-back
+    # below refuses whatever git stored if it is still not exactly the two lines asked for.
+    if sp_out="$(MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' git -C "$wt" sparse-checkout set --no-cone '/*' '!/.tickets/' < /dev/null 2>&1)"; then
+      if ! sp_list="$(git -C "$wt" sparse-checkout list 2>&1)"; then sp_out="git sparse-checkout list failed: ${sp_list:-no output}"
+      elif [[ "$sp_list" != $'/*\n!/.tickets/' ]]; then sp_out="git stored $(printf '%s' "$sp_list" | paste -sd, - | sed 's/,/, /g'), not /*, !/.tickets/"
+      else sp_out=""; fi
+    else sp_out="${sp_out:-no output}"; fi
+    if [[ -n "$sp_out" ]]; then
       git -C "$root" worktree remove --force "$wt" < /dev/null >/dev/null 2>&1; git -C "$root" branch -q -D "$branch" < /dev/null 2>/dev/null
-      echo "land: could not keep .tickets/ out of $wt (git sparse-checkout: ${sp_out:-no output}); nothing was made" >&2; exit 1; }
+      echo "land: could not keep .tickets/ out of $wt ($sp_out); nothing was made" >&2; exit 1
+    fi
   fi
   # t-74d8: the close runs in this worktree, and its gates need canon's agents (and skills) there; best effort, never fails land
   [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true

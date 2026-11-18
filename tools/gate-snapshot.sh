@@ -165,6 +165,10 @@ fi
 
 # t-597f: a gate that wrote `.tickets/<id>/…` relative to a land worktree made a .tickets/ there; it hides the ticket from every reader
 # in that worktree (and .tickets/ is outside the comparison below). Said before anything else; post again once moved (the scope stays).
+# t-edda: a land worktree whose .tickets/ pattern Git Bash converted: the gate graded against the PR's copy of the ticket; say so first
+if [[ "$mode" == post ]] && lrep="$(land_sparse_repair "$(worktree_root)")"; then
+  printf 'gate-snapshot: %s\n' "$lrep" >&2; exit 1
+fi
 if [[ "$mode" == post ]] && strays="$(stray_tickets)"; then
   echo "gate-snapshot: post stopped — a .tickets/ in this worktree hides the ticket (a gate wrote a relative path):" >&2
   printf '%s\n' "$strays" | sed 's/^/  /' >&2
