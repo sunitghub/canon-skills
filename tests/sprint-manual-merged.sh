@@ -113,4 +113,34 @@ assert_eq 2 "$(events)"
 grep -h '"kind":"close.confirmed"' "$CANON_HOME"/events/*.jsonl | grep '"tier":"manual-merged"' >/dev/null || fail "close.confirmed has no tier manual-merged"
 assert_grep '^status: in_progress$' ".tickets/$other/ticket.md"   # the active sprint is untouched
 
+# t-8990: protects Test & close in a project that tracks .tickets/ (the user's ToDo-Demo): the close is committed as
+# "chore: record <id> close" and pushed, main is clean for the ticket, and no "Next: commit" line is printed.
+git init -q --bare -b main "$W/o.git"; git remote add origin "$W/o.git"
+sed -i.bak '/^\.tickets\/$/d' .gitignore; rm -f .gitignore.bak; git add .gitignore; git commit -qm "track tickets"
+# mk <title> <n>: a tracked Manual ticket with its own PR #<n>: a graded commit, then the cloud's late docs, merged with a merge commit
+mk() {
+  local nid keepf="$f" g m; nid="$("$TKT" create "$1")"; f=".tickets/$nid/ticket.md"
+  git checkout -q -b "pr$2"; echo "v$2" > src.txt; git commit -qam "graded$2"; g="$(git rev-parse HEAD)"; echo "row$2" >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "sweep$2"
+  git checkout -q main; git merge -q --no-ff "pr$2" -m "Merge PR #$2"; m="$(git rev-parse HEAD)"
+  field runs github; field github "acme/app#$2"; field manual true; field cloud_status closed; field merged "$m"; f="$keepf"
+  printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$g" > ".tickets/$nid/eval-report.md"; cp "$W/a.ok" ".tickets/$nid/acceptance.md"
+  git add ".tickets/$nid"; git commit -qm "the ticket $nid"; git push -q origin main; printf '%s\n' "$nid"
+}
+id2="$(mk "CSV import" 5)"; t2=".tickets/$id2"; git branch -q -u origin/main
+# closed on a feature branch: no record commit there and nothing pushed (the base is the default branch, never the checked-out one)
+id3="$(mk "PDF export" 6)"; git checkout -q -b feat/mine; git commit -q --allow-empty -m "wip"
+"$SPRINT" manual-qa "$id3" --by tester --step "exported|pass" >/dev/null
+out="$("$SPRINT" complete "$id3" 2>&1)" || fail "t-8990: the Manual close on a feature branch refused: $out"
+assert_contains "$out" "record: the main checkout is on feat/mine, not main"; assert_contains "$out" "Next: commit .tickets/$id3"
+assert_eq "wip" "$(git log -1 --format=%s)"; git --git-dir="$W/o.git" rev-parse -q --verify refs/heads/feat/mine >/dev/null && fail "t-8990: the feature branch was pushed"
+git checkout -q main; git add ".tickets/$id3"; git commit -qm "close $id3 by hand"; git push -q origin main
+"$SPRINT" manual-qa "$id2" --by tester --step "imported a CSV|pass" >/dev/null
+out="$("$SPRINT" complete "$id2" 2>&1)" || fail "t-8990: the tracked Manual close refused: $out"
+assert_contains "$out" "record: committed"; assert_contains "$out" "and pushed main to origin"
+[[ "$out" != *"Next: commit"* ]] || fail "t-8990: printed Next: commit although the close was recorded: $out"
+assert_eq "chore: record $id2 close" "$(git log -1 --format=%s)"
+assert_eq "$(git rev-parse HEAD)" "$(git --git-dir="$W/o.git" rev-parse main)"
+assert_eq "" "$(git status --porcelain -- "$t2")"
+echo "sprint-manual-merged: a tracked Manual close is recorded and pushed (t-8990)"
+
 echo "sprint-manual-merged: ok"

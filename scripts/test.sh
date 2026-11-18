@@ -193,6 +193,7 @@ tests=(
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/doc-commands-shimmed.sh"
+  "$ROOT/tests/record-ticket-commit.sh"
   "$ROOT/tests/doc-update-behavior.sh"
   "$ROOT/tests/gate-model-parity.sh"
   "$ROOT/tests/gate-ticket-check.sh"

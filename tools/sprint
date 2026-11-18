@@ -1392,7 +1392,11 @@ _complete_manual_merged() {
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" "tier=manual-merged"
   handoff_recent "$(project_root)"
   echo "Sprint completed: $id (manual-after-merge: the cloud's gates on the graded code, and your test of the merged code here: $MQA_PASS pass)"
-  echo "Next: commit .tickets/$id and push (the board's Commit and push), so the close is on origin too."
+  # t-8990: a project that tracks .tickets/ gets the close recorded and pushed on the default branch, the one merge-pr merges into;
+  # checked out on any other branch, record_ticket_commit refuses (never the checked-out branch: that would publish a feature branch)
+  local rroot rbase; rroot="$(project_root)"; rbase="$(_default_branch "$rroot" || true)"
+  RECORDED=false; [[ -z "$rbase" ]] || record_ticket_commit "$rroot" "$id" "$rbase" "chore: record $id close"
+  $RECORDED || echo "Next: commit .tickets/$id and push (the board's Commit and push), so the close is on origin too."
 }
 
 # cmd_check_review_notes <id> — t-c38e: the close gate's review-notes.md shape check, run on demand (read-only). The

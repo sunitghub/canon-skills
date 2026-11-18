@@ -2222,7 +2222,9 @@ cmd_merge_pr() {
     [[ -z "$mpr" ]] || IFS=$'\t' read -r mst mbase < <(gh pr view "$mpr" --repo "$repo" --json state,baseRefName --jq '[.state, .baseRefName] | @tsv' 2>/dev/null || true) || true
     if [[ "$mst" == MERGED && -n "$mbase" ]]; then
       echo "merge-pr: PR #$mpr is already merged; updating local $mbase only"
-      _ff_local_base "$root" "$mbase" "$id"; handoff_recent "$root"; return 0
+      _ff_local_base "$root" "$mbase" "$id"; handoff_recent "$root"
+      record_ticket_commit "$root" "$id" "$mbase" "chore: record $id merge of #$mpr"   # t-8990
+      return 0
     fi
   fi
   pr="$(_resolve_pr merge-pr "$file" "$repo" "$pr")" || exit 1
@@ -2337,6 +2339,7 @@ cmd_merge_pr() {
     elif [[ "$ist" == CLOSED ]]; then echo "issue #$issue was already closed"
     else echo "merge-pr: issue #$issue on $repo reads as '$ist'; not closing it" >&2; fi
   fi
+  record_ticket_commit "$root" "$id" "$base" "chore: record $id merge of #$pr"   # t-8990: last, after every write above
   _manual_next "$file" "$base"
 }
 
@@ -2369,17 +2372,6 @@ cmd_merge() {
   [[ -z "$pr" ]] || { echo "merge: --pr is for a ticket sent to GitHub; $id merges its worktree branch" >&2; exit 1; }
   $yes && $check && { echo "merge: --yes and --check do not go together: --check never runs or merges anything" >&2; exit 1; }
   _merge_branch
-}
-
-# _default_branch <root> — t-e1a2: the project's default branch: origin/HEAD's, else main, else master (the first that exists
-# locally). Prints it; returns 1 with nothing printed when none is there.
-_default_branch() {
-  local b
-  b="$(git -C "$1" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)"; b="${b#origin/}"
-  if [[ -z "$b" ]]; then
-    for b in main master; do git -C "$1" rev-parse -q --verify "refs/heads/$b^{commit}" >/dev/null 2>&1 && break || b=""; done
-  fi
-  [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
 }
 
 # _merge_branch — t-2906: merges a closed ticket's worktree branch into the branch checked out in the main checkout, through
@@ -2807,10 +2799,6 @@ cmd_pr_ready() {
   _gh_trail "$tdir" ready "PR: #$pr"
   echo "Marked PR #$pr ready for review. (Undo: gh pr ready --undo $pr --repo $repo)"
 }
-
-# _branch_ok <name> — t-24b1: a branch name read from GitHub or a remote goes on git and gh command lines only when
-# git accepts it as a branch name and it cannot be read as an option.
-_branch_ok() { [[ -n "$1" && "$1" != -* ]] && git check-ref-format --branch "$1" >/dev/null 2>&1; }
 
 # _ff_strip_fields — t-41ff: a ticket.md on stdin without the frontmatter lines canon keeps per machine, to compare a local
 # ticket.md with the merged one.
