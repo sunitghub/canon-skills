@@ -101,7 +101,10 @@ GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`
 
 A ticket that went to GitHub keeps its trail in `.tickets/<id>/github.md`: `tkt send-issue`, `tkt import-results` and
 `tkt merge-pr` each append a dated entry (issue, PR, graded head, merge commit or refusal reason), and the board shows it
-as the ticket's **GitHub** tab.
+as the ticket's **GitHub** tab. In a project that commits `.tickets/`, Check & merge and the Manual close after a merge
+then commit that ticket's folder (and `HANDOFF.md` when canon's Recent block is its only change) as `chore: record <id> …` and
+push it, never forced, so main stays clean (t-8990); on another branch, a main behind origin, or a refused hook or push, one line
+says what to do instead. A project that ignores `.tickets/` gets no commit.
 
 **Once: give Claude the repository.** A cloud session can work in a private repository only when the Claude GitHub
 App is installed on it (`https://github.com/apps/claude/installations/new`); without it the repository is not offered
