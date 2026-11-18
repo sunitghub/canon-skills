@@ -25,12 +25,7 @@ ticket_dir_for() {
 ensure_context_files() {
   local root="$1"
   if [[ ! -f "$root/DECISIONS.md" ]]; then
-    cat > "$root/DECISIONS.md" <<'EOF'
-# Decisions
-
-| Date | Decision | Reason |
-|---|---|---|
-EOF
+    decisions_seed_header > "$root/DECISIONS.md"   # t-00d3: one owner, also the header a cloud PR may create the file with
   fi
 
   if [[ ! -f "$root/HANDOFF.md" ]]; then
