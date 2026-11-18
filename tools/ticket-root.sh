@@ -216,7 +216,7 @@ record_ticket_commit() {
   # tracked changes, plus only the untracked files git does not ignore (a project may ignore .tickets/ and track some tickets by force;
   # canon's own markers stay out through .tickets/.gitignore)
   local u; u="$(git -C "$root" ls-files -z --others --exclude-standard -- "${paths[@]}" 2>/dev/null | tr '\0' '\n')"
-  if ! out="$(git -C "$root" add -u -- "${paths[@]}" 2>&1 && { [[ -z "$u" ]] || printf '%s\n' "$u" | (cd "$root" && xargs -I{} git add -- {}) 2>&1; } \
+  if ! out="$(git -C "$root" add -u -- "${paths[@]}" 2>&1 && { [[ -z "$u" ]] || git -C "$root" ls-files -z --others --exclude-standard -- "${paths[@]}" | (cd "$root" && xargs -0 git add --) 2>&1; } \
     && git -C "$root" commit -q --only -m "$msg" -- "${paths[@]}" 2>&1)"; then
     git -C "$root" reset -q -- "${paths[@]}" 2>/dev/null
     [[ -z "$saved" ]] || printf '%s\n' "$saved" | git -C "$root" update-index --index-info 2>/dev/null

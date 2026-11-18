@@ -22,13 +22,13 @@ up() { git rev-parse "$1"; }
 rec() { RECORDED=false; record_ticket_commit "$@" > "$W/rec.out"; out="$(cat "$W/rec.out")"; }   # not in $(…): RECORDED must reach this shell
 
 # 1. merged: + github.md + the Recent block grew: one commit of exactly those, pushed; an unrelated staged file stays staged
-echo 'merged: abc' >> .tickets/t-ab12/ticket.md; echo '# GitHub' > .tickets/t-ab12/github.md
+echo 'merged: abc' >> .tickets/t-ab12/ticket.md; echo '# GitHub' > .tickets/t-ab12/github.md; echo q > ".tickets/t-ab12/it's \"x\".md"   # a quote in a name (xargs -0)
 sed -i.bak 's/^- 11-05 21:28 .*/&\n- 11-05 21:36 · t-ab12 · merged (PR #7)/' HANDOFF.md; rm -f HANDOFF.md.bak
 echo staged > other.txt; git add other.txt; echo dirty >> app.txt
 rec "$P" t-ab12 main "chore: record t-ab12 merge of #7"
 assert_contains "$out" "and pushed main to origin"; [[ "$out" != *"earlier local"* ]] || fail "named local commits when there were none: $out"; $RECORDED || fail "RECORDED not set"
 assert_eq "chore: record t-ab12 merge of #7" "$(git log -1 --format=%s)"
-assert_eq "$(printf '%s\n' .tickets/t-ab12/github.md .tickets/t-ab12/ticket.md HANDOFF.md | sort)" "$(git show --name-only --format= HEAD | sort)"
+assert_eq "$(printf '%s\n' .tickets/t-ab12/github.md "\".tickets/t-ab12/it's \\\"x\\\".md\"" .tickets/t-ab12/ticket.md HANDOFF.md | sort)" "$(git show --name-only --format= HEAD | sort)"
 assert_eq "$(up HEAD)" "$(git --git-dir="$W/origin.git" rev-parse main)"
 assert_eq "" "$(git status --porcelain -- .tickets/t-ab12 HANDOFF.md)"
 assert_eq "A  other.txt" "$(git status --porcelain -- other.txt)"; assert_eq " M app.txt" "$(git status --porcelain -- app.txt)"
