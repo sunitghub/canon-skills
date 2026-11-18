@@ -137,7 +137,8 @@ set +e; out="$(cd "$R2" && CANON_TICKETS_DIR="$PT" PRE_GATE_BASE="$BASE2" bash "
 assert_eq 1 "$code" "pre-gate-check: a seeded shellcheck error in that checkout still exits 1 (output: $out)"
 assert_contains "$out" "shellcheck FAIL" "pre-gate-check: the failure is named"
 # when evidence.sh stamps but names no log (a stub playing it), the wrapper says so on stderr and exits with the stamp's code, never on a failed sed
-S="$WORK/stub"; mkdir -p "$S"; cp "$PG" "$S/pre-gate-check.sh"; printf '#!/usr/bin/env bash\nexit "${STUB_RC:-0}"\n' > "$S/evidence.sh"; chmod +x "$S/evidence.sh"
+# t-99d2: the stub copy also needs ticket-root.sh and platform-lib.sh (pre-gate-check sources them for gate_base)
+S="$WORK/stub"; mkdir -p "$S"; cp "$PG" "$S/pre-gate-check.sh"; cp "$ROOT/tools/ticket-root.sh" "$ROOT/tools/platform-lib.sh" "$S/"; printf '#!/usr/bin/env bash\nexit "${STUB_RC:-0}"\n' > "$S/evidence.sh"; chmod +x "$S/evidence.sh"
 set +e; out="$(cd "$R2" && STUB_RC=0 bash "$S/pre-gate-check.sh" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code" "pre-gate-check: a stamp that succeeded keeps its exit code when no log is named (output: $out)"
 assert_contains "$out" "evidence.sh did not name a readable log" "pre-gate-check: the missing log is said, not a sed error"

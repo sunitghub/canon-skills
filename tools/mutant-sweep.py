@@ -4,7 +4,7 @@
 Usage: mutant-sweep [--base <ref>] [--jobs N] [--timeout S] [--report <md>] --map <file>=<test cmd> ...
 
 Applies every operator in OPS at every occurrence on the lines added or changed since <base>
-(default: git merge-base HEAD origin/main) in each mapped file, then runs that file's test command
+(default: `sprint base-ref`, the merge-base with origin/<default branch>) in each mapped file, then runs that file's test command
 on a fresh copy of the project, one mutant per copy. Shell, JS, Python and Go. Advisory: exit 0 after a
 sweep, 1 when a test fails unmutated (baseline), 2 on a usage or base-ref error, 4 when the canary finds a
 leak. The real tree is never written: copies, their HOME/TMPDIR/CANON_HOME/XDG_CONFIG_HOME and every
@@ -519,6 +519,34 @@ def canary(real_home, root, max_files=2000, max_bytes=5 << 20):
     return hits
 
 
+def gate_base():
+    """t-99d2: the gates' base, from `sprint base-ref` (its one owner: gate_base in tools/ticket-root.sh). shutil.which finds sprint.cmd on
+    Windows, and running its resolved path avoids the .cmd shim gotcha of a bare name without a shell. Without sprint on PATH (mutant-sweep
+    installed on its own), the same rule here: origin/HEAD's branch, else main, else master, merge-base with origin/<it>."""
+    sp = shutil.which('sprint')
+    if sp:
+        r = subprocess.run([sp, 'base-ref'], capture_output=True, text=True)
+        out = (r.stdout + r.stderr).strip()
+        # an older sprint without base-ref says so (unknown command / usage): use the lookup below instead of stopping
+        if r.returncode == 0 or any(k in out for k in ('no default branch', 'no origin/', 'no common ancestor')):
+            return r, ('sprint base-ref: ' + (out or 'failed') + '; pass --base <ref>')
+    h = git('symbolic-ref', '-q', '--short', 'refs/remotes/origin/HEAD')
+    b = h.stdout.strip()[len('origin/'):] if h.returncode == 0 and h.stdout.strip().startswith('origin/') else ''
+    if not b:
+        for c in ('main', 'master'):
+            if git('rev-parse', '-q', '--verify', 'refs/heads/' + c).returncode == 0:
+                b = c
+                break
+    if not b:   # a clone without origin/HEAD or a local default branch: the remote's own main or master (as _base_branch)
+        for c in ('main', 'master'):
+            if git('rev-parse', '-q', '--verify', 'refs/remotes/origin/' + c).returncode == 0:
+                b = c
+                break
+    if not b:
+        return git('rev-parse', '--verify', '--quiet', 'refs/heads/no-default-branch'), 'no default branch (origin/HEAD unset, no main or master); pass --base <ref>'
+    return git('merge-base', 'HEAD', 'origin/' + b), f'git merge-base HEAD origin/{b} failed; pass --base <ref>'
+
+
 def main():
     real_home = os.path.expanduser('~')   # read at launch, before anything pins HOME
     ap = argparse.ArgumentParser(prog='mutant-sweep', description='Generated mutants over changed lines (advisory).')
@@ -542,8 +570,7 @@ def main():
         r = git('rev-parse', '--verify', '--quiet', a.base + '^{commit}')
         what = f'--base {a.base} is not a commit'
     else:
-        r = git('merge-base', 'HEAD', 'origin/main')
-        what = 'git merge-base HEAD origin/main failed; pass --base <ref>'
+        r, what = gate_base()
     if r.returncode or not r.stdout.strip():
         print(f'mutant-sweep: {what}', file=sys.stderr)
         return 2

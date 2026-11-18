@@ -56,7 +56,7 @@ SPEC_FILE="${1:-}"
   echo "  <spec-file>  any markdown file with - [ ] checklist items as criteria;" >&2
   echo "               eval-report.md is written next to it." >&2
   echo "" >&2
-  echo "--base-ref defaults to origin/main (then main) when omitted." >&2
+  echo "--base-ref defaults to origin/<default branch> (then the local default branch) when omitted." >&2
   exit 1
 }
 shift
@@ -126,19 +126,13 @@ if [[ -z "$MODEL" && -n "$TICKET_DIR" && -f "$TICKET_DIR/ticket.md" ]]; then
   fi
 fi
 
-# Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > default origin/main
-# (then main). This softens headless's prior "never infers a base" rule for local/
-# ticket convenience; CI still passes its base explicitly (the workflow template
-# does), so the default only ever helps local runs. Error only if no default resolves.
+# Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > the default branch (t-99d2: origin/<default>, else the local
+# default branch; was origin/main then main, which a master repo never had). CI always passes its base explicitly, so the default
+# only helps local runs; error only if none resolves. One owner: default_base_ref (tools/ticket-root.sh), shared with sprint-headless(-eval).
 if [[ -z "$BASE_REF" ]]; then
-  if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    BASE_REF="origin/main"
-  elif git rev-parse --verify --quiet main >/dev/null 2>&1; then
-    BASE_REF="main"
-  else
-    echo "Error: no --base-ref/\$GITHUB_BASE_REF given and could not resolve a default base ref (origin/main or main). Pass --base-ref explicitly." >&2
-    exit 1
-  fi
+  BASE_REF="$(default_base_ref .)" || {
+    echo "Error: no --base-ref/\$GITHUB_BASE_REF given and could not resolve a default base ref (origin/<default branch> or the local default branch). Pass --base-ref explicitly." >&2
+    exit 1; }
 fi
 
 # Validate --model the same way as base-ref: a model alias (haiku/sonnet/opus)

@@ -16,7 +16,7 @@
 #   written into an agent-private file is seen at the close instead of after the word cap trips.
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
 # <tickets dir>/<id>/evidence/pre-gate.log (the checkout's .tickets/, or CANON_TICKETS_DIR when it has none), written through evidence.sh stamp.
-# Changed files = committed diff from PRE_GATE_BASE (default: merge-base HEAD origin/main) to HEAD. Complexity is not
+# Changed files = committed diff from PRE_GATE_BASE (default: `sprint base-ref`, the merge-base with origin/<default branch>) to HEAD. Complexity is not
 # checked: no tool in canon's stack measures it (go vet, shellcheck and node --check do not), and none is added.
 set -euo pipefail
 
@@ -27,6 +27,8 @@ while [ -L "$_SOURCE" ]; do
   [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+# t-99d2: gate_base, the gates' one base rule
+source "$SCRIPT_DIR/ticket-root.sh"
 
 # t-835f: is_test_path <path>: a test file by canon's names. Written with a prefix strip, not a `tests/` glob: evidence.sh's scope audit refuses a reader source that builds a suite path at run time.
 is_test_path() { [[ "${1#tests/}" != "$1" ]] && return 0; case "$1" in *_test.go|*.test.js|*.spec.js) return 0 ;; esac; return 1; }
@@ -116,7 +118,7 @@ path_forms_report() {
 run_checks() {
   local base files f line="pre-gate" fails="" out rc=0 sc=() nd=() gd=() d
   if [[ -n "${PRE_GATE_BASE-}" ]]; then base="$PRE_GATE_BASE"
-  else base="$(git merge-base HEAD origin/main 2>/dev/null)" || { echo "pre-gate: no git baseline (merge-base HEAD origin/main failed); set PRE_GATE_BASE" >&2; return 2; }
+  else base="$(gate_base .)" || { echo "pre-gate: no git baseline ($base); set PRE_GATE_BASE" >&2; return 2; }   # t-99d2
   fi
   files="$(git -c core.quotePath=false diff --name-only --diff-filter=d "$base" HEAD | grep -v '^\.tickets/' || true)"
   while IFS= read -r f; do

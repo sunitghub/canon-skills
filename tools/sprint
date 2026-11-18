@@ -1066,7 +1066,7 @@ _notice_handoff_stale() {
 
 # _gate_caps <id> <ticket dir> — t-c990: every tools/caps.tsv row with a project path, measured before the evaluator (check-evidence)
 # and again at the close. A row over its cap prints its line and writes budget.exceeded (stage close); the close refuses only when this
-# branch changed that file (git diff from merge-base HEAD origin/main, uncommitted and untracked included), so an old HANDOFF.md or a
+# branch changed that file (git diff from gate_base, the merge-base with origin/<default branch>, uncommitted and untracked included), so an old HANDOFF.md or a
 # LEARNINGS.md at its cap cannot stop an unrelated close; the learnings row never refuses (learnings-sweep never blocks on it, and its
 # row is still uncommitted at the close). Measured in the worktree being closed. No baseline, an older board: no refusal.
 _gate_caps() {
@@ -1075,9 +1075,9 @@ _gate_caps() {
   wroot="$(worktree_root 2>/dev/null)" || wroot="$root"   # a linked worktree's own files and branch, not the main checkout's
   b="$(cap_board)" || return 0
   table="$(cap_table)"
-  if base="$(git -C "$wroot" merge-base HEAD origin/main 2>/dev/null)"; then
+  if base="$(gate_base "$wroot")"; then   # t-99d2: the default branch, not origin/main
     changed="$( { git -C "$wroot" diff --name-only "$base"; git -C "$wroot" ls-files --others --exclude-standard; } 2>/dev/null || true)"
-  else nobase=1; fi
+  else nobase="$base"; fi   # gate_base printed why
   err="$(mktemp)" || return 0
   while IFS=$'\t' read -r name path; do
     rc=0; out="$(cd "$wroot" && "$b" caps --json --table "$table" "$name" </dev/null 2>"$err")" || rc=$?
@@ -1091,7 +1091,7 @@ _gate_caps() {
     elif [[ -z "$nobase" ]] && grep -qxF -- "$path" <<< "$changed"; then
       echo "$line: this branch changed it; make room in it before closing (lower nothing in tools/caps.tsv)"; refuse=1
     else
-      echo "$line: not changed by this branch${nobase:+ (no origin/main to compare with)}, so the close goes on"
+      echo "$line: not changed by this branch${nobase:+ ($nobase)}, so the close goes on"
     fi
   done < <(awk -F'\t' '!/^#/ && NF == 5 && $2 != "-" { print $1 "\t" $2 }' "$table")
   rm -f "$err"
@@ -1565,10 +1565,10 @@ _manual_mode_refusal() {
   [[ "$(_signoff_tier "$tdir/plan.md")" == high-risk ]] && { echo "the plan's Tier is high-risk"; return 0; }   # the one tier parser (_signoff_tier)
   root="$(worktree_root 2>/dev/null)" || root="$(project_root)"; il="$root/scripts/integrity-list.sh"
   # canon's own checkout is decided by the BASE having the list, not the working tree: deleting or renaming the list file must not turn the check off
-  base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)" || base=""
+  local why=""; base="$(gate_base "$root")" || { why="$base"; base=""; }   # t-99d2
   if [[ -z "$base" ]]; then
     [[ -f "$il" ]] || return 0   # a project that is not canon, with no remote to compare against
-    echo "this is canon's own checkout and the base (origin/main) cannot be found to check for gate-file changes"; return 0
+    echo "this is canon's own checkout and the base cannot be found to check for gate-file changes ($why)"; return 0
   fi
   git -C "$root" cat-file -e "$base:scripts/integrity-list.sh" 2>/dev/null || return 0   # the base has no gate list: not canon's checkout
   # the lists come from the BASE's copy, so editing the list cannot hide a gate file; a change to the list file is itself refused
@@ -1971,12 +1971,12 @@ cmd_suggest_tier() {
   done
   : "${id:-}"  # accepted, intentionally unused for classification
 
-  # Base ref: explicit override, else merge-base HEAD origin/main. Decide on
+  # Base ref: explicit override, else gate_base (t-99d2: the default branch). Decide on
   # EXIT STATUS, not empty output (t-f04f) — a failed substitution can leave the
   # outer git diff running against a different, non-empty baseline.
   if [[ -z "$base" ]]; then
-    if ! base="$(git merge-base HEAD origin/main 2>/dev/null)"; then
-      _st_emit normal "no git baseline (git merge-base HEAD origin/main failed — missing origin/main, detached/zero-commit HEAD, or not a git repo)"
+    if ! base="$(gate_base .)"; then
+      _st_emit normal "no git baseline ($base)"
       return 0
     fi
   fi
@@ -2556,6 +2556,7 @@ Usage:
                             Records the user's manual testing in
                             evidence/manual-qa.md for the evaluator (t-aa24)
   sprint gate-snapshot | evidence | subagent-log | pre-gate-check <args>
+  sprint base-ref                 the gates' diff base: merge-base of HEAD and origin/<default branch> (or why there is none, exit 1)
                             Run tools/<name>.sh with the same arguments and
                             exit code; the names the close docs give, so they
                             run from PowerShell through sprint.cmd (t-96f1)
@@ -2569,7 +2570,7 @@ main() {
   local cmd="${1:-help}"
   shift || true
   # t-96f1: the close's .sh tools skip the project check: each script resolves its own folder, so the output stays the script's.
-  case "$cmd" in help|--help|-h|gate-snapshot|evidence|subagent-log|pre-gate-check) ;; *) require_project_folder sprint ;; esac   # t-b2ff
+  case "$cmd" in help|--help|-h|gate-snapshot|evidence|subagent-log|pre-gate-check|base-ref) ;; *) require_project_folder sprint ;; esac   # t-b2ff
 
   case "$cmd" in
     start) cmd_start "$@" ;;
@@ -2594,6 +2595,7 @@ main() {
     decisions) cmd_decisions "$@" ;;
     # t-96f1: run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file association)
     gate-snapshot|evidence|subagent-log|pre-gate-check) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
+    base-ref) gate_base "$(worktree_root 2>/dev/null || pwd)" ;;   # t-99d2: the gates' diff base (merge-base with origin/<default branch>)
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac

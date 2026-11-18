@@ -36,7 +36,7 @@ mutant-sweep --map <logic file>=<test command> [--map ...] --report .tickets/<id
   `acceptance.md ## Test Plan` and the tests changed alongside. The tool never guesses: a changed
   shell, JS, Python or Go file with no `--map` is listed `unmapped`, so a gap shows instead of passing silently.
 - **A map must finish well inside `--timeout` (300 s).** A file slower than that (`tests/evidence.sh`, 523 s) fails at the baseline and mutates nothing: map a focused command (the file's setup plus the new block), check by hand that one mutant fails it, and leave the whole file to the full-suite stamp (t-c923; class: sweep-map-exceeds-timeout; id: P-081).
-- **Scope = changed lines.** Only lines added or changed since `git merge-base HEAD origin/main`
+- **Scope = changed lines.** Only lines added or changed since `sprint base-ref` (the merge-base of HEAD and origin's default branch)
   (`--base <ref>` to override) are mutated. A failed merge-base exits 2 and runs nothing.
 - **Shell, JS, Python and Go** (`bash -n` / `node --check` / `python3 -m py_compile` / `gofmt -e` drop mutants
   that do not parse, reported `INVALID`, never counted as survivors); any other mapped file is listed `unsupported`.

@@ -6,7 +6,7 @@
 # only)` (t-a1b1). An eval executor is given the skill's SKILL.md and nothing else, so only its SKILL.md, its evals/evals.json, or a doc
 # whose path (skill-relative; for agents/*.md the repo path, in sprint's) appears in that evals.json can reach them. Nothing printed means
 # no skill's instructions changed. The advisory skill-eval gate in skills/sprint/reference/complete.md runs only the `run` lines.
-# Changed = base-ref (default: merge-base of HEAD and origin/main, as the gates derive it) against the working tree, plus untracked files.
+# Changed = base-ref (default: `sprint base-ref`, the merge-base with origin/<default branch>, as the gates derive it) against the working tree, plus untracked files.
 # A path counts when it is skills/<name>/SKILL.md or any other .md under skills/<name>/ outside evals/ (reference files, gates/), and a
 # top-level agents/*.md counts as `sprint` (the gate agents have no evals of their own). skills/<name>/evals/evals.json counts; the rest of
 # evals/, skill-eval-result.md, scripts and tools/ never count: they are not the skill's instructions. Paths come from `git ... -z`, and the skill name is the only part that is printed,
@@ -14,12 +14,14 @@
 set -euo pipefail
 
 die() { echo "skill-eval-scope: $*" >&2; exit 1; }
+# t-99d2: gate_base, the gates' one base rule
+source "$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ticket-root.sh"
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository"
 
 base="${1-}"
 if [[ -z "$base" ]]; then
-  base="$(git -C "$root" merge-base HEAD origin/main 2>/dev/null)" || die "cannot derive a base: no merge-base of HEAD and origin/main (pass a base ref)"
+  base="$(gate_base "$root")" || die "cannot derive a base: $base (pass a base ref)"   # t-99d2
 else
   [[ "$base" != -* ]] || die "base ref must not start with '-' (got '$base')"
   git -C "$root" rev-parse --verify -q "$base^{commit}" >/dev/null || die "base ref '$base' is not a commit"
@@ -42,14 +44,14 @@ named() {   # named <skill> <path>: the path appears in that skill's evals.json 
 changed=""   # newline-separated "<skill> read|doc"; names match name_re, so no path can add a line of its own
 note() {
   local p="$1" name="" rest="" kind=doc
-  if [[ "$p" =~ ^skills/($name_re)/evals/evals\.json$ ]]; then name="${BASH_REMATCH[1]}"; kind=read
+  if [[ "$p" =~ ^skills/($name_re)/evals/evals\.json$ ]]; then name="${BASH_REMATCH[1]}"; kind='read'
   elif [[ "$p" =~ $skill_doc_re ]]; then
     name="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
     if [[ "$rest" == evals/* || "$p" == */skill-eval-result.md ]]; then name=""
-    elif [[ "$rest" == SKILL ]] || named "$name" "$rest.md"; then kind=read
+    elif [[ "$rest" == SKILL ]] || named "$name" "$rest.md"; then kind='read'
     fi
   elif [[ "$p" =~ ^agents/[^/]+\.md$ ]]; then
-    name="sprint"; if named sprint "$p"; then kind=read; fi
+    name="sprint"; if named sprint "$p"; then kind='read'; fi
   fi
   if [[ -n "$name" ]]; then changed+="$name $kind"$'\n'; fi
   return 0

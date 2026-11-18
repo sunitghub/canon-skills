@@ -47,9 +47,9 @@ The review-notes template below is the whole return shape for this gate.
 
 1. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These define the approved scope — anything beyond them is scope creep.
 
-2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `git merge-base HEAD origin/main`, with the same two-tier fallback for missing remotes/repos.
+2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `sprint base-ref` (the merge-base of HEAD and origin's default branch), with the same two-tier fallback for missing remotes/repos.
 
-3. **Read changed files.** Read each file from step 2. Do not read files not on that list. **If that list is empty, stop:** do not write "No findings" — write the report with `Changed files: none (empty diff)` and tell the caller the base ref is probably wrong (the sprint's commits may already be on `origin/main`); `sprint complete` rejects such a report (t-de16).
+3. **Read changed files.** Read each file from step 2. Do not read files not on that list. **If that list is empty, stop:** do not write "No findings" — write the report with `Changed files: none (empty diff)` and tell the caller the base ref is probably wrong (the sprint's commits may already be on origin's default branch); `sprint complete` rejects such a report (t-de16).
 
 4. **Check each concern.** For every changed file, look for:
    - **Correctness** — a defect you can see in the code: wrong logic, an unhandled input or state, a break to an adjacent caller or reader (not the per-criterion grading, which is the evaluator's)

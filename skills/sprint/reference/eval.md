@@ -63,7 +63,7 @@ The eval-report template below is the whole return shape for this gate.
 
    The timestamp must be epoch **seconds** (10 digits), never milliseconds / a JS `Date.now()` value.
 
-2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `git merge-base HEAD origin/main`, with the same two-tier fallback for missing remotes/repos.
+2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `sprint base-ref` (the merge-base of HEAD and origin's default branch), with the same two-tier fallback for missing remotes/repos.
 
 3. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These are your ground truth — what was promised, what approach was approved.
 

@@ -42,7 +42,7 @@ printf '# Plan\n\n## Sign-off\nTier: normal | Risk: x\n' > "$TD/plan.md"; ce "$I
 # canon's own checkout: a gate-file diff against the base is refused; no base found is refused (fails closed); an untouched tree is fine
 mkdir -p scripts tools; printf 'GATE_FILES=(tools/sprint tools/evidence.sh)\nGATE_PROMPTS=(skills/sprint/reference/eval.md)\n' > scripts/integrity-list.sh; echo x > tools/other.sh
 git add scripts tools; git commit -qm "gate list"
-ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "base (origin/main) cannot be found"
+ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "the base cannot be found to check for gate-file changes (no origin/main to compare with)"   # t-99d2: names the branch it looked for
 git update-ref refs/remotes/origin/main HEAD; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 0 "$code"
 echo y >> tools/other.sh; git commit -qam "other"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"; assert_eq 0 "$code"
 echo z >> tools/sprint; git add tools/sprint; git commit -qm "gate file"; mq "$ID" --by Sunit --step "a|pass"; ce "$ID"

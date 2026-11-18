@@ -228,6 +228,35 @@ _default_branch() {
   [[ -n "$b" ]] && _branch_ok "$b" && printf '%s\n' "$b"
 }
 
+# _base_branch <root> — t-99d2: the branch the gates compare against: _default_branch (origin/HEAD, else local main, else master), else
+# the remote's own main or master when only those refs exist (a clone without origin/HEAD or a local default branch).
+_base_branch() {
+  local b
+  b="$(_default_branch "$1")" && { printf '%s\n' "$b"; return 0; }
+  for b in main master; do git -C "$1" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1 && { printf '%s\n' "$b"; return 0; }; done
+  return 1
+}
+
+# default_base_ref <root> — t-99d2: the headless tools' default base REF (not a commit): origin/<default branch> when it exists, else the
+# local default branch; prints nothing and returns 1 when neither resolves. Was origin/main then main in two copies.
+default_base_ref() {
+  local b; b="$(_base_branch "${1:-.}")" || return 1
+  if git -C "${1:-.}" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then printf 'origin/%s\n' "$b"
+  elif git -C "${1:-.}" rev-parse -q --verify "refs/heads/$b" >/dev/null 2>&1; then printf '%s\n' "$b"
+  else return 1; fi
+}
+
+# gate_base <root> — t-99d2: the close gates' base, the one owner of the rule: `git merge-base HEAD origin/<default branch>`, where the
+# default branch is origin/HEAD's (else main, else master: _default_branch). Prints the commit; on failure prints the reason (naming the
+# branch it looked for) and returns 1. A master repo used to fail here, as every caller hard-coded origin/main.
+gate_base() {
+  local root="${1:-.}" b out
+  b="$(_base_branch "$root")" || { echo "no default branch: origin/HEAD is not set and there is no main or master, local or on origin"; return 1; }
+  git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1 || { echo "no origin/$b to compare with"; return 1; }
+  out="$(git -C "$root" merge-base HEAD "origin/$b" 2>/dev/null)" && [[ -n "$out" ]] || { echo "HEAD has no common ancestor with origin/$b"; return 1; }
+  printf '%s\n' "$out"
+}
+
 # record_ticket_commit <root> <id> <base> <message> — t-8990: in a project that tracks .tickets/, the cloud paths (merge-pr, the
 # Manual close after a merge) leave the ticket's folder (merged:, github.md, the close records) and canon's HANDOFF Recent block
 # changed on main. This commits exactly those paths as <message> and pushes the base branch to origin, never forced, so main is
