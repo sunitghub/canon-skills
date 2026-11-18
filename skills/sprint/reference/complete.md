@@ -721,6 +721,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    the WHY, not the what, and keep the row short (t-79bf): the rule, its falsifier and the ticket id,
    about 400 characters; the reasoning stays in the ticket's plan.md and research.md. `sprint complete`
    prints a line for a row of this ticket over 600 characters. Skip if no new decisions were made.
+   **Land worktree (t-8bd8).** Closing a cloud ticket here (**Continue here**, `tkt land`), write this row, the learnings-sweep
+   row and any `HANDOFF.md` note in the main checkout (`sprint gate-snapshot pre` prints its path), never in the worktree:
+   `sprint complete` and `tkt land --finish` refuse a close doc changed there, naming it.
    **Prune on write (t-79bf).** Before you add the row, run `sprint decisions related <the files and
    tickets this sprint changed>`: it lists the rows that name them, each with an 8-hex row id. Answer
    each one in `summary.md`: live (leave it), superseded (`sprint decisions archive <row-id> --by <this

@@ -114,6 +114,13 @@ print_gate_model() {
   esac
 }
 
+# print_land_close_docs — t-8bd8: in a tkt land worktree, where the close writes its own docs (steps 6 and 8): the main checkout, not here.
+print_land_close_docs() {
+  local wt main; wt="$(worktree_root)"; _is_land_worktree "$wt" || return 0
+  main="$(land_main_root "$wt")" || return 0
+  echo "gate-snapshot: this is a land worktree: write the close's DECISIONS.md row, LEARNINGS.md row and any HANDOFF.md note in $main/, not here (sprint complete refuses them here)"
+}
+
 # print_report_path — t-597f: where this gate writes its report, as an absolute path in the ticket's folder, for the dispatch prompt: a
 # gate told `.tickets/<id>/…` writes it relative to its own folder, and in a land worktree that makes a .tickets/ there.
 print_report_path() {
@@ -151,6 +158,7 @@ if [[ "$mode" == pre ]]; then
   fi
   print_gate_model
   print_report_path
+  print_land_close_docs
   emit_gate_started
   exit 0
 fi

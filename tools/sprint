@@ -1259,6 +1259,14 @@ cmd_complete() {
     echo "  move each file into $(_worktree_main_tickets "$(worktree_root)")/<id>/, remove $(worktree_root)/.tickets, then run sprint complete again" >&2
     exit 1
   fi
+  # t-8bd8: the close docs (the DECISIONS.md row, the learnings row, a HANDOFF note) of a land close belong in the main checkout
+  local lwt ldocs; lwt="$(worktree_root)"
+  if ldocs="$(land_close_docs "$lwt")" && [[ -n "$ldocs" ]]; then
+    echo "Sprint cannot close here: this land worktree has close docs that belong in the main checkout, $(land_main_root "$lwt"):" >&2
+    printf '%s\n' "$ldocs" | sed 's/^/  /' >&2
+    echo "  move each change into the main checkout's copy, undo it here (git checkout -- <file>, or delete a new one), then run sprint complete again" >&2
+    exit 1
+  fi
   set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
   if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
   # t-788f: a named ticket that is not the active sprint closes only by the manual-after-merge path (a Manual cloud ticket merged here);
