@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.2] - 2026-11-18
+
+- Fixed: in a project whose default branch is `master` (or anything but `main`), every close gate failed to find its diff base: the gates, `pre-gate-check`, `skill-eval-scope`, `mutant-sweep` and the headless tools all used `merge-base HEAD origin/main`, so a cloud session had to work around it on every close. New **`sprint base-ref`** owns the rule (the merge-base of HEAD and origin's default branch: origin/HEAD, else main or master locally, else on origin), every tool uses it, and the gate docs name it. A message that said "no origin/main" now names the branch it looked for (t-99d2).
+
 ## [0.68.1] - 2026-11-18
 
 - Fixed: on Windows, **Continue here** (`tkt land`) gave the land worktree its own copy of the ticket in a project that commits `.tickets/`, so the close there read and wrote the cloud's copy. Git Bash had rewritten the sparse-checkout pattern `!/.tickets/` into `!C:/Program Files/Git/.tickets/`, which keeps nothing out. That call now runs without path conversion, the stored pattern is read back, and land refuses, leaving nothing behind, unless it is exactly right (t-edda).
