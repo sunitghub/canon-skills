@@ -44,14 +44,14 @@ named() {   # named <skill> <path>: the path appears in that skill's evals.json 
 changed=""   # newline-separated "<skill> read|doc"; names match name_re, so no path can add a line of its own
 note() {
   local p="$1" name="" rest="" kind=doc
-  if [[ "$p" =~ ^skills/($name_re)/evals/evals\.json$ ]]; then name="${BASH_REMATCH[1]}"; kind=read
+  if [[ "$p" =~ ^skills/($name_re)/evals/evals\.json$ ]]; then name="${BASH_REMATCH[1]}"; kind='read'
   elif [[ "$p" =~ $skill_doc_re ]]; then
     name="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
     if [[ "$rest" == evals/* || "$p" == */skill-eval-result.md ]]; then name=""
-    elif [[ "$rest" == SKILL ]] || named "$name" "$rest.md"; then kind=read
+    elif [[ "$rest" == SKILL ]] || named "$name" "$rest.md"; then kind='read'
     fi
   elif [[ "$p" =~ ^agents/[^/]+\.md$ ]]; then
-    name="sprint"; if named sprint "$p"; then kind=read; fi
+    name="sprint"; if named sprint "$p"; then kind='read'; fi
   fi
   if [[ -n "$name" ]]; then changed+="$name $kind"$'\n'; fi
   return 0
