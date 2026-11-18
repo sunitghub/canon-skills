@@ -5,7 +5,7 @@ import { activateDoc, modalState, openModal } from './board-modal.js';
 import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit } from './board-cockpit.js';
+import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
 import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
@@ -335,6 +335,19 @@ function ensureCockpitPollTimer() {
   }, 5000);
 }
 
+// tabSessionGone — t-25f1: true when an open ticket tab no longer has a session: it is mid-End (_ending), or it last reported a
+// live state and the daemon's /sessions list (fetched now) has no row for this ticket in this project. An unanswered list, an
+// idle tab (never reported a live state) or a Terminal/scratch tab is not gone: those keep the plain switch.
+const LIVE_TAB_STATES = new Set(['running', 'needs-you', 'done']);
+async function tabSessionGone(tab, t) {
+  if (tab._ending) return true;
+  if (!t || SCRATCH_ID.test(tab.id || '') || t.term || !LIVE_TAB_STATES.has(tab.status)) return false;
+  const res = await fetchSessions({ timeoutMs: 3000 });
+  if (!res.answered) return false;
+  const root = normProjectPath(state.gitRoot);
+  return !res.rows.some(r => r && String(r.ticket || '') === t.id && normProjectPath(r.project_root) === root);   // /sessions lists only live sessions
+}
+
 export async function openCockpit(id) {
   const t = findTicketById(id);
   if (!t) return;
@@ -342,6 +355,15 @@ export async function openCockpit(id) {
   ensurePreviewResize();
   document.getElementById('cockpit-overlay').classList.add('open');
 
+  if (cockpitTabs[id] && await tabSessionGone(cockpitTabs[id], t)) {
+    // t-25f1: its session ended (an End still in flight, or the daemon no longer lists it): switching to it would show its old
+    // end screen ("Ending without saving…") with nothing running. Finish its End sequence (its done flag then stops the
+    // 90 s fallback from tearing down the new tab) or unmount it, then open a fresh tab below.
+    const old = cockpitTabs[id];
+    if (old._onEnded) { setActiveTab(id); old._onEnded(); }
+    if (cockpitTabs[id] === old) unmountTab(id);
+    document.getElementById('cockpit-overlay').classList.add('open');
+  }
   if (cockpitTabs[id]) {
     // Already open — switch only. Never re-src's the iframe, never
     // reconnects; the terminal keeps its live connection while backgrounded.

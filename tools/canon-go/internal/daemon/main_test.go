@@ -8910,30 +8910,36 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		return n
 	}
 	for _, kind := range []string{"claude", ""} {
-		env := sessionEnv(kind, "t-ab12", environ)
+		env := sessionEnv(kind, "t-ab12", "sid1", environ)
 		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 0 {
 			t.Errorf("kind %q: want only CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false, got %v", kind, env)
 		}
 		if count(env, "COCKPIT_TICKET=t-ab12") != 1 || count(env, "PATH=/bin") != 1 {
 			t.Errorf("kind %q: lost COCKPIT_TICKET or the inherited env: %v", kind, env)
 		}
+		if count(env, "COCKPIT_SESSION=sid1") != 1 { // t-25f1: work-beat writes it into ACTIVE.beat; clearOwnBeat matches it
+			t.Errorf("kind %q: want COCKPIT_SESSION=sid1: %v", kind, env)
+		}
 		if count(env, "COCKPIT_AGENT=claude") != 1 { // t-3425: sprint approve names the claude Build model from it
 			t.Errorf("kind %q: want COCKPIT_AGENT=claude: %v", kind, env)
 		}
 	}
 	for _, kind := range []string{"pi", "copilot"} {
-		env := sessionEnv(kind, "t-ab12", environ)
+		env := sessionEnv(kind, "t-ab12", "sid1", environ)
 		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
 			t.Errorf("kind %q must keep the inherited value untouched: %v", kind, env)
 		}
 		if count(env, "COCKPIT_TICKET=t-ab12") != 1 {
 			t.Errorf("kind %q lost COCKPIT_TICKET: %v", kind, env)
 		}
+		if count(env, "COCKPIT_SESSION=sid1") != 1 {
+			t.Errorf("kind %q: want COCKPIT_SESSION=sid1: %v", kind, env)
+		}
 		if count(env, "COCKPIT_AGENT="+kind) != 1 {
 			t.Errorf("kind %q: want COCKPIT_AGENT=%s: %v", kind, kind, env)
 		}
 	}
-	if env := sessionEnv("term", "t-ab12", environ); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
+	if env := sessionEnv("term", "t-ab12", "sid1", environ); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
 		t.Errorf("the Terminal is not a claude session: %v", env)
 	}
 }
@@ -9655,3 +9661,97 @@ func TestSessionsRowPiHasNoModelOrStage(t *testing.T) {
 		}
 	}
 }
+
+// t-25f1: protects every Cockpit end path's card label. clearOwnBeat removes .tickets/ACTIVE.beat only when it names this
+// session's ticket and id; another session's, an outside agent's (no session=) or another ticket's beat stays.
+func TestClearOwnBeat(t *testing.T) {
+	cases := []struct {
+		name, beat string
+		gone       bool
+	}{
+		{"own", "ticket=t-ab12\nts=1\nhost=h\npid=\nsession=sid1\n", true},
+		{"own, CRLF", "ticket=t-ab12\r\nsession=sid1\r\n", true},
+		{"another session", "ticket=t-ab12\nsession=sid2\n", false},
+		{"no session line (an agent outside the Cockpit)", "ticket=t-ab12\nts=1\n", false},
+		{"another ticket", "ticket=t-cd34\nsession=sid1\n", false},
+		{"empty session", "ticket=t-ab12\nsession=\n", false},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		p := filepath.Join(dir, "ACTIVE.beat")
+		if err := os.WriteFile(p, []byte(c.beat), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		clearOwnBeat(&session{sid: "sid1", ticket: "t-ab12", ticketsDir: dir})
+		_, err := os.Stat(p)
+		if gone := os.IsNotExist(err); gone != c.gone {
+			t.Errorf("%s: removed=%v, want %v", c.name, gone, c.gone)
+		}
+	}
+	clearOwnBeat(&session{sid: "sid1", ticket: "t-ab12", ticketsDir: filepath.Join(t.TempDir(), "missing")}) // no file: no panic
+}
+
+// t-25f1: killSession (End, Save & End, the reaper, Reap/Kill) clears the beat in the session's own tickets dir, never the
+// daemon's default project's.
+func TestKillSessionClearsOwnBeat(t *testing.T) {
+	root := t.TempDir()
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir(), sessionReapTTL: time.Hour})
+	se := fakeExitSession(newFakeConPty(""))
+	se.ticketsDir = filepath.Join(t.TempDir(), "other-project", ".tickets")
+	beat := "ticket=t-ab12\nsession=" + se.sid + "\n"
+	for _, d := range []string{se.ticketsDir, filepath.Join(root, ".tickets")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "ACTIVE.beat"), []byte(beat), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.sessions[se.sid] = se
+	s.killSession(se)
+	if _, err := os.Stat(filepath.Join(se.ticketsDir, "ACTIVE.beat")); !os.IsNotExist(err) {
+		t.Errorf("killSession left the session's own beat: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".tickets", "ACTIVE.beat")); err != nil {
+		t.Errorf("killSession touched the daemon's default tickets dir: %v", err)
+	}
+}
+
+// t-25f1: an agent that exits on its own never reaches killSession; onNaturalExit clears its beat. The fake agent writes the
+// beat from the COCKPIT_TICKET / COCKPIT_SESSION the daemon gave it, as tools/work-beat does.
+func TestNaturalExitClearsOwnBeat(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-beat.sh")
+	script := "#!/bin/sh\nprintf 'ticket=%s\\nsession=%s\\n' \"$COCKPIT_TICKET\" \"$COCKPIT_SESSION\" > .tickets/ACTIVE.beat\ncp .tickets/ACTIVE.beat .tickets/beat.seen\nprintf 'READY\\n'\nsleep 0.3\nexit 0\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), sessionReapTTL: time.Hour})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	waitForSessionExited(t, ts.URL, out.Session, out.Token, 5*time.Second)
+	seen, err := os.ReadFile(filepath.Join(root, ".tickets", "beat.seen"))
+	if err != nil || !strings.Contains(string(seen), "ticket=t-ab12\nsession="+out.Session+"\n") {
+		t.Fatalf("the agent did not write a beat naming its session %s (COCKPIT_SESSION): %q %v", out.Session, seen, err)
+	}
+	beat := filepath.Join(root, ".tickets", "ACTIVE.beat")
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		if _, err := os.Stat(beat); os.IsNotExist(err) {
+			return
+		}
+		if time.Now().After(deadline) {
+			b, _ := os.ReadFile(beat)
+			t.Fatalf("the beat the agent wrote is still there after it exited: %q", b)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+

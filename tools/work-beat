@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # work-beat — the "an agent is on this ticket" heartbeat (t-187e). The one writer of .tickets/ACTIVE.beat.
-#   work-beat touch   record now, this host and the agent's process id for the ticket .tickets/ACTIVE names (nothing if none)
+#   work-beat touch   record now, this host, the agent's process id and (t-25f1) its Cockpit session for the ticket .tickets/ACTIVE names
 #   work-beat clear   remove the beat
 # The board reads the file and shows Working instead of Resume while it is fresh. It is only a label, so this never fails
 # its caller: every problem is silent and the exit status is 0. CANON_TICKETS_DIR names the .tickets/ folder (as evidence.sh).
@@ -36,7 +36,10 @@ case "${1:-}" in
     [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || exit 0
     tmp="$tdir/ACTIVE.beat.$$"
     wt_write_ok "$tdir/ACTIVE.beat" "$tmp" || exit 0   # t-f7e6: best effort: the line, then skip
-    { printf 'ticket=%s\nts=%s\nhost=%s\npid=%s\n' "$id" "$(date +%s)" "$(hostname 2>/dev/null | tr -d '[:space:]')" "$(agent_pid)" > "$tmp" \
+    # t-25f1: a Cockpit agent's beat names its session, so the daemon clears exactly its own beat when that session ends
+    sess=""; [[ "${COCKPIT_SESSION:-}" =~ ^[A-Za-z0-9_-]{1,64}$ ]] && sess="$COCKPIT_SESSION"
+    { { printf 'ticket=%s\nts=%s\nhost=%s\npid=%s\n' "$id" "$(date +%s)" "$(hostname 2>/dev/null | tr -d '[:space:]')" "$(agent_pid)"
+        [[ -z "$sess" ]] || printf 'session=%s\n' "$sess"; } > "$tmp" \
         && mv -f "$tmp" "$tdir/ACTIVE.beat"; } 2>/dev/null || rm -f "$tmp" 2>/dev/null
     ;;
   clear) wt_write_ok "$tdir/ACTIVE.beat" || exit 0; rm -f "$tdir/ACTIVE.beat" 2>/dev/null ;;   # t-f7e6 (evaluator): best effort, as touch

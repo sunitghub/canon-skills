@@ -537,6 +537,8 @@ export function teardownCockpit(id) {
   // if it was active, setActiveTab() re-syncs the panel for whichever tab is
   // next (or the overlay just closes if none remain) — no separate reset needed.
   unmountTab(id); // already re-renders the needs-you badge for whichever path it takes (switch or last-tab-closed)
+  // t-25f1 (t-447a): the session is over, so its card loses the session row now ("done · waiting" stayed until the next poll)
+  if (state.cockpitRows && state.cockpitRows.delete(id)) state.cockpitRowsKey = null;
   loadData().then(render).catch(() => renderBoard());
 }
 
