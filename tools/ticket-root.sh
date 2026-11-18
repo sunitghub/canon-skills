@@ -315,12 +315,12 @@ record_ticket_commit() {
   return 0
 }
 
-# decisions_added_rows <git-dir> <from> <to> — t-7d84: the lines DECISIONS.md gains from <from> to <to>, one per line, CRs dropped; the
-# rows late_docs_delta accepts and merge-pr / import-results print. Exits non-zero when git cannot tell.
 # decisions_seed_header — t-00d3: the four lines `sprint start` seeds DECISIONS.md with (ensure_context_files); one owner, also the only
 # header a cloud PR may create the file with (late_docs_delta).
 decisions_seed_header() { printf '# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n'; }
 
+# decisions_added_rows <git-dir> <from> <to> — t-7d84: the lines DECISIONS.md gains from <from> to <to>, one per line, CRs dropped; the
+# rows late_docs_delta accepts and merge-pr / import-results print. Exits non-zero when git cannot tell.
 decisions_added_rows() {
   local d out
   d="$(git -C "$1" -c core.quotepath=off diff -U0 --no-renames "$2" "$3" -- DECISIONS.md 2>/dev/null)" || return 1
