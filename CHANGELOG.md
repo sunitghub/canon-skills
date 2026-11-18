@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.67.4] - 2026-11-18
+
+- Fixed: closing a cloud ticket here (**Continue here**) wrote the close's DECISIONS.md row, LEARNINGS.md row and HANDOFF.md notes inside the land worktree. In a project that commits those files **Finish** refused ("uncommitted work?"); in one that ignores DECISIONS.md, Finish deleted the decision row with the worktree, silently. The close now writes them in the main checkout: `sprint gate-snapshot pre` names the path, and `sprint complete` and **Finish** refuse a close doc left in the worktree, naming each file and where it goes, with nothing removed (t-8bd8).
+- Changed: in a land worktree, the close's HANDOFF.md notices (empty Current Focus, unchanged narrative) read the main checkout's copy (t-8bd8).
+
 ## [0.67.3] - 2026-11-18
 
 - Fixed: in a project that commits its `.tickets/` folder, main was left with uncommitted ticket changes after every cloud ticket (the merge record, the GitHub trail, the close). **Check & merge** and the Manual close after a merge (**Test & close**) now commit just that ticket's folder, plus `HANDOFF.md` when canon's Recent block is its only change, as `chore: record <id> merge of #N` or `chore: record <id> close`, and push it to origin, never forced. Your other staged or changed files are left as they were. On another branch, a main behind origin, or a refusing hook or push, nothing is committed and one line says what to do. A project that ignores `.tickets/` is unchanged (t-8990).
