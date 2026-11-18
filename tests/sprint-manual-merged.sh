@@ -21,8 +21,10 @@ printf '.tickets/\n' > .gitignore; echo v1 > src.txt; git add .gitignore src.txt
 id="$("$TKT" create "CSV export")"; t=".tickets/$id"; f="$t/ticket.md"
 
 # the PR: the graded commit, then the cloud's late docs; merged with a merge commit (gh pr merge --merge)
-git checkout -q -b pr; echo v2 > src.txt; git commit -qam graded; G="$(git rev-parse HEAD)"
-echo row > LEARNINGS.md; git add LEARNINGS.md; git commit -qm sweep; L="$(git rev-parse HEAD)"
+git checkout -q -b pr; echo v2 > src.txt; printf '| Date | Decision | Reason |\n' > DECISIONS.md; git add -f DECISIONS.md; git commit -qam graded; G="$(git rev-parse HEAD)"
+# t-7d84: the cloud close's DECISIONS row (written after the grade, naming this ticket) is a late doc for this close too
+echo row > LEARNINGS.md; printf '| 2026-11-17 | **`%s`: exports are CSV.** | x |\n' "$id" >> DECISIONS.md; git add LEARNINGS.md; git add -f DECISIONS.md
+git commit -qm sweep; L="$(git rev-parse HEAD)"
 git checkout -q main; git merge -q --no-ff pr -m "Merge PR #2"; M="$(git rev-parse HEAD)"
 
 field() { awk -v k="$1" -v v="$2" '/^---$/ && ++n == 2 { print k ": " v } { print }' "$f" > "$W/fm" && mv "$W/fm" "$f"; }

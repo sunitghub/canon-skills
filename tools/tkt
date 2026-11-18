@@ -1434,6 +1434,7 @@ cmd_send_issue() {
       printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     fi
     # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
+    printf '   Close step 6: only ADD your DECISIONS.md row (it must name %s); do not run `sprint decisions archive` or `mark` here.\n' "$id"
     printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"
     printf '   The user'"'"'s `tkt import-results` adds its row on their machine, so this PR cannot conflict there.\n'
     if _tickets_tracked "$root" "$id"; then   # t-43a7: export pushes nothing here; the folder (docs, reports, machine log) rides in the PR
@@ -1446,7 +1447,7 @@ cmd_send_issue() {
     fi
     printf '7. Then stop. Do not merge the PR, watch it, or act on CI results or review comments: the merge happens on the user'"'"'s machine\n'
     printf '   (`tkt import-results %s --pr <N>`, then `tkt merge-pr %s`, N being the PR number). Reply with both commands, N filled in,\n' "$id" "$id"
-    printf '   and say you are done.\n'
+    printf '   say that if import-results names a re-grade, they close it there with Continue here on the card (`tkt land %s`), and say you are done.\n' "$id"
     printf '\nIf a step cannot be done, say so in the PR description; do not skip it silently.\n'
     $mam && printf '\n<!-- canon:manual-after-merge -->'   # t-e790: read back by import-issue (above lite and the ticket marker)
     [[ "$lite" == true ]] && printf '\n<!-- canon:lite -->'
@@ -1738,6 +1739,13 @@ cmd_sync_issues() {
     echo "sync-issues: $made created"
     canon_event github.synced tkt "$root" "count=$made"
   fi
+}
+# _decision_rows_lines <git-dir> <graded> <head> <late list> — t-7d84: when the accepted late docs include DECISIONS.md, print each row it
+# gained (it reaches every sprint start), so the person sees what is merged; nothing otherwise.
+_decision_rows_lines() {
+  [[ $'\n'"$4"$'\n' == *$'\nDECISIONS.md\n'* ]] || return 0
+  local r; r="$(decisions_added_rows "$1" "$2" "$3")" || return 0
+  [[ -z "$r" ]] || printf '%s\n' "$r" | LC_ALL=C tr -d '\000-\011\013-\037\177' | sed 's/^/  + DECISIONS.md: /'   # no control character reaches the terminal
 }
 # _same_repo <a> <b> — t-59ab: two owner/repo names are the same GitHub repo: GitHub ignores case, and a github: line may be spelled
 # otherwise than the origin URL (sunithex/todo-demo vs sunithex/ToDo-Demo). Both must be non-empty.
@@ -2127,7 +2135,8 @@ _merge_core() {
     local late lrc=0 lmode=""; [[ "$kind" == branch ]] && lmode=local
     late="$(late_docs_delta "$tmp/w" "$graded" "$head" "$id" $lmode)" || lrc=$?
     case "$lrc" in
-      0) echo "$label: $subj head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')" ;;
+      0) echo "$label: $subj head is graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"
+         _decision_rows_lines "$tmp/w" "$graded" "$head" "$late" ;;
       1) echo "$label: $subj head $head is not the commit the evaluator graded ($graded); since then it changes $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g'): re-run the gates on it" >&2; _mc_refuse "$kind head $head is not the graded-head $graded and changes more than late docs" ;;
       *) echo "$label: $subj head $head is not the commit the evaluator graded ($graded): $late; re-run the gates on it" >&2; _mc_refuse "$kind head $head is not the graded-head $graded" ;;
     esac
@@ -3723,7 +3732,7 @@ cmd_export() {
     || echo "export: WARNING: the plan in $id/plan.md is not approved (its Sign-off box is unticked)." >&2
   if _tickets_tracked "$root" "$id"; then
     _export_machine_log "$root" "$tdir"
-    echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"; return 0
+    echo "export: .tickets/ is tracked here, so $rel/ goes back with the PR: commit it on the PR branch. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id (if import-results names a re-grade: Continue here on the card, tkt land $id)"; return 0
   fi
   # The folder holds notes and evidence logs: like send-issue, a public repo needs --public.
   local repo vis=""; repo="$(_gh_origin_repo "$root" export 2>/dev/null)" && vis="$(_repo_visibility "$repo")"
@@ -3741,7 +3750,7 @@ cmd_export() {
   tree="$(cd "$root" && GIT_INDEX_FILE="$idx" git write-tree)" || exit 1
   commit="$(git -C "$root" commit-tree "$tree" -m "canon results: $id")" || exit 1
   git -C "$root" push --force origin "$commit:refs/heads/canon-results/$id" >&2 || { echo "export: push to origin failed" >&2; exit 1; }
-  echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id"
+  echo "export: pushed $rel/ to canon-results/$id. On your machine: tkt import-results $id --pr <N>, then tkt merge-pr $id (if import-results names a re-grade: Continue here on the card, tkt land $id)"
 }
 
 # _eval_pass_head <label> <ticket-dir> <id> <next-step> — t-2906: prints the graded-head of an evaluator pass a merge can rest on, or says
@@ -3993,6 +4002,7 @@ cmd_import_results() {
         late="$(late_docs_delta "$root" "$graded" "$prh" "$id")" && lrc=0 || lrc=$?
       fi
       if [[ $lrc == 0 ]]; then echo "  PR #$pr head $prh: graded-head plus late docs only: $(printf '%s\n' "$late" | grep . | paste -sd, - | sed 's/,/, /g')"; prline="PR: #$pr head $prh: graded-head plus late docs only"
+        _decision_rows_lines "$root" "$graded" "$prh" "$late"
       else local since=""; [[ $lrc == 1 ]] && since="; since then it changes: $(printf '%s\n' "$late" | sed -n '1,5p' | paste -sd, - | sed 's/,/, /g')"   # rc 2 is a git failure or a non-ancestor: its text is a reason, not a file list
         echo "  PR #$pr head $prh does NOT match graded-head ${graded:-none}$since" >&2; rc=1; prline="PR: #$pr head $prh: does NOT match graded-head ${graded:-none}"
         # t-75f5: a cloud-closed ticket cannot go through `land` without --fix, and the card offers only Import results: name the way out.

@@ -372,12 +372,12 @@ function cloudHtml(rows){
   if(!rows.length) return '';
   return `<div class="ag-cloudh"><b>Cloud</b><span>${rows.length}</span></div>`+rows.map(r=>{
     const what=r.state==='unknown' ? (r.pending?'checking GitHub':'GitHub could not be checked') : CLOUD_LABEL[r.state];
-    const at=cloudAt(r), tip=(r.title||r.id)+(r.issue?' · GitHub issue #'+r.issue:'')+' · '+what;
+    const at=cloudAt(r);   // t-7d84 (user): no native tooltip: it covered the row's own status line; the aria-label carries the same
     const glyph=r.state==='working'||r.state==='starting' ? '<span class="sdot spin ag-ring"></span>'
       : r.state==='results-ready' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Results ready</span><span class="ag-ps">Results</span></span>'
       : r.state==='imported' ? '<span class="ag-pill ag-pill-go"><span class="ag-pl">Merge ready</span><span class="ag-ps">Merge</span></span>'
       : '<span class="sdot"></span>';
-    return `<button class="ag-row ag-cloud st ${CLOUD_STATES[r.state]}" data-cloud="${escAttr(r.pid+'/'+r.id)}" data-state="${escAttr(r.state)}" title="${escAttr(tip)}" aria-label="${escAttr(r.id+(r.title?' '+r.title:'')+': '+what+(r.issue?', GitHub issue #'+r.issue:'')+(at?', '+at:''))}">`+
+    return `<button class="ag-row ag-cloud st ${CLOUD_STATES[r.state]}" data-cloud="${escAttr(r.pid+'/'+r.id)}" data-state="${escAttr(r.state)}" aria-label="${escAttr(r.id+(r.title?' '+r.title:'')+': '+what+(r.issue?', GitHub issue #'+r.issue:'')+(at?', '+at:''))}">`+
       `<span class="ag-i">${markGitHub()}</span><span class="ag-t1"><span class="ag-id">${esc(r.id)}</span><span class="ag-d">${esc(r.title)}</span></span>`+
       `<span class="ag-at"></span><span class="ag-age">${esc(at||'–')}</span><span class="ag-g">${glyph}</span><span class="ag-cloud-tip" role="tooltip">${esc(cloudTipText(r))}</span></button>`;
   }).join('');

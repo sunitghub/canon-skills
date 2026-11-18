@@ -109,7 +109,11 @@ grep -qxF "7. Then stop. Do not merge the PR, watch it, or act on CI results or 
 # t-41ff: the commands run as written: the real id, and --pr with the N the session is told to fill in.
 grep -qxF "   (\`tkt import-results $id --pr <N>\`, then \`tkt merge-pr $id\`, N being the PR number). Reply with both commands, N filled in," "$STUB_BODY" \
   || fail "the issue lacks the stop step's second line with runnable commands (t-093a, t-41ff)"
-grep -qxF "   and say you are done." "$STUB_BODY" || fail "the issue lacks the stop step's last line (t-41ff)"
+grep -qxF "   say that if import-results names a re-grade, they close it there with Continue here on the card (\`tkt land $id\`), and say you are done." "$STUB_BODY" \
+  || fail "the issue lacks the stop step's last line with the re-grade route (t-41ff, t-7d84)"
+# t-7d84: protects the cloud close's DECISIONS.md row: it only appends (a prune or an edit would be refused at the merge)
+grep -qxF "   Close step 6: only ADD your DECISIONS.md row (it must name $id); do not run \`sprint decisions archive\` or \`mark\` here." "$STUB_BODY" \
+  || fail "t-7d84: the issue lacks the append-only DECISIONS step"
 grep -qxF "If a step cannot be done, say so in the PR description; do not skip it silently." "$STUB_BODY" \
   || fail "the issue lacks the closing line line (t-67c5)"
 # t-1465: GitHub hides a bare <placeholder> as an HTML tag, so in "Working on this" each sits inside a code span.

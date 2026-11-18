@@ -138,6 +138,17 @@ assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
 git -C "$W/c" reset -q --hard "$G3"; echo "| row |" > "$W/c/DECISIONS.md"; git -C "$W/c" add DECISIONS.md; git -C "$W/c" commit -qm "a decision row"; D3="$(git -C "$W/c" rev-parse HEAD)"
 git -C "$W/c" push -q origin "+$D3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$D3" > "$W/prs"
 assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+# t-7d84: protects the card's stage: graded with DECISIONS.md, a head that only appends a row naming this ticket is results-in; a row
+# for another ticket keeps it pr-open
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$D3" > ".tickets/$id/eval-report.md"
+printf '| 2026-11-17 | **`%s`: a rule.** | x |\n' "$id" >> "$W/c/DECISIONS.md"; git -C "$W/c" commit -qam "the cloud's row"; R3="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "+$R3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$R3" > "$W/prs"
+assert_eq "results-in|24|OPEN|false|pass|false" "$(st)"
+git -C "$W/c" reset -q --hard "$D3"; printf '| 2026-11-17 | **`t-zz99`: a rule.** | x |\n' >> "$W/c/DECISIONS.md"; git -C "$W/c" commit -qam "another ticket's row"; O3="$(git -C "$W/c" rev-parse HEAD)"
+git -C "$W/c" push -q origin "+$O3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$O3" > "$W/prs"
+assert_eq "pr-open|24|OPEN|false|pass|false" "$(st)"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$G3" > ".tickets/$id/eval-report.md"
+git -C "$W/c" push -q origin "+$D3:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$D3" > "$W/prs"
 git push -q origin "HEAD:refs/heads/canon-results/$id"; assert_eq "results-ready|24|OPEN|true|pass|false" "$(st)"   # a results branch makes it importable, not merge-ready
 git push -q origin --delete "canon-results/$id"
 # A head that is not local and cannot be fetched exits 1, never a guessed stage.
