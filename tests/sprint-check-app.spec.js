@@ -12241,6 +12241,24 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     });
   }
 
+  for (const [label, initialStatus, sessionsStatus] of [['an idle tab (no session started yet)', 'idle', 200], ['a failed sessions lookup', 'running', 500]]) {
+    test(`Resume keeps the plain switch for ${label} (t-25f1)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, initialStatus === 'idle' ? 'lcidle' : 'lcfail');
+      try {
+        writeTicket(id, 'in_progress');
+        await stubSessions(page, []);
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus }));
+        await expect.poll(() => page.evaluate(async (tid) => (await import('/static/board-cockpit.js')).cockpitTabs[tid]?.status, id)).toBe(initialStatus);
+        await keepOldTab(page, id);
+        if (sessionsStatus !== 200) await page.route('**/api/v1/sessions', route => route.fulfill({ status: sessionsStatus, contentType: 'application/json', body: '{"error":"x"}' }));
+        await resumeTab(page, id);
+        await expect.poll(() => tabProbe(page, id)).toEqual({ same: true, ending: false, frames: 1 });
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  }
+
   // t-25f1 (t-447a): protects the card after Save & End: the ended session's row ("done · waiting") goes at teardown, not at the next
   // sessions poll (held here, so only the teardown can remove it).
   test('Save & End drops the ended session from the card at once (t-25f1, t-447a)', async ({ page }) => {

@@ -9689,6 +9689,16 @@ func TestClearOwnBeat(t *testing.T) {
 		}
 	}
 	clearOwnBeat(&session{sid: "sid1", ticket: "t-ab12", ticketsDir: filepath.Join(t.TempDir(), "missing")}) // no file: no panic
+	// a session with no id never matches a beat whose session= is empty (an empty id is no proof of ownership)
+	dir := t.TempDir()
+	p := filepath.Join(dir, "ACTIVE.beat")
+	if err := os.WriteFile(p, []byte("ticket=t-ab12\nsession=\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	clearOwnBeat(&session{sid: "", ticket: "t-ab12", ticketsDir: dir})
+	if _, err := os.Stat(p); err != nil {
+		t.Errorf("a session with no id removed a beat: %v", err)
+	}
 }
 
 // t-25f1: killSession (End, Save & End, the reaper, Reap/Kill) clears the beat in the session's own tickets dir, never the
