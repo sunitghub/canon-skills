@@ -12198,27 +12198,30 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   const keepOldTab = (page, id) => page.evaluate(async (tid) => { window.__oldTab = (await import('/static/board-cockpit.js')).cockpitTabs[tid]; }, id);
   const resumeTab = (page, id) => page.evaluate(async (tid) => { await (await import('/static/board-cockpit-rail.js')).openCockpit(tid); }, id);
 
-  test('Resume on a tab stuck mid-End opens a fresh tab, not the ended pane (t-25f1)', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'lcstuck');
-    try {
-      writeTicket(id, 'in_progress');
-      await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);   // still listed: only _ending tells
-      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 600000 }));   // 'ended' never comes in time
-      await waitTabLive(page, id);
-      await page.locator('#ck-end-session').click();
-      await page.locator('#ck-leave-skip').click();
-      await expect(page.locator('#ck-term-msg')).toHaveText('Ending without saving…');
-      await keepOldTab(page, id);
-      expect((await tabProbe(page, id)).ending).toBe(true);
-      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
-      await resumeTab(page, id);
-      await expect.poll(() => tabProbe(page, id)).toEqual({ same: false, ending: false, frames: 1 });
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator('#ck-term-msg')).not.toHaveText('Ending without saving…');
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
+  for (const [label, listed] of [['opens a fresh tab, not the ended pane, once the daemon dropped the session', false], ['still saving (listed) keeps the plain switch', true]]) {
+    test(`Resume on a tab mid-End ${label} (t-25f1)`, async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, listed ? 'lcsaving' : 'lcstuck');
+      try {
+        writeTicket(id, 'in_progress');
+        await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 600000 }));   // 'ended' never comes in time
+        await waitTabLive(page, id);
+        await page.locator('#ck-end-session').click();
+        await page.locator('#ck-leave-skip').click();
+        await expect(page.locator('#ck-term-msg')).toHaveText('Ending without saving…');
+        await keepOldTab(page, id);
+        expect((await tabProbe(page, id)).ending).toBe(true);
+        if (!listed) await stubSessions(page, []);   // the kill happened; only the 'ended' reply was lost (the VM case)
+        await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
+        await resumeTab(page, id);
+        await expect.poll(() => tabProbe(page, id)).toEqual(listed ? { same: true, ending: true, frames: 1 } : { same: false, ending: false, frames: 1 });
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        if (!listed) await expect(page.locator('#ck-term-msg')).not.toHaveText('Ending without saving…');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+  }
 
   for (const [label, listed] of [['gone from the daemon opens a fresh tab', false], ['still listed keeps the plain switch', true]]) {
     test(`Resume on a live-reporting tab whose session is ${label} (t-25f1)`, async ({ page }) => {

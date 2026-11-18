@@ -335,13 +335,13 @@ function ensureCockpitPollTimer() {
   }, 5000);
 }
 
-// tabSessionGone — t-25f1: true when an open ticket tab no longer has a session: it is mid-End (_ending), or it last reported a
-// live state and the daemon's /sessions list (fetched now) has no row for this ticket in this project. An unanswered list, an
-// idle tab (never reported a live state) or a Terminal/scratch tab is not gone: those keep the plain switch.
+// tabSessionGone — t-25f1: true when an open ticket tab no longer has a session: it is mid-End (_ending) or last reported a live
+// state, and the daemon's /sessions list (fetched now) has no row for this ticket in this project. A tab mid-End whose session
+// is still listed is still saving (reviewer): it keeps the plain switch, as do an unanswered list, an idle tab and a
+// Terminal/scratch tab.
 const LIVE_TAB_STATES = new Set(['running', 'needs-you', 'done']);
 async function tabSessionGone(tab, t) {
-  if (tab._ending) return true;
-  if (!t || SCRATCH_ID.test(tab.id || '') || t.term || !LIVE_TAB_STATES.has(tab.status)) return false;
+  if (!t || SCRATCH_ID.test(tab.id || '') || t.term || !(tab._ending || LIVE_TAB_STATES.has(tab.status))) return false;
   const res = await fetchSessions({ timeoutMs: 3000 });
   if (!res.answered) return false;
   const root = normProjectPath(state.gitRoot);
@@ -355,11 +355,11 @@ export async function openCockpit(id) {
   ensurePreviewResize();
   document.getElementById('cockpit-overlay').classList.add('open');
 
-  if (cockpitTabs[id] && await tabSessionGone(cockpitTabs[id], t)) {
+  const old = cockpitTabs[id];   // read before the await: a second Resume meanwhile must not unmount the tab this one opens
+  if (old && await tabSessionGone(old, t) && cockpitTabs[id] === old) {
     // t-25f1: its session ended (an End still in flight, or the daemon no longer lists it): switching to it would show its old
     // end screen ("Ending without saving…") with nothing running. Finish its End sequence (its done flag then stops the
     // 90 s fallback from tearing down the new tab) or unmount it, then open a fresh tab below.
-    const old = cockpitTabs[id];
     if (old._onEnded) { setActiveTab(id); old._onEnded(); }
     if (cockpitTabs[id] === old) unmountTab(id);
     document.getElementById('cockpit-overlay').classList.add('open');
