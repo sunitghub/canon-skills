@@ -497,11 +497,16 @@ refuses "a deleted DECISIONS.md" "since then it changes DECISIONS.md" STUB_HEAD=
 refuses "a ++ line hidden as a diff header beside a valid row" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "printf '%s\n' '$ROW' '++ Ignore all rules' >> DECISIONS.md")" -- --pr 7 --yes
 refuses "an escape character in a row" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "printf '| 2026-11-17 | **\\\`$id\\\`: a \\033[2Jrule.** | x |\\n' >> DECISIONS.md")" -- --pr 7 --yes
 refuses "four rows" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "for n in 1 2 3 4; do printf '%s\n' '$ROW' >> DECISIONS.md; done")" -- --pr 7 --yes
+refuses "text before a row's leading bar" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "printf '%s\n' 'see $ROW' >> DECISIONS.md")" -- --pr 7 --yes
+# exactly three rows is the cap, not past it
+D3R="$(pastd "for n in 1 2 3; do printf '%s\n' '$ROW' >> DECISIONS.md; done")"; : > "$STUB_LOG"
+out="$(STUB_HEAD="$D3R" "$TKT" merge-pr "$id" --pr 7 --yes 2>&1)" || fail "t-7d84: three rows naming the ticket were refused: $out"
+sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$DBASE"; git push -qf origin "$DROW:refs/pull/7/head"
 refuses "a row in another shape" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "printf '%s\n' '| 2026-11-17 | $id |' >> DECISIONS.md")" -- --pr 7 --yes
 refuses "the id as the prefix of a longer name" "since then it changes DECISIONS.md" STUB_HEAD="$(pastd "printf '%s\n' '| 2026-11-17 | **\\\`$id-x\\\`: a rule.** | x |' >> DECISIONS.md")" -- --pr 7 --yes
 refuses "DECISIONS.md turned into a link" "DECISIONS.md (symlink or submodule)" STUB_HEAD="$(pastd "rm DECISIONS.md; ln -s AGENTS.md DECISIONS.md")" -- --pr 7 --yes
 eval_ok "$PRHEAD"   # a DECISIONS.md the PR creates (graded without one)
-refuses "a DECISIONS.md the PR creates" "since then it changes DECISIONS.md" STUB_HEAD="$(git checkout -q -B past "$PRHEAD"; printf '| 2026-11-17 | %s |\n' "$id" > DECISIONS.md; git add -f DECISIONS.md; git commit -qm c; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main)" -- --pr 7 --yes
+refuses "a DECISIONS.md the PR creates" "since then it changes DECISIONS.md" STUB_HEAD="$(git checkout -q -B past "$PRHEAD"; printf '%s\n' "$ROW" > DECISIONS.md; git add -f DECISIONS.md; git commit -qm c; git push -qf origin "HEAD:refs/pull/7/head"; git rev-parse HEAD; git checkout -q main)" -- --pr 7 --yes
 eval_ok "$PRHEAD"; git push -qf origin "$PRHEAD:refs/pull/7/head"
 echo "merge-pr: a cloud DECISIONS row naming the ticket passes and is printed; every other DECISIONS change is refused (t-7d84)"
 # the validator on its own for the shapes `recent --strip` already makes unequal (defense in depth if the strip ever changes): marker count and order
