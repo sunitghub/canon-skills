@@ -317,11 +317,19 @@ record_ticket_commit() {
 
 # decisions_added_rows <git-dir> <from> <to> — t-7d84: the lines DECISIONS.md gains from <from> to <to>, one per line, CRs dropped; the
 # rows late_docs_delta accepts and merge-pr / import-results print. Exits non-zero when git cannot tell.
+# decisions_seed_header — t-00d3: the four lines `sprint start` seeds DECISIONS.md with (ensure_context_files); one owner, also the only
+# header a cloud PR may create the file with (late_docs_delta).
+decisions_seed_header() { printf '# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n'; }
+
 decisions_added_rows() {
-  local d
+  local d out
   d="$(git -C "$1" -c core.quotepath=off diff -U0 --no-renames "$2" "$3" -- DECISIONS.md 2>/dev/null)" || return 1
   # only lines inside a hunk: before the first @@ are the ---/+++ headers; an added line whose text starts "++ " also shows as "+++ "
-  printf '%s\n' "$d" | awk '/^@@/{ h = 1; next } !h { next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }'
+  out="$(printf '%s\n' "$d" | awk '/^@@/{ h = 1; next } !h { next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }')"
+  # t-00d3: a file the PR creates starts with canon's seed header; only an exact match is dropped (other text stays and fails the row rule)
+  if ! git -C "$1" cat-file -e "$2:DECISIONS.md" 2>/dev/null && [[ "$(printf '%s\n' "$out" | head -4)" == "$(decisions_seed_header)" ]]; then
+    printf '%s\n' "$out" | tail -n +5
+  else printf '%s\n' "$out"; fi
 }
 
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> [local] — t-fdb1: prints the files changed from graded to head, one per line.
@@ -373,20 +381,26 @@ late_docs_delta() {
     $same && other="$(printf '%s\n' "$other" | grep -vx 'HANDOFF.md' || true)"
   fi
   # t-7d84: a cloud close writes its DECISIONS.md row at complete.md step 6, after the grade (user, 2026-11-17: accept it). DECISIONS.md
-  # passes only when it is a file at both ends, lines were added and none removed, and every added line is a table row (`| YYYY-MM-DD |`)
-  # that names this ticket (it may cite others too). An edit, a removal, a row for another ticket only, or any other line keeps it refused.
+  # passes only when lines were added and none removed, and every added line is a table row `| YYYY-MM-DD | <decision> | <reason> |`
+  # (t-00d3: bold optional, a cloud agent writes it either way) that names this ticket (it may cite others too). The file exists at both
+  # ends, or (t-00d3) the PR creates it starting with canon's exact seed header. An edit, a removal, a row for another ticket only, or any
+  # other line keeps it refused.
   if [[ $'\n'"$other"$'\n' == *$'\nDECISIONS.md\n'* ]]; then
     local dns dadd ddel _dr drows dok=false ln nrows=0
-    if git -C "$dir" cat-file -e "$graded:DECISIONS.md" 2>/dev/null && git -C "$dir" cat-file -e "$head:DECISIONS.md" 2>/dev/null \
+    local dhdr=0   # t-00d3: a file the PR creates carries the 4-line seed header before its rows
+    git -C "$dir" cat-file -e "$graded:DECISIONS.md" 2>/dev/null || dhdr=4
+    if git -C "$dir" cat-file -e "$head:DECISIONS.md" 2>/dev/null \
       && dns="$(git -C "$dir" diff --numstat --no-renames "$graded" "$head" -- DECISIONS.md 2>/dev/null)"; then
       read -r dadd ddel _dr <<< "$dns"
-      # 1 to 3 rows, each canon's shape `| YYYY-MM-DD | **…** … | … |` (four cell bars), no control character, naming this ticket; and every
-      # line git counts as added must be one of them (t-7d84 reviewer + security review: a "++ " line hid as a diff header)
+      [[ "$dadd" =~ ^[0-9]+$ ]] && dadd=$((dadd - dhdr))
+      # 1 to 3 rows, each `| YYYY-MM-DD | <decision> | <reason> |` (four cell bars, both cells non-empty, bold optional: t-00d3), no control
+      # character, naming this ticket; and every line git counts as added (less an exact seed header) must be one of them (t-7d84 reviewer
+      # + security review: a "++ " line hid as a diff header)
       if [[ "$dadd" =~ ^[0-9]+$ && "$dadd" -ge 1 && "$dadd" -le 3 && "$ddel" == 0 ]] && drows="$(decisions_added_rows "$dir" "$graded" "$head")"; then
         dok=true
         while IFS= read -r ln; do
           nrows=$((nrows + 1))
-          [[ "$ln" =~ ^\|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ \|\ \*\*[^|]+\|\ [^|]+\ \|$ ]] && [[ ! "$ln" =~ [[:cntrl:]] ]] \
+          [[ "$ln" =~ ^\|\ [0-9]{4}-[0-9]{2}-[0-9]{2}\ \|\ [^|\ ][^|]*\|\ [^|\ ][^|]*\ \|$ ]] && [[ ! "$ln" =~ [[:cntrl:]] ]] \
             && [[ "$ln" =~ (^|[^A-Za-z0-9-])$id([^A-Za-z0-9-]|$) ]] || { dok=false; break; }
         done <<< "$drows"
         [[ "$nrows" == "$dadd" ]] || dok=false
