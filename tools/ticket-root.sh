@@ -327,8 +327,9 @@ decisions_added_rows() {
   # only lines inside a hunk: before the first @@ are the ---/+++ headers; an added line whose text starts "++ " also shows as "+++ "
   out="$(printf '%s\n' "$d" | awk '/^@@/{ h = 1; next } !h { next } /^\+/{ s = substr($0, 2); sub(/\r$/, "", s); print s }')"
   # t-00d3: a file the PR creates starts with canon's seed header; only an exact match is dropped (other text stays and fails the row rule)
-  if ! git -C "$1" cat-file -e "$2:DECISIONS.md" 2>/dev/null && [[ "$(printf '%s\n' "$out" | head -4)" == "$(decisions_seed_header)" ]]; then
-    printf '%s\n' "$out" | tail -n +5
+  local hdr; hdr="$(decisions_seed_header)"   # a string prefix compare, no early-exit pipe (pipefail)
+  if ! git -C "$1" cat-file -e "$2:DECISIONS.md" 2>/dev/null && [[ "$out" == "$hdr" || "$out" == "$hdr"$'\n'* ]]; then
+    out="${out#"$hdr"}"; out="${out#$'\n'}"; [[ -z "$out" ]] || printf '%s\n' "$out"
   else printf '%s\n' "$out"; fi
 }
 
