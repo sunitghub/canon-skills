@@ -335,13 +335,12 @@ function ensureCockpitPollTimer() {
   }, 5000);
 }
 
-// tabSessionGone — t-25f1: true when an open ticket tab no longer has a session: it is mid-End (_ending) or last reported a live
-// state, and the daemon's /sessions list (fetched now) has no row for this ticket in this project. A tab mid-End whose session
-// is still listed is still saving (reviewer): it keeps the plain switch, as do an unanswered list, an idle tab and a
-// Terminal/scratch tab.
-const LIVE_TAB_STATES = new Set(['running', 'needs-you', 'done']);
+// tabSessionGone — t-25f1: true when an open ticket tab is mid-End (_ending: its 'ended' reply was lost or is late) and the daemon's
+// /sessions list (fetched now) no longer has this ticket in this project. Only a tab mid-End is ever asked about: a live tab is
+// never torn down on a list that might miss it (the full board spec caught that; a path form the list writes differently would
+// too). A mid-End tab still listed is still saving; an unanswered list keeps the plain switch.
 async function tabSessionGone(tab, t) {
-  if (!t || SCRATCH_ID.test(tab.id || '') || t.term || !(tab._ending || LIVE_TAB_STATES.has(tab.status))) return false;
+  if (!t || !tab._ending) return false;
   const res = await fetchSessions({ timeoutMs: 3000 });
   if (!res.answered) return false;
   const root = normProjectPath(state.gitRoot);

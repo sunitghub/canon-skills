@@ -12223,23 +12223,22 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     });
   }
 
-  for (const [label, listed] of [['gone from the daemon opens a fresh tab', false], ['still listed keeps the plain switch', true]]) {
-    test(`Resume on a live-reporting tab whose session is ${label} (t-25f1)`, async ({ page }) => {
-      const id = newTicketId(PROJECT_ROOT, listed ? 'lclist' : 'lcgone');
-      try {
-        writeTicket(id, 'in_progress');
-        await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
-        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
-        await waitTabLive(page, id);
-        await keepOldTab(page, id);
-        if (!listed) await stubSessions(page, []);   // the agent exited on its own: the daemon drops the session
-        await resumeTab(page, id);
-        await expect.poll(() => tabProbe(page, id)).toEqual({ same: listed, ending: false, frames: 1 });
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id);
-      }
-    });
-  }
+  // A live tab is never torn down on the sessions list (a list that misses it would kill a working session): Resume on a running
+  // tab that the daemon does not list keeps the plain switch.
+  test('Resume on a running tab keeps it even when the sessions list misses it (t-25f1)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'lcmiss');
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, []);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await waitTabLive(page, id);
+      await keepOldTab(page, id);
+      await resumeTab(page, id);
+      await expect.poll(() => tabProbe(page, id)).toEqual({ same: true, ending: false, frames: 1 });
+    } finally {
+      removeTestTicket(PROJECT_ROOT, id);
+    }
+  });
 
   for (const [label, initialStatus, sessionsStatus] of [['an idle tab (no session started yet)', 'idle', 200], ['a failed sessions lookup', 'running', 500]]) {
     test(`Resume keeps the plain switch for ${label} (t-25f1)`, async ({ page }) => {
