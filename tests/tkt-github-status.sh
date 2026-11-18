@@ -210,6 +210,14 @@ printf '24\tCLOSED\t%s\n' "$TR" > "$W/prs";     assert_eq "pr-open|24|CLOSED|fal
 sed -i.bak 's/^status: closed$/status: open/' "$W/c/.tickets/$id/ticket.md" && rm -f "$W/c/.tickets/$id/ticket.md.bak"
 git -C "$W/c" commit -qam "still open"; TO="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TO:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TO" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # an unclosed ticket in the head is not a result
+# t-cd57: the head carries the cloud's eval-report.md but its close stalled (the ticket copy still open, as on t-tgay): results ready, so
+# the card offers Import results; never from a fork; and the JSON says when the head was pushed (pr_pushed, UTC)
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$TO" > "$W/c/.tickets/$id/eval-report.md"
+git -C "$W/c" add -f ".tickets/$id/eval-report.md"; git -C "$W/c" commit -qm "evaluator report, close stalled"; TE="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TE:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TE" > "$W/prs";       assert_eq "results-ready|24|OPEN|false||false" "$(st)"
+STUB_CROSS=true; export STUB_CROSS; assert_eq "pr-open|24|OPEN|false||false" "$(st)"; unset STUB_CROSS   # a fork's report is anyone's content
+pp="$("$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).pr_pushed))')"
+[[ "$pp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || fail "t-cd57: pr_pushed is not the head's UTC time: $pp"
 git -C "$W/c" rm -q -r --cached ".tickets"; git -C "$W/c" commit -qm "no ticket"; TN="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TN:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TN" > "$W/prs";       assert_eq "pr-open|24|OPEN|false||false" "$(st)"   # no ticket in the head at all
 # A head that is not local and cannot be fetched exits 1 here too, never a guessed stage.

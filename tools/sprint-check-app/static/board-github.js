@@ -67,11 +67,19 @@ function mmss(sec) { sec = Math.max(0, Math.round(sec || 0)); return `${Math.flo
 // t-2560: a cloud session pushes its branch before its evaluator and opens the PR when it finishes, so "a branch, no PR" within an
 // hour of the trail's newest send or launch (github-status `started`) is the session still working, not one that stopped short.
 const CLOUD_WORKING_MS = 60 * 60 * 1000;
+// t-cd57: the newest sign of life: the launch/send (started) or the PR head's last push (pr_pushed, absent from an older tkt). NaN-safe.
+function cloudLastActivity(st) {
+  const at = [st.started, st.pr_pushed].map(v => (v ? Date.parse(v) : NaN)).filter(v => !Number.isNaN(v));
+  return at.length ? Math.max(...at) : NaN;
+}
+// t-2560, t-cd57: a branch with no PR, or an open PR with nothing back, within the hour of the last launch or push: the session is
+// still working (it pushes before its evaluator), not stopped. The Cloud row reads the same window (remoteAgents, cloudStartingWindow).
 function cloudWorking(st) {
-  if (st.stage !== 'branch' || !st.started) return false;
-  const at = Date.parse(st.started);
+  if (st.stage !== 'branch' && st.stage !== 'pr-open') return false;
+  const at = cloudLastActivity(st);
   return !Number.isNaN(at) && Date.now() - at < CLOUD_WORKING_MS;
 }
+const agoMin = (at) => `${Math.max(0, Math.round((Date.now() - at) / 60000))} min ago`;
 // t-a7e0: a session was launched (the trail's newest event is the launch) and has not pushed yet, within the same hour: starting.
 // The Cloud row reads the same rule from the board (remoteAgents, cloudStartingWindow).
 function cloudStarting(st) {
@@ -109,6 +117,10 @@ export function ghChipHTML(t) {
   else if (st.stage === 'sent' && cloudStarting(st)) { text += ' · starting'; title = 'A cloud session was launched; it has not pushed its branch yet'; }   // t-a7e0
   else if (st.stage === 'sent') text += ' · sent';
   else if (st.stage === 'pr-open' && st.land && !st.close_here) { text += `${prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open'} · imported, sprint did not finish`; title = `Results are imported but the cloud sprint did not finish: Continue here (tkt land ${t.id})`; }   // t-b99b
+  else if (st.stage === 'pr-open' && cloudWorking(st)) {   // t-cd57
+    text += `${prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open'} · cloud working · last push ${agoMin(cloudLastActivity(st))}`;
+    title = 'The cloud session is still closing (it pushes before its evaluator). Leave it running and do not message it: a message interrupts it.';
+  }
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
   else if (st.stage === 'branch' && cloudWorking(st)) { text += ' · cloud session working'; title = `${st.branch} is pushed; the session opens its PR when it finishes`; }
   else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }
@@ -140,6 +152,8 @@ export function ghButtonHTML(t) {
   if (ghClosingHere(t)) return `<button class="card-start resume" data-id="${esc(t.id)}" title="${escAttr(`Resume the close in the worktree at ${st.landed}: run sprint complete there, then Finish`)}">▶ Resume</button>`;
   if (st.landed) return btn('finish', 'Finish', `Remove the worktree at ${st.landed} once sprint complete has closed the ticket there (tkt land --finish)`);
   // t-d0a5: PR open but nothing came back (the cloud session stopped before its close): close it here, the same tkt land.
+  // t-cd57: still working (a push or launch within the hour): no Close here, and not Continue here either (close_here also sets land)
+  if (st.land && st.close_here && cloudWorking(st)) return prOf(st) ? btn('pr', 'PR ↗', `PR #${prOf(st)} on GitHub; the cloud session is still closing`) : '';
   if (st.land && st.close_here) return btn('close-here', 'Close here', 'The cloud session stopped before its close: make a worktree at the PR head and close the ticket there (tkt land)');
   if (st.land) return btn('land', 'Continue here', 'Make a worktree at the PR head and continue the ticket there (tkt land)');
   if (st.stage === 'results-ready') return btn('import', 'Import results', 'Bring the cloud session\'s results back into this ticket');

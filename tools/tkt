@@ -3127,7 +3127,9 @@ cmd_github_status() {
     fi
     # only a PR from this very repository counts (_pr_in_repo): a fork's head is anyone's content
     local trst; trst="$(git -C "$root" show "$phead:$trel/ticket.md" 2>/dev/null | sed -n 's/^status: //p' || true)"
-    if [[ "${trst%%$'\n'*}" == closed ]]; then
+    # t-cd57: the PR head carrying this ticket's eval-report.md is the cloud's results too, even when its close stalled before closing the
+    # copy (t-tgay): the card offers Import results instead of reading the PR as stopped. The same fork check guards both.
+    if [[ "${trst%%$'\n'*}" == closed ]] || git -C "$root" cat-file -e "$phead:$trel/eval-report.md" 2>/dev/null; then
       local perr prc=0; perr="$(_pr_in_repo "$repo" "$pr" 2>&1)" || prc=$?
       [[ $prc == 2 ]] && { echo "github-status: $perr" >&2; exit 1; }   # gh could not say: never a guessed stage
       [[ $prc == 0 ]] && trk=true
@@ -3180,6 +3182,11 @@ cmd_github_status() {
     iupd="$(cd / && gh issue view "$issue" --repo "$repo" --json updatedAt --jq .updatedAt 2>/dev/null)" || iupd=""
     [[ "$iupd" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || iupd=""
   fi
+  # t-cd57: when the PR head was last pushed (its commit time, UTC), for the card's and the Cloud row's "cloud working · last push N min ago"
+  local ppush=""
+  [[ "$phead" =~ ^[0-9a-f]{40}$ ]] && git -C "$root" cat-file -e "$phead^{commit}" 2>/dev/null \
+    && ppush="$(TZ=UTC git -C "$root" show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd "$phead" 2>/dev/null)" || true
+  [[ "$ppush" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z$ ]] || ppush=""
   # t-c259: imported (a local eval-report.md), not closed, PR open: the card offers "Continue here" (tkt land).
   local land=false
   [[ "$pst" == OPEN && "$stage" != results-in && "$(get_field "$file" status)" == open && -f "$tdir/eval-report.md" ]] && land=true
@@ -3193,7 +3200,7 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"launched":%s,"warning":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"launched":%s,"pr_pushed":%s,"warning":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
@@ -3201,7 +3208,7 @@ cmd_github_status() {
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
       "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)" \
       "$([[ -n "$started" ]] && json_str "$started" || echo null)" "$([[ -n "$launched" ]] && json_str "$launched" || echo null)" \
-      "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
+      "$([[ -n "$ppush" ]] && json_str "$ppush" || echo null)" "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
