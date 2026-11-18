@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.5] - 2026-11-18
+
+- Fixed: canon's pre-commit hook ran the project's whole test suite on a commit that only records a ticket, so **Check & merge**'s record commit was refused when the PR had added a test that cannot run on this machine. A commit that stages only records (`.tickets/`, and the root HANDOFF.md, LEARNINGS*.md, DECISIONS*.md) now skips the suite and says so; the secret scan and every other check still run, and any other path (a move of code into `.tickets/` included) still runs it. A refused record commit names the hook's reason instead of "test failed". Existing projects get the new hook with `canon update` (t-7db9).
+
 ## [0.68.4] - 2026-11-18
 
 - Fixed: the GitHub card read a cloud session that was still closing as stopped and offered **Close here**, and never offered **Import results** when the PR already held the evaluator's pass but the cloud's close had stalled. A PR from this repository whose head carries the ticket's eval-report.md now reads *results ready* (until you import it); while the newer of the launch and the PR's last push is under an hour old the card says *cloud working · last push N min ago* and offers only PR ↗; after an hour with nothing back it offers Close here and the Agents sidebar's Cloud row turns dim **quiet** at the same moment. The Cloud row's age now counts the last push (t-cd57). Daemon release.
