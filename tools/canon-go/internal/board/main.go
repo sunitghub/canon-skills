@@ -5448,6 +5448,21 @@ func remoteAgents(root string) []map[string]any {
 					}
 				case "branch", "pr-open":
 					state = "working"
+					// t-cd57: an open PR with nothing back (close_here) and nothing pushed or launched within the hour (the card's CLOUD_WORKING_MS): the
+					// session may have stopped. The card turns to Close here at the same moment; the row reads the dim "quiet" instead of a spinner that
+					// never ends. A PR that is only waiting (no close_here) and a branch keep their rules (t-1148: working until the 7-day stall).
+					closeHere, _ := st["close_here"].(bool)
+					last := time.Time{}
+					for _, k := range []string{"started", "pr_pushed"} {
+						if v, _ := st[k].(string); v != "" {
+							if at, err := time.Parse(time.RFC3339, v); err == nil && at.After(last) {
+								last = at
+							}
+						}
+					}
+					if stage == "pr-open" && closeHere && !last.IsZero() && cloudNow().Sub(last) >= cloudStartingWindow {
+						state = "quiet"
+					}
 					// t-b99b: results were imported (land: a local eval-report.md, the ticket still open, the PR open) and the cloud sprint did not finish: nothing runs,
 					// a person has the ticket. close_here is the other pr-open shape (nothing came back), which keeps its state.
 					if land, _ := st["land"].(bool); stage == "pr-open" && land {
@@ -5460,7 +5475,7 @@ func remoteAgents(root string) []map[string]any {
 				case "results-in":
 					state = "imported"
 				}
-				for _, k := range []string{"started", "issue_updated"} {
+				for _, k := range []string{"started", "issue_updated", "pr_pushed"} { // t-cd57: the row's age is the last push too
 					if v, _ := st[k].(string); v > newest { // RFC 3339 UTC strings order as times
 						newest = v
 					}

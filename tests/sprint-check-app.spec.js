@@ -6532,6 +6532,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rows = [
         { id: 't-cl02', title: 'Tighten address validation', state: 'working', issue: '12', get since() { return ago(480); }, pending: false },
         { id: 't-cl08', title: 'Imported, sprint did not finish', state: 'unfinished', issue: '43', get since() { return ago(660); }, pending: false },
+        { id: 't-cl09', title: 'PR open, nothing for an hour', state: 'quiet', issue: '44', get since() { return ago(4000); }, pending: false },   // t-cd57
       ];
       await cloudRoute(page, () => rows);
       await stubTicketDocs(page);
@@ -6543,6 +6544,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(cloudRow(page, 't-cl08').locator('.sdot')).toBeVisible();
       await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish: Continue here \(tkt land <id>\)/);
       await expect(cloudRow(page, 't-cl08')).toHaveAttribute('aria-label', /imported; the cloud sprint did not finish/);
+      // t-cd57: quiet (an open PR, nothing back, no push or launch for an hour) is listed, dim and ringless, and says the session may have stopped
+      await expect(cloudRow(page, 't-cl09')).toHaveClass(/st-idle/);
+      await expect(cloudRow(page, 't-cl09').locator('.ag-ring')).toHaveCount(0);
+      await expect(cloudRow(page, 't-cl09')).toHaveAttribute('aria-label', /no activity for over an hour: the session may have stopped/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -19753,6 +19758,33 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(steps.nth(0)).toContainText('push the branch to the PR');
     await expect(steps.nth(1)).toContainText('Open a session in the worktree');
     expect(bodies).toEqual([{ pr: 58 }]);
+  });
+
+  // Prod path: the card while a cloud session is still closing (t-cd57, the t-tgay run): a PR pushed within the hour reads "cloud working ·
+  // last push N min ago" with no Close here; an older push offers Close here; with no pr_pushed (an older tkt) the launch decides alone;
+  // results-ready (the PR carries the eval report) offers Import results.
+  test('an open PR pushed within the hour reads cloud working with no Close here; later, Close here (t-cd57)', async ({ page }) => {
+    const ids = ['gh5a', 'gh5b', 'gh5c', 'gh5d'].map(k => newTicketId(PROJECT_ROOT, k));
+    ids.forEach((id, i) => ghTicket(id, { github: `acme/app#${60 + i}` }));
+    const ago = m => new Date(Date.now() - m * 60000).toISOString().replace(/\.\d+Z$/, 'Z');
+    const base = { stage: 'pr-open', pr: 70, land: true, close_here: true };
+    await routeStatus(page, ids[0], { ...base, started: ago(180), pr_pushed: ago(12) });
+    await routeStatus(page, ids[1], { ...base, started: ago(180), pr_pushed: ago(90) });
+    await routeStatus(page, ids[2], { ...base, started: ago(20) });
+    await routeStatus(page, ids[3], { stage: 'results-ready', pr: 70 });
+    await openBoard(page, ids[0]);
+    const chip = id => page.locator(`.card[data-id="${id}"] .card-gh-chip`), btn = id => page.locator(`.card[data-id="${id}"] .card-gh-btn`);
+    await expect(chip(ids[0])).toHaveText('GitHub #60 · PR #70 · cloud working · last push 12 min ago');
+    await expect(chip(ids[0])).toHaveAttribute('title', /do not message it/);
+    await expect(btn(ids[0])).toHaveText('PR ↗');
+    await page.locator('#board-search').fill(ids[1]);
+    await expect(chip(ids[1])).toHaveText('GitHub #61 · PR #70');
+    await expect(btn(ids[1])).toHaveText('Close here');
+    await page.locator('#board-search').fill(ids[2]);
+    await expect(chip(ids[2])).toContainText('cloud working · last push 20 min ago');
+    await expect(btn(ids[2])).toHaveText('PR ↗');
+    await page.locator('#board-search').fill(ids[3]);
+    await expect(btn(ids[3])).toHaveText('Import results');
   });
 
   // Prod path: the card's GitHub chip for a ticket whose results were imported but whose cloud sprint did not finish (t-b99b). It says so, keeps the

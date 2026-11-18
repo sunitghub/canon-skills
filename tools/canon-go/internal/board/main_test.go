@@ -2271,7 +2271,11 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		{"t-cc0c", "open", "pr-open", ago(30 * day), "working"}, // a PR waiting on review is not a dead session, however old
 		// t-b99b: results were imported (land) but the ticket did not close: nothing runs, so no ring; close_here (nothing came back) and a PR with no import keep theirs
 		{"t-cc0d", "open", "pr-open", ago(2 * time.Hour), "unfinished"},
-		{"t-cc0e", "open", "pr-open", ago(2 * time.Hour), "working"},
+		{"t-cc0e", "open", "pr-open", ago(2 * time.Hour), "quiet"}, // t-cd57: close_here (nothing came back) and no push or launch for 2 h: may have stopped
+		// t-cd57: the same within the hour of the last push (pr_pushed newer than started) stays working; with no pr_pushed, started alone decides
+		{"t-cc16", "open", "pr-open", ago(3 * time.Hour), "working"},
+		{"t-cc17", "open", "pr-open", ago(50 * time.Minute), "working"},
+		{"t-cc18", "open", "pr-open", ago(30 * time.Minute), "working"}, // a re-send after an old push: the newer of the two decides
 		{"t-cc0f", "open", "pr-open", ago(2 * time.Hour), "working"},
 		{"t-cc10", "open", "branch", ago(2 * time.Hour), "working"},
 		// t-a7e0: a launch with no push yet is starting for an hour; a plain send, an old launch or a re-send after it is sent; a push is working
@@ -2282,7 +2286,7 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 		{"t-cc15", "open", "branch", ago(10 * time.Minute), "working"},
 	}
 	// extra fields of `tkt github-status --json` per row
-	extra := map[string]string{"t-cc0d": `,"land":true,"close_here":false`, "t-cc0e": `,"land":true,"close_here":true`, "t-cc0f": `,"land":false`, "t-cc10": `,"land":true`,
+	extra := map[string]string{"t-cc0d": `,"land":true,"close_here":false`, "t-cc0e": `,"land":true,"close_here":true`, "t-cc16": `,"land":true,"close_here":true,"pr_pushed":"` + ago(20*time.Minute) + `"`, "t-cc17": `,"land":true,"close_here":true`, "t-cc18": `,"land":true,"close_here":true,"pr_pushed":"` + ago(5*time.Hour) + `"`, "t-cc0f": `,"land":false`, "t-cc10": `,"land":true`,
 		"t-cc11": `,"launched":"` + ago(10*time.Minute) + `"`, "t-cc12": `,"launched":"` + ago(61*time.Minute) + `"`,
 		"t-cc13": `,"launched":"` + ago(20*time.Minute) + `"`, "t-cc15": `,"launched":"` + ago(10*time.Minute) + `"`}
 	script := "#!/bin/sh\ncase \"$2\" in\n"
@@ -2334,6 +2338,12 @@ func TestRemoteAgentsClosedHereAndStalled(t *testing.T) {
 	for _, r := range rows {
 		if state[r.id] != r.want {
 			t.Errorf("%s (%s, stage %s) state = %v, want %s", r.id, r.status, r.stage, state[r.id], r.want)
+		}
+	}
+	// t-cd57: the row's age is its newest activity, the PR's last push included (t-cc16: launched 3 h ago, pushed 20 min ago)
+	for _, r := range got {
+		if r["id"] == "t-cc16" && r["since"] != ago(20*time.Minute) {
+			t.Errorf("t-cc16 since = %v, want the last push %s", r["since"], ago(20*time.Minute))
 		}
 	}
 	// t-a7e0: every checked row says when GitHub was last read for it (the Cloud row's "checked … ago"); a failed read is no check
