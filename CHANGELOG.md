@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.7] - 2026-11-19
+
+- Changed: canon's own changelog entries are written one file per ticket, `changelog.d/<id>.md`, so two tickets (two cloud PRs above all) never conflict on CHANGELOG.md and need no merge of main that moves the PR off its graded commit. `scripts/changelog-release.sh X.Y.Z` builds the release commit: the dated section in the order the entries landed, the fragments removed, VERSION written, all staged; `scripts/release.sh` refuses while a fragment is left, and `sprint pre-gate-check` names a canon sprint that edits CHANGELOG.md (t-5ed4). Maintainers only: nothing changes for a project using canon.
+
 ## [0.68.6] - 2026-11-18
 
 - Changed: **Create issue approves a written plan.** Sending is your review of it, so `tkt send-issue` runs `sprint approve` first (and puts the plan back if the send is declined or fails); the issue says the plan is approved and to build it, so the cloud session no longer stops to wait. The plan goes into the issue as written, so its approval still matches in the cloud (t-6555).
