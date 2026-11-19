@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-18-2026 20:40
+learnings-sweep last run: 11-19-2026 06:25
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-19 | [t-5ed4](.tickets/t-5ed4/learnings.md) | A per-ticket file removes a merge conflict at its source; a merge-of-main rule can accept only a clean merge, never a hand-resolved one | UNPROMOTED |
 | 2026-11-18 | [t-6555](.tickets/t-6555/learnings.md) | A value pinned by one extractor and recomputed by another (the plan's approval digest) must share one rule and be proven by a round trip; and a command that writes before its last refusable step must restore on every abort. | UNPROMOTED |
 | 2026-11-18 | [t-7db9](.tickets/t-7db9/learnings.md) | A check that classifies staged paths must read them with --no-renames: rename detection shows only a moved file's new path, so code moved into .tickets/ would pass as a record. | UNPROMOTED |
 | 2026-11-18 | [t-cd57](.tickets/t-cd57/learnings.md) | A rule that offers an action (Import results, keyed on a file the PR keeps) must stop holding once the action is done; the reviewer caught it staying true after the import (P-072 recurrence). | UNPROMOTED |
