@@ -147,4 +147,13 @@ printf '# A\n\n## Criteria\n- [ ] plain\n```\n- [ ] [manual] in a fence\n```\n\n
 printf '# A\r\n\r\n## Criteria\r\n- [ ] [manual] crlf\r\n' > "$TD/acceptance.md"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "criterion 1 is tagged [manual] (crlf)"
 printf '# Acceptance\n\n## Criteria\n- [ ] plain\n' > "$TD/acceptance.md"
 mq "$ID" --by Sunit --step "a|pass"
+# t-e9aa: canon's own setup lines in .gitignore, uncommitted or committed on their own, leave the record fresh; one of the person's lines
+# does not. Protects a [manual] ticket's close (check-evidence's manual-QA freshness).
+criteria "- [ ] plain\n"; printf 'node_modules/\n' > "$REPO/.gitignore"; git -C "$REPO" add .gitignore; git -C "$REPO" commit -qm "own ignores"
+mq "$ID" --by Sunit --step "a|pass"; assert_eq 0 "$code"
+canon_ig() { ( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh"; source "$ROOT/tools/skills/project.sh"; source "$ROOT/tools/skills/prompts.sh"
+  _ensure_mirror_gitignored "$REPO"; _ensure_agents_link_gitignored "$REPO" ) >/dev/null; }
+canon_ig; ce "$ID"; assert_contains "$out" "ok      manual-qa.md"
+git -C "$REPO" commit -qm "chore: canon ignore rules" .gitignore; ce "$ID"; assert_contains "$out" "ok      manual-qa.md"
+echo mine >> "$REPO/.gitignore"; git -C "$REPO" commit -qm mine .gitignore; ce "$ID"; assert_contains "$out" "manual-qa.md stale"
 printf 'sprint-manual-qa: ok\n'

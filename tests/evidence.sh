@@ -772,4 +772,28 @@ REAL_GIT="$(command -v git)" PATH="$WORK/shim:$PATH" ev check "$ID"; stale_with 
 scope_repo; ev stamp "$ID" bs -- bash tests/run-board-spec.sh; chg tests/unnamed.sh
 REAL_GIT="$(command -v git)" PATH="$WORK/shim:$PATH" ev check "$ID"; stale_with bs "1 tracked file(s) changed since: tests/unnamed.sh)"   # blind reads drop nothing, not even an unrelated suite
 
+# --- t-e9aa: canon's own setup lines (skills add, the worktree link) in a tracked repo-root .gitignore/.gitattributes are not a change ---
+# VM 2026-11-19: the close's first stamp refused twice over them. Fixtures from canon's real writers (as tests/sprint.sh's canon_setup).
+# Protects `sprint evidence stamp` / `sprint check-evidence` and so `sprint pre-gate-check`, the close's first step.
+canon_lines() { ( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh"; source "$ROOT/tools/skills/project.sh"; source "$ROOT/tools/skills/prompts.sh"
+  case "${1:-}" in attrs) ensure_gitattributes "$REPO" ;; *) _ensure_mirror_gitignored "$REPO"; _ensure_agents_link_gitignored "$REPO" ;; esac ) >/dev/null; }
+reset_repo; printf 'node_modules/\n' > .gitignore; printf '*.png binary\n' > .gitattributes; git add .gitignore .gitattributes; git commit -qm "own ignores"; C3="$(git rev-parse HEAD)"
+canon_lines; [[ -n "$(git status --porcelain -- .gitignore)" ]] || fail "t-e9aa setup: canon's writers changed nothing"
+ev stamp "$ID" canon-only -- true; assert_eq 0 "$code"
+assert_contains "$out" "evidence: canon's own setup lines in .gitignore are uncommitted; they are not part of this stamp (commit them on their own any time)"
+ev check "$ID"; assert_contains "$out" "fresh canon-only.log"; [[ "$out" != *"note:"* ]] || fail "t-e9aa: the helper's note reached check's output: $out"
+# committed later on their own: still fresh (not a reason to restamp)
+git commit -qm "chore: canon ignore rules" .gitignore; ev check "$ID"; assert_contains "$out" "fresh canon-only.log"
+# .gitattributes alike
+git reset -q --hard "$C3"; rm -rf "$ED"; canon_lines attrs; [[ -n "$(git status --porcelain -- .gitattributes)" ]] || fail "t-e9aa setup: ensure_gitattributes changed nothing"; ev stamp "$ID" attrs-only -- true; assert_eq 0 "$code"
+assert_contains "$out" "canon's own setup lines in .gitattributes are uncommitted"
+# one extra line of the person's, or another changed file: refused as before, and check calls it stale
+git reset -q --hard "$C3"; rm -rf "$ED"; canon_lines; echo "my-own-line" >> .gitignore
+refused "canon's lines plus one of the person's" 125 "commit first" "$ID" x
+git checkout -q -- .gitignore; canon_lines; echo more >> src/a.txt
+refused "canon's lines plus another changed file" 125 "commit first" "$ID" x
+git reset -q --hard "$C3"; rm -rf "$ED"; ev stamp "$ID" base3 -- true; echo "my-own-line" >> .gitignore; git commit -qm "a person's ignore line" .gitignore
+ev check "$ID"; assert_contains "$out" "stale base3.log"
+echo "evidence: canon's own setup lines pass the stamp and keep logs fresh; anything else does not (t-e9aa)"
+
 echo "evidence: ok"

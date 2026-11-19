@@ -74,8 +74,23 @@ NEUTRAL=(':(exclude).tickets' ':(exclude,literal)LEARNINGS.md' ':(exclude,litera
   ':(exclude,glob)skills/*/evals/history.jsonl')
 # `evidence.sh neutral` prints the pathspecs one per line: the one owner, read by `sprint check-evidence` for the manual-QA record (t-aa24).
 [[ "$mode" != neutral ]] || { printf '%s\n' "${NEUTRAL[@]}"; exit 0; }
-tracked_dirty() {   # tracked files (worktree or index) differ from HEAD, outside the evidence-neutral paths
-  ! git -C "$root" diff --quiet HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
+tracked_changed() {   # the tracked paths (worktree or index) that differ from HEAD, outside the evidence-neutral paths
+  git -C "$root" -c core.quotepath=off diff --no-renames --name-only HEAD -- . "${NEUTRAL[@]}" 2>/dev/null
+}
+# t-e9aa: canon's own setup lines in a repo-root .gitignore/.gitattributes (skills add, the worktree link) are not a change: they stopped the
+# close's first stamp twice on the VM. Exactly canon's edit only (canon_drop_setup_edits, ticket-root.sh); a failed git call counts as dirty.
+tracked_dirty() {
+  local c; c="$(tracked_changed)" || return 0
+  [[ -n "$(printf '%s\n' "$c" | canon_drop_setup_edits "$root" HEAD)" ]]
+}
+# canon_setup_notes — t-e9aa: the stderr line for each repo-root file whose only change is canon's own setup edit (the stamp still goes ahead).
+canon_setup_notes() {
+  local c kept f; c="$(tracked_changed)" || return 0; kept="$(printf '%s\n' "$c" | canon_drop_setup_edits "$root" HEAD)"
+  for f in .gitignore .gitattributes; do
+    if [[ $'\n'"$c"$'\n' == *$'\n'"$f"$'\n'* && $'\n'"$kept"$'\n' != *$'\n'"$f"$'\n'* ]]; then
+      echo "evidence: canon's own setup lines in $f are uncommitted; they are not part of this stamp (commit them on their own any time)" >&2 || true
+    fi
+  done
 }
 
 # --- t-29ee: the scope of a log -------------------------------------------------------------------------------------------------------
@@ -218,6 +233,7 @@ if [[ "$mode" == stamp ]]; then
   [[ ! -e "$log" || -f "$log" ]] || refuse "$log is not a plain file"
   wt_write_ok "$log" || refuse "a link or junction is on the path to $log in this worktree (t-f7e6)"
   if tracked_dirty; then refuse "tracked files differ from HEAD: commit first, because a stamp names the commit that was tested"; fi
+  canon_setup_notes
   head_sha="$(git -C "$root" rev-parse HEAD)"
   # t-c923: advisory, stderr only, never in the log: the stamp, the exit code and the event are the same with or without it.
   if [[ " $LATE_STAMPS " == *" $name "* && ! -f "$tdir/$id/review-notes.md" ]]; then
@@ -321,6 +337,11 @@ classify_one() {
     LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; git could not compare it with ${graded:0:7})$shown"; return 0
   fi
   names=(); while IFS= read -r -d '' p; do names+=("$p"); done < "$nfile"
+  # t-e9aa: a commit whose only change is canon's own setup edit of the stamped copy does not stale the log
+  if (( ${#names[@]} )); then
+    local cnames=(); while IFS= read -r p; do [[ -n "$p" ]] && cnames+=("$p"); done < <(printf '%s\n' "${names[@]}" | canon_drop_setup_edits "$root" "$full" "$graded")
+    names=(${cnames[@]+"${cnames[@]}"})
+  fi
   dropped=(); kept=(); readers=()   # t-29ee: shell suites this log's command cannot run are not a reason to rerun it
   scopecmd="$(line2_of "$f")"   # the whole line (cmdline above is cut at 512 bytes); a line that may itself be cut gives no scope
   if (( ${#scopecmd} < 16000 )); then while IFS= read -r p; do [[ -n "$p" ]] && readers+=("$p"); done < <(reader_sources "$scopecmd"); fi

@@ -110,6 +110,14 @@ printf 'x\n' >> tools/caller.sh
 run "$ID"; assert_eq 125 "$code"; assert_contains "$out" "commit first" "pre-gate-check: a dirty tree refuses"
 [[ ! -e ".tickets/$ID/evidence/pre-gate.log" ]] || fail "pre-gate-check: a refused run wrote a log"
 git checkout -q tools/caller.sh
+# t-e9aa (VM: the close's first stamp refused twice over canon's own ignore lines): a tracked .gitignore whose only change is canon's own
+# setup edit is not dirty: the stamp runs and says so. Protects the close's first step.
+printf 'node_modules/\n' > .gitignore; git add .gitignore && git commit -qm "own ignores"
+( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh"; source "$ROOT/tools/skills/project.sh"; source "$ROOT/tools/skills/prompts.sh"
+  _ensure_mirror_gitignored "$PWD"; _ensure_agents_link_gitignored "$PWD" ) >/dev/null
+run "$ID"; [[ "$code" != 125 ]] || fail "pre-gate-check: canon's own ignore lines were refused as a dirty tree: $out"
+assert_contains "$out" "canon's own setup lines in .gitignore are uncommitted" "pre-gate-check: the canon-only tree says so"
+git checkout -q -- .gitignore; reset
 set +e; out="$(cd "$R" && env -u PRE_GATE_BASE bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"; assert_contains "$out" "no git baseline" "pre-gate-check: no baseline fails loudly"
 

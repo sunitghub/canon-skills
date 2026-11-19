@@ -214,6 +214,7 @@ if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then pri
 log="$(awk '/^evidence: wrote / { sub(/^evidence: wrote /, ""); sub(/ \(HEAD [^)]*\)$/, ""); print; exit }' <<<"$msg")"
 if [[ -z "$log" || ! -f "$log" || ! -r "$log" ]]; then echo "pre-gate-check: stamped, but evidence.sh did not name a readable log: $msg" >&2; exit "$rc"; fi
 sed -e '1,3d' -e '$d' "$log"
+grep "^evidence: canon's own setup lines" <<<"$msg" || true   # t-e9aa: why a tree with canon's own ignore lines counted as clean
 # t-985c: the close began. Once per sprint (a re-run after a fix must not move the Sprint progress card back from a later gate): only when
 # the activity log has no close.started for this ticket since its newest sprint.started. The project is the ticket folder's grandparent, as
 # gate-snapshot.sh's events: a land worktree or a clone stamps into the project's .tickets/. Observer-only: never changes the exit.
