@@ -63,6 +63,25 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('a missing or non-array event list is "Not started"', sprintProgress(NODES, null).status === 'Not started' && sprintProgress(NODES, [null, {}]).tone === 'idle');
   }
 
+  // edges of the fold the state table does not reach (the mutation sweep found them unpinned)
+  {
+    ok('a gate with no role is named "Gate"', sprintProgress(NODES, events([['gate.started', {}]])).status === 'Gate running');
+    ok('an unknown role keeps its own name', sprintProgress(NODES, events([['gate.started', { role: 'custom' }]])).status === 'custom running');
+    const unk = sprintProgress(NODES, events([['some.future_kind']]));
+    ok('a kind the card does not know: idle, named', unk.tone === 'idle' && unk.cur === '' && unk.status === 'some.future_kind', unk);
+    const nokind = sprintProgress(NODES, [{ ts: '2026-11-19T10:00:00.000Z', data: {} }]);
+    ok('an event with no kind is ignored', nokind.status === 'Not started', nokind);
+    const tie = sprintProgress(NODES, [{ kind: 'plan.approved', ts: '2026-11-19T10:00:00.000Z', data: {} }, { kind: 'gate.started', ts: '2026-11-19T10:00:00.000Z', data: { role: 'reviewer' } }]);
+    ok('two events at the same ts: the later one in the list decides', tie.cur === 'reviewer', tie);
+    const nonodes = sprintProgress(null, events([['gate.finished', { role: 'reviewer' }]]));
+    ok('no node list: the fold still answers (no node after Reviewer)', nonodes.tone === 'blue' && nonodes.cur === '', nonodes);
+    ok('no node list: the card draws no rows', !progressCardHtml(null, 'normal', { ...sprintProgress(null, []), events: [] }).includes('spc-row'));
+    const nodata = progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, []), events: [{ kind: 'sprint.started', ts: '2026-11-19T10:00:00.000Z' }] });
+    ok('an event with no data still draws its line', /<\/span> sprint\.started<\/li>/.test(nodata), nodata);
+    const first = progressCardHtml(NODES, 'normal', { cur: 'start', tone: 'blue', status: 'S', closed: false, events: [] });
+    ok('the first node current: one status line, in its row', (first.match(/spc-status/g) || []).length === 1 && /data-spc-row="start"[^]*?spc-status/.test(first.split('</li>')[0]));
+  }
+
   // a skipped node keeps .gone and is never .done; Lite and Manual heads; Normal has no head (the rail's label says Sprint progress)
   {
     ok('Manual: the Manual-only node is drawn', rows(progressCardHtml(NODES, 'manual', { ...sprintProgress(NODES, []), events: [] })).some(x => x.id === 'your-test'));
@@ -71,7 +90,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const r = rows(lite);
     ok('Lite: a skipped node before the current one stays gone, not done', r.find(x => x.id === 'reviewer').cls.includes('gone') && !r.find(x => x.id === 'reviewer').cls.includes('done'));
     ok('Lite: a kept node before the current one is done', r.find(x => x.id === 'security-review').cls.includes('done'));
-    ok('Lite: the head names the option', lite.includes('<div class="spc-head">a Lite ticket</div>'));
+    ok('Lite: the head names the option', lite.includes('<div class="spc-head">a Lite ticket</div><ol class="spc-rail">'));
     ok('Manual + Lite head', progressCardHtml(NODES, 'both', { ...sprintProgress(NODES, []), events: [] }).includes('a Manual + Lite ticket'));
     ok('Normal: no head', !progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, []), events: [] }).includes('spc-head'));
   }

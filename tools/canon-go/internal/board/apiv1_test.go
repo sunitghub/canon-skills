@@ -722,8 +722,31 @@ func TestAPIv1PipelineServesTheReadersNodes(t *testing.T) {
 			}
 		}
 	}
-	if w := v1Get(t, "GET", "/api/v1/pipeline?project=ffffffffffff", ""); w.Code != 400 {
-		t.Errorf("unknown project: %d", w.Code)
+	// the published schema: the route's top-level keys and the node keys, from the variables the handler uses
+	if keys := v1Body(t, w); len(keys) != len(v1Responses["/api/v1/pipeline"]) || keys["schema"] == nil || keys["nodes"] == nil {
+		t.Errorf("response keys %v, schema %v", keys, v1Responses["/api/v1/pipeline"])
+	}
+	if fmt.Sprint(apiSchema()["pipeline_node"]) != fmt.Sprint([]string{"id", "kind", "order", "on", "skip_on", "only", "group"}) {
+		t.Errorf("schema pipeline_node %v", apiSchema()["pipeline_node"])
+	}
+	bad := v1Get(t, "GET", "/api/v1/pipeline?project=ffffffffffff", "")
+	if bad.Code != 400 || v1Body(t, bad)["error"] != "unknown project" || strings.Contains(bad.Body.String(), "nodes") {
+		t.Errorf("unknown project: %d %s", bad.Code, bad.Body.String())
+	}
+	if w := v1Get(t, "GET", "/api/v1/pipelinex", ""); w.Code != 404 { // only the exact name reaches the reader
+		t.Errorf("/api/v1/pipelinex: %d", w.Code)
+	}
+	if w := v1Get(t, "GET", "/api/v1/nope", ""); w.Code != 404 {
+		t.Errorf("/api/v1/nope: %d", w.Code)
+	}
+	// a reader that fails is a 500 naming the pipeline, never an empty node list
+	stub := filepath.Join(t.TempDir(), "pipeline.sh")
+	writeFile(t, stub, "#!/bin/sh\necho 'pipeline: broken' >&2\nexit 1\n")
+	os.Chmod(stub, 0o755)
+	t.Setenv("PIPELINE_BIN", stub)
+	fail := v1Get(t, "GET", "/api/v1/pipeline?project="+id, "")
+	if fail.Code != 500 || v1Body(t, fail)["error"] != "cannot read the pipeline" || strings.Contains(fail.Body.String(), "nodes") {
+		t.Errorf("failing reader: %d %s", fail.Code, fail.Body.String())
 	}
 	req := httptest.NewRequest("GET", "/api/v1/pipeline?project="+id, nil)
 	req.Host = "127.0.0.1:8423"
