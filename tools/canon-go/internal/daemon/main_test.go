@@ -9404,6 +9404,38 @@ func TestSwitchToBuildSlowButTaken(t *testing.T) {
 
 func readOr(f string) string { b, _ := os.ReadFile(f); return string(b) }
 
+// t-9831 (decision 2026-11-19): the person typing after the Enter counts as taken: they are acting, so the switch types no more.
+func TestSwitchToBuildHumanInputCountsAsTaken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 1500*time.Millisecond)
+	bin, argv, recv := fakeTakeAgent(t, `  :`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	go func() {
+		for i := 0; i < 100; i++ { // once the line has been typed, the person types (handleInput sets lastActivity)
+			if countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet.") > 0 {
+				se.mu.Lock()
+				se.lastActivity = time.Now()
+				se.mu.Unlock()
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 1 || countLines(t, recv, "") != 0 {
+		t.Fatalf("typed again after the person's input: %q", readOr(recv))
+	}
+	se.mu.Lock()
+	st := se.status
+	se.mu.Unlock()
+	if st == "needs-you" || implementStartedCount(home) != 1 {
+		t.Fatalf("status %q implement.started %d: want not needs-you, 1", st, implementStartedCount(home))
+	}
+}
+
 // t-9831 (reviewer Consider): a raw-mode agent draws each keystroke itself, as Claude Code does, but never takes the line: its echo of
 // the text comes before the Enter and must not confirm it. Fails if the switch's mark moves before the text is typed.
 func TestSwitchToBuildEchoAloneDoesNotConfirm(t *testing.T) {
