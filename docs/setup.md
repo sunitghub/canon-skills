@@ -234,7 +234,9 @@ After you change the setup script, start a new session: one that is already open
    suite passed and names the cause it finds (draft, behind, blocked).
    After the merge it fast-forwards your local base branch to GitHub's; when the local branch has commits GitHub's lacks (a worktree ticket's, say), it merges GitHub's into it instead (one `Merge origin/<base> into <base>` commit, never a rebase or force; only conflicts in canon's own `HANDOFF.md` Recent block and Scratch entries and `LEARNINGS.md` rows are resolved, any other leaves the branch as it was and names the files). Files the import wrote
    that the PR also carries do not stop it: one identical to the merged copy, the ticket's `ticket.md` differing only in
-   canon's local fields (kept), and `.claude/subagent-runs.jsonl` (local-only lines appended) are set aside and put back.
+   canon's local fields (kept), and `.claude/subagent-runs.jsonl` (local-only lines appended) are set aside and put back. A ticket
+   closed on this machine (a land or manual close) keeps its own `.tickets/<id>/` files as they are here; in a project that tracks
+   `.tickets/`, the `chore: record <id> merge of #N` commit then records and pushes them.
    Any other file that differs leaves the branch where it was, and the output names each one and the `git pull` to run. To also push main to other remotes you keep in step, name them once with
    `git config --add canon.mirror <remote>`; `tkt push-main` (or the board's "Push main to …" after a merge) pushes only
    those, never forced, and prints how to undo each push.
