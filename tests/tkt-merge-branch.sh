@@ -152,13 +152,17 @@ id4="$("$TKT" create "Tracked" -t task)"; f4=".tickets/$id4/ticket.md"; git add 
 WT4="$W/wt4"; git worktree add -q "$WT4" -b feat/y; WT4="$(cd "$WT4" && pwd -P)"
 TKT_SPRINT_GATE_PASSED=1 "$TKT" close "$id4" >/dev/null
 cp "$f4" "$WT4/$f4"
-(cd "$WT4" && sed -i.bak 's/^before$/after the branch/' HANDOFF.md && rm -f HANDOFF.md.bak && echo y > y.txt && git add HANDOFF.md y.txt "$f4" && git commit -qm "the branch")
+(cd "$WT4" && sed -i.bak 's/^before$/after the branch/' HANDOFF.md && rm -f HANDOFF.md.bak && echo y > y.txt && echo branch > ".tickets/$id4/summary.md" && git add HANDOFF.md y.txt "$f4" ".tickets/$id4/summary.md" && git commit -qm "the branch")
 printf '%s\n' "$WT4" > ".tickets/$id4/.cockpit-cwd"
 printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$(git rev-parse feat/y)" > ".tickets/$id4/eval-report.md"
 awk '/^---$/ && ++n == 2 { print "cloud_status: done" } { print }' "$f4" > "$W/t4" && mv "$W/t4" "$f4"   # a per-machine field, local only
 "$SPRINT_CHECK_BIN" event plan.approved --source sprint --project "$(pwd -P)" "ticket=$id4" tier=normal </dev/null >/dev/null 2>&1
 "$SPRINT_CHECK_BIN" recent --project "$(pwd -P)" --handoff HANDOFF.md </dev/null >/dev/null 2>&1
 assert_grep '^<!-- canon:recent:BEGIN -->$' HANDOFF.md   # the main checkout's HANDOFF.md now differs only in the block
+# t-ab7e: keeping a closed ticket's own files is merge-pr's rule only (its record commit follows); tkt merge still refuses one.
+echo local > ".tickets/$id4/summary.md"
+out="$("$TKT" merge "$id4" --yes < /dev/null 2>&1)" && fail "t-ab7e: tkt merge kept a closed ticket's differing own file: $out"
+assert_contains "$out" $'\n  .tickets/'"$id4"$'/summary.md\n'; assert_eq local "$(cat ".tickets/$id4/summary.md")"; rm ".tickets/$id4/summary.md"
 out="$("$TKT" merge "$id4" --yes < /dev/null 2>&1)" || fail "merge with canon's own local edits set aside failed: $out"
 assert_contains "$out" "Merged feat/y into main"
 assert_grep '^after the branch$' HANDOFF.md
