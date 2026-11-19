@@ -147,6 +147,14 @@
       ],
       "ticket": "t-2178",
       "reason": "failed 1 of 3 (webkit) in t-2178's full run at 855e2a9 (2026-11-08, load ~3 on 10 CPUs, the divider test failed in the same run); passed 3 of 3 alone on that head right after; t-2178 changes the Logbook tab bar and gate-cases, not the Cockpit leave-session path"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > interrupted (t-6a05): buttons react on hover, the time is short, the id is bright in dark",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-6555",
+      "reason": "failed 1 of 3 (chromium) in the t-6555 full run, 2026-11-18 (machine load rose to 9.9 on 10 CPUs during a solo rerun); passed solo; t-6555 changes no Sessions-row code (Send panel and send-issue only)"
     }
   ],
   "skipped": []
