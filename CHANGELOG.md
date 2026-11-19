@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.6] - 2026-11-19
+
+- Fixed: canon's own ignore lines no longer stop a close. When the only uncommitted change is the lines canon itself adds to your repo's `.gitignore` or `.gitattributes` (`skills add`, a worktree link), `sprint evidence stamp` and `sprint pre-gate-check` go ahead and say so (they are not part of the stamp; commit them on their own any time), and committing them later does not make your stamps or your manual-QA record stale. Any other change, even one extra line of yours, still stops the stamp (t-e9aa).
+
 ## [0.69.5] - 2026-11-19
 
 - Changed: the Cockpit's **Sprint progress** card is quieter and truthful (t-985c). The current step has no box: its dot pulses in its colour (red too, more slowly, when it waits on you) and its status moves to the row's tooltip ("Reviewer: Running · attempt 2 · started 10:30 AM"). Each step that has started shows its start time on the right; the event list under the card is gone. The card now moves to the close when `sprint pre-gate-check` first runs (new `close.started` event), clears a "record your manual check" refusal once `sprint manual-qa` records it (new `manual_qa.recorded` event), and shows a Build switch whose "continue" line did not land in red on Build instead of "Implementing". Daemon change: after `canon update`, press Admin's **Restart Daemon**.
