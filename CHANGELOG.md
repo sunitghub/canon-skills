@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.2] - 2026-11-19
+
+- Fixed: after you approve a plan, the Cockpit's Build switch checks that the session took each line it types (`/model <build>`, then "Plan approved: continue the build …"): output after the line's Enter within 5 s. A line that was dropped gets Enter alone, then one retype (never doubled); a session that still does not answer goes **Needs you** instead of the card saying Implementing while nothing runs, and `implement.started` is recorded only once the continue line was taken. Seen on Windows, where the continue line never reached Claude Code. Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-9831).
+
 ## [0.69.1] - 2026-11-19
 
 - Fixed: after a land or manual close, Check & merge (`tkt merge-pr`) no longer stops updating local main on the ticket's own newer close files (`acceptance.md`, `eval-report.md`, `summary.md` under `.tickets/<id>/`) and no longer suggests dropping them with `git checkout --`. When the ticket is closed on this machine, those files are set aside, main fast-forwards, the local copies are put back, and in a project that tracks `.tickets/` the `chore: record <id> merge of #N` commit records and pushes them. Any other changed file, a staged or symlinked one, or a ticket not closed here still stops it with nothing changed; `tkt merge` and Finish keep refusing (t-ab7e).
