@@ -4808,13 +4808,13 @@ func typeConfirmed(se *session, kind, text string, byPrompt bool) (bool, int, er
 			se.debugf("build switch: %s not taken (attempt %d), retrying", kind, attempt)
 		}
 		if attempt != 1 {
-			if _, err := se.pty.Write([]byte(text)); err != nil {
+			if err := switchWrite(se, text); err != nil {
 				return false, attempt, err
 			}
 			time.Sleep(300 * time.Millisecond) // t-cd06: Enter as a separate write
 		}
 		mark := time.Now()
-		if _, err := se.pty.Write([]byte("\r")); err != nil {
+		if err := switchWrite(se, "\r"); err != nil {
 			return false, attempt, err
 		}
 		if activitySince(se, mark, confirmWait, byPrompt) {
@@ -4823,6 +4823,9 @@ func typeConfirmed(se *session, kind, text string, byPrompt bool) (bool, int, er
 	}
 	return false, 3, nil
 }
+
+// switchWrite is the Build switch's one write into the session's PTY (t-d2ab: a var so a test can make a write fail).
+var switchWrite = func(se *session, s string) error { _, err := se.pty.Write([]byte(s)); return err }
 
 // activitySince reports whether the session showed output or input after mark, waiting up to wait (t-9831); byPrompt (t-d2ab) counts
 // only a `prompt` ping or the person's input, never output.

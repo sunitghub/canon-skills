@@ -9477,6 +9477,41 @@ func TestSwitchToBuildRecordsEachOutcome(t *testing.T) {
 	}
 }
 
+// t-d2ab (evaluator: write_error had no test): a PTY write error is a write_error event; after /model went through it also ends in
+// needs-you on the Build model; on the /model line itself the switch returns as today (stage plan, retried next turn end).
+func TestSwitchToBuildWriteError(t *testing.T) {
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	orig := switchWrite
+	t.Cleanup(func() { switchWrite = orig })
+	for _, c := range []struct{ name, failOn, want, stage, status, model string }{
+		{"continue line after /model", "Plan approved", "continue write_error", "build", "needs-you", "sonnet"},
+		{"the /model line", "/model", "model write_error", "plan", "awaiting-input", "haiku"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("CANON_HOME", home)
+			switchWrite = func(se *session, s string) error {
+				if strings.HasPrefix(s, c.failOn) {
+					return fmt.Errorf("pty closed")
+				}
+				return orig(se, s)
+			}
+			bin, argv, _ := fakeTakeAgent(t, `  printf 'took: %s\n' "$l"`)
+			s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
+			se.setStatus("awaiting-input")
+			s.switchToBuild(se)
+			se.mu.Lock()
+			stage, st, model := se.stage, se.status, se.model
+			se.mu.Unlock()
+			got := buildSwitchEvents(home)
+			if len(got) != 1 || got[0] != c.want || stage != c.stage || st != c.status || model != c.model || implementStartedCount(home) != 0 {
+				t.Fatalf("events %q stage %q status %q model %q: want [%q], %s, %s, %s, no implement.started", got, stage, st, model, c.want, c.stage, c.status, c.model)
+			}
+		})
+	}
+}
+
 // t-d2ab: once /model went through, the session never going quiet again ends in needs-you on the Build model, not a silent return.
 func TestSwitchToBuildNotAtRestAfterModelGivesUp(t *testing.T) {
 	home := t.TempDir()
