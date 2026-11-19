@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-19-2026 16:32
+learnings-sweep last run: 11-19-2026 17:47
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-19 | [t-154c](.tickets/t-154c/learnings.md) | A path one tool writes and another reads has one owner for its form: tkt wrote Git Bash's /c/... and the Windows daemon refused it at every IsAbs, so worktree sessions started in main; the spec check found a third reader (the page's ?cwd=) — list every reader of a path before fixing one | UNPROMOTED |
 | 2026-11-19 | [t-2f07](.tickets/t-2f07/learnings.md) | When a platform bans a string in pushed files, list every artifact that carries it (both gate reports, the Wrapup rows, the run log) and pair the prompt rule with an owner-approval fallback | UNPROMOTED |
 | 2026-11-19 | [t-e9aa](.tickets/t-e9aa/learnings.md) | An edit chained after `grep -c` never ran when the count was 0 (exit 1 short-circuits &&): run edits on their own and assert they applied | UNPROMOTED |
 | 2026-11-19 | [t-985c](.tickets/t-985c/learnings.md) | A list the UI reads only through the API (v1SprintKinds) needs its own pinning test; and a row-layout change needs every row shape rendered (the Manual Close row broke) | UNPROMOTED |

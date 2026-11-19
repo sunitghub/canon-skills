@@ -67,3 +67,20 @@ func SamePath(a, b string) bool {
 	}
 	return ResolvedKey(a) == ResolvedKey(b)
 }
+
+// FromMSYS — t-154c: a Git Bash path to a drive (/c or /c/rest) as Windows reads it (C:/ or C:/rest) when goos is "windows"; any other
+// path, or any other goos, unchanged. tkt under Git Bash wrote worktree locks as /c/Users/...; the daemon's filepath.IsAbs refused them
+// and started the session in the main checkout.
+func FromMSYS(p, goos string) string {
+	if goos != "windows" || len(p) < 2 || p[0] != '/' {
+		return p
+	}
+	c := p[1]
+	if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) || (len(p) > 2 && p[2] != '/') {
+		return p
+	}
+	if len(p) == 2 {
+		return strings.ToUpper(string(c)) + ":/"
+	}
+	return strings.ToUpper(string(c)) + ":" + p[2:]
+}

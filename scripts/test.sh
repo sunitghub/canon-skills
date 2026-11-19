@@ -280,6 +280,7 @@ if (( DRY )) || command -v node >/dev/null 2>&1; then
   suite tests/sprint-check-seed.js node "$ROOT/tests/sprint-check-seed.js"
   suite tests/sprint-check-status-badge.js node "$ROOT/tests/sprint-check-status-badge.js"
   suite tests/sprint-check-worktree-chip.js node "$ROOT/tests/sprint-check-worktree-chip.js"
+  suite tests/sprint-check-cockpit-pathkey.js node "$ROOT/tests/sprint-check-cockpit-pathkey.js"
   suite tests/sprint-check-esc.js node "$ROOT/tests/sprint-check-esc.js"
   suite tests/sprint-check-md.js node "$ROOT/tests/sprint-check-md.js"
   suite tests/sprint-check-theme.js node "$ROOT/tests/sprint-check-theme.js"

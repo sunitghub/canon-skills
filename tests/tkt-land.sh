@@ -330,4 +330,20 @@ echo "land: close docs in the land worktree are named by gate-snapshot, refused 
 out="$("$TKT" land "$id" --finish < /dev/null 2>&1)" || fail "t-597f: finish failed: $out"
 [[ ! -e "$WT" ]] || fail "t-597f: worktree still there"
 echo "land: a PR that tracks .tickets/ gives a worktree with none, every read and write in main, and a plain finish (t-597f)"
+# t-154c (Windows VM 2026-11-19: tkt wrote the lock as /c/Users/...; the daemon refused it and started the session in the main checkout):
+# on Git Bash the lock is written in the Windows form through canon_lock_path. Stubs stand in for Git Bash's uname, cygpath and pwd -W,
+# scoped to these calls. Protects `tkt land`'s and `tkt start`'s worktree binding.
+LS="$W/lockstub"; mkdir -p "$LS"
+printf '#!/bin/sh\necho MINGW64_NT-10.0\n' > "$LS/uname"; printf '#!/bin/sh\n[ "$1" = -m ] && printf "C:/stub%%s\\n" "$2"\n' > "$LS/cygpath"; chmod +x "$LS/uname" "$LS/cygpath"
+d="$(mktemp -d)"; dr="$(cd "$d" && pwd -P)"
+got="$(PATH="$LS:$PATH" bash -c 'source "$1"; canon_lock_path "$2"' _ "$ROOT/tools/platform-lib.sh" "$d")"
+[[ "$got" == "C:/stub$dr" ]] || fail "t-154c: on Git Bash the lock is cygpath -m's Windows form: $got"
+rm "$LS/cygpath"   # no cygpath: pwd -W (a bash function stands in for Git Bash's builtin flag)
+got="$(PATH="$LS:$PATH" bash -c 'pwd() { if [ "${1-}" = -W ]; then echo "C:/pwdw"; else builtin pwd "$@"; fi; }; source "$1"; canon_lock_path "$2"' _ "$ROOT/tools/platform-lib.sh" "$d")"
+[[ "$got" == "C:/pwdw" ]] || fail "t-154c: without cygpath the lock is pwd -W's form: $got"
+[[ "$(bash -c 'source "$1"; canon_lock_path "$2"' _ "$ROOT/tools/platform-lib.sh" "$d")" == "$dr" ]] || fail "t-154c: off Windows the lock is pwd -P"
+rm -rf "$d"
+grep -q 'canon_lock_path "$wt")" > "$tdir/.cockpit-cwd"' "$ROOT/tools/tkt" || fail "t-154c: tkt land does not write its lock through canon_lock_path"
+grep -q 'canon_lock_path "$(worktree_root)")" > "$tdir/.cockpit-cwd"' "$ROOT/tools/tkt" || fail "t-154c: tkt start does not write its lock through canon_lock_path"
+echo "land: on Git Bash the worktree lock is written in the Windows form (t-154c)"
 echo "tkt land: ok"

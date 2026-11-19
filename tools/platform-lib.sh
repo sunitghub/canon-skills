@@ -8,6 +8,19 @@ _is_windows() {
   return 1
 }
 
+# canon_lock_path <dir> — t-154c: the folder as the Cockpit daemon (a Windows program) reads it, for a .cockpit-cwd lock: on Git Bash
+# the Windows form C:/Users/... (cygpath -m of the symlink-resolved path, else `pwd -W`, else that path as it is); elsewhere `pwd -P`.
+# tkt wrote /c/Users/... and the daemon started the session in the main checkout instead (the VM, 2026-11-19).
+canon_lock_path() {
+  local p w
+  p="$(cd "$1" 2>/dev/null && pwd -P)" || { printf '%s\n' "$1"; return 0; }
+  if _is_windows; then
+    if command -v cygpath >/dev/null 2>&1 && w="$(cygpath -m "$p" 2>/dev/null)" && [[ -n "$w" ]]; then printf '%s\n' "$w"; return 0; fi
+    if w="$(cd "$1" 2>/dev/null && pwd -W 2>/dev/null)" && [[ -n "$w" ]]; then printf '%s\n' "$w"; return 0; fi
+  fi
+  printf '%s\n' "$p"
+}
+
 # True if path is a directory symlink (Unix) or junction (Windows).
 _is_dir_link() {
   local link="$1"
