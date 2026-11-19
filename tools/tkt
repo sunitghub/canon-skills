@@ -1396,14 +1396,16 @@ cmd_send_issue() {
   fi
   # t-6555: Create issue is the person's review of the plan: a written, unapproved plan is approved first (sprint approve, the one
   # owner of that write), so the cloud session builds it without stopping. A refused approval sends nothing. --dry-run writes nothing.
-  local approved=false aout
+  local approved=false aout pbak=""
   if grep -qiE '^[[:space:]]*[-*] \[x\] Plan approved' "$plan" 2>/dev/null; then approved=true
   elif [[ -n "$(_si_section "$plan" Approach)" ]] && grep -qE '^[[:space:]]*[-*] \[ \] Plan approved' "$plan" 2>/dev/null; then
     if $dry; then
       echo "send-issue: warning: Create issue approves $id's plan first, so the cloud session builds it without waiting" >&2; approved=true
     else
+      # the plan as it was: a declined --launch or a failed create puts it back, so "nothing was created" stays true (reviewer)
+      pbak="$(mktemp "${TMPDIR:-/tmp}/tkt-plan.XXXXXX")" && cp "$plan" "$pbak" || { echo "send-issue: could not keep a copy of plan.md" >&2; exit 1; }
       aout="$(cd "$root" && bash "$SCRIPT_DIR/sprint" approve "$id" 2>&1)" \
-        || { echo "send-issue: could not approve $id's plan, so nothing was sent: ${aout##*$'\n'}" >&2; exit 1; }
+        || { rm -f "$pbak"; echo "send-issue: could not approve $id's plan, so nothing was sent: ${aout##*$'\n'}" >&2; exit 1; }
       echo "send-issue: approved $id's plan (sending it is your review of it)"; approved=true
     fi
   fi
@@ -1417,7 +1419,9 @@ cmd_send_issue() {
   local lite; lite="$(get_field "$file" demo)"
   local body; body="$(mktemp "${TMPDIR:-/tmp}/tkt-issue.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $body is local
-  trap "rm -f '$body'" EXIT
+  trap "rm -f '$body' '$pbak'" EXIT
+  # t-6555: undo the approval this send made, when the send does not happen
+  _si_unapprove() { [[ -n "$pbak" && -f "$pbak" ]] || return 0; cat "$pbak" > "$plan" && echo "send-issue: $id's plan is back as it was (not approved)" >&2; }
   # The same tree as the ticket on the board, every section with the board's heading (t-554c reads it back by these headings).
   {
     printf '**%s** · %s · P%s · %s\n\n' "$id" "$(get_field "$file" type)" "$(get_field "$file" priority)" "$title"
@@ -1497,7 +1501,7 @@ cmd_send_issue() {
       cat "$body"
       printf -- '--- end of issue ---\nCreate this issue and start a Claude cloud session on it? [y/N] '
       local ans=""; read -r ans || true
-      [[ "$ans" == [yY] || "$ans" == [yY][eE][sS] ]] || { echo "send-issue: not sent; nothing was created"; return 0; }
+      [[ "$ans" == [yY] || "$ans" == [yY][eE][sS] ]] || { _si_unapprove; echo "send-issue: not sent; nothing was created"; return 0; }
     fi
   fi
 
@@ -1510,7 +1514,7 @@ cmd_send_issue() {
   fi
   local url
   out="$(gh issue create --repo "$repo" --title "$id: $title" ${labels[@]+"${labels[@]}"} --body-file "$body" 2>&1)" \
-    || { echo "send-issue: gh issue create failed; $id was not changed: $out" >&2; exit 1; }
+    || { _si_unapprove; echo "send-issue: gh issue create failed; $id was not changed: $out" >&2; exit 1; }
   url="$(printf '%s\n' "$out" | grep -Eo 'https://github\.com/[^ ]+/issues/[0-9]+' | tail -1)"
   n="${url##*/}"
   if [[ -z "$url" || ! "$n" =~ ^[0-9]+$ ]]; then

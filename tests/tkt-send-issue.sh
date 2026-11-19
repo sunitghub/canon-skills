@@ -661,6 +661,10 @@ assert_eq "$pq" "$(cksum < ".tickets/$idq/plan.md")"   # a preview writes nothin
 assert_grep "^send-issue: warning: Create issue approves $idq's plan first" "$stub/q.err"
 assert_grep '^2. The plan above is approved' "$stub/q.out"   # the preview shows what Create issue will send
 ! grep -q '^send-issue: needs:' "$stub/q.err" || fail "t-6555: a ticket with a plan and criteria got a needs: line"
+# a failed create (or a declined --launch) puts the approval back: "$id was not changed" stays true (reviewer)
+rc=0; out="$(STUB_FAIL=create "$TKT" send-issue "$idq" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-6555: a failed create should exit 1: $out"; assert_contains "$out" "plan is back as it was (not approved)"
+assert_eq "$pq" "$(cksum < ".tickets/$idq/plan.md")"
 idz="$("$TKT" create "Nothing written" -t task -p 3)"
 "$TKT" send-issue "$idz" --dry-run > "$stub/z.out" 2> "$stub/z.err" || fail "t-6555: the empty dry run failed: $(cat "$stub/z.err")"
 assert_grep '^send-issue: needs: plan$' "$stub/z.err"; assert_grep '^send-issue: needs: acceptance$' "$stub/z.err"

@@ -17852,12 +17852,32 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
     await expect(page.locator('#m-id')).toHaveText(id);
     await expect.poll(() => page.evaluate(async () => (await import('/static/board-modal.js')).modalState.activeDoc)).toBe(`${id}/plan.md`);
+    // the real path: no plan.md yet, so the ghost doc's "+ Plan", then Save; saveEdit's own event re-reads the preview (reviewer)
+    await page.locator('#btn-ghost-add').click();
+    const tmpl = await page.locator('#m-edit-area').inputValue();   // the template the ghost opens with; only ## Approach gets a line
+    expect(tmpl).toMatch(/^## Approach/m);
+    await page.locator('#m-edit-area').fill(tmpl.replace(/^## Approach.*$/m, m => `${m}\n1. Do it.`));
     written = true;
     const before = previews;
-    await page.evaluate(i => window.dispatchEvent(new CustomEvent('canon:doc-saved', { detail: { id: i } })), id);   // what saveEdit sends
+    await page.locator('#btn-save-top').click();
+    await expect(page.locator('#m-edit-area')).toBeHidden();
     await expect.poll(() => previews).toBe(before + 1);
     await expect(page.locator('#ck-gh-needs')).toHaveCount(0);
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    // a save while the send is in flight never redraws the panel under it (a second Create could duplicate the issue) (reviewer)
+    let release; const held = new Promise(r => { release = r; });
+    await page.route(`**/api/ticket/${id}/github/send`, async r => { await held; return json(r, { ok: true, exit_code: 0, output: `Sent ${id} as https://github.com/acme/app/issues/58\n` }); });
+    await page.evaluate(async () => (await import('/static/board-docs.js')).closeModal());   // back to the panel, as the person would
+    await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+    await page.locator('#ck-gh-create').click();
+    await expect(page.locator('#ck-gh-create')).toHaveText('Sending…');
+    const during = previews;
+    await page.evaluate(i => window.dispatchEvent(new CustomEvent('canon:doc-saved', { detail: { id: i } })), id);
+    await page.waitForTimeout(300);
+    expect(previews).toBe(during);
+    await expect(page.locator('#ck-gh-create')).toHaveText('Sending…');
+    release();
+    await expect(page.locator('#ck-gh-sent')).toContainText(`Sent ${id} as issue #58`);
   });
 
   // Prod path: the Send panel for a Manual ticket (t-e790). It goes only on purpose: a notice, the exact checkbox, Create disabled until it

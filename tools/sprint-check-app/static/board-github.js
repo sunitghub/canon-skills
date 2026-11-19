@@ -844,7 +844,7 @@ export function hideGithubPanel() {
   if (panel) { panel.hidden = true; panel.innerHTML = ''; }
 }
 
-let sendShown = null;
+let sendShown = null, sendingId = '';   // t-6555: a send in flight is never redrawn under the person (a second Create could duplicate the issue)
 export async function showGithubPanel(t, tab, { reload = false } = {}) {
   const panel = document.getElementById('ck-gh-panel');
   if (!panel) return;
@@ -937,13 +937,14 @@ export async function showGithubPanel(t, tab, { reload = false } = {}) {
     if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
     // Held before the await: a tab switch replaces the panel, and a late failure must not write into the next one.
     const statusEl = document.getElementById('ck-gh-status'), previewEl = document.getElementById('ck-gh-preview');
-    create.disabled = true; create.textContent = 'Sending…';
+    create.disabled = true; create.textContent = 'Sending…'; sendingId = t.id;
     let res;
     const body = {};
     if (pub) body.public = true;
     if (manual) body.manual_after_merge = true;   // t-e790: only reachable with the box ticked (canCreate)
     try { res = await postJSON(ghApi(t.id, 'send'), body); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
+    finally { sendingId = ''; }
     if (!res.ok) {
       create.disabled = !canCreate(); create.textContent = 'Create issue';
       statusEl.textContent = 'Not sent; nothing changed.';
@@ -1197,7 +1198,7 @@ export function initGithub() {
   // the plan enables Create issue without a tab switch. Only a panel already on that ticket's Send view is touched.
   window.addEventListener('canon:doc-saved', e => {
     const id = e.detail && e.detail.id;
-    if (!id || !sendShown || sendShown.id !== id || !document.querySelector(`#ck-gh-panel [data-gh-send="${CSS.escape(id)}"]`)) return;
+    if (!id || id === sendingId || !sendShown || sendShown.id !== id || !document.querySelector(`#ck-gh-panel [data-gh-send="${CSS.escape(id)}"]`)) return;
     const t = state.tickets.find(x => x.id === id);
     if (t) showGithubPanel(t, sendShown.tab, { reload: true });
   });
