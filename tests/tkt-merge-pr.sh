@@ -658,6 +658,42 @@ recon_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, renamed here/' "$f" 
 out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Look at the changes'
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 sed -i.bak 's/^# Cloud ticket, renamed here$/# Cloud ticket/' "$f" && rm -f "$f.bak"
+# t-ab7e: a land close here (the user's VM, ToDo-Demo t-tgay) leaves this ticket's own close records newer than the PR's copies.
+# Closed here, merge-pr sets them aside, fast-forwards, puts the local bytes back, and t-8990's record commit carries them to origin.
+# Protects `tkt merge-pr` and the board's Check & merge after a land close in a project that tracks .tickets/.
+cp ".tickets/$id/eval-report.md" "$W/eval0"
+cp "$f" "$W/f-open"; sed 's/^status: open$/status: closed/' "$W/f-open" > "$W/f-closed"; grep -q '^status: closed$' "$W/f-closed" || fail "t-ab7e setup: no status line to close"; cp "$W/f-closed" "$f"
+own_setup() { recon_setup; cp "$W/eval0" ".tickets/$id/eval-report.md"; printf 'manual QA: ticked here\n' >> ".tickets/$id/eval-report.md"; }
+own_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, closed here/' "$f" && rm -f "$f.bak"; cp ".tickets/$id/eval-report.md" "$W/own-eval"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${H:0:8} (fast-forward)"
+assert_eq "$H" "$(git rev-parse main^)"; assert_eq "chore: record $id merge of #7" "$(git log -1 --format=%s main)"
+cmp -s "$W/own-eval" ".tickets/$id/eval-report.md" || fail "t-ab7e: the local eval-report.md was not kept"
+git show "HEAD:.tickets/$id/eval-report.md" | cmp -s "$W/own-eval" - || fail "t-ab7e: the record commit does not hold the local eval-report.md"
+assert_grep '^# Cloud ticket, closed here$' "$f"; assert_eq "$(git rev-parse main)" "$(git --git-dir="$W/origin.git" rev-parse main)"
+assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'tkt-ff.*' | grep -c . || true)"
+cp "$W/f-closed" "$f"
+# CRLF ticket.md (core.autocrlf=true on Windows) still reads as closed here.
+own_setup; sed 's/$/\r/' "$W/f-closed" > "$f"; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "(fast-forward)"
+cmp -s "$W/own-eval" ".tickets/$id/eval-report.md" || fail "t-ab7e: CRLF ticket.md: the local eval-report.md was not kept"
+cp "$W/f-closed" "$f"
+# Not closed here: the ticket's own file still refuses and is named; nothing changes.
+own_setup; sed -i.bak 's/^status: closed$/status: in_progress/' "$f" && rm -f "$f.bak"; before="$(tree_sig)"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md\n'; [[ "$out" != *"(fast-forward)"* ]] || fail "t-ab7e: in_progress still fast-forwarded: $out"
+assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"; cp "$W/f-closed" "$f"
+# Closed here but a blocker outside the folder: nothing changes, and only that file is named (never `git checkout --` for the close records).
+own_setup; echo other > new.txt; before="$(tree_sig)"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'would overwrite:\n  new.txt\n  Look at the changes'; [[ "$out" != *$'\n  .tickets/'"$id"/eval-report.md* ]] || fail "t-ab7e: the refusal named the ticket's own close record: $out"
+assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
+cmp -s "$W/own-eval" ".tickets/$id/eval-report.md" || fail "t-ab7e: a refused update changed the local eval-report.md"
+# Staged, or a symlink: the existing rules still refuse, closed here or not.
+own_setup; git add -f ".tickets/$id/eval-report.md"; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md (staged)\n'
+assert_eq "$BASE" "$(git rev-parse main)"; git reset -q -- ".tickets/$id/eval-report.md"
+own_setup; mv ".tickets/$id/eval-report.md" "$W/own-link"; ln -s "$W/own-link" ".tickets/$id/eval-report.md"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md\n'
+[[ -L ".tickets/$id/eval-report.md" ]] || fail "t-ab7e: the local symlink was replaced"; assert_eq "$BASE" "$(git rev-parse main)"
+rm ".tickets/$id/eval-report.md"; cp "$W/eval0" ".tickets/$id/eval-report.md"
+cp "$W/f-open" "$f"
+echo "merge-pr: the ticket's own close records, closed here, are kept through the local update and recorded (t-ab7e)"
 # Staged, a symlink here (even to identical text), or a near miss of the log's name: each differs.
 recon_setup; git add -f new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  new.txt (staged)\n'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; git reset -q -- new.txt

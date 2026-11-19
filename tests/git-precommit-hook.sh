@@ -249,6 +249,9 @@ assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"
 mkdir -p "$rec_project/docs"; printf 'x\n' > "$rec_project/docs/HANDOFF.md"; rec_commit "a HANDOFF.md not at the root" docs/HANDOFF.md
 [[ "$rec_rc" -ne 0 ]] || fail "t-7db9: a docs/HANDOFF.md commit skipped the suite (records are root-level only)"; assert_contains "$rec_out" "suite ran"
 git -C "$rec_project" reset -q; rm -rf "$rec_project/docs"
+mkdir -p "$rec_project/.ticketsx"; printf 'x\n' > "$rec_project/.ticketsx/y"; rec_commit "a sibling of .tickets/" .ticketsx   # t-ab7e: the evaluator's surviving `.tickets*` mutant
+[[ "$rec_rc" -ne 0 ]] || fail "t-ab7e: a .ticketsx/ commit skipped the suite (only .tickets/ itself is records)"; assert_contains "$rec_out" "suite ran"
+git -C "$rec_project" reset -q; rm -rf "$rec_project/.ticketsx"
 set +e; rec_out="$(cd "$rec_project" && git -c user.email=t@t -c user.name=t commit --allow-empty -m "empty" 2>&1)"; rec_rc=$?; set -e
 [[ "$rec_rc" -ne 0 ]] || fail "t-7db9: an empty commit skipped the suite"; assert_contains "$rec_out" "suite ran"   # nothing staged keeps the suite
 printf 'echo bye\n' >> "$rec_project/tool.sh"; rec_commit "code" tool.sh
