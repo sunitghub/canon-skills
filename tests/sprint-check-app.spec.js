@@ -8935,6 +8935,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'build', { timeout: 8000 });
         expect(await count('/api/v1/events')).toBe(1);
         expect(await count('/api/v1/pipeline')).toBe(0);
+        // the session starts waiting on the person (the state the daemon's status message sets): the next tick reads the events again
+        // and the card turns red, the snapshot unchanged
+        await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.status = 'needs-you'; });
+        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'red', { timeout: 8000 });
+        await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Needs you');
+        expect(await count('/api/v1/events')).toBe(2);
+        // nothing changes for 30 s: the events are read again anyway (kinds outside the snapshot reach the strip)
+        await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.progress.eventsAt -= 31000; });
+        await expect.poll(() => count('/api/v1/events'), { timeout: 8000 }).toBe(3);
+        expect(await count('/api/v1/pipeline')).toBe(0);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
@@ -8942,25 +8952,34 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('a tab switched while the snapshot is in flight keeps its own card', async ({ page }) => {
       const a = newTicketId(PROJECT_ROOT, '5ef8'), b = newTicketId(PROJECT_ROOT, '5ef8');
-      let releaseA;
+      let releaseA, aHeld = false;
       const gateA = new Promise(r => { releaseA = r; });
       try {
         writeTicket(a, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
         writeTicket(b, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
         await stubCockpit(page);
-        await page.route(`**/api/v1/sprint/${a}`, async r => { await gateA; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, ticket: a, events: [ev('plan.approved', {}, undefined, a)] }) }); });
+        await page.route(`**/api/v1/sprint/${a}`, async r => { aHeld = true; await gateA; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, ticket: a, events: [ev('plan.approved', {}, undefined, a)] }) }); });
         await page.route(`**/api/v1/sprint/${b}`, json({ schema: 1, ticket: b, events: [ev('gate.started', { role: 'evaluator', attempt: '1' }, undefined, b)] }));
         await page.goto(BASE);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(a);
         await page.locator(`.card[data-id="${a}"] .card-start`).click();
         await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        await expect.poll(() => aHeld).toBe(true);   // A's snapshot request is in flight, held here
         await page.evaluate(async b => { const m = await import('/static/board-cockpit-rail.js'); m.openCockpit(b); }, b);
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
+        // from now on, record any moment the card shows A's state (Build): a later 5 s tick redrawing B must not hide it
+        await page.evaluate(() => {
+          window.__sawA = false;
+          const box = document.getElementById('ck-progress');
+          new MutationObserver(() => { if (box.querySelector('.spc-row.cur[data-spc-row="build"]')) window.__sawA = true; }).observe(box, { childList: true, subtree: true });
+        });
+        const aAnswered = page.waitForResponse(r => r.url().includes(`/api/v1/sprint/${a}`));
         releaseA();
-        await page.waitForTimeout(300);   // A's late answer has landed; nothing may draw it
+        await aAnswered;
+        await page.waitForTimeout(500);   // A's late answer has been read by the page
+        expect(await page.evaluate(() => window.__sawA)).toBe(false);
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
-        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'amber');
       } finally {
         releaseA && releaseA();
         removeTestTicket(PROJECT_ROOT, a);

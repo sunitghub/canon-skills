@@ -621,12 +621,14 @@ async function v1List(url, key) {
 export async function renderCockpitProgress(t) {
   const cs = cockpitState, box = document.getElementById('ck-progress');
   if (!cs || !box) return;
-  if (box.dataset.ticket !== t.id) { box.innerHTML = ''; box.dataset.ticket = t.id; }   // another tab's card never stays on this one
+  if (box.dataset.ticket !== t.id) { box.innerHTML = ''; box.dataset.ticket = t.id; if (cs.progress) cs.progress.html = ''; }   // another tab's card never stays on this one
   const p = cs.progress || (cs.progress = {});
-  const unavailable = () => { if (cs === cockpitState) box.innerHTML = '<div class="spc-ev-empty">Sprint progress unavailable</div>'; };
-  if (!p.nodes) p.nodes = await v1List('/api/v1/pipeline', 'nodes');
+  const unavailable = () => { if (cs === cockpitState) { box.innerHTML = '<div class="spc-ev-empty">Sprint progress unavailable</div>'; p.html = ''; } };
+  // one read of the nodes per tab: a render that overlaps another waits on the same request; a failed read is retried next tick
+  if (!p.nodes) p.nodes = v1List('/api/v1/pipeline', 'nodes').then(n => { if (!n) p.nodes = null; return n; });
+  const nodes = await p.nodes;
   if (cs !== cockpitState) return;
-  if (!p.nodes) { unavailable(); return; }
+  if (!nodes) { unavailable(); return; }
   const snap = await v1List(`/api/v1/sprint/${encodeURIComponent(t.id)}`, 'events');
   if (cs !== cockpitState) return;
   if (!snap) { unavailable(); return; }
@@ -641,8 +643,9 @@ export async function renderCockpitProgress(t) {
     p.eventsAt = Date.now();
   }
   const planWritten = ckDocHasSubstance('plan', (cs.docSeen || {}).plan);
-  const live = { ...sprintProgress(p.nodes, snap, { planWritten, needsYou }), events: p.events, eventsNote: snap.length ? 'No recent events.' : 'No events yet.' };
-  box.innerHTML = progressCardHtml(p.nodes, ticketMode(t), live);
+  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou }), events: p.events, eventsNote: snap.length ? 'No recent events.' : 'No events yet.' };
+  const html = progressCardHtml(nodes, ticketMode(t), live);
+  if (html !== p.html || !box.firstChild) { box.innerHTML = html; p.html = html; }   // an unchanged card is not redrawn: the pulse keeps running, a screen reader is not re-told
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
