@@ -40,7 +40,7 @@ var v1EventKeys = []string{"schema", "id", "ts", "kind", "source", "project", "a
 var v1PipelineNode = []string{"id", "kind", "order", "on", "skip_on", "only", "group"}
 
 // v1SprintKinds are the lifecycle kinds the sprint snapshot keeps the latest of. Folding them into steps is t-5ef8's.
-var v1SprintKinds = []string{"sprint.started", "plan.approved", "gate.started", "gate.finished", "gate.rejected", "close.confirmed", "sprint.completed"}
+var v1SprintKinds = []string{"sprint.started", "plan.approved", "build.switch", "close.started", "gate.started", "gate.finished", "gate.rejected", "manual_qa.recorded", "close.confirmed", "sprint.completed"} // t-985c: + build.switch, close.started, manual_qa.recorded
 
 // v1Responses are each route's top-level keys: the published response schema.
 var v1Responses = map[string][]string{

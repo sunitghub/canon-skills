@@ -393,12 +393,15 @@ func TestAPIv1SprintEnvelopeActorOrderAndDays(t *testing.T) {
 	line := func(id, ts, kind, extra string) string {
 		return `{"schema":1,"id":"` + id + `","ts":"` + ts + `","kind":"` + kind + `","source":"sprint",` + extra + `"project":"` + proj + `","data":{"ticket":"t-aaaa"}}` + "\n"
 	}
-	// day 1 holds every lifecycle kind; day 2 holds a newer gate.started and the unrelated ticket.created
+	// day 1 holds every lifecycle kind and the unrelated ticket.created; day 2 holds a newer gate.started
 	writeFile(t, filepath.Join(home, "events", "2026-11-01.jsonl"),
 		line("0000000000000001", "2026-11-01T01:00:00.000Z", "sprint.started", "")+line("0000000000000002", "2026-11-01T02:00:00.000Z", "plan.approved", `"actor":"user",`)+
 			line("0000000000000003", "2026-11-01T03:00:00.000Z", "gate.started", "")+line("0000000000000004", "2026-11-01T04:00:00.000Z", "gate.finished", "")+
 			line("0000000000000005", "2026-11-01T05:00:00.000Z", "gate.rejected", "")+line("0000000000000006", "2026-11-01T06:00:00.000Z", "close.confirmed", "")+
-			line("0000000000000007", "2026-11-01T07:00:00.000Z", "sprint.completed", "")+line("0000000000000008", "2026-11-01T08:00:00.000Z", "ticket.created", ""))
+			line("0000000000000007", "2026-11-01T07:00:00.000Z", "sprint.completed", "")+line("0000000000000008", "2026-11-01T08:00:00.000Z", "ticket.created", "")+
+			// t-985c (evaluator: unpinned): the card's three newer kinds are kept too
+			line("000000000000000a", "2026-11-01T08:10:00.000Z", "build.switch", "")+line("000000000000000b", "2026-11-01T08:20:00.000Z", "close.started", "")+
+			line("000000000000000c", "2026-11-01T08:30:00.000Z", "manual_qa.recorded", ""))
 	writeFile(t, filepath.Join(home, "events", "2026-11-02.jsonl"), line("0000000000000009", "2026-11-02T09:00:00.000Z", "gate.started", ""))
 	b := v1Body(t, v1Get(t, "GET", "/api/v1/sprint/t-aaaa", ""))
 	evs := b["events"].([]any)
@@ -407,7 +410,7 @@ func TestAPIv1SprintEnvelopeActorOrderAndDays(t *testing.T) {
 		m := e.(map[string]any)
 		kinds, ids = append(kinds, m["kind"].(string)), append(ids, m["id"].(string))
 	}
-	if got := strings.Join(kinds, " "); got != "sprint.started plan.approved gate.finished gate.rejected close.confirmed sprint.completed gate.started" {
+	if got := strings.Join(kinds, " "); got != "sprint.started plan.approved gate.finished gate.rejected close.confirmed sprint.completed build.switch close.started manual_qa.recorded gate.started" {
 		t.Errorf("kinds in log order: %s", got)
 	}
 	if ids[len(ids)-1] != "0000000000000009" {

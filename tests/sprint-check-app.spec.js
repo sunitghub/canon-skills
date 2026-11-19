@@ -8718,7 +8718,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await openRail(page, id, { sprint: [ev('sprint.started', {}, '2026-11-19T10:00:00.000Z', id), ev('gate.started', { role: 'reviewer', attempt: '1' }, '2026-11-19T10:05:00.000Z', id)] });
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'reviewer');
         await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'amber');
-        await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Reviewer running');
+        // t-985c: no box and no line under the row: the status is the row's tooltip and accessible name, without the step's name repeated
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('title', /^Reviewer: Running · attempt 1/);
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('aria-label', /^Reviewer: Running · attempt 1/);
+        await expect(card(page).locator('.spc-row.cur .spc-status')).toHaveCount(0);
+        expect(await card(page).locator('.spc-row.cur').evaluate(el => getComputedStyle(el).borderTopWidth)).toBe('0px');
         await expect(card(page).locator('.spc-row.done')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').findIndex(n => n.id === 'reviewer'));   // every row before Reviewer
         await expect(page.locator('#ck-state-section')).toHaveCount(0);
         await expect(page.locator('#ck-state')).toHaveCount(0);
@@ -8752,6 +8756,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
+    // t-985c (reviewer Act On): the live rows do not wrap, so a long name ends in an ellipsis beside its time; the Manual Close row, which
+    // carries its sign-off sentence, wraps instead, its name whole. Protects the Cockpit rail's card at the rail's real width.
+    test('names stay whole or end in an ellipsis; the Manual Close sentence goes under its row', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
+      await page.setViewportSize({ width: 1280, height: 800 });
+      try {
+        await openRail(page, id, { opts: { manual: true }, sprint: [ev('plan.approved', {}, undefined, id)] });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'build');
+        const m = await card(page).evaluate(c => {
+          const row = c.querySelector('[data-spc-row="close"]'), n = row.querySelector('.spc-n'), line = row.querySelector('.spc-line');
+          // a skipped row's name may end in an ellipsis beside its note (the head already names the option); every other name stays whole
+          const cut = [...c.querySelectorAll('.spc-row:not(.gone) .spc-n')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent);
+          return { cut, closeWhole: n.scrollWidth <= n.clientWidth + 1, below: line.getBoundingClientRect().top >= n.getBoundingClientRect().bottom - 1 };
+        });
+        expect(m.cut).toEqual([]);   // at the rail's width no step that runs has its name cut
+        expect(m.closeWhole).toBe(true);
+        expect(m.below).toBe(true);   // the sentence sits under the name, not squeezed beside it
+        // a name too long for the row ends in an ellipsis on one line, its time still on the row's right edge
+        const e = await card(page).evaluate(c => {
+          const n = c.querySelector('[data-spc-row="build"] .spc-n'); n.textContent = 'A very long step name that cannot fit beside its time in the rail';
+          const s = getComputedStyle(n);
+          return { ellipsis: s.textOverflow === 'ellipsis' && s.whiteSpace === 'nowrap', cut: n.scrollWidth > n.clientWidth, oneLine: n.getBoundingClientRect().height < 24 };
+        });
+        expect(e).toEqual({ ellipsis: true, cut: true, oneLine: true });
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
     for (const [opts, head, struck] of [[{ demo: true }, 'a Lite ticket', 'reviewer'], [{ manual: true }, 'a Manual ticket', 'mutation-test'], [{}, null, null]]) {
       test(`the ticket's options pick the card's mode: ${head || 'Normal'}`, async ({ page }) => {
         const id = newTicketId(PROJECT_ROOT, '5ef8');
@@ -8772,40 +8805,39 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
     }
 
-    test('the event strip lists this ticket\'s 3 newest events, oldest first, escaped; or says there are none', async ({ page }) => {
+    // t-985c (user: "only event_start", no event list): each started step shows its start time from this ticket's events, right-aligned on
+    // one edge inside the rail; a skipped row keeps its note; another ticket's events are ignored. Protects the Cockpit rail's card.
+    test('each started step shows its start time on one right edge; no event strip', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, '5ef8');
-      const at = m => `2026-11-19T10:0${m}:00.000Z`;
+      const at = m => `2026-11-19T10:${m}:00.000Z`;
+      await page.setViewportSize({ width: 1280, height: 800 });
       try {
         await openRail(page, id, {
-          sprint: [ev('plan.approved', {}, at(1), id)],
-          events: [ev('sprint.started', {}, at(0), id), ev('plan.approved', {}, at(1), id), ev('gate.started', { role: 'reviewer', attempt: '1' }, at(2), id),
-            ev('gate.started', { role: 'other' }, at(3), 't-zzzz'), ev('gate.finished', { role: '<b>x</b>' }, at(4), id), ev('session.needs_you', {}, at(5), id)],
+          opts: { demo: true },
+          sprint: [ev('gate.started', { role: 'evaluator', attempt: '1' }, at(30), id)],
+          events: [ev('sprint.started', {}, at('00'), id), ev('plan.approved', {}, at('05'), id), ev('close.started', {}, at(20), id),
+            ev('gate.started', { role: 'evaluator', attempt: '1' }, at(30), id), ev('plan.approved', {}, at(59), 't-zzzz')],
         });
-        const rows = card(page).locator('.spc-ev');
-        await expect(rows).toHaveCount(3);
-        await expect(rows.nth(0)).toContainText('gate.started reviewer · attempt 1');
-        await expect(rows.nth(1)).toContainText('gate.finished <b>x</b>');   // shown as text, never markup
-        await expect(card(page).locator('.spc-ev b')).toHaveCount(0);
-        await expect(rows.nth(2)).toContainText('session.needs_you');
-        await expect(card(page)).not.toContainText('other');
-        const hhmmss = await page.evaluate(t => { const d = new Date(t); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':'); }, at(5));
-        await expect(rows.nth(2).locator('.spc-ev-t')).toHaveText(hhmmss);   // local time
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
+        const hm = t => page.evaluate(x => new Date(x).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), t);
+        await expect(card(page).locator('[data-spc-row="approve-plan"] .spc-t')).toHaveText(await hm(at('05')));   // not t-zzzz's 10:59
+        await expect(card(page).locator('[data-spc-row="security-review"] .spc-t')).toHaveText(await hm(at(20)));   // Lite: the close's first row
+        await expect(card(page).locator('[data-spc-row="eval"] .spc-t')).toHaveText(await hm(at(30)));
+        await expect(card(page).locator('[data-spc-row="reviewer"] .spc-t')).toHaveCount(0);   // skipped: its note, no time
+        await expect(card(page).locator('[data-spc-row="reviewer"] .spc-note')).toContainText('skipped');
+        await expect(card(page).locator('[data-spc-row="close"] .spc-t')).toHaveCount(0);   // not started
+        await expect(card(page).locator('.spc-evs, .spc-ev')).toHaveCount(0);
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('title', new RegExp(`started ${await hm(at(30))}$`));
+        const geo = await card(page).evaluate(c => {
+          const rail = c.getBoundingClientRect();
+          const ts = [...c.querySelectorAll('.spc-t')].map(e => e.getBoundingClientRect());
+          return { n: ts.length, rights: [...new Set(ts.map(r => Math.round(r.right)))], inside: ts.every(r => r.right <= rail.right + 0.5 && r.left >= rail.left) };
+        });
+        expect(geo.n).toBeGreaterThan(2);
+        expect(geo.rights.length).toBe(1);   // one right edge
+        expect(geo.inside).toBe(true);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
-      }
-      const id2 = newTicketId(PROJECT_ROOT, '5ef8');
-      try {
-        await openRail(page, id2, { events: [ev('sprint.started', {}, at(0), 't-zzzz')] });
-        await expect(card(page).locator('.spc-ev-empty')).toHaveText('No events yet.');
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id2);
-      }
-      const id3 = newTicketId(PROJECT_ROOT, '5ef8');
-      try {
-        await openRail(page, id3, { sprint: [ev('sprint.started', {}, at(0), id3)], events: [ev('sprint.started', {}, at(0), 't-zzzz')] });
-        await expect(card(page).locator('.spc-ev-empty')).toHaveText('No recent events.');
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id3);
       }
     });
 
@@ -8868,9 +8900,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // and the card turns red, the snapshot unchanged
         await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.status = 'needs-you'; });
         await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'red', { timeout: 8000 });
-        await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Needs you');
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('title', /Needs you/);
         expect(await count('/api/v1/events')).toBe(2);
-        // nothing changes for 30 s: the events are read again anyway (kinds outside the snapshot reach the strip)
+        // nothing changes for 30 s: the events are read again anyway (kinds outside the snapshot, implement.started among them, give the steps their start times)
         await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.progress.eventsAt -= 31000; });
         await expect.poll(() => count('/api/v1/events'), { timeout: 8000 }).toBe(3);
         expect(await count('/api/v1/pipeline')).toBe(0);
@@ -8916,8 +8948,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    for (const [tone, sprint, animated] of [['amber', [['gate.started', { role: 'reviewer' }]], true], ['blue', [['plan.approved']], true], ['red', [['gate.rejected', { role: 'evaluator', reason: 'stale' }]], false], ['green', [['sprint.completed']], false], ['idle', [], false]]) {
-      test(`the current dot pulses only while work runs: ${tone} @webkit`, async ({ page }) => {
+    for (const [tone, sprint, animated] of [['amber', [['gate.started', { role: 'reviewer' }]], true], ['blue', [['plan.approved']], true], ['red', [['gate.rejected', { role: 'evaluator', reason: 'stale' }]], true], ['green', [['sprint.completed']], false], ['idle', [], false]]) {
+      // t-985c (user): red (needs you) pulses too, more slowly; green and idle never
+      test(`the current dot pulses while work runs or waits on you: ${tone} @webkit`, async ({ page }) => {
         const id = newTicketId(PROJECT_ROOT, '5ef8');
         try {
           await openRail(page, id, { sprint: sprint.map(([k, d]) => ev(k, d, undefined, id)) });

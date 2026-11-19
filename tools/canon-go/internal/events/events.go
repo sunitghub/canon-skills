@@ -59,7 +59,10 @@ var kinds = map[string][]field{
 	"session.saved": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"by", 16}},
 	// t-4c09: audit kinds. Ids, numbers and names of non-secret settings only: a sealed day cannot be edited, and a
 	// reader treats the log as untrusted input. No PR or issue title, no imported result text, no token or URL.
-	"plan.approved":           {{"ticket", 64}, {"tier", 16}},
+	"plan.approved": {{"ticket", 64}, {"tier", 16}},
+	// t-985c: the close began (the first sprint pre-gate-check of a sprint), and the person's manual QA was recorded (result pass|fail)
+	"close.started":           {{"ticket", 64}},
+	"manual_qa.recorded":      {{"ticket", 64}, {"result", 8}},
 	"close.confirmed":         {{"ticket", 64}, {"tier", 16}},
 	"github.sent":             {{"ticket", 64}, {"issue", 12}},
 	"github.results_imported": {{"ticket", 64}, {"pr", 12}},
