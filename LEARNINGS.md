@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-19-2026 12:49
+learnings-sweep last run: 11-19-2026 14:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-19 | [t-985c](.tickets/t-985c/learnings.md) | A list the UI reads only through the API (v1SprintKinds) needs its own pinning test; and a row-layout change needs every row shape rendered (the Manual Close row broke) | UNPROMOTED |
 | 2026-11-19 | [t-d2ab](.tickets/t-d2ab/learnings.md) | An outcome named in a criterion (write_error) needs a test that forces it; the evaluator failed attempt 1 with two surviving mutants | UNPROMOTED |
 | 2026-11-19 | [t-b775](.tickets/t-b775/learnings.md) | Pick the covering suites by grepping tests for the literal you change (or run scripts/test.sh once first): two pins outside the chosen set failed the first full-suite stamp | UNPROMOTED |
 | 2026-11-19 | [t-9831](.tickets/t-9831/learnings.md) | A scripted edit (Python str.replace) whose target did not match wrote nothing and said nothing, three times in one session: assert the target matched exactly once | UNPROMOTED |
@@ -74,7 +75,6 @@ learnings-sweep last run: 11-19-2026 12:49
 | 2026-11-12 | [t-dccb](.tickets/t-dccb/learnings.md) | A summary line's colour and wording must come from the data, not from the state label: the Integrity strip was green for any `verified` state while a red group sat below the fold, and its note picked its sentence from one flag (`blocking`) so a manifest-only difference read as a script change. List the states a page can hold (clean, flagged, blocking, mixed, other group) and give each a spec. | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-12 | [t-6be7](.tickets/t-6be7/learnings.md) | A new warning needs its quiet variants tested, not only the case that fires: the first version ran only "differs" and left 18 mutants alive. Flipping a gate case from `recorded` to `run` also breaks any test that pins its old state (`tests/gate-cases.sh` named it): grep the slug in tests/ before flipping. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-12 | [t-0317](.tickets/t-0317/learnings.md) | A value that grows (an arch label from 5 to 37 characters) is cut silently by a width-limited event field (`machine.seen` arch was 16) and by display code (`check-evidence` cut at 80 and printed brackets as ?): grep every writer's limit and every reader's filter when a fact's text gets longer. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-12 | [t-16f5](.tickets/t-16f5/learnings.md) | A check that lists "every file the release ships" must be built from what an install carries, not the tag's tree: the zip leaves out tests/ and the Go source, so the first design would have shown every zip install as missing files (`SLIM_EXCLUDE` in release-zip.sh is the owner). Also: `read -N` is bash 4.1+ and macOS ships 3.2, so a shebang test found nothing until a git-derived expected list was compared. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-11 | [t-27e5](.tickets/t-27e5/learnings.md) | Loosening a security check needs a test for each branch of the loosening alone (the dot of a path remainder passed no test until an evaluator reverted it), and a criterion that is narrowed by a review must be reworded in the same pass, or the evaluator grades the old wording. | UNPROMOTED |
 | 2026-11-11 | [t-5988](.tickets/t-5988/learnings.md) | A scanner that reads git output must fix every flag the repo's config can change (prefixes, showRoot, replace refs, textconv, quoting) and must apply a cap AFTER its filter; a usage check tested outside a repository is hidden by the sweep's .git-less copy, so test failure paths inside one. | UNPROMOTED |
 | 2026-11-11 | [t-46b9](.tickets/t-46b9/learnings.md) | A bug that a test already asserts as normal ("No sessions running." with the daemon stopped) survives every suite: when a symptom is reported, grep the tests for the old output and treat a passing assertion of it as the bug's own evidence. | UNPROMOTED |
