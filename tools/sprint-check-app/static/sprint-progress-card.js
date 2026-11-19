@@ -34,7 +34,8 @@ export function ticketMode(t) {
 }
 
 const ROLE_NODE = { speccheck: 'spec-check', reviewer: 'reviewer', evaluator: 'eval', evaluator2: 'eval' };
-const ROLE_NAME = { speccheck: 'Spec check', reviewer: 'Reviewer', evaluator: 'Evaluator', evaluator2: 'Second eval' };
+// a gate role's name is its node's label; the Second eval (evaluator2) shares the Evaluator's node and has its own name
+const roleName = r => (r === 'evaluator2' ? 'Second eval' : ROLE_NODE[r] ? label(ROLE_NODE[r]) : r || 'Gate');
 const tsOf = e => { const n = Date.parse(e && e.ts); return Number.isFinite(n) ? n : -Infinity; };
 const attemptOf = d => (d && d.attempt ? ` · attempt ${d.attempt}` : '');
 
@@ -45,7 +46,7 @@ export function sprintProgress(nodes, events, { planWritten = false, needsYou = 
   const ids = (nodes || []).map(n => n.id);
   const latest = (Array.isArray(events) ? events : []).filter(e => e && typeof e.kind === 'string')
     .reduce((a, e) => (!a || tsOf(e) >= tsOf(a) ? e : a), null);
-  const d = (latest && latest.data) || {}, role = String(d.role || ''), name = ROLE_NAME[role] || role || 'Gate';
+  const d = (latest && latest.data) || {}, role = String(d.role || ''), name = roleName(role);
   let r;
   switch (latest ? latest.kind : '') {
     case '': r = { cur: '', tone: 'idle', status: 'Not started' }; break;
