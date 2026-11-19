@@ -3,6 +3,7 @@
 # t-f7e6: wt_write_ok (the worktree link check every writer makes) lives in platform-lib.sh; a caller that sources only this file gets it.
 # shellcheck source=platform-lib.sh
 declare -F wt_write_ok >/dev/null 2>&1 || source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"
+_CANON_TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # t-e9aa: tools/, for _canon_setup_edit_only
 
 # _worktree_main_tickets <dir> — t-6be7: when <dir> is a linked worktree (its .git is a FILE: "gitdir: <repo>/.git/worktrees/<name>"),
 # the main checkout's .tickets path; nothing otherwise. One owner of the pointer rules, shared by tickets_dir and `sprint eval-verdict`.
@@ -543,4 +544,68 @@ manual_criteria() {
       }
     }
     mode == "strip" { print }'
+}
+
+# _canon_setup_edit_only <wroot> <graded> <path> [<have-rev>] — t-52f0 (moved here from tools/sprint by t-e9aa): true when the project-root .gitignore or .gitattributes at <path> is exactly
+# what canon's own skill setup makes of the graded file, so _gate_eval_report_fresh (below) can let registration's uncommitted edit
+# through (without it a fresh project's first close was refused). It replays the real writers, never a copy of their lines: the graded
+# file as git checks it out (`cat-file --filters`), in a scratch repo, through _ensure_mirror_gitignored alone (a project's own
+# .claude/agents gets no line), then _ensure_agents_link_gitignored in either order (skills add: mirror first; link_worktree: agents
+# first), or through ensure_gitattributes; the working-tree file must match one result line for line, a carriage return at the end of a line aside (t-ae3b: autocrlf). Order, duplicates and a CR inside a line therefore count (break-it found a line-set check too loose). A
+# symlink, a deleted file or a failed git call is false. t-e9aa: with <have-rev>, that commit's copy is compared instead of the working
+# tree's (a committed canon-only edit); the writers are found next to this file (BASH_SOURCE), not through the caller's SCRIPT_DIR.
+_canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch repo on any exit without touching the caller's traps
+  wroot="$1" graded="$2" path="$3" name="${3##*/}" haverev="${4:-}"
+  case "$name" in
+    .gitignore) variants="m ma am" ;;
+    .gitattributes) variants="g" ;;
+    *) exit 1 ;;
+  esac
+  if [[ -z "$haverev" ]]; then [[ -f "$wroot/$path" && ! -L "$wroot/$path" ]] || exit 1; fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/canon-gate.XXXXXX")" || exit 1   # a template: macOS mktemp -d alone ignores TMPDIR
+  trap 'rm -rf "$tmp"' EXIT
+  git -C "$tmp" init -q >/dev/null 2>&1 || exit 1
+  git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null || exit 1
+  for v in $variants; do
+    cp "$tmp/prior" "$tmp/$name" || exit 1
+    # shellcheck disable=SC2034  # SKILLS_ROOT is read by the skills libs sourced next
+    ( SKILLS_ROOT="$(cd "$_CANON_TOOLS/.." && pwd)"
+      source "$_CANON_TOOLS/skills/lib.sh" && source "$_CANON_TOOLS/skills/project.sh" && source "$_CANON_TOOLS/skills/prompts.sh" || exit 1
+      case "$v" in
+        m) _ensure_mirror_gitignored "$tmp" ;;
+        ma) _ensure_mirror_gitignored "$tmp" && _ensure_agents_link_gitignored "$tmp" ;;
+        am) _ensure_agents_link_gitignored "$tmp" && _ensure_mirror_gitignored "$tmp" ;;
+        g) ensure_gitattributes "$tmp" ;;
+      esac ) >/dev/null 2>&1 || true   # the byte compare below is the check, not the writer's status
+    # Line endings are not what this guards: with core.autocrlf=true the replayed old file comes back CRLF while a project file written
+    # by a tool is LF (t-ae3b), so compare with a carriage return at the END of a line removed (one inside a line still differs).
+    awk '{ sub(/\r$/, "") } 1' "$tmp/$name" > "$tmp/want.lf"
+    if [[ -n "$haverev" ]]; then git -C "$wroot" cat-file --filters "$haverev:$path" > "$tmp/have.raw" 2>/dev/null || exit 1; awk '{ sub(/\r$/, "") } 1' "$tmp/have.raw" > "$tmp/have.lf"
+    else awk '{ sub(/\r$/, "") } 1' "$wroot/$path" > "$tmp/have.lf"; fi
+    cmp -s "$tmp/want.lf" "$tmp/have.lf" && exit 0
+    diff "$tmp/want.lf" "$tmp/have.lf" > "$tmp/d.$v" 2>/dev/null || true
+  done
+  # No variant matched: say how the file differs from canon's own edit (the closest variant's diff), so a refusal is not a bare "changed" (t-ae3b).
+  echo "note: $path differs from canon's own setup edit (closest diff, canon's edit vs the file):"
+  local best="" bn=999999 n d
+  for d in "$tmp"/d.*; do
+    [ -f "$d" ] || continue
+    n="$(wc -l < "$d" | tr -d ' ')"
+    if [ "$n" -lt "$bn" ]; then bn="$n"; best="$d"; fi
+  done
+  [ -z "$best" ] || sed -n '1,4p' "$best" | cat -v | cut -c1-120 | sed 's/^/  /'
+  exit 1
+)
+
+# canon_drop_setup_edits <root> <from-rev> [<to-rev>] — t-e9aa: reads changed paths (one per line) on stdin and prints those canon's own
+# setup edit does not explain: a repo-root .gitignore or .gitattributes whose copy at <to-rev> (the working tree when absent) is exactly
+# what canon's writers make of <from-rev>'s copy is dropped. One predicate for the evidence stamp, check's freshness and the manual-QA
+# record; the helper's notes never reach the caller's output.
+canon_drop_setup_edits() {
+  local root="$1" from="$2" to="${3:-}" p
+  while IFS= read -r p; do
+    [[ -n "$p" ]] || continue
+    if [[ "$p" == .gitignore || "$p" == .gitattributes ]] && _canon_setup_edit_only "$root" "$from" "$p" ${to:+"$to"} >/dev/null 2>&1; then continue; fi
+    printf '%s\n' "$p"
+  done
 }
