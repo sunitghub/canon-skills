@@ -37,7 +37,7 @@ print(d)' "$@"; }
 
 PORT="$(free_port)"
 BIN="$(build_board "$BOARD_DIR")"
-(cd "$ROOT" && SPRINT_CHECK_ROOT="$PROJECT" CANON_HOME="$T/home" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$T" exec "$BIN" "$PORT") &
+(cd "$ROOT" && SPRINT_CHECK_ROOT="$PROJECT" CANON_HOME="$T/home" PIPELINE_BIN="$ROOT/tools/pipeline.sh" SPRINT_CHECK_NO_BROWSER=1 TMPDIR="$T" exec "$BIN" "$PORT") &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/tickets" && break; sleep 0.1; done
@@ -99,6 +99,14 @@ check_keys /api/v1/tickets "$B/tickets"; check_keys '/api/v1/tickets/{id}' "$B/t
 check_keys '/api/v1/sprint/{ticket}' "$B/sprint/t-aaaa"; check_keys /api/v1/sessions "$B/sessions"
 check_keys '/api/v1/sessions/{id}/state' "$B/sessions/t-aaaa/state"
 check_keys /api/v1/events "$B/events"
+check_keys /api/v1/pipeline "$B/pipeline"
+# t-5ef8: each pipeline node serves exactly the schema's pipeline_node keys, in the reader's run order (the Sprint progress card's rows)
+pn="$(curl -s "$B/pipeline" | python3 -c '
+import json,sys
+want=sorted(json.load(open(sys.argv[1]))["pipeline_node"]); n=json.load(sys.stdin)["nodes"]
+print("ok" if n and all(sorted(x)==want for x in n) else "keys %r vs %r" % (n[:1], want))
+print(" ".join(x["id"] for x in n[:3]), n[0]["order"] < n[-1]["order"])' "$T/schema.json")"
+assert_eq $'ok\nstart plan spec-check True' "$pn"
 assert_contains "$(cat "$T/schema.json")" '"gate.finished"'
 # the stream route is published too: its content type, its frame (id and data lines), and the stream cap come from the handler's own variables
 stream_schema="$(python3 -c 'import json,sys; s=json.load(open(sys.argv[1]))["streams"]["/api/v1/events/stream"]; print(s["content_type"]); print(s["frame"]); print(s["max_streams"]); print(s["lifetime_s"])' "$T/schema.json")" || fail "api-v1: the schema has no stream entry for /api/v1/events/stream"
@@ -109,7 +117,7 @@ assert_eq "4 900" "$(printf '%s\n' "$stream_schema" | tail -2 | paste -sd' ' -)"
 
 # ── refusals: Host, verbs, CORS, bad ids ──
 code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
-for route in sessions sessions/t-aaaa tickets tickets/t-aaaa sprint/t-aaaa events events/stream; do
+for route in sessions sessions/t-aaaa tickets tickets/t-aaaa sprint/t-aaaa events events/stream pipeline; do
   assert_eq "403" "$(code -H 'Host: evil.example' "$B/$route")"
   for m in POST PUT DELETE; do assert_eq "405" "$(code -X "$m" "$B/$route")"; done
 done
@@ -119,13 +127,14 @@ for m in OPTIONS POST; do   # a GET of the stream would stream: only its refusal
   hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/events/stream")"
   if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /events/stream sent an Access-Control header"; fi
 done
-for target in tickets sessions sprint/t-aaaa events tickets/nope tickets/t-zzzz; do
+for target in tickets sessions sprint/t-aaaa events pipeline tickets/nope tickets/t-zzzz; do
   for m in GET OPTIONS POST; do
     hdr="$(curl -s -D - -o /dev/null -X "$m" -H 'Origin: http://evil.example' "$B/$target")"
     if grep -qi '^access-control-' <<<"$hdr"; then fail "api-v1: $m /$target sent an Access-Control header"; fi
   done
 done
 assert_eq "400" "$(code "$B/tickets?project=ffffffffffff")"
+assert_eq "400" "$(code "$B/pipeline?project=ffffffffffff")"
 assert_eq "400" "$(code "$B/sessions/x-1")"
 assert_eq "307" "$(code --path-as-is "$B/sprint/..")"   # the mux cleans a dot-dot path before any handler sees it
 assert_eq "400" "$(code "$B/sprint/t-AAAA")"

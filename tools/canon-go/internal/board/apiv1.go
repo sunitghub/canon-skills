@@ -35,6 +35,10 @@ var v1Ticket = []string{"id", "title", "status", "type", "priority", "created", 
 // v1EventKeys are an event line's served keys (the stream's envelope, t-15b5; the machine's host name is not served).
 var v1EventKeys = []string{"schema", "id", "ts", "kind", "source", "project", "actor", "data"}
 
+// v1PipelineNode is a pipeline node's served keys (t-5ef8): the run order and what a ticket option skips, enough to draw a ticket's Sprint
+// progress card. The prompt, reason and model a node also has stay on the board's own /api/pipeline.
+var v1PipelineNode = []string{"id", "kind", "order", "on", "skip_on", "only", "group"}
+
 // v1SprintKinds are the lifecycle kinds the sprint snapshot keeps the latest of. Folding them into steps is t-5ef8's.
 var v1SprintKinds = []string{"sprint.started", "plan.approved", "gate.started", "gate.finished", "gate.rejected", "close.confirmed", "sprint.completed"}
 
@@ -47,6 +51,7 @@ var v1Responses = map[string][]string{
 	"/api/v1/tickets/{id}":        {"schema", "ticket"},
 	"/api/v1/sprint/{ticket}":     {"schema", "ticket", "events"},
 	"/api/v1/events":              {"schema", "events", "cursor"},
+	"/api/v1/pipeline":            {"schema", "nodes"},
 }
 
 // v1DaemonHeader says whether the daemon answered: a down daemon gives an empty list, which is not "no sessions".
@@ -161,6 +166,18 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v1Send(w, map[string]any{"ticket": seg[1], "events": evs})
+	case len(seg) == 1 && seg[0] == "pipeline":
+		root, ok := pipelineRoot(r)
+		if !ok {
+			v1Error(w, http.StatusBadRequest, "unknown project")
+			return
+		}
+		nodes, err := pipelineResolve(root)
+		if err != nil {
+			v1Error(w, http.StatusInternalServerError, "cannot read the pipeline")
+			return
+		}
+		v1Send(w, map[string]any{"nodes": v1PipelineOf(nodes)})
 	default:
 		v1Error(w, http.StatusNotFound, "no such route")
 	}
@@ -314,6 +331,15 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 	return out
 }
 
+// v1PipelineOf serves each node's v1PipelineNode keys and nothing else; an absent group, skip_on or only is "".
+func v1PipelineOf(nodes []pipelineNode) []map[string]any {
+	out := make([]map[string]any, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, map[string]any{"id": n.ID, "kind": n.Kind, "order": n.Order, "on": n.On, "skip_on": n.SkipOn, "only": n.Only, "group": n.Group})
+	}
+	return out
+}
+
 // apiSchema is `canon api schema`: every event kind with its fields (from the events kinds table), the served ticket and event keys,
 // and each route's response keys, from the same variables the handlers use.
 func apiSchema() map[string]any {
@@ -322,7 +348,7 @@ func apiSchema() map[string]any {
 		kinds[k] = events.Fields(k)
 	}
 	return map[string]any{"schema": apiV1Schema, "events": map[string]any{"schema": events.Schema, "envelope": v1EventKeys, "kinds": kinds},
-		"ticket": v1Ticket, "responses": v1Responses, "streams": v1Streams}
+		"ticket": v1Ticket, "pipeline_node": v1PipelineNode, "responses": v1Responses, "streams": v1Streams}
 }
 
 func apiCLI(args []string, stdout, stderr io.Writer) int {

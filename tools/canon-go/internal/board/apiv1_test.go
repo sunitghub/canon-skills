@@ -91,7 +91,7 @@ func TestAPIv1RefusesBadInputBeforeUse(t *testing.T) {
 
 func TestAPIv1ReadOnlyHostAndNoCORS(t *testing.T) {
 	setupTestProject(t)
-	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/events", "/api/v1/nope", "/api/v1/tickets/bad"}
+	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/events", "/api/v1/pipeline", "/api/v1/nope", "/api/v1/tickets/bad"}
 	for _, route := range routes {
 		for _, method := range []string{"GET", "OPTIONS", "POST", "PUT", "DELETE"} {
 			w := v1Get(t, method, route, "")
@@ -689,5 +689,48 @@ func TestTermSafeAndFmtSecsHoldOnHostileValues(t *testing.T) {
 	}
 	if fmtSecs(65.0) != "1m 5s" && !strings.HasPrefix(fmtSecs(65.0), "1m") {
 		t.Errorf("fmtSecs(65) = %q", fmtSecs(65.0))
+	}
+}
+
+// t-5ef8: GET /api/v1/pipeline is the public read of a project's resolved pipeline, the rows of a ticket's Sprint progress card. Each node
+// carries exactly v1PipelineNode's keys with the values the board's own /api/pipeline reads (one reader, no second parse); an unknown
+// project is a 400 and a cross-site request a 403 before the reader runs.
+func TestAPIv1PipelineServesTheReadersNodes(t *testing.T) {
+	id, _ := pipelineEnv(t)
+	w := v1Get(t, "GET", "/api/v1/pipeline?project="+id, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
+	}
+	got, _ := v1Body(t, w)["nodes"].([]any)
+	code, full := pipelineGetReq(id)
+	want, _ := full["nodes"].([]any)
+	if code != 200 || len(want) == 0 || len(got) != len(want) {
+		t.Fatalf("v1 %d nodes, /api/pipeline %d (%d)", len(got), len(want), code)
+	}
+	for i, g := range got {
+		gn, wn := g.(map[string]any), want[i].(map[string]any)
+		if len(gn) != len(v1PipelineNode) {
+			t.Errorf("node %d keys %v, want %v", i, gn, v1PipelineNode)
+		}
+		for _, k := range v1PipelineNode {
+			wv, ok := wn[k]
+			if !ok {
+				wv = "" // /api/pipeline omits an empty group, skip_on or only
+			}
+			if fmt.Sprint(gn[k]) != fmt.Sprint(wv) {
+				t.Errorf("node %d %s: %v, /api/pipeline %v", i, k, gn[k], wv)
+			}
+		}
+	}
+	if w := v1Get(t, "GET", "/api/v1/pipeline?project=ffffffffffff", ""); w.Code != 400 {
+		t.Errorf("unknown project: %d", w.Code)
+	}
+	req := httptest.NewRequest("GET", "/api/v1/pipeline?project="+id, nil)
+	req.Host = "127.0.0.1:8423"
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	cw := httptest.NewRecorder()
+	handle(cw, req)
+	if cw.Code != 403 {
+		t.Errorf("cross-site: %d", cw.Code)
 	}
 }
