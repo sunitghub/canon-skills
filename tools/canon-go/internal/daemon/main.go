@@ -169,6 +169,8 @@ type session struct {
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 	cols, rows    int       // t-6291: last size from /resize (0 = unknown) — Save & End's screen model needs it to wrap and scroll like the terminal
 	menuSince     time.Time // t-7c4f: when a pending on-screen menu was first seen (zero when none)
+	promptHook    bool      // t-d2ab: this Claude Code session carries the daemon's UserPromptSubmit hook (its `prompt` ping)
+	promptAt      time.Time // t-d2ab: the last `prompt` ping (a submitted prompt); never a status
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
 	previewRoot string // t-b19b: symlink-validated dir under projectRoot or the session's own worktree cwd (t-8e73); set once via /preview-root
@@ -1111,7 +1113,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming, copilotLog: copilotLog, stage: stage, model: claudeModel + copilotPick,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
-		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
+		lastActivity: time.Now(),    // not the zero value, or it reads as instantly idle
+		promptHook:   hookDir != "", // t-d2ab: only a claude session gets the hook settings
 	}
 	// t-75cb: the binary actually run and its full argv (flags, ids, the fixed prompt —
 	// never a token: the status token rides in the settings FILE) so a wrong flag is
@@ -4009,8 +4012,15 @@ func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 			}},
 		})
 	}
+	// t-d2ab: UserPromptSubmit pings `prompt` (a submitted prompt, the Build switch's "line taken" signal); it never sets a status.
+	promptConf := filepath.Join(dir, "prompt.conf")
+	if err := os.WriteFile(promptConf, []byte(fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"prompt\"\nnoproxy = \"*\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, statusToken)), 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	promptHook := []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": "curl -K " + shellQuote(promptConf) + " >/dev/null 2>&1 || true"}}}}
 	// t-e115: no greyed prompt suggestions in a Cockpit session (the env var sessionEnv sets wins on 2.1.238+; this covers older versions).
-	hook := map[string]any{"hooks": map[string]any{"Notification": entries}, "promptSuggestionEnabled": false}
+	hook := map[string]any{"hooks": map[string]any{"Notification": entries, "UserPromptSubmit": promptHook}, "promptSuggestionEnabled": false}
 	data, err := json.Marshal(hook)
 	if err != nil {
 		os.RemoveAll(dir)
@@ -4633,6 +4643,13 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *sessio
 		return
 	}
 	status := strings.TrimSpace(string(body))
+	if status == "prompt" { // t-d2ab: the UserPromptSubmit hook: a timestamp for the Build switch, never a status change
+		se.mu.Lock()
+		se.promptAt = time.Now()
+		se.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if !validStatuses[status] {
 		http.Error(w, "unknown status", http.StatusBadRequest)
 		return
@@ -4657,7 +4674,7 @@ func typeLine(se *session, text string) error {
 
 // switchToBuild (t-3425, user 2026-11-14: switch at approval): when a claude or copilot session that started on the Plan model reaches
 // the prompt (awaiting-input) and its plan now carries sprint approve's record, it types `/model <build>` once, then one line that
-// continues the build, and records implement.started. Only at rest (waitAtRest): never while the agent works or the person types, never
+// continues the build, and records implement.started. Only at rest (waitAtRestWhy): never while the agent works or the person types, never
 // with a menu open; never twice (the session's stage becomes build); pi has no /model and is never switched.
 func (s *server) switchToBuild(se *session) {
 	agent := tierAgent(se.agent)
@@ -4697,36 +4714,72 @@ func (s *server) switchToBuild(se *session) {
 	se.mu.Lock()
 	from := se.model
 	se.mu.Unlock()
-	// t-9831: a line the session never took ends the switch: stage build (a later turn end types nothing into a session the person
-	// now drives), no implement.started, and the session asks for the person (the card shows Needs you).
-	giveUp := func(kind, now string) {
+	// t-d2ab: every end of the switch is one build.switch event (canon events, the card later), so a stall says why.
+	report := func(line, outcome string, extra map[string]string) {
+		d := map[string]string{"line": line, "outcome": outcome}
+		for k, v := range extra {
+			d[k] = v
+		}
+		se.emit("build.switch", d)
+	}
+	// t-9831/t-d2ab: once the switch has typed into the session, a failure ends it: stage build (a later turn end types nothing into a
+	// session the person now drives), no implement.started, and the session asks for the person (the card shows Needs you).
+	giveUp := func(line, now string) {
 		done = true
 		se.mu.Lock()
 		se.stage, se.model = "build", now
 		se.mu.Unlock()
-		se.debugf("build switch: %s not taken, gave up, needs you", kind)
+		se.debugf("build switch: %s line not taken, gave up, needs you", line)
 		se.setStatus("needs-you")
 	}
+	notAtRest := func(line string) bool {
+		why, ms := waitAtRestWhy(se)
+		if why == "" {
+			return false
+		}
+		se.debugf("build switch: %s line: not at rest (%s, %d ms since activity)", line, why, ms)
+		report(line, "not_at_rest", map[string]string{"reason": why, "quiet_ms": strconv.FormatInt(ms, 10)})
+		return true
+	}
+	typed := false // /model went through: from here a failure is giveUp, never a silent return
 	if model != from {
-		if !waitAtRest(se) {
+		if notAtRest("model") {
 			return
 		}
-		if taken, err := typeConfirmed(se, "/model line", "/model "+model); err != nil {
-			return
-		} else if !taken {
-			giveUp("/model line", from)
+		taken, attempts, err := typeConfirmed(se, "/model line", "/model "+model, false)
+		if err != nil {
+			report("model", "write_error", nil)
 			return
 		}
+		if !taken {
+			report("model", "not_taken", map[string]string{"attempts": strconv.Itoa(attempts)})
+			giveUp("model", from)
+			return
+		}
+		typed = true
 		time.Sleep(time.Second) // let the CLI take the model before the next line
 	}
 	// sprint approve told the agent to end its turn, so the continue line is typed even when the model is already Build's (reviewer t-3425)
-	if !waitAtRest(se) {
+	if notAtRest("continue") {
+		if typed {
+			giveUp("continue", model)
+		}
 		return
 	}
-	if taken, err := typeConfirmed(se, "continue line", "Plan approved: continue the build ("+se.ticket+") on "+model+"."); err != nil {
+	se.mu.Lock()
+	hook := se.promptHook
+	se.mu.Unlock()
+	taken, attempts, err := typeConfirmed(se, "continue line", "Plan approved: continue the build ("+se.ticket+") on "+model+".", hook)
+	if err != nil {
+		report("continue", "write_error", nil)
+		if typed {
+			giveUp("continue", model)
+		}
 		return
-	} else if !taken {
-		giveUp("continue line", model)
+	}
+	if !taken {
+		report("continue", "not_taken", map[string]string{"attempts": strconv.Itoa(attempts)})
+		giveUp("continue", model)
 		return
 	}
 	done = true
@@ -4734,6 +4787,7 @@ func (s *server) switchToBuild(se *session) {
 	se.stage, se.model = "build", model
 	se.mu.Unlock()
 	se.debugf("build switch: %s -> %s (%s)", from, model, source)
+	report("continue", "started", nil)
 	se.emit("implement.started", map[string]string{"model": model, "tier": stage, "source": source})
 }
 
@@ -4746,34 +4800,43 @@ var confirmWait = 5 * time.Second
 // agent writes nothing, so silence means the line was dropped or left as a draft; the agent's echo of the text comes before the Enter
 // and never counts. Not taken: Enter alone (submits a draft, does nothing on an empty prompt), then the text once more: at most two
 // typings and one lone Enter, so a line is never doubled. The error is a PTY write error only.
-func typeConfirmed(se *session, kind, text string) (bool, error) {
+// t-d2ab: with byPrompt (a Claude Code session with the UserPromptSubmit hook), only the hook's `prompt` ping or the person's input
+// after the Enter counts: Windows' ConPTY redraws output after a line Claude Code never submitted. attempts counts typings and lone Enters.
+func typeConfirmed(se *session, kind, text string, byPrompt bool) (bool, int, error) {
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			se.debugf("build switch: %s not taken (attempt %d), retrying", kind, attempt)
 		}
 		if attempt != 1 {
-			if _, err := se.pty.Write([]byte(text)); err != nil {
-				return false, err
+			if err := switchWrite(se, text); err != nil {
+				return false, attempt, err
 			}
 			time.Sleep(300 * time.Millisecond) // t-cd06: Enter as a separate write
 		}
 		mark := time.Now()
-		if _, err := se.pty.Write([]byte("\r")); err != nil {
-			return false, err
+		if err := switchWrite(se, "\r"); err != nil {
+			return false, attempt, err
 		}
-		if activitySince(se, mark, confirmWait) {
-			return true, nil
+		if activitySince(se, mark, confirmWait, byPrompt) {
+			return true, attempt + 1, nil
 		}
 	}
-	return false, nil
+	return false, 3, nil
 }
 
-// activitySince reports whether the session showed output or input after mark, waiting up to wait (t-9831).
-func activitySince(se *session, mark time.Time, wait time.Duration) bool {
+// switchWrite is the Build switch's one write into the session's PTY (t-d2ab: a var so a test can make a write fail).
+var switchWrite = func(se *session, s string) error { _, err := se.pty.Write([]byte(s)); return err }
+
+// activitySince reports whether the session showed output or input after mark, waiting up to wait (t-9831); byPrompt (t-d2ab) counts
+// only a `prompt` ping or the person's input, never output.
+func activitySince(se *session, mark time.Time, wait time.Duration, byPrompt bool) bool {
 	deadline := mark.Add(wait)
 	for {
 		se.mu.Lock()
 		seen, exited := se.lastActivity.After(mark), se.exited
+		if byPrompt {
+			seen = se.promptAt.After(mark) || se.humanInputAt.After(mark)
+		}
 		se.mu.Unlock()
 		if seen {
 			return true
@@ -4805,22 +4868,33 @@ var (
 	restWait  = 30 * time.Second
 )
 
-// waitAtRest waits until se is at the prompt and quiet (awaiting-input, no menu, not exiting or being saved, no output or input for
-// restQuiet), checked under the lock each time, and reports whether it got there within restWait.
-func waitAtRest(se *session) bool {
+// waitAtRestWhy waits until se is at the prompt and quiet (awaiting-input, no menu, not exiting or being saved, no output or input
+// for restQuiet), checked under the lock each time, within restWait. It returns "" at rest, else why it stopped (t-d2ab, for the
+// build.switch event): status:<s>, menu, exited, reaping or not_quiet; quietMs is the time since the last output or input.
+func waitAtRestWhy(se *session) (string, int64) {
 	deadline := time.Now().Add(restWait)
 	for {
 		se.mu.Lock()
-		ready := se.status == "awaiting-input" && !se.menuPendingLocked() && !se.exited && !se.reaping
-		quiet := time.Since(se.lastActivity) >= restQuiet
+		why := ""
+		switch {
+		case se.exited:
+			why = "exited"
+		case se.reaping:
+			why = "reaping"
+		case se.status != "awaiting-input":
+			why = "status:" + se.status
+		case se.menuPendingLocked():
+			why = "menu"
+		}
+		since := time.Since(se.lastActivity)
 		se.mu.Unlock()
 		switch {
-		case !ready:
-			return false
-		case quiet:
-			return true
+		case why != "":
+			return why, since.Milliseconds()
+		case since >= restQuiet:
+			return "", since.Milliseconds()
 		case time.Now().After(deadline):
-			return false
+			return "not_quiet", since.Milliseconds()
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

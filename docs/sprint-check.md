@@ -194,7 +194,10 @@ sprint agent without leaving the browser — no second terminal.
   step and agent, passed as `--model` (Claude Code gets the registry alias; Pi gets
   none). When a session that started on the Plan model reaches the prompt after
   approval (no menu open, not waiting on you), the daemon types `/model <build>`
-  once, then a line that continues the build, and records `implement.started`.
+  once, then a line that continues the build, and records `implement.started` only once
+  the session took that line (Claude Code: its `UserPromptSubmit` hook, or your own typing;
+  otherwise new output). Every end of the switch is a `build.switch` event (`canon events`)
+  naming the outcome and why; a line the session never took turns it Needs you (t-d2ab).
   `Gate model:` sets only the close gates. The *parse* is shared with
   `sprint-headless` (`tools/gate-model.sh`, pinned across the two runtimes by
   `tests/gate-model-parity.sh`), but the disposition on a malformed value differs

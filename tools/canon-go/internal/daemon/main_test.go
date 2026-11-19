@@ -1028,6 +1028,15 @@ func TestHookSettingsFile(t *testing.T) {
 	if strings.Contains(string(raw), "sess-token-abc") {
 		t.Errorf("session token leaked into settings.json: %s", raw)
 	}
+	// t-d2ab: UserPromptSubmit posts `prompt` (a submitted prompt, the Build switch's taken signal) with the status-only token
+	up := parsed.Hooks["UserPromptSubmit"]
+	if len(up) != 1 || len(up[0].Hooks) != 1 || !strings.Contains(up[0].Hooks[0].Command, "prompt.conf") {
+		t.Fatalf("want one UserPromptSubmit hook running prompt.conf, got %+v", up)
+	}
+	pc, err := os.ReadFile(filepath.Join(dir, "prompt.conf"))
+	if err != nil || !strings.Contains(string(pc), `data = "prompt"`) || !strings.Contains(string(pc), "Bearer sess-token-abc") || !strings.Contains(string(pc), "/session/sid123/status") {
+		t.Fatalf("prompt.conf: %q (%v)", pc, err)
+	}
 	// t-e115: no greyed prompt suggestions in a Cockpit claude session (one Tab/Right + Enter would send an agent-written line)
 	var top map[string]any
 	_ = json.Unmarshal(raw, &top)
@@ -9403,6 +9412,197 @@ func TestSwitchToBuildSlowButTaken(t *testing.T) {
 }
 
 func readOr(f string) string { b, _ := os.ReadFile(f); return string(b) }
+
+// buildSwitchEvents is the build.switch events recorded today under home, as "line outcome key=value..." strings (t-d2ab).
+func buildSwitchEvents(home string) []string {
+	b, _ := os.ReadFile(filepath.Join(home, "events", time.Now().UTC().Format("2006-01-02")+".jsonl"))
+	var out []string
+	for _, l := range strings.Split(string(b), "\n") {
+		var e struct {
+			Kind string
+			Data map[string]string
+		}
+		if json.Unmarshal([]byte(l), &e) != nil || e.Kind != "build.switch" {
+			continue
+		}
+		s := e.Data["line"] + " " + e.Data["outcome"]
+		for _, k := range []string{"reason", "attempts"} {
+			if v, ok := e.Data[k]; ok {
+				s += " " + k + "=" + v
+			}
+		}
+		if _, ok := e.Data["quiet_ms"]; ok {
+			s += " quiet_ms"
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// t-d2ab (VM 2026-11-19, 0.69.2: the continue line never reached Claude Code yet implement.started was recorded, and nothing said why):
+// every end of the switch is one build.switch event. Protects the Cockpit daemon's Build switch at approval.
+func TestSwitchToBuildRecordsEachOutcome(t *testing.T) {
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 400*time.Millisecond)
+	cases := []struct{ name, tier, body, want string }{
+		{"started", "Tier: normal | Plan model: sonnet | Build model: sonnet", `  printf 'took: %s\n' "$l"`, "continue started"},
+		{"not taken", "Tier: normal | Plan model: sonnet | Build model: sonnet", `  :`, "continue not_taken attempts=3"},
+		{"model not taken", "Tier: normal | Plan model: haiku | Build model: sonnet", `  :`, "model not_taken attempts=3"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("CANON_HOME", home)
+			bin, argv, _ := fakeTakeAgent(t, c.body)
+			s, se, _, _ := buildSwitchSessionBin(t, c.tier, "", bin, argv)
+			se.setStatus("awaiting-input")
+			s.switchToBuild(se)
+			if got := buildSwitchEvents(home); len(got) != 1 || got[0] != c.want {
+				t.Fatalf("build.switch events %q, want [%q]", got, c.want)
+			}
+		})
+	}
+	// not at rest before /model: the reason and quiet_ms, and today's silent retry (stage plan, no needs-you)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	bin, argv, _ := fakeTakeAgent(t, `  :`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
+	se.setStatus("running")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	stage, st := se.stage, se.status
+	se.mu.Unlock()
+	if got := buildSwitchEvents(home); len(got) != 1 || got[0] != "model not_at_rest reason=status:running quiet_ms" || stage != "plan" || st == "needs-you" {
+		t.Fatalf("events %q stage %q status %q: want one not_at_rest status:running, stage plan, not needs-you", got, stage, st)
+	}
+}
+
+// t-d2ab (evaluator: write_error had no test): a PTY write error is a write_error event; after /model went through it also ends in
+// needs-you on the Build model; on the /model line itself the switch returns as today (stage plan, retried next turn end).
+func TestSwitchToBuildWriteError(t *testing.T) {
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	orig := switchWrite
+	t.Cleanup(func() { switchWrite = orig })
+	for _, c := range []struct{ name, failOn, want, stage, status, model string }{
+		{"continue line after /model", "Plan approved", "continue write_error", "build", "needs-you", "sonnet"},
+		{"the /model line", "/model", "model write_error", "plan", "awaiting-input", "haiku"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("CANON_HOME", home)
+			switchWrite = func(se *session, s string) error {
+				if strings.HasPrefix(s, c.failOn) {
+					return fmt.Errorf("pty closed")
+				}
+				return orig(se, s)
+			}
+			bin, argv, _ := fakeTakeAgent(t, `  printf 'took: %s\n' "$l"`)
+			s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
+			se.setStatus("awaiting-input")
+			s.switchToBuild(se)
+			se.mu.Lock()
+			stage, st, model := se.stage, se.status, se.model
+			se.mu.Unlock()
+			got := buildSwitchEvents(home)
+			if len(got) != 1 || got[0] != c.want || stage != c.stage || st != c.status || model != c.model || implementStartedCount(home) != 0 {
+				t.Fatalf("events %q stage %q status %q model %q: want [%q], %s, %s, %s, no implement.started", got, stage, st, model, c.want, c.stage, c.status, c.model)
+			}
+		})
+	}
+}
+
+// t-d2ab: once /model went through, the session never going quiet again ends in needs-you on the Build model, not a silent return.
+func TestSwitchToBuildNotAtRestAfterModelGivesUp(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 300*time.Millisecond, 1500*time.Millisecond)
+	confirmWaitFor(t, 500*time.Millisecond)
+	// answers /model, then keeps writing (a session that never goes quiet)
+	bin, argv, _ := fakeTakeAgent(t, `  printf 'took: %s\n' "$l"
+  case "$l" in /model*) ( while :; do printf '.'; sleep 0.1; done ) & ;; esac`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	stage, st, model := se.stage, se.status, se.model
+	se.mu.Unlock()
+	got := buildSwitchEvents(home)
+	if len(got) != 1 || got[0] != "continue not_at_rest reason=not_quiet quiet_ms" || stage != "build" || st != "needs-you" || model != "sonnet" || implementStartedCount(home) != 0 {
+		t.Fatalf("events %q stage %q status %q model %q implement.started %d: want continue not_at_rest not_quiet, build, needs-you, sonnet, 0", got, stage, st, model, implementStartedCount(home))
+	}
+}
+
+// t-d2ab: with the UserPromptSubmit hook, output after the Enter is not enough (Windows' ConPTY redraws after a line Claude Code never
+// submitted); the hook's prompt ping or the person's input is. The ping never changes the session's status.
+func TestSwitchToBuildPromptHookIsTheTakenSignal(t *testing.T) {
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 400*time.Millisecond)
+	line := "Plan approved: continue the build (t-ab12) on sonnet."
+	run := func(t *testing.T, signal func(se *session)) (*session, string, []string) {
+		home := t.TempDir()
+		t.Setenv("CANON_HOME", home)
+		bin, argv, recv := fakeTakeAgent(t, `  printf 'took: %s\n' "$l"`) // output for every line: the old rule would call it taken
+		s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+		se.mu.Lock()
+		se.promptHook = true
+		se.mu.Unlock()
+		se.setStatus("awaiting-input")
+		if signal != nil {
+			go func() {
+				for i := 0; i < 200; i++ {
+					if countLines(t, recv, line) > 0 {
+						signal(se)
+						return
+					}
+					time.Sleep(10 * time.Millisecond)
+				}
+			}()
+		}
+		s.switchToBuild(se)
+		return se, home, buildSwitchEvents(home)
+	}
+	t.Run("output without a ping is not taken", func(t *testing.T) {
+		se, home, got := run(t, nil)
+		se.mu.Lock()
+		st := se.status
+		se.mu.Unlock()
+		if len(got) != 1 || got[0] != "continue not_taken attempts=3" || st != "needs-you" || implementStartedCount(home) != 0 {
+			t.Fatalf("events %q status %q: want not_taken, needs-you", got, st)
+		}
+	})
+	t.Run("a prompt ping after the Enter is taken", func(t *testing.T) {
+		_, home, got := run(t, func(se *session) { se.mu.Lock(); se.promptAt = time.Now(); se.mu.Unlock() })
+		if len(got) != 1 || got[0] != "continue started" || implementStartedCount(home) != 1 {
+			t.Fatalf("events %q: want continue started", got)
+		}
+	})
+	t.Run("the person's input after the Enter is taken", func(t *testing.T) {
+		_, _, got := run(t, func(se *session) { se.mu.Lock(); se.humanInputAt = time.Now(); se.mu.Unlock() })
+		if len(got) != 1 || got[0] != "continue started" {
+			t.Fatalf("events %q: want continue started", got)
+		}
+	})
+	t.Run("the prompt ping never changes the status", func(t *testing.T) {
+		t.Setenv("CANON_HOME", t.TempDir())
+		pbin, pargv, _ := fakeTakeAgent(t, `  :`)
+		_, se, _, base := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", pbin, pargv)
+		se.setStatus("awaiting-input")
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+se.sid+"/status", strings.NewReader("prompt"))
+		req.Header.Set("Authorization", "Bearer "+se.statusToken)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		se.mu.Lock()
+		st, at := se.status, se.promptAt
+		se.mu.Unlock()
+		if r.StatusCode != http.StatusNoContent || st != "awaiting-input" || at.IsZero() {
+			t.Fatalf("prompt ping: code %d status %q promptAt %v: want 204, awaiting-input, set", r.StatusCode, st, at)
+		}
+	})
+}
 
 // t-9831 (decision 2026-11-19): the person typing after the Enter counts as taken: they are acting, so the switch types no more.
 func TestSwitchToBuildHumanInputCountsAsTaken(t *testing.T) {
