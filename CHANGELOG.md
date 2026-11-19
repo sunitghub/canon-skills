@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.5] - 2026-11-19
+
+- Changed: the Cockpit's **Sprint progress** card is quieter and truthful (t-985c). The current step has no box: its dot pulses in its colour (red too, more slowly, when it waits on you) and its status moves to the row's tooltip ("Reviewer: Running · attempt 2 · started 10:30 AM"). Each step that has started shows its start time on the right; the event list under the card is gone. The card now moves to the close when `sprint pre-gate-check` first runs (new `close.started` event), clears a "record your manual check" refusal once `sprint manual-qa` records it (new `manual_qa.recorded` event), and shows a Build switch whose "continue" line did not land in red on Build instead of "Implementing". Daemon change: after `canon update`, press Admin's **Restart Daemon**.
+
 ## [0.69.4] - 2026-11-19
 
 - Fixed: the Cockpit's Build switch (after you approve a plan) now counts its "continue the build" line as taken only when Claude Code reports a submitted prompt (a new `UserPromptSubmit` hook in the session's settings) or you type, not on any screen output. On Windows a redraw had counted, so the card said Implementing while the line never reached Claude Code. Once `/model` went through, any later failure turns the session Needs you. Every end of the switch is a new `build.switch` event (`canon events`) with the outcome (`started`, `not_taken`, `not_at_rest`, `write_error`) and why (the session's status, a menu, output that never went quiet, attempts). Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-d2ab).
