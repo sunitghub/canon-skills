@@ -9404,6 +9404,40 @@ func TestSwitchToBuildSlowButTaken(t *testing.T) {
 
 func readOr(f string) string { b, _ := os.ReadFile(f); return string(b) }
 
+// t-9831 (reviewer Consider): a raw-mode agent draws each keystroke itself, as Claude Code does, but never takes the line: its echo of
+// the text comes before the Enter and must not confirm it. Fails if the switch's mark moves before the text is typed.
+func TestSwitchToBuildEchoAloneDoesNotConfirm(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	dir := t.TempDir()
+	argv, recv, bin := filepath.Join(dir, "argv.txt"), filepath.Join(dir, "recv.txt"), filepath.Join(dir, "echo-agent.sh")
+	script := "#!/bin/bash\n" +
+		"printf 'ARGC:%s\\n' \"$#\" > \"" + argv + ".tmp\" && mv \"" + argv + ".tmp\" \"" + argv + "\"\n" +
+		"stty -echo -icanon -icrnl min 1\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r -s -n1 -d '' c; do\n" +
+		"  if [ \"$c\" = $'\\r' ] || [ \"$c\" = $'\\n' ]; then printf 'ENTER\\n' >> \"" + recv + "\"; continue; fi\n" +
+		"  printf '%s' \"$c\"\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	out, st := string(se.buf), se.status
+	se.mu.Unlock()
+	if !strings.Contains(out, "continue the build") {
+		t.Fatalf("the fake did not draw the typed text: %q", out)
+	}
+	if got := countLines(t, recv, "ENTER"); got != 3 || st != "needs-you" || implementStartedCount(home) != 0 {
+		t.Fatalf("Enters %d status %q implement.started %d: want 3 (two typings, one lone), needs-you, 0", got, st, implementStartedCount(home))
+	}
+}
+
 // t-3425 (reviewer Act On 1): when the Build model is the one the session already runs on, sprint approve still told the agent to end
 // its turn, so the continue line is typed (without /model); otherwise the session would stall. Protects live sessions at approval.
 func TestSwitchToBuildSameModelStillContinues(t *testing.T) {
