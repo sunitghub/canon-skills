@@ -31,6 +31,9 @@ version="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null)" || version=""
 re='^[0-9]+\.[0-9]+\.[0-9]+$'
 [[ "$version" =~ $re ]] || die "VERSION must be X.Y.Z (got '$version')"
 tag="v$version"
+# t-5ed4: a fragment still on HEAD is an entry this release's notes would leave out
+nfrag="$(git_ ls-tree -r --name-only HEAD -- changelog.d | grep -cE '^changelog\.d/[^/]+\.md$' || true)"
+[ "${nfrag:-0}" -eq 0 ] || die "HEAD tracks $nfrag changelog fragment(s) in changelog.d/ that no release section holds; build the release commit with scripts/changelog-release.sh <X.Y.Z> first"
 
 # the notes: this version's CHANGELOG section, found by its dated header (`## [0.3.0] - 2026-10-08`, never `[0.3.01]` or `[0.3.0-rc1]`)
 # awk reads the file itself: piping into an awk that exits at the next header SIGPIPEs the writer, and under pipefail that

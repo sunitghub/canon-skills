@@ -115,6 +115,14 @@ path_forms_report() {
   echo "path forms (advisory):${hits:- none}"
 }
 
+# t-5ed4: changelog_report <base> prints the `changelog (advisory)` text, only in canon's repo (HEAD tracks scripts/changelog-release.sh) and
+# only when the sprint's diff changes CHANGELOG.md: there a sprint writes changelog.d/<id>.md, so two tickets never conflict on one file.
+changelog_report() {
+  git cat-file -e "HEAD:scripts/changelog-release.sh" 2>/dev/null || return 0
+  git diff --quiet --no-renames "$1" HEAD -- CHANGELOG.md && return 0
+  echo " | changelog (advisory): CHANGELOG.md changed; write the entry as changelog.d/${PRE_GATE_ID:-<id>}.md instead (the release builds the section)"
+}
+
 run_checks() {
   local base files f line="pre-gate" fails="" out rc=0 sc=() nd=() gd=() d
   if [[ -n "${PRE_GATE_BASE-}" ]]; then base="$PRE_GATE_BASE"
@@ -179,6 +187,7 @@ run_checks() {
   line+=" | $(size_report "$base")"
   line+=" | $(agent_file_report "$base")"
   line+=" | $(path_forms_report "$base")"
+  line+="$(changelog_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
   return "$rc"

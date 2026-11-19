@@ -337,5 +337,19 @@ reset; printf '#!/usr/bin/env bash\ntrue\n' > tools/x.sh; commit
 run "$ID"; assert_contains "$out" "| path forms (advisory): none" "pre-gate-check: no path rule written reads none"
 reset
 
+# --- t-5ed4: the advisory changelog field. Protects the pre-gate line every close prints: in canon's repo (it tracks scripts/changelog-release.sh)
+# a sprint diff that edits CHANGELOG.md is told to write changelog.d/<id>.md, so two tickets never conflict there; elsewhere nothing is said.
+printf '# Changelog\n' > CHANGELOG.md; commit; echo '- an entry' >> CHANGELOG.md; commit
+run "$ID"; [[ "$code" == 0 ]] || fail "pre-gate-check: the changelog field changed the exit code ($code): $out"
+[[ "$out" != *"changelog (advisory)"* ]] || fail "pre-gate-check: a project without scripts/changelog-release.sh got the changelog line: $out"
+reset; mkdir -p scripts; printf '#!/usr/bin/env bash\n' > scripts/changelog-release.sh; printf '# Changelog\n' > CHANGELOG.md; commit
+BASE_CL="$BASE"; BASE="$(git rev-parse HEAD)"
+mkdir -p changelog.d; echo '- an entry' > changelog.d/t-abcd.md; commit
+run "$ID"; [[ "$out" != *"changelog (advisory)"* ]] || fail "pre-gate-check: a fragment alone got the changelog line: $out"
+echo '- an entry' >> CHANGELOG.md; commit
+run "$ID"; [[ "$code" == 0 ]] || fail "pre-gate-check: the changelog field changed the exit code ($code): $out"
+assert_contains "$out" "| changelog (advisory): CHANGELOG.md changed; write the entry as changelog.d/$ID.md instead" "pre-gate-check: a canon sprint editing CHANGELOG.md is told to write a fragment"
+BASE="$BASE_CL"; reset
+
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"
