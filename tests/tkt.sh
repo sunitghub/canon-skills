@@ -40,13 +40,13 @@ git check-ignore -q .tickets/t-bi/.before-import/plan.md || fail "git does not i
 rm -rf .tickets/t-bi
 printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n' > .tickets/.gitignore
 "$TKT" create "Gains before-import" >/dev/null
-assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/')" "$(cat .tickets/.gitignore)"
+assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/\n*/gate-snapshot.txt\n*/gate-snapshot.txt.scope')" "$(cat .tickets/.gitignore)"
 "$TKT" create "Gains it once" >/dev/null
-assert_eq 1 "$(grep -cxF '.before-import/' .tickets/.gitignore)"
+assert_eq 1 "$(grep -cxF '.before-import/' .tickets/.gitignore)"; assert_eq 1 "$(grep -cxF '*/gate-snapshot.txt' .tickets/.gitignore)"   # t-b775: a tracked .tickets/ never commits a gate snapshot
 # t-d8af: a canon-seeded block whose last line has no newline (or ends in NUL bytes) gets each new entry on its own line
 printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE' > .tickets/.gitignore
 "$TKT" create "No final newline" >/dev/null
-assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/')" "$(cat .tickets/.gitignore)"
+assert_eq "$(printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/\n*/gate-snapshot.txt\n*/gate-snapshot.txt.scope')" "$(cat .tickets/.gitignore)"
 
 # ...and it must never clobber a user's existing .tickets/.gitignore.
 preserve_project="$(make_project)"

@@ -96,7 +96,7 @@ _gate_scope_ticket_over() {
   tdir="$(dirname "$snap")"
   [[ -d "$tdir" ]] || return 0
   [[ -f "$tdir/ticket.md" ]] || return 1
-  st="$(tr -d '\r' < "$tdir/ticket.md" | awk '/^---$/ { fm++; next } fm == 1 && /^status: / { print substr($0, 9); exit }')"
+  st="$(awk '{ sub(/\r$/, "") } /^---$/ { fm++; next } fm == 1 && /^status: / { print substr($0, 9); exit }' "$tdir/ticket.md")"
   [[ "$st" == closed ]]
 }
 
