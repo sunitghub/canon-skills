@@ -33,7 +33,7 @@ assert_contains "$out" "refused"
 # t-11e6: one line and one, naming the gate's start and project; the internals are for CANON_DEBUG=1 only
 assert_contains "$out" "canon update: refused — a canon close gate (reviewer/evaluator) started at "
 assert_contains "$out" " in $(basename "$proj") is still registered."
-assert_contains "$out" "Run it again when it finishes; if no gate is running, it was interrupted and clears by "
+assert_contains "$out" "Run it again when it finishes. No gate running there? Clear it now: canon gate-scope clear; otherwise it clears by "
 [[ "$(printf '%s\n' "$out" | grep -c .)" -le 2 ]] || fail "the default refusal must be at most two lines: $out"
 [[ "$out" != *REAL\ home* && "$out" != *t-b7df* && "$out" != *"$scope"* && "$out" != *gate-snapshot.sh* ]] || fail "the default refusal must not carry the internals: $out"
 started="$(printf '%s' "$out" | sed -n 's/.*started at \([0-2][0-9]\):[0-5][0-9] in .*/\1/p')"; clears="$(printf '%s' "$out" | sed -n 's/.*clears by \([0-2][0-9]\):[0-5][0-9]\..*/\1/p')"
@@ -185,9 +185,44 @@ g env || fail "a scope older than the TTL (default 2h) must be stale, not block 
 real_env "$TOOL" pre "$snap" >/dev/null; f="$(ls "$reg"/*)"; rm -rf "$(sed -n 's/^dir=//p' "$f")"
 g env || fail "a scope whose scratch dir is gone must be stale"
 
+# t-b775 (VM 2026-11-19: two sessions closed without post; canon update and skills add refused for 2 h each): a record names its snapshot
+# (snap=, its last line), and once that ticket is closed or its folder is gone the scope is stale. Protects canon update / skills.sh /
+# uninstall after a close, and canon gate-scope clear as the way out of any record (older ones included).
+td="$scratch/proj/.tickets/t-ab12"; mkdir -p "$td"
+mkreg() { real_env bash -c 'source "$1"; gate_scope_create "$2" >/dev/null' _ "$ROOT/tools/gate-scope-lib.sh" "$1"; }   # what gate-snapshot.sh pre registers
+printf -- '---\nid: t-ab12\nstatus: in_progress\n---\n# x\n' > "$td/ticket.md"
+mkreg "$td/gate-snapshot.txt"; f="$(ls "$reg"/*)"
+[[ "$(tail -1 "$f")" == "snap=$(cd "$td" && pwd -P)/gate-snapshot.txt" ]] || fail "snap= must be the record's last line, the absolute snapshot path: $(cat "$f")"
+g env && fail "an open ticket's scope must still block"
+out="$(real_env run_fail "$CANON" update)"; assert_contains "$out" "No gate running there? Clear it now: canon gate-scope clear; otherwise it clears by "
+sed -i.bak 's/^status: in_progress$/status: closed/' "$td/ticket.md"; rm -f "$td/ticket.md.bak"; sdir="$(sed -n 's/^dir=//p' "$f")"
+g env || fail "a closed ticket's scope must be stale"
+[[ ! -e "$f" && ! -e "$sdir" ]] || fail "the closed ticket's record and scratch dir must be removed"
+printf -- '---\r\nid: t-ab12\r\nstatus: closed\r\n---\r\n# x\r\n' > "$td/ticket.md"; mkreg "$td/gate-snapshot.txt"
+g env || fail "a CRLF ticket.md that reads closed must be stale"
+printf -- '---\nid: t-ab12\nstatus: in_progress\n---\n# x\n' > "$td/ticket.md"; mkreg "$td/gate-snapshot.txt"
+rm -rf "$scratch/proj"
+g env || fail "a scope whose ticket folder is gone (a removed land worktree) must be stale"
+# a record without snap= (an older canon) keeps the old rules: it still blocks while fresh
+real_env "$TOOL" pre "$snap" >/dev/null; f="$(ls "$reg"/*)"; sed -i.bak '/^snap=/d' "$f"; rm -f "$f.bak"
+g env && fail "a fresh record without snap= must still block"
+# canon gate-scope clear: no terminal lists and keeps; y ends it; n keeps it; none registered says so
+out="$(real_env "$CANON" gate-scope clear < /dev/null)"; assert_contains "$out" "is registered."; assert_contains "$out" "(no terminal to ask: kept)"
+[[ -e "$f" ]] || fail "gate-scope clear with no terminal must keep the record"
+# the y/n answers need a pseudo-terminal from script(1); Git Bash on Windows has none, so they skip there, loudly (as in tkt-merge-pr.sh)
+if command -v script >/dev/null 2>&1; then
+tty_run() { local a="$1"; shift; if [[ "$(uname)" == Darwin ]]; then { sleep 1; printf '%s\n' "$a"; sleep 1; } | script -q /dev/null "$@"; else { sleep 1; printf '%s\n' "$a"; sleep 1; } | script -qec "$(printf '%q ' "$@")" /dev/null; fi; }   # the answer after the prompt is up   # BSD and util-linux script(1) differ
+out="$(tty_run n env HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_GATE_SCOPE_DIR="$reg" "$CANON" gate-scope clear)"; assert_contains "$out" "kept"
+[[ -e "$f" ]] || fail "gate-scope clear answered n must keep the record"
+sdir="$(sed -n 's/^dir=//p' "$f")"
+out="$(tty_run y env HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_GATE_SCOPE_DIR="$reg" "$CANON" gate-scope clear)"; assert_contains "$out" "ended"
+[[ ! -e "$f" && ! -e "$sdir" ]] || fail "gate-scope clear answered y must remove the record and its scratch dir"
+else echo "gate-scope: SKIP the y/n cases of gate-scope clear: no script(1) here"; rm -f "$f"; fi
+assert_contains "$(real_env "$CANON" gate-scope clear < /dev/null)" "No canon close gate is registered."
+
 # t-11e6: a control character in the working folder's name (a tab, an escape) never reaches the recorded project name, so it never reaches the terminal
 ctl="$scratch/ctl"$'\t'"x"$'\033'"y"; mkdir -p "$ctl"
 (cd "$ctl" && CANON_GATE_SCOPE_DIR="$scratch/registry-ctl" HOME="$realhome" CANON_HOME="$realhome/.canon" bash -c 'source "$1"; gate_scope_create "$2" >/dev/null' _ "$ROOT/tools/gate-scope-lib.sh" "$scratch/snap-ctl")
 recorded="$(sed -n 's/^project=//p' "$scratch"/registry-ctl/*)"
 [[ "$recorded" == "ctlxy" ]] || fail "the recorded project name must lose its control characters (ctl<TAB>x<ESC>y -> ctlxy): $(printf '%s' "$recorded" | od -c)"
-echo "gate-scope: ok (pre makes a scope, real-path canon update/skills/uninstall refused with reason and clear-time, pinned and read-only pass, post ends it, stale by age and by missing dir)"
+echo "gate-scope: ok (pre makes a scope, real-path canon update/skills/uninstall refused with reason and clear-time, pinned and read-only pass, post ends it, stale by age and by missing dir, by a closed or vanished ticket (t-b775), gate-scope clear)"

@@ -69,6 +69,8 @@ Usage:
                            --keep-data) and the install folder (a dirty or unpushed git clone is
                            never deleted), and on Windows the user PATH entry. --dry-run changes
                            nothing; with no terminal and no --yes it only prints the plan.
+  canon gate-scope clear   End a close gate (reviewer/evaluator) left registered, which makes canon update,
+                           skills and uninstall refuse: lists each one and asks before ending it.
   canon log verify         Check the activity log (~/.canon/events) against its day seals: one
                            line per day, intact, broken, missing or unsealed; exit 1 if any day is
                            broken or missing. A seal shows a day was not changed after it was
@@ -517,7 +519,7 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions events sprint stop restart wait update uninstall log completion version help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions events sprint stop restart wait update uninstall gate-scope log completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
@@ -549,7 +551,7 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','events','sprint','stop','restart','wait','update','uninstall','log','completion','version','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','events','sprint','stop','restart','wait','update','uninstall','gate-scope','log','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
       'status' { '--json' } 'sessions' { '--json' } 'sprint' { '--json' } 'events' { '--limit','--json' } 'stop' { '--force' } 'restart' { '--force' }
@@ -785,6 +787,10 @@ main() {
     wait) shift; wait_cmd "$@"; exit $? ;;       # t-b2ff: a subcommand never falls through to the start path and its folder guard
     update) shift; update_cmd "$@"; exit $? ;;
     uninstall) shift; exec bash "$SCRIPT_DIR/canon-uninstall.sh" "$@" ;;
+    gate-scope)   # t-b775: the way out of a close gate left registered (canon update's refusal names it)
+      [[ "${2:-}" == clear && $# -eq 2 ]] || { echo "Usage: canon gate-scope clear" >&2; exit 2; }
+      declare -F gate_scope_clear >/dev/null || { echo "canon gate-scope: this install has no gate-scope-lib.sh; nothing to clear" >&2; exit 1; }
+      gate_scope_clear; exit 0 ;;
     log) shift; log_cmd "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;

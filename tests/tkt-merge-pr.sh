@@ -558,9 +558,9 @@ assert_eq "$PRHEAD" "$(git rev-parse main)"; [[ "$(git status --porcelain --untr
 git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # t-41ff: an edit the merge does not touch survives it
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore; git reset -q --hard "$BASE"
-git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge changes, edited here: left alone
+git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge adds, untracked here: left alone
 out="$(ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
-assert_contains "$out" $'\n  change.txt\n  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'
+assert_contains "$out" $'\n  change.txt (untracked here: move it aside: mv change.txt change.txt.local)\n  Move each one aside as shown (it keeps your copy), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'
 assert_eq "$BASE" "$(git rev-parse main)"; assert_eq mine "$(cat change.txt)"; rm change.txt
 git checkout -q -b side                                                    # main checked out nowhere: the ref moves
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
@@ -652,10 +652,10 @@ assert_eq "" "$(git status --porcelain --untracked-files=no -- scripts/test.sh)"
 # Not identical: an untracked file, or ticket.md's title (the near miss of the field rule). Nothing changes; each is named.
 recon_setup; echo other > new.txt; before="$(tree_sig)"
 out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
-assert_contains "$out" $'\n  new.txt\n  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
+assert_contains "$out" $'\n  new.txt (untracked here: move it aside: mv new.txt new.txt.local)\n  Move each one aside as shown (it keeps your copy), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 recon_setup; sed -i.bak 's/^# Cloud ticket$/# Cloud ticket, renamed here/' "$f" && rm -f "$f.bak"; assert_grep '^# Cloud ticket, renamed here$' "$f"; before="$(tree_sig)"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md\n  Look at the changes'
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/ticket.md (untracked here: move it aside: mv .tickets/'"$id"$'/ticket.md .tickets/'"$id"$'/ticket.md.local)\n  Move each one aside'
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 sed -i.bak 's/^# Cloud ticket, renamed here$/# Cloud ticket/' "$f" && rm -f "$f.bak"
 # t-ab7e: a land close here (the user's VM, ToDo-Demo t-tgay) leaves this ticket's own close records newer than the PR's copies.
@@ -678,29 +678,35 @@ cmp -s "$W/own-eval" ".tickets/$id/eval-report.md" || fail "t-ab7e: CRLF ticket.
 cp "$W/f-closed" "$f"
 # Not closed here: the ticket's own file still refuses and is named; nothing changes.
 own_setup; sed -i.bak 's/^status: closed$/status: in_progress/' "$f" && rm -f "$f.bak"; before="$(tree_sig)"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md\n'; [[ "$out" != *"(fast-forward)"* ]] || fail "t-ab7e: in_progress still fast-forwarded: $out"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md (untracked here'; [[ "$out" != *"(fast-forward)"* ]] || fail "t-ab7e: in_progress still fast-forwarded: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"; cp "$W/f-closed" "$f"
 # Closed here but a blocker outside the folder: nothing changes, and only that file is named (never `git checkout --` for the close records).
 own_setup; echo other > new.txt; before="$(tree_sig)"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'would overwrite:\n  new.txt\n  Look at the changes'; [[ "$out" != *$'\n  .tickets/'"$id"/eval-report.md* ]] || fail "t-ab7e: the refusal named the ticket's own close record: $out"
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'would overwrite:\n  new.txt (untracked here: move it aside: mv new.txt new.txt.local)\n  Move each one aside'; [[ "$out" != *$'\n  .tickets/'"$id"/eval-report.md* ]] || fail "t-ab7e: the refusal named the ticket's own close record: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; assert_eq "$before" "$(tree_sig)"
 cmp -s "$W/own-eval" ".tickets/$id/eval-report.md" || fail "t-ab7e: a refused update changed the local eval-report.md"
 # Staged, or a symlink: the existing rules still refuse, closed here or not.
 own_setup; git add -f ".tickets/$id/eval-report.md"; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md (staged)\n'
 assert_eq "$BASE" "$(git rev-parse main)"; git reset -q -- ".tickets/$id/eval-report.md"
 own_setup; mv ".tickets/$id/eval-report.md" "$W/own-link"; ln -s "$W/own-link" ".tickets/$id/eval-report.md"
-out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md\n'
+out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  .tickets/'"$id"$'/eval-report.md (untracked here'
 [[ -L ".tickets/$id/eval-report.md" ]] || fail "t-ab7e: the local symlink was replaced"; assert_eq "$BASE" "$(git rev-parse main)"
 rm ".tickets/$id/eval-report.md"; cp "$W/eval0" ".tickets/$id/eval-report.md"
 cp "$W/f-open" "$f"
 echo "merge-pr: the ticket's own close records, closed here, are kept through the local update and recorded (t-ab7e)"
+# t-b775 (VM: an untracked HANDOFF.md the PR added; git checkout cannot drop it): an untracked blocker is named with the move-aside step;
+# beside a tracked one, both steps show. Protects the refusal of Check & merge.
+recon_setup; echo other > new.txt; echo mine >> scripts/test.sh; out="$(STUB_HEAD="$H" ff_merge)"
+assert_contains "$out" $'\n  new.txt (untracked here: move it aside: mv new.txt new.txt.local)\n'; assert_contains "$out" $'\n  scripts/test.sh\n'
+assert_contains "$out" "commit them or drop them (git checkout -- <file>)"; assert_eq "$BASE" "$(git rev-parse main)"
+git checkout -q -- scripts/test.sh; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # Staged, a symlink here (even to identical text), or a near miss of the log's name: each differs.
 recon_setup; git add -f new.txt; out="$(STUB_HEAD="$H" ff_merge)"; assert_contains "$out" $'\n  new.txt (staged)\n'; [[ "$out" != *"(fast-forward)"* ]] || fail "a refused update still printed a fast-forward: $out"
 assert_eq "$BASE" "$(git rev-parse main)"; git reset -q -- new.txt
 recon_setup; rm new.txt; echo same > "$W/same.txt"; ln -s "$W/same.txt" new.txt; out="$(STUB_HEAD="$H" ff_merge)"
-assert_contains "$out" $'\n  new.txt\n'; [[ -L new.txt ]] || fail "the local symlink was replaced"; assert_eq "$BASE" "$(git rev-parse main)"; rm new.txt
+assert_contains "$out" $'\n  new.txt (untracked here'; [[ -L new.txt ]] || fail "the local symlink was replaced"; assert_eq "$BASE" "$(git rev-parse main)"; rm new.txt
 recon_setup; echo mine > .claude/subagent-runs.jsonl.bak; out="$(STUB_HEAD="$H" ff_merge)"
-assert_contains "$out" $'\n  .claude/subagent-runs.jsonl.bak\n'; assert_eq mine "$(cat .claude/subagent-runs.jsonl.bak)"; assert_eq "$BASE" "$(git rev-parse main)"
+assert_contains "$out" $'\n  .claude/subagent-runs.jsonl.bak (untracked here'; assert_eq mine "$(cat .claude/subagent-runs.jsonl.bak)"; assert_eq "$BASE" "$(git rev-parse main)"
 # A PR path under a folder that is a symlink here is never followed: the file outside the repo stays (t-07b5: PR paths are untrusted).
 git -C "$B" checkout -q "$BASE"; mkdir -p "$B/lnk"; echo same2 > "$B/lnk/new2.txt"; git -C "$B" add lnk/new2.txt; git -C "$B" commit -qm "under a link"
 H2="$(git -C "$B" rev-parse HEAD)"; git -C "$B" push -qf origin "HEAD:refs/pull/7/head"; eval_ok "$H2"

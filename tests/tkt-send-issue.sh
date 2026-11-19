@@ -103,6 +103,16 @@ grep -qxF "4. Build it and run the tests; tick each acceptance item only when it
   || fail "the issue lacks the build and test line (t-67c5)"
 grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand." "$STUB_BODY" \
   || fail "the issue lacks the gates line (t-67c5)"
+# t-b775 (a cloud run that ran sprint complete before summary.md, committed mid-gate and added HANDOFF.md): the three close rules
+b775_lines() {
+  grep -qxF "   Follow skills/sprint/reference/complete-checklist.md; write .tickets/$id/summary.md before \`sprint complete\`." "$1" || fail "$2: the issue lacks the checklist/summary-first line (t-b775)"
+  grep -qxF "   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and \`sprint gate-snapshot post\` has run." "$1" || fail "$2: the issue lacks the no-commit-mid-gate line (t-b775)"
+  grep -qxF "   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository." "$1" || fail "$2: the issue lacks the never-add line (t-b775)"
+}
+b775_lines "$STUB_BODY" "normal ticket"
+idl="$("$TKT" create "Lite one" -t task)"; "$TKT" demo "$idl" on >/dev/null; "$TKT" send-issue "$idl" --dry-run > "$stub/lite-dry" 2>"$stub/lite-err" || true
+grep -qF "This is a Lite ticket (demo: true)" "$stub/lite-dry" || fail "the Lite dry run is not a Lite issue: $(head -5 "$stub/lite-dry") $(cat "$stub/lite-err")"
+id_n="$id"; id="$idl"; b775_lines "$stub/lite-dry" "Lite ticket"; id="$id_n"
 grep -qxF "6. Run \`tkt export $id\` and push nothing else for it: export prints where the ticket went." "$STUB_BODY" \
   || fail "the issue lacks the export line (t-67c5)"
 grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $id\`, and say in the PR which step failed and why." "$STUB_BODY" \

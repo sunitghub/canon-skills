@@ -227,6 +227,17 @@ out="$("$TKT" export "$id")"; assert_contains "$out" "commit it on the PR branch
 assert_file_exists "$T/.tickets/$id/evidence/cloud/machine.log"   # t-2560: written before the tracked-folder answer, so it rides in the PR
 assert_eq "1" "$(git --git-dir="$W/origin.git" branch --list "canon-results/*" | grep -c .)"
 
+# t-b775: in a clone that tracks .tickets/, import-issue hides canon's per-machine .tickets/.gitignore from git status (claude.ai's stop
+# hook asks to commit every untracked file), once, and a gate's snapshot files never show. Protects the cloud's first step.
+"$TKT" import-issue 57 --force >/dev/null 2>&1 || fail "import-issue in the tracked clone failed"
+"$TKT" import-issue 57 --force >/dev/null 2>&1 || fail "a second import-issue in the tracked clone failed"
+assert_file_exists "$T/.tickets/.gitignore"
+assert_eq 1 "$(grep -cxF '.tickets/.gitignore' "$T/.git/info/exclude")"
+touch ".tickets/$id/gate-snapshot.txt" ".tickets/$id/gate-snapshot.txt.scope"
+st="$(git status --porcelain --untracked-files=all)"
+[[ "$st" != *".tickets/.gitignore"* && "$st" != *"gate-snapshot"* ]] || fail "canon's per-machine files show in the cloud clone's git status: $st"
+rm -f ".tickets/$id/gate-snapshot.txt" ".tickets/$id/gate-snapshot.txt.scope"
+
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
 unset STUB_CLOUD
 L="$W/laptop2"; git clone -q "$W/origin.git" "$L" 2>/dev/null; cd "$L"
