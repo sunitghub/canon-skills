@@ -336,6 +336,34 @@ decisions_added_rows() {
   else printf '%s\n' "$out"; fi
 }
 
+# canon_tickets_ignore_lines — t-2f07: canon's seeded .tickets/.gitignore, one line each: one owner, read by tkt's ensure_tickets_dir (the new
+# file) and by late_docs_delta (a PR that only adds these lines after grading is late docs). The comment line marks a file canon seeded.
+canon_tickets_ignore_lines() {
+  printf '%s\n' '# canon runtime files — per-machine session state, never commit (t-2f53)' '.cockpit-*' 'ACTIVE' 'ACTIVE.beat' '.before-import/' \
+    '*/gate-snapshot.txt' '*/gate-snapshot.txt.scope'
+}
+
+# _tickets_ignore_canon_only <git-dir> <graded> <head> — t-2f07: true when .tickets/.gitignore changed from graded to head only by
+# canon's own seeded lines: every added line is one of them and every removed line reappears unchanged among the added ones (a missing
+# final newline re-adds the last line); the file may be new. A mode-only change, a symlink or anything else is false.
+_tickets_ignore_canon_only() {
+  local dir="$1" graded="$2" head="$3" d own l added="" removed="" seen=0
+  [[ "$(git -C "$dir" ls-tree "$head" -- .tickets/.gitignore 2>/dev/null | cut -d' ' -f1)" == 100644 ]] || return 1
+  d="$(git -C "$dir" -c core.quotepath=off diff --no-renames -U0 "$graded" "$head" -- .tickets/.gitignore 2>/dev/null)" || return 1
+  own="$(canon_tickets_ignore_lines)"
+  while IFS= read -r l; do
+    case "$l" in
+      '+++ '*|'--- '*|'@@'*|'diff '*|'index '*|'new file mode'*|'\'*) continue ;;
+      +*) l="${l#+}"; l="${l%$'\r'}"; [[ $'\n'"$own"$'\n' == *$'\n'"$l"$'\n'* ]] || return 1; added+="$l"$'\n'; seen=1 ;;
+      -*) l="${l#-}"; removed+="${l%$'\r'}"$'\n' ;;
+      *) return 1 ;;   # old mode / new mode lines and anything unexpected
+    esac
+  done <<< "$d"
+  (( seen )) || return 1
+  while IFS= read -r l; do [[ -z "$l" || $'\n'"$added" == *$'\n'"$l"$'\n'* ]] || return 1; done <<< "$removed"
+  return 0
+}
+
 # late_docs_delta <git-dir> <graded> <head> <ticket-id> [local] — t-fdb1: prints the files changed from graded to head, one per line.
 # Returns 0 when head descends from graded and every file is a merge-safe late doc, the audit log with lines only added, or sits in
 # .tickets/<ticket-id>/ (no dotfile component; an empty delta included), 1 when a file is not, or any changed path becomes a symlink or a submodule (they are the
@@ -350,7 +378,11 @@ late_docs_delta() {
   files="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files from ${graded:0:7} to ${head:0:7}: $files"; return 2; }
   other=""
-  while IFS= read -r p; do [[ -z "$p" ]] || late_doc_path "$p" "$id" "$mode" || other+="$p"$'\n'; done <<< "$files"
+  while IFS= read -r p; do
+    [[ -z "$p" ]] || late_doc_path "$p" "$id" "$mode" && continue
+    [[ "$p" == .tickets/.gitignore ]] && _tickets_ignore_canon_only "$dir" "$graded" "$head" && continue   # t-2f07: canon's own seeded lines only
+    other+="$p"$'\n'
+  done <<< "$files"
   local gone; gone="$(git -C "$dir" -c core.quotepath=off diff --no-renames --name-only --diff-filter=D "$graded" "$head" 2>&1)" \
     || { echo "git could not list the files deleted from ${graded:0:7} to ${head:0:7}: $gone"; return 2; }
   while IFS= read -r p; do [[ -n "$p" && "$p" != */* ]] && late_doc_path "$p" "$id" "$mode" && other+="$p (deleted)"$'\n'; done <<< "$gone"

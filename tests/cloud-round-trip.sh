@@ -238,6 +238,22 @@ st="$(git status --porcelain --untracked-files=all)"
 [[ "$st" != *".tickets/.gitignore"* && "$st" != *"gate-snapshot"* ]] || fail "canon's per-machine files show in the cloud clone's git status: $st"
 rm -f ".tickets/$id/gate-snapshot.txt" ".tickets/$id/gate-snapshot.txt.scope"
 
+# t-2f07 (t-giic: the cloud committed canon's two new .tickets/.gitignore lines after grading; import refused): a PR head whose only change
+# outside .tickets/<id>/ is canon's own seeded lines added to .tickets/.gitignore is late docs; a person's line or a removed canon line is not.
+# Protects `tkt import-results` and Check & merge (merge-pr calls the same late_docs_delta).
+LD="$W/latedocs"; git init -q -b main "$LD"; git -C "$LD" config user.name t; git -C "$LD" config user.email t@t
+mkdir -p "$LD/.tickets/t-ld01"; printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\nACTIVE\nACTIVE.beat\n.before-import/\n' > "$LD/.tickets/.gitignore"
+echo x > "$LD/.tickets/t-ld01/ticket.md"; echo code > "$LD/app.js"; git -C "$LD" add -f -A; git -C "$LD" commit -qm graded; LG="$(git -C "$LD" rev-parse HEAD)"
+ld() { bash -c 'source "$1"; late_docs_delta "$2" "$3" "$4" t-ld01 >/dev/null' _ "$ROOT/tools/ticket-root.sh" "$LD" "$LG" "$1"; }
+ldcase() { git -C "$LD" checkout -q "$LG"; eval "$1"; git -C "$LD" add -f -A; git -C "$LD" commit -qm case; local h; h="$(git -C "$LD" rev-parse HEAD)"; set +e; ld "$h"; local rc=$?; set -e; assert_eq "$2" "$rc"; }
+ldcase "printf '*/gate-snapshot.txt\n*/gate-snapshot.txt.scope\n' >> '$LD/.tickets/.gitignore'; echo s > '$LD/.tickets/t-ld01/summary.md'" 0
+ldcase "printf 'my-own-line\n' >> '$LD/.tickets/.gitignore'" 1
+ldcase "sed -i.bak '/^ACTIVE\$/d' '$LD/.tickets/.gitignore'; rm -f '$LD/.tickets/.gitignore.bak'" 1
+ldcase "printf '%s' \"\$(cat '$LD/.tickets/.gitignore')\" > '$LD/.tickets/.gitignore'; git -C '$LD' add -f -A; git -C '$LD' commit -qm nonl; printf '\n*/gate-snapshot.txt\n' >> '$LD/.tickets/.gitignore'" 0
+git -C "$LD" checkout -q "$LG"; git -C "$LD" rm -q --cached .tickets/.gitignore; git -C "$LD" commit -qm "no ignore file"; LG="$(git -C "$LD" rev-parse HEAD)"
+ldcase "printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\n*/gate-snapshot.txt\n' > '$LD/.tickets/.gitignore'" 0
+echo "cloud round trip: canon's own .tickets/.gitignore lines added after grading are late docs; anything else is not (t-2f07)"
+
 # Back on the laptop: files byte-for-byte, a local edit kept aside, github: kept, branch deleted, PR head checked.
 unset STUB_CLOUD
 L="$W/laptop2"; git clone -q "$W/origin.git" "$L" 2>/dev/null; cd "$L"
