@@ -21,7 +21,7 @@ export TMPDIR="$WORK/tmp" CANON_HOME="$WORK/home"
 unset CANON_TICKETS_DIR
 export GOCACHE="$WORK/gocache" GOPATH="$WORK/gopath" GOTOOLCHAIN=local GOFLAGS=-mod=mod
 
-ID=t-abcd
+ID="t-abcd"
 R="$WORK/repo"; mkdir -p "$R/tools" && cd "$R"
 git init -q -b main . && git config user.name t && git config user.email t@t
 mkdir -p ".tickets/$ID"; echo '# t' > ".tickets/$ID/ticket.md"

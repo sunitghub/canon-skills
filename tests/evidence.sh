@@ -13,7 +13,7 @@ WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" LC_ALL=C
 unset CANON_TICKETS_DIR   # a stamp taken for the whole suite sets it (plain-clone workflow); every call here must use the throwaway repo's own .tickets/
 export SPRINT_CHECK_BIN="$WORK/no-board"   # t-c542: the uname fallback below; the `canon-go machine` header has its own block
-REPO="$WORK/repo"; ID=t-abcd
+REPO="$WORK/repo"; ID="t-abcd"
 mkdir -p "$REPO" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
 mkdir -p ".tickets/$ID" src; echo a > src/a.txt; echo m > src/b.txt; echo '# t' > ".tickets/$ID/ticket.md"
