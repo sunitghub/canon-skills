@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.7] - 2026-11-19
+
+- Fixed: a ticket sent to Claude's cloud comes back mergeable without manual nudges. The issue now tells the cloud session to give the reviewer and evaluator only the model family (Haiku, Sonnet or Opus), to commit both gate reports as written (with the repository owner's approval in advance if one still names a model identifier: claude.ai otherwise will not push it, and import found nothing to merge), and to commit nothing outside the ticket's folder after the evaluator except its DECISIONS row. Import and Check & merge accept a `.tickets/.gitignore` change made only of canon's own lines (a newer canon adds them), which before forced a local re-grade. The issue's checklist path is the one a project has (t-2f07).
+
 ## [0.69.6] - 2026-11-19
 
 - Fixed: canon's own ignore lines no longer stop a close. When the only uncommitted change is the lines canon itself adds to your repo's `.gitignore` or `.gitattributes` (`skills add`, a worktree link), `sprint evidence stamp` and `sprint pre-gate-check` go ahead and say so (they are not part of the stamp; commit them on their own any time), and committing them later does not make your stamps or your manual-QA record stale. Any other change, even one extra line of yours, still stops the stamp (t-e9aa).
