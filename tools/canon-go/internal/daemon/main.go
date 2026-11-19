@@ -4697,14 +4697,36 @@ func (s *server) switchToBuild(se *session) {
 	se.mu.Lock()
 	from := se.model
 	se.mu.Unlock()
+	// t-9831: a line the session never took ends the switch: stage build (a later turn end types nothing into a session the person
+	// now drives), no implement.started, and the session asks for the person (the card shows Needs you).
+	giveUp := func(kind, now string) {
+		done = true
+		se.mu.Lock()
+		se.stage, se.model = "build", now
+		se.mu.Unlock()
+		se.debugf("build switch: %s not taken, gave up, needs you", kind)
+		se.setStatus("needs-you")
+	}
 	if model != from {
-		if !waitAtRest(se) || typeLine(se, "/model "+model) != nil {
+		if !waitAtRest(se) {
+			return
+		}
+		if taken, err := typeConfirmed(se, "/model line", "/model "+model); err != nil {
+			return
+		} else if !taken {
+			giveUp("/model line", from)
 			return
 		}
 		time.Sleep(time.Second) // let the CLI take the model before the next line
 	}
 	// sprint approve told the agent to end its turn, so the continue line is typed even when the model is already Build's (reviewer t-3425)
-	if !waitAtRest(se) || typeLine(se, "Plan approved: continue the build ("+se.ticket+") on "+model+".") != nil {
+	if !waitAtRest(se) {
+		return
+	}
+	if taken, err := typeConfirmed(se, "continue line", "Plan approved: continue the build ("+se.ticket+") on "+model+"."); err != nil {
+		return
+	} else if !taken {
+		giveUp("continue line", model)
 		return
 	}
 	done = true
@@ -4713,6 +4735,54 @@ func (s *server) switchToBuild(se *session) {
 	se.mu.Unlock()
 	se.debugf("build switch: %s -> %s (%s)", from, model, source)
 	se.emit("implement.started", map[string]string{"model": model, "tier": stage, "source": source})
+}
+
+// confirmWait (t-9831): how long a typed line's Enter may go with no output from the session (or input from the person) before the
+// line counts as not taken. A var so a test can shorten it.
+var confirmWait = 5 * time.Second
+
+// typeConfirmed (t-9831, VM 2026-11-19: the continue line never reached Claude Code, yet implement.started was recorded) types text
+// as typeLine does and reports whether the session took it: output, or the person's input, after the Enter within confirmWait. An idle
+// agent writes nothing, so silence means the line was dropped or left as a draft; the agent's echo of the text comes before the Enter
+// and never counts. Not taken: Enter alone (submits a draft, does nothing on an empty prompt), then the text once more: at most two
+// typings and one lone Enter, so a line is never doubled. The error is a PTY write error only.
+func typeConfirmed(se *session, kind, text string) (bool, error) {
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			se.debugf("build switch: %s not taken (attempt %d), retrying", kind, attempt)
+		}
+		if attempt != 1 {
+			if _, err := se.pty.Write([]byte(text)); err != nil {
+				return false, err
+			}
+			time.Sleep(300 * time.Millisecond) // t-cd06: Enter as a separate write
+		}
+		mark := time.Now()
+		if _, err := se.pty.Write([]byte("\r")); err != nil {
+			return false, err
+		}
+		if activitySince(se, mark, confirmWait) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// activitySince reports whether the session showed output or input after mark, waiting up to wait (t-9831).
+func activitySince(se *session, mark time.Time, wait time.Duration) bool {
+	deadline := mark.Add(wait)
+	for {
+		se.mu.Lock()
+		seen, exited := se.lastActivity.After(mark), se.exited
+		se.mu.Unlock()
+		if seen {
+			return true
+		}
+		if exited || time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // tierAgent is the Model tiers agent of a session kind: "copilot", common.RegistryAgent for Claude Code ("claude" or ""), "" for pi and

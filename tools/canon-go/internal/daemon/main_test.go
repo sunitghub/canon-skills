@@ -9218,6 +9218,12 @@ func buildSwitchSession(t *testing.T, tierLine string) (*server, *session, strin
 func buildSwitchSessionAs(t *testing.T, tierLine, agent string) (s *server, se *session, dir, base string) {
 	t.Helper()
 	bin, argvFile, _ := fakeSprint(t)
+	return buildSwitchSessionBin(t, tierLine, agent, bin, argvFile)
+}
+
+// buildSwitchSessionBin is buildSwitchSessionAs on a given fake agent (t-9831: echo-off fakes that take only some lines).
+func buildSwitchSessionBin(t *testing.T, tierLine, agent, bin, argvFile string) (s *server, se *session, dir, base string) {
+	t.Helper()
 	if agent == "copilot" {
 		t.Setenv("COCKPIT_COPILOT_BIN", bin)
 		t.Setenv("COPILOT_HOME", t.TempDir())
@@ -9248,6 +9254,220 @@ func buildSwitchSessionAs(t *testing.T, tierLine, agent string) (s *server, se *
 		t.Fatal(err)
 	}
 	return s, se, dir, ts.URL
+}
+
+// fakeTakeAgent (t-9831) is a fake agent with the terminal's echo off, so a line it does not take writes nothing (fakeSprint's `cat`
+// on a cooked-mode PTY echoes every keystroke and would confirm any line). Each line it reads goes to recvFile; body is the shell
+// that decides, per non-empty line $l, whether to answer (print it) or not.
+func fakeTakeAgent(t *testing.T, body string) (bin, argvFile, recvFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	argvFile, recvFile = filepath.Join(dir, "argv.txt"), filepath.Join(dir, "recv.txt")
+	bin = filepath.Join(dir, "fake-agent.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'ARGC:%s\\n' \"$#\" > \"" + argvFile + ".tmp\" && mv \"" + argvFile + ".tmp\" \"" + argvFile + "\"\n" +
+		"stty -echo\n" +
+		"printf 'READY\\n'\n" +
+		"n=0\n" +
+		"while IFS= read -r l; do\n" +
+		"  l=$(printf '%s' \"$l\" | tr -d '\\r')\n" +
+		"  printf '%s\\n' \"$l\" >> \"" + recvFile + "\"\n" +
+		"  [ -z \"$l\" ] && continue\n" +
+		"  n=$((n+1))\n" +
+		body + "\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func countLines(t *testing.T, file, want string) int {
+	t.Helper()
+	b, _ := os.ReadFile(file)
+	n := 0
+	for _, l := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
+		if len(b) > 0 && l == want {
+			n++
+		}
+	}
+	return n
+}
+
+func implementStartedCount(home string) int {
+	b, _ := os.ReadFile(filepath.Join(home, "events", time.Now().UTC().Format("2006-01-02")+".jsonl"))
+	return strings.Count(string(b), `"kind":"implement.started"`)
+}
+
+func confirmWaitFor(t *testing.T, d time.Duration) {
+	o := confirmWait
+	confirmWait = d
+	t.Cleanup(func() { confirmWait = o })
+}
+
+// t-9831 (VM 2026-11-19: the continue line never reached Claude Code on Windows, yet implement.started was recorded and the card said
+// Implementing): the switch records the build only once the session took the line. Protects the Cockpit daemon's Build switch at
+// approval (handleStatus for Claude Code, copilotturn.go for Copilot).
+func TestSwitchToBuildRetriesADroppedLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 700*time.Millisecond)
+	// drops the first line it reads, answers every later one
+	bin, argv, recv := fakeTakeAgent(t, `  [ "$n" = 1 ] && continue
+  printf 'took: %s\n' "$l"`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	line := "Plan approved: continue the build (t-ab12) on sonnet."
+	if got := countLines(t, recv, line); got != 2 {
+		t.Fatalf("continue line reached the agent %d times, want 2 (dropped, then retyped): %q", got, readOr(recv))
+	}
+	if got := countLines(t, recv, ""); got != 1 {
+		t.Fatalf("lone Enters = %d, want 1 before the retype: %q", got, readOr(recv))
+	}
+	se.mu.Lock()
+	stage, st := se.stage, se.status
+	se.mu.Unlock()
+	if stage != "build" || st == "needs-you" || implementStartedCount(home) != 1 {
+		t.Fatalf("stage %q status %q implement.started %d: want build, not needs-you, 1", stage, st, implementStartedCount(home))
+	}
+}
+
+func TestSwitchToBuildGivesUpWhenNeverTaken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	bin, argv, recv := fakeTakeAgent(t, `  :`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 2 {
+		t.Fatalf("continue line typed %d times, want at most 2 (here exactly 2): %q", got, readOr(recv))
+	}
+	se.mu.Lock()
+	stage, st := se.stage, se.status
+	se.mu.Unlock()
+	if stage != "build" || st != "needs-you" || implementStartedCount(home) != 0 {
+		t.Fatalf("stage %q status %q implement.started %d: want build, needs-you, 0", stage, st, implementStartedCount(home))
+	}
+	// a later turn end types nothing more
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 2 {
+		t.Fatalf("a later turn end typed the line again: %d", got)
+	}
+}
+
+func TestSwitchToBuildIgnoredModelLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	bin, argv, recv := fakeTakeAgent(t, `  case "$l" in /model*) continue ;; esac
+  printf 'took: %s\n' "$l"`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "/model sonnet"); got != 2 {
+		t.Fatalf("/model typed %d times, want 2: %q", got, readOr(recv))
+	}
+	if strings.Contains(readOr(recv), "continue the build") {
+		t.Fatalf("typed the continue line after an ignored /model: %q", readOr(recv))
+	}
+	se.mu.Lock()
+	stage, st, model := se.stage, se.status, se.model
+	se.mu.Unlock()
+	if stage != "build" || st != "needs-you" || model != "haiku" || implementStartedCount(home) != 0 {
+		t.Fatalf("stage %q status %q model %q implement.started %d: want build, needs-you, haiku, 0", stage, st, model, implementStartedCount(home))
+	}
+}
+
+func TestSwitchToBuildSlowButTaken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 2*time.Second)
+	bin, argv, recv := fakeTakeAgent(t, `  sleep 0.6
+  printf 'took: %s\n' "$l"`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 1 || countLines(t, recv, "") != 0 {
+		t.Fatalf("a slow but taken line was retried: %q", readOr(recv))
+	}
+	if implementStartedCount(home) != 1 {
+		t.Fatalf("implement.started %d, want 1", implementStartedCount(home))
+	}
+}
+
+func readOr(f string) string { b, _ := os.ReadFile(f); return string(b) }
+
+// t-9831 (decision 2026-11-19): the person typing after the Enter counts as taken: they are acting, so the switch types no more.
+func TestSwitchToBuildHumanInputCountsAsTaken(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 1500*time.Millisecond)
+	bin, argv, recv := fakeTakeAgent(t, `  :`)
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	go func() {
+		for i := 0; i < 100; i++ { // once the line has been typed, the person types (handleInput sets lastActivity)
+			if countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet.") > 0 {
+				se.mu.Lock()
+				se.lastActivity = time.Now()
+				se.mu.Unlock()
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	s.switchToBuild(se)
+	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 1 || countLines(t, recv, "") != 0 {
+		t.Fatalf("typed again after the person's input: %q", readOr(recv))
+	}
+	se.mu.Lock()
+	st := se.status
+	se.mu.Unlock()
+	if st == "needs-you" || implementStartedCount(home) != 1 {
+		t.Fatalf("status %q implement.started %d: want not needs-you, 1", st, implementStartedCount(home))
+	}
+}
+
+// t-9831 (reviewer Consider): a raw-mode agent draws each keystroke itself, as Claude Code does, but never takes the line: its echo of
+// the text comes before the Enter and must not confirm it. Fails if the switch's mark moves before the text is typed.
+func TestSwitchToBuildEchoAloneDoesNotConfirm(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
+	confirmWaitFor(t, 500*time.Millisecond)
+	dir := t.TempDir()
+	argv, recv, bin := filepath.Join(dir, "argv.txt"), filepath.Join(dir, "recv.txt"), filepath.Join(dir, "echo-agent.sh")
+	script := "#!/bin/bash\n" +
+		"printf 'ARGC:%s\\n' \"$#\" > \"" + argv + ".tmp\" && mv \"" + argv + ".tmp\" \"" + argv + "\"\n" +
+		"stty -echo -icanon -icrnl min 1\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r -s -n1 -d '' c; do\n" +
+		"  if [ \"$c\" = $'\\r' ] || [ \"$c\" = $'\\n' ]; then printf 'ENTER\\n' >> \"" + recv + "\"; continue; fi\n" +
+		"  printf '%s' \"$c\"\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
+	se.setStatus("awaiting-input")
+	s.switchToBuild(se)
+	se.mu.Lock()
+	out, st := string(se.buf), se.status
+	se.mu.Unlock()
+	if !strings.Contains(out, "continue the build") {
+		t.Fatalf("the fake did not draw the typed text: %q", out)
+	}
+	if got := countLines(t, recv, "ENTER"); got != 3 || st != "needs-you" || implementStartedCount(home) != 0 {
+		t.Fatalf("Enters %d status %q implement.started %d: want 3 (two typings, one lone), needs-you, 0", got, st, implementStartedCount(home))
+	}
 }
 
 // t-3425 (reviewer Act On 1): when the Build model is the one the session already runs on, sprint approve still told the agent to end
