@@ -55,15 +55,7 @@ ensure_tickets_dir() {
   # files (those need a one-time `git rm --cached` — see docs/setup.md). Never
   # clobber a user's existing .tickets/.gitignore.
   if [[ ! -e "$dir/.gitignore" ]]; then
-    cat > "$dir/.gitignore" <<'EOF'
-# canon runtime files — per-machine session state, never commit (t-2f53)
-.cockpit-*
-ACTIVE
-ACTIVE.beat
-.before-import/
-*/gate-snapshot.txt
-*/gate-snapshot.txt.scope
-EOF
+    canon_tickets_ignore_lines > "$dir/.gitignore"   # t-2f07: one owner of the seeded lines (ticket-root.sh), read by late_docs_delta too
   elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore"; then
     # t-187e, t-41ff: a file canon seeded earlier gains each newer entry; one the user wrote is left alone
     local add=()
@@ -1467,9 +1459,14 @@ cmd_send_issue() {
     fi
     # t-b775 (ToDo-Demo, 2026-11-19): the session ran sprint complete before summary.md, committed late docs while its evaluator ran (claude.ai's
     # own stop hook asks to commit everything), and committed HANDOFF.md, which the repository did not track: a forced local re-grade.
-    printf '   Follow skills/sprint/reference/complete-checklist.md; write .tickets/%s/summary.md before `sprint complete`.\n' "$id"
+    printf '   Follow .claude/skills/sprint/reference/complete-checklist.md (Codex/Pi: .agents/skills/…); write .tickets/%s/summary.md before `sprint complete`.\n' "$id"
     printf '   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and `sprint gate-snapshot post` has run.\n'
     printf '   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository.\n'
+    # t-2f07 (ToDo-Demo t-giic): claude.ai will not push a model identifier, so the gate reports stayed behind (nothing to merge); and the
+    # session committed canon's .tickets/.gitignore after grading (a forced re-grade). The family names the model; the owner's approval backs it.
+    printf '   When you dispatch the reviewer or the evaluator, give it the model family only (Haiku, Sonnet or Opus) as its Model designation, never a model identifier, and use the family wherever you name a model in a close file you commit (the Wrapup Gates rows, summary.md, `sprint subagent-log --model <family>`).\n'
+    printf '   Commit .tickets/%s/review-notes.md and .tickets/%s/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/%s/, because canon'"'"'s import needs these reports to verify the grade.\n' "$id" "$id" "$id"
+    printf '   After the evaluator, commit nothing outside .tickets/%s/ except your DECISIONS.md row: not .tickets/.gitignore (canon'"'"'s per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md.\n' "$id"
     # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
     printf '   Close step 6: only ADD your DECISIONS.md row (it must name %s); do not run `sprint decisions archive` or `mark` here.\n' "$id"
     printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"

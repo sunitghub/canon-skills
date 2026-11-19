@@ -105,7 +105,11 @@ grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator ar
   || fail "the issue lacks the gates line (t-67c5)"
 # t-b775 (a cloud run that ran sprint complete before summary.md, committed mid-gate and added HANDOFF.md): the three close rules
 b775_lines() {
-  grep -qxF "   Follow skills/sprint/reference/complete-checklist.md; write .tickets/$id/summary.md before \`sprint complete\`." "$1" || fail "$2: the issue lacks the checklist/summary-first line (t-b775)"
+  grep -qxF "   Follow .claude/skills/sprint/reference/complete-checklist.md (Codex/Pi: .agents/skills/…); write .tickets/$id/summary.md before \`sprint complete\`." "$1" || fail "$2: the issue lacks the checklist/summary-first line (t-b775, path t-2f07)"
+  # t-2f07 (t-giic: claude.ai would not push the reports' model identifier; the session committed canon's .tickets/.gitignore after grading)
+  grep -qxF "   When you dispatch the reviewer or the evaluator, give it the model family only (Haiku, Sonnet or Opus) as its Model designation, never a model identifier, and use the family wherever you name a model in a close file you commit (the Wrapup Gates rows, summary.md, \`sprint subagent-log --model <family>\`)." "$1" || fail "$2: the issue lacks the model-family line (t-2f07)"
+  grep -qxF "   Commit .tickets/$id/review-notes.md and .tickets/$id/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/$id/, because canon's import needs these reports to verify the grade." "$1" || fail "$2: the issue lacks the owner-approval line (t-2f07)"
+  grep -qxF "   After the evaluator, commit nothing outside .tickets/$id/ except your DECISIONS.md row: not .tickets/.gitignore (canon's per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md." "$1" || fail "$2: the issue lacks the commit-scope line (t-2f07)"
   grep -qxF "   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and \`sprint gate-snapshot post\` has run." "$1" || fail "$2: the issue lacks the no-commit-mid-gate line (t-b775)"
   grep -qxF "   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository." "$1" || fail "$2: the issue lacks the never-add line (t-b775)"
 }
