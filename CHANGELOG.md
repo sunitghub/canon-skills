@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.3] - 2026-11-19
+
+- Fixed: `canon update`, `skills add` and `canon uninstall` no longer stay blocked for two hours by a close gate (reviewer or evaluator) that a session left registered. A registration now names its ticket, and once that ticket is closed or its folder is gone (a finished land worktree) it no longer counts. For any other leftover, including ones made by older versions, the refusal names the way out: `canon gate-scope clear` lists each one and asks "End it? [y/N]" (t-b775).
+- Changed: a GitHub issue sent with `tkt send-issue` now tells the cloud session to follow the close checklist and write `summary.md` before `sprint complete`, to commit nothing while a gate runs (claude.ai asks to commit everything; a commit then moves the graded commit), and never to add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md. In a project that tracks `.tickets/`, `tkt import-issue` keeps canon's per-machine `.tickets/.gitignore` out of the clone's `git status`, and a gate's snapshot files are ignored (t-b775).
+- Fixed: when Check & merge cannot update local main because of a file you do not track (the cloud added it), the message says to move it aside (`mv <file> <file>.local`) instead of `git checkout --`, which cannot work for an untracked file (t-b775).
+
 ## [0.69.2] - 2026-11-19
 
 - Fixed: after you approve a plan, the Cockpit's Build switch checks that the session took each line it types (`/model <build>`, then "Plan approved: continue the build …"): output after the line's Enter within 5 s. A line that was dropped gets Enter alone, then one retype (never doubled); a session that still does not answer goes **Needs you** instead of the card saying Implementing while nothing runs, and `implement.started` is recorded only once the continue line was taken. Seen on Windows, where the continue line never reached Claude Code. Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-9831).
