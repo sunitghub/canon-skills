@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-19-2026 06:25
+learnings-sweep last run: 11-19-2026 07:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-19 | [t-5ef8](.tickets/t-5ef8/learnings.md) | A new board fetch must be added to board-core.js READ_RE: stubbed rail specs cannot see a project tab reading the default project, only tests/sprint-check-api-scoping.js can (RECURRENCE: t-1780, t-d254) | UNPROMOTED |
 | 2026-11-19 | [t-5ed4](.tickets/t-5ed4/learnings.md) | A per-ticket file removes a merge conflict at its source; a merge-of-main rule can accept only a clean merge, never a hand-resolved one | UNPROMOTED |
 | 2026-11-18 | [t-6555](.tickets/t-6555/learnings.md) | A value pinned by one extractor and recomputed by another (the plan's approval digest) must share one rule and be proven by a round trip; and a command that writes before its last refusable step must restore on every abort. | UNPROMOTED |
 | 2026-11-18 | [t-7db9](.tickets/t-7db9/learnings.md) | A check that classifies staged paths must read them with --no-renames: rename detection shows only a moved file's new path, so code moved into .tickets/ would pass as a record. | UNPROMOTED |
@@ -76,7 +77,6 @@ learnings-sweep last run: 11-19-2026 06:25
 | 2026-11-12 | [t-07b9](.tickets/t-07b9/learnings.md) | A mutation sweep or full-suite stamp taken before the reviewer is stale the moment the reviewer's fixes land: 39 of 81 sweeps and 18 of 32 suites in four days (6.2 h of 18.8 h stamped) ran first. Order the close reviewer, security-review, then one sweep and one suite on the final commit (t-c923 adds the warning). | `dismissed (covered: skills/sprint/reference/complete-checklist.md)` |
 | 2026-11-12 | [t-dc18](.tickets/t-dc18/learnings.md) | A script that diffs a path held in a variable (`git diff -- "$f"`) treats it as a glob pathspec, so `[ab]/x` also matched `a/x`; pass `--literal-pathspecs`. Repo text a pre-gate field prints (added lines of an agent file) can carry an escape sequence: replace control characters before it reaches the terminal or the log. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-12 | [t-70f2](.tickets/t-70f2/learnings.md) | A test that loops over rows and `continue`s past the ones that do not match passes vacuously when the key it selects on is renamed (a JSON `class` tag emptied killed nothing until the mutation sweep showed it): count the matched rows and fail unless it is the expected number. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-12 | [t-835f](.tickets/t-835f/learnings.md) | Two slips surfaced only in the 6-minute full suite, each costing a rerun: a `tests/*` glob in a script `evidence.sh` reads fails its scope-audit (use a prefix strip), and `git add -f .tickets/<id>` tracks local-only files; run `tests/evidence.sh` and `tests/local-only-dirs.sh` before the stamp, and never force-add a ticket folder. | `dismissed` |
 | 2026-11-11 | [t-27e5](.tickets/t-27e5/learnings.md) | Loosening a security check needs a test for each branch of the loosening alone (the dot of a path remainder passed no test until an evaluator reverted it), and a criterion that is narrowed by a review must be reworded in the same pass, or the evaluator grades the old wording. | UNPROMOTED |
 | 2026-11-11 | [t-5988](.tickets/t-5988/learnings.md) | A scanner that reads git output must fix every flag the repo's config can change (prefixes, showRoot, replace refs, textconv, quoting) and must apply a cap AFTER its filter; a usage check tested outside a repository is hidden by the sweep's .git-less copy, so test failure paths inside one. | UNPROMOTED |
 | 2026-11-11 | [t-46b9](.tickets/t-46b9/learnings.md) | A bug that a test already asserts as normal ("No sessions running." with the daemon stopped) survives every suite: when a symptom is reported, grep the tests for the old output and treat a passing assertion of it as the bug's own evidence. | UNPROMOTED |
