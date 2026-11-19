@@ -162,7 +162,7 @@ assert_grep '^<!-- canon:recent:BEGIN -->$' HANDOFF.md   # the main checkout's H
 # t-ab7e: keeping a closed ticket's own files is merge-pr's rule only (its record commit follows); tkt merge still refuses one.
 echo local > ".tickets/$id4/summary.md"
 out="$("$TKT" merge "$id4" --yes < /dev/null 2>&1)" && fail "t-ab7e: tkt merge kept a closed ticket's differing own file: $out"
-assert_contains "$out" $'\n  .tickets/'"$id4"$'/summary.md\n'; assert_eq local "$(cat ".tickets/$id4/summary.md")"; rm ".tickets/$id4/summary.md"
+assert_contains "$out" $'\n  .tickets/'"$id4"$'/summary.md (untracked here'; assert_eq local "$(cat ".tickets/$id4/summary.md")"; rm ".tickets/$id4/summary.md"
 out="$("$TKT" merge "$id4" --yes < /dev/null 2>&1)" || fail "merge with canon's own local edits set aside failed: $out"
 assert_contains "$out" "Merged feat/y into main"
 assert_grep '^after the branch$' HANDOFF.md

@@ -61,12 +61,16 @@ ensure_tickets_dir() {
 ACTIVE
 ACTIVE.beat
 .before-import/
+*/gate-snapshot.txt
+*/gate-snapshot.txt.scope
 EOF
   elif grep -qxF '# canon runtime files — per-machine session state, never commit (t-2f53)' "$dir/.gitignore"; then
     # t-187e, t-41ff: a file canon seeded earlier gains each newer entry; one the user wrote is left alone
     local add=()
     grep -qxF 'ACTIVE.beat' "$dir/.gitignore" || add+=('ACTIVE.beat')
     grep -qxF '.before-import/' "$dir/.gitignore" || add+=('.before-import/')
+    grep -qxF '*/gate-snapshot.txt' "$dir/.gitignore" || add+=('*/gate-snapshot.txt')   # t-b775: a tracked .tickets/ must never commit a gate's snapshot
+    grep -qxF '*/gate-snapshot.txt.scope' "$dir/.gitignore" || add+=('*/gate-snapshot.txt.scope')
     if (( ${#add[@]} )); then
       # t-d8af: a file with no final newline (or ending in NUL bytes, which $(tail -c1) drops) would glue the first entry to its last line
       [[ -s "$dir/.gitignore" && "$(tail -c1 "$dir/.gitignore" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$dir/.gitignore"
@@ -1461,6 +1465,11 @@ cmd_send_issue() {
     else
       printf '5. Run `sprint complete`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand.\n'
     fi
+    # t-b775 (ToDo-Demo, 2026-11-19): the session ran sprint complete before summary.md, committed late docs while its evaluator ran (claude.ai's
+    # own stop hook asks to commit everything), and committed HANDOFF.md, which the repository did not track: a forced local re-grade.
+    printf '   Follow skills/sprint/reference/complete-checklist.md; write .tickets/%s/summary.md before `sprint complete`.\n' "$id"
+    printf '   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and `sprint gate-snapshot post` has run.\n'
+    printf '   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository.\n'
     # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
     printf '   Close step 6: only ADD your DECISIONS.md row (it must name %s); do not run `sprint decisions archive` or `mark` here.\n' "$id"
     printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"
@@ -1553,6 +1562,13 @@ cmd_import_issue() {
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "Usage: tkt import-issue <issue number> [--body-file <file>] [--force]" >&2; exit 1; }
   local root repo="" dir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"
   repo="$(_gh_origin_repo "$root" import-issue 2>/dev/null)" || repo=""
+  # t-b775: in a project that tracks .tickets/ (a cloud clone), canon's per-machine .tickets/.gitignore stays untracked, and claude.ai's
+  # stop hook asks to commit every untracked file: hide it from this clone's git status (once), never by committing it.
+  local gd; if _tickets_tracked "$root" _ && gd="$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null)"; then
+    mkdir -p "$gd/info" && { grep -qxF '.tickets/.gitignore' "$gd/info/exclude" 2>/dev/null \
+      || { [[ -s "$gd/info/exclude" && "$(tail -c1 "$gd/info/exclude" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$gd/info/exclude"; echo '.tickets/.gitignore' >> "$gd/info/exclude"; }; } \
+      || echo "import-issue: note: could not add .tickets/.gitignore to $gd/info/exclude" >&2
+  fi
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
@@ -3006,14 +3022,15 @@ _advance_local() {
 # staged one, stops it with nothing changed. A refused fast-forward restores every file set aside. Returns 1 when not moved.
 # The paths come from the PR, so they are untrusted: matched literally, never through a symlinked folder, printed sanitized.
 _ff_here() {
-  local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" p m rp rb safe=() kinds=() differ=()
+  local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" p m rp rb ut safe=() kinds=() differ=() tracked=0
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
   rp="$(cd "$root" && pwd -P)"
   while IFS= read -r -d '' p; do
-    if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); continue; fi
-    if ! git -C "$root" diff --cached --quiet "$old" -- "$p"; then differ+=("$p (staged)"); continue; fi
+    if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); tracked=1; continue; fi
+    if ! git -C "$root" diff --cached --quiet "$old" -- "$p"; then differ+=("$p (staged)"); tracked=1; continue; fi
+    ut=""
     if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" diff --quiet "$old" -- "$p" && continue
-    else [[ -e "$root/$p" || -L "$root/$p" ]] || continue; fi
+    else [[ -e "$root/$p" || -L "$root/$p" ]] || continue; ut=1; fi
     m="$(git -C "$root" ls-tree "$new" -- "$p" | cut -d' ' -f1)"
     if [[ -f "$root/$p" && ! -L "$root/$p" && ( "$m" == 100644 || "$m" == 100755 ) ]]; then
       # t-2560: identical as git sees it (eol and attribute filters applied, so a CRLF copy under core.autocrlf=true matches)
@@ -3038,13 +3055,15 @@ _ff_here() {
         safe+=("$p"); kinds+=(own); continue
       fi
     fi
-    differ+=("$p")
+    # t-b775: git checkout cannot drop a file git does not track here (HANDOFF.md on the VM): name a step that works for it
+    if [[ -n "$ut" ]]; then differ+=("$p (untracked here: move it aside: mv $p $p.local)"); else differ+=("$p"); tracked=1; fi
   done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
   if [[ ${#differ[@]} -gt 0 ]]; then
     # t-e7fb: plain words. What is left (merged on GitHub, local branch behind), which files, and the steps that end it.
     echo "${FF_LEAD:-The PR is merged on GitHub, but local $b was not updated:} $([[ ${#differ[@]} == 1 ]] && echo "this file has" || echo "these ${#differ[@]} files have") changes here that the merge would overwrite:"
     for p in "${differ[@]}"; do printf '  %s\n' "${p//[^[:print:]]/?}"; done
-    echo "  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: $retry"
+    if (( tracked )); then echo "  Look at the changes (git diff <file>), then commit them or drop them (git checkout -- <file>), then run: $retry"
+    else echo "  Move each one aside as shown (it keeps your copy), then run: $retry"; fi
     echo "  (in the Cockpit Terminal, type su first)"
     return 1
   fi

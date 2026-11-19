@@ -31,11 +31,15 @@ gate_scope_create() {
   # t-9fb1: the dispatcher runs in the user's REAL environment, so it records the home and canon home the guard must keep a gate away from
   local rhome rcanon proj; _gate_scope_resolve "${HOME:-}"; rhome="$_GS_R"; _gate_scope_resolve "${CANON_HOME:-${HOME:-}/.canon}"; rcanon="$_GS_R"
   proj="$(basename "$PWD")"; [[ "$proj" == *$'\n'* ]] && proj=""; proj="$(printf '%s' "$proj" | tr -d '\000-\037\177')"   # t-11e6: the refusal names the project the gate runs in; no name beats a split record
+  local snap; snap="$(cd "$(dirname "$1")" 2>/dev/null && pwd -P)/$(basename "$1")"   # t-b775: the ticket this gate belongs to (guard: stale once it closes)
+  [[ "$snap" == *$'\n'* ]] && snap=""
   if [[ "$rhome$rcanon" == *$'\n'* ]]; then   # a newline cannot live in a line-based record: no home=/canon= lines, so the old rule applies (fail closed)
-    printf 'dir=%s\ncreated=%s\n%s' "$dir" "$(date +%s)" "${proj:+project=$proj
+    printf 'dir=%s\ncreated=%s\n%s%s' "$dir" "$(date +%s)" "${proj:+project=$proj
+}" "${snap:+snap=$snap
 }" > "$reg/$(_gate_scope_key "$1")"
   else
-    printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n%s' "$dir" "$(date +%s)" "$rhome" "$rcanon" "${proj:+project=$proj
+    printf 'dir=%s\ncreated=%s\nhome=%s\ncanon=%s\n%s%s' "$dir" "$(date +%s)" "$rhome" "$rcanon" "${proj:+project=$proj
+}" "${snap:+snap=$snap
 }" > "$reg/$(_gate_scope_key "$1")"
   fi
   printf '%s' "$dir"
@@ -83,6 +87,43 @@ _gate_scope_under() {  # <path> <dir>: the path is the dir or inside it (raw or 
 # _gate_scope_hhmm <epoch>: local HH:MM (BSD/macOS date -r, GNU date -d); the epoch itself if neither works.
 _gate_scope_hhmm() { date -r "$1" +%H:%M 2>/dev/null || date -d "@$1" +%H:%M 2>/dev/null || echo "$1"; }
 
+# _gate_scope_ticket_over <record> — t-b775: true when the record names its snapshot (snap=, since t-b775) and that ticket's gate cannot
+# be running: the snapshot's folder is gone (a removed land worktree) or its ticket.md reads `status: closed` (the close ran; a re-grade
+# reopens the ticket first, tkt land / merge-pr). Read here, CR stripped: canon, skills.sh, uninstall and install.sh source this lib alone.
+_gate_scope_ticket_over() {
+  local snap tdir st
+  snap="$(sed -n '/^snap=/{s/^snap=//p;q;}' "$1")"; [[ -n "$snap" ]] || return 1
+  tdir="$(dirname "$snap")"
+  [[ -d "$tdir" ]] || return 0
+  [[ -f "$tdir/ticket.md" ]] || return 1
+  st="$(tr -d '\r' < "$tdir/ticket.md" | awk '/^---$/ { fm++; next } fm == 1 && /^status: / { print substr($0, 9); exit }')"
+  [[ "$st" == closed ]]
+}
+
+# gate_scope_clear — t-b775 (`canon gate-scope clear`): the way out of a scope the person knows is over (a session that closed
+# without `post`, a record from an older canon). Lists each record and asks "End it? [y/N]"; y removes it and its scratch dir. With no
+# terminal it only lists. Returns 0.
+gate_scope_clear() {
+  local reg f n=0 dir created proj ans
+  reg="$(gate_scope_registry)"
+  if ! _gate_scope_reg_ok "$reg" || [[ -z "$(ls -A "$reg" 2>/dev/null)" ]]; then echo "No canon close gate is registered."; return 0; fi
+  for f in "$reg"/*; do
+    [[ -f "$f" ]] || continue
+    n=$((n + 1))
+    dir="$(sed -n '/^dir=/{s/^dir=//p;q;}' "$f")"; created="$(sed -n '/^created=/{s/^created=//p;q;}' "$f")"; proj="$(sed -n '/^project=/{s/^project=//p;q;}' "$f")"
+    echo "A canon close gate started at $([[ "$created" =~ ^[0-9]+$ ]] && _gate_scope_hhmm "$created" || echo '?') in ${proj:-a project} is registered."
+    if [[ ! -t 0 ]]; then echo "  (no terminal to ask: kept)"; continue; fi
+    printf '  End it? Only if no reviewer or evaluator is running there. [y/N] '
+    IFS= read -r ans || ans=""
+    if [[ "$ans" == y || "$ans" == Y ]]; then
+      [[ -n "$dir" && -d "$dir" && "$(basename "$dir")" != / ]] && rm -rf "$dir"
+      rm -f "$f"; echo "  ended"
+    else echo "  kept"; fi
+  done
+  (( n > 0 )) || echo "No canon close gate is registered."
+  return 0
+}
+
 # gate_scope_guard <what>: 0 to go ahead; 1 (with a message) while a live gate scope exists and HOME or CANON_HOME is the real one it recorded.
 gate_scope_guard() {
   local reg f dir created now ttl rhome rcanon rh rc proj home="${HOME:-}" chome="${CANON_HOME:-${HOME:-}/.canon}"
@@ -92,7 +133,7 @@ gate_scope_guard() {
     [[ -f "$f" ]] || continue
     dir="$(sed -n '/^dir=/{s/^dir=//p;q;}' "$f")"; created="$(sed -n '/^created=/{s/^created=//p;q;}' "$f")"
     # stale: scratch dir gone, unreadable record, or older than the TTL (a gate that crashed before `post`)
-    if [[ -z "$dir" || ! -d "$dir" || ! "$created" =~ ^[0-9]+$ ]] || (( now - created > ttl )); then
+    if [[ -z "$dir" || ! -d "$dir" || ! "$created" =~ ^[0-9]+$ ]] || (( now - created > ttl )) || _gate_scope_ticket_over "$f"; then
       [[ -n "$dir" && -d "$dir" && "$created" =~ ^[0-9]+$ ]] && rm -rf "$dir"
       rm -f "$f"; continue
     fi
@@ -112,7 +153,7 @@ gate_scope_guard() {
     {
       if [[ -n "$proj" ]]; then echo "$1: refused — a canon close gate (reviewer/evaluator) started at $(_gate_scope_hhmm "$created") in $proj is still registered."
       else echo "$1: refused — a canon close gate (reviewer/evaluator) is running."; fi
-      echo "  Run it again when it finishes; if no gate is running, it was interrupted and clears by $(_gate_scope_hhmm $((created + ttl)))."
+      echo "  Run it again when it finishes. No gate running there? Clear it now: canon gate-scope clear; otherwise it clears by $(_gate_scope_hhmm $((created + ttl)))."
       if [[ -n "${CANON_DEBUG:-}" ]]; then
         echo "  scope: $dir"
         if [[ -n "$rhome" && -n "$rcanon" ]]; then
