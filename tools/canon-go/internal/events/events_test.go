@@ -178,7 +178,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "branch.merged budget.exceeded budget.warned close.confirmed context.threshold eval.compared evidence.stamped gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
+	want := "branch.merged budget.exceeded budget.warned build.switch close.confirmed context.threshold eval.compared evidence.stamped gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -230,6 +230,7 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"github.synced":           {"count"},
 		"setting.changed":         {"name", "old", "new"},
 		"implement.started":       {"ticket", "session", "agent", "model", "tier", "source"},
+		"build.switch":            {"ticket", "session", "agent", "line", "outcome", "reason", "attempts", "quiet_ms"},
 		"eval.compared":           {"ticket", "model", "disagreements"},
 		"integrity.restored":      {"item", "count"},
 		"context.threshold":       {"session", "ticket", "agent", "pct"},
