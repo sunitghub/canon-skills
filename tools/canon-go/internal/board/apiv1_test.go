@@ -91,7 +91,7 @@ func TestAPIv1RefusesBadInputBeforeUse(t *testing.T) {
 
 func TestAPIv1ReadOnlyHostAndNoCORS(t *testing.T) {
 	setupTestProject(t)
-	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/events", "/api/v1/nope", "/api/v1/tickets/bad"}
+	routes := []string{"/api/v1/sessions", "/api/v1/sessions/t-aaaa", "/api/v1/sessions/t-aaaa/state", "/api/v1/tickets", "/api/v1/tickets/t-aaaa", "/api/v1/sprint/t-aaaa", "/api/v1/events", "/api/v1/pipeline", "/api/v1/nope", "/api/v1/tickets/bad"}
 	for _, route := range routes {
 		for _, method := range []string{"GET", "OPTIONS", "POST", "PUT", "DELETE"} {
 			w := v1Get(t, method, route, "")
@@ -689,5 +689,77 @@ func TestTermSafeAndFmtSecsHoldOnHostileValues(t *testing.T) {
 	}
 	if fmtSecs(65.0) != "1m 5s" && !strings.HasPrefix(fmtSecs(65.0), "1m") {
 		t.Errorf("fmtSecs(65) = %q", fmtSecs(65.0))
+	}
+}
+
+// t-5ef8: GET /api/v1/pipeline is the public read of a project's resolved pipeline, the rows of a ticket's Sprint progress card. Each node
+// carries exactly v1PipelineNode's keys with the values the board's own /api/pipeline reads (one reader, no second parse); an unknown
+// project is a 400 and a cross-site request a 403 before the reader runs.
+func TestAPIv1PipelineServesTheReadersNodes(t *testing.T) {
+	id, _ := pipelineEnv(t)
+	w := v1Get(t, "GET", "/api/v1/pipeline?project="+id, "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("GET: %d %s", w.Code, w.Body.String())
+	}
+	got, _ := v1Body(t, w)["nodes"].([]any)
+	code, full := pipelineGetReq(id)
+	want, _ := full["nodes"].([]any)
+	if code != 200 || len(want) == 0 || len(got) != len(want) {
+		t.Fatalf("v1 %d nodes, /api/pipeline %d (%d)", len(got), len(want), code)
+	}
+	for i, g := range got {
+		gn, wn := g.(map[string]any), want[i].(map[string]any)
+		if len(gn) != len(v1PipelineNode) {
+			t.Errorf("node %d keys %v, want %v", i, gn, v1PipelineNode)
+		}
+		for _, k := range v1PipelineNode {
+			wv, ok := wn[k]
+			if !ok {
+				wv = "" // /api/pipeline omits an empty group, skip_on or only
+			}
+			if fmt.Sprint(gn[k]) != fmt.Sprint(wv) {
+				t.Errorf("node %d %s: %v, /api/pipeline %v", i, k, gn[k], wv)
+			}
+		}
+	}
+	// the published schema: the route's top-level keys and the node keys, from the variables the handler uses
+	keys := v1Body(t, w)
+	if len(keys) != len(v1Responses["/api/v1/pipeline"]) {
+		t.Errorf("response keys %v, schema %v", keys, v1Responses["/api/v1/pipeline"])
+	}
+	for _, k := range v1Responses["/api/v1/pipeline"] {
+		if _, ok := keys[k]; !ok {
+			t.Errorf("schema key %q missing from the response", k)
+		}
+	}
+	if fmt.Sprint(apiSchema()["pipeline_node"]) != fmt.Sprint([]string{"id", "kind", "order", "on", "skip_on", "only", "group"}) {
+		t.Errorf("schema pipeline_node %v", apiSchema()["pipeline_node"])
+	}
+	bad := v1Get(t, "GET", "/api/v1/pipeline?project=ffffffffffff", "")
+	if bad.Code != 400 || v1Body(t, bad)["error"] != "unknown project" || strings.Contains(bad.Body.String(), "nodes") {
+		t.Errorf("unknown project: %d %s", bad.Code, bad.Body.String())
+	}
+	if w := v1Get(t, "GET", "/api/v1/pipelinex", ""); w.Code != 404 { // only the exact name reaches the reader
+		t.Errorf("/api/v1/pipelinex: %d", w.Code)
+	}
+	if w := v1Get(t, "GET", "/api/v1/nope", ""); w.Code != 404 {
+		t.Errorf("/api/v1/nope: %d", w.Code)
+	}
+	// a reader that fails is a 500 naming the pipeline, never an empty node list
+	stub := filepath.Join(t.TempDir(), "pipeline.sh")
+	writeFile(t, stub, "#!/bin/sh\necho 'pipeline: broken' >&2\nexit 1\n")
+	os.Chmod(stub, 0o755)
+	t.Setenv("PIPELINE_BIN", stub)
+	fail := v1Get(t, "GET", "/api/v1/pipeline?project="+id, "")
+	if fail.Code != 500 || v1Body(t, fail)["error"] != "cannot read the pipeline" || strings.Contains(fail.Body.String(), "nodes") {
+		t.Errorf("failing reader: %d %s", fail.Code, fail.Body.String())
+	}
+	req := httptest.NewRequest("GET", "/api/v1/pipeline?project="+id, nil)
+	req.Host = "127.0.0.1:8423"
+	req.Header.Set("Sec-Fetch-Site", "cross-site")
+	cw := httptest.NewRecorder()
+	handle(cw, req)
+	if cw.Code != 403 {
+		t.Errorf("cross-site: %d", cw.Code)
 	}
 }

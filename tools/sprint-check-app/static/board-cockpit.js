@@ -117,6 +117,12 @@ function fmtWait(secs) {
   const m = Math.floor(secs / 60);
   return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m > 0 ? m + 'm' : 'under a minute';
 }
+// t-5ef8: the one "this tab's session waits on you" rule, read by the state chip and the Sprint progress card.
+export function sessionNeedsYou() {
+  if (!cockpitState || !sessionIsLive() || state.scratch.get(cockpitState.id)?.term === true) return false;
+  const row = cockpitState.daemonRow || null;
+  return cockpitState.status === 'needs-you' || (row ? ckRowState(row) : 'running') === 'needs-you';
+}
 export function renderSessionStateChip() {
   const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
   // A Terminal is not an agent: no working state and no auto-save countdown.
@@ -124,7 +130,7 @@ export function renderSessionStateChip() {
   const row = cockpitState.daemonRow || null;
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   let st = row ? ckRowState(row) : 'running';
-  if (cockpitState.status === 'needs-you') st = 'needs-you';
+  if (sessionNeedsYou()) st = 'needs-you';
   chip.className = 'ck-state-chip st-' + st;
   chip.textContent = 'Needs you';   // t-1917: the only state the bar shows, in sentence case
   const signal = row && CK_SIGNAL_LABEL[row.signal];

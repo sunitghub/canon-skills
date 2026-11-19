@@ -10,6 +10,8 @@ const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = requi
 const v1Sessions = rows => ({ schema: 1, sessions: rows });
 const v1SessionsBody = rows => JSON.stringify(v1Sessions(rows));
 
+// t-5ef8: pipeline nodes as GET /api/v1/pipeline serves them, for the rail card's stubs (shared with tests/sprint-progress-card.js)
+const SPC_NODES = require('./fixtures/sprint-progress-nodes.json');
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 // t-ae96: a busy button's spinner is its ::before; read it the way the page paints it.
 const busySpin = loc => loc.evaluate(e => { const c = getComputedStyle(e, '::before'); return { shown: c.content !== 'none' && c.content !== 'normal' && c.display !== 'none', animation: c.animationName, duration: c.animationDuration, top: c.borderTopColor }; });
@@ -152,6 +154,11 @@ test.beforeEach(async ({ context }) => {
   const ghStub = r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, exit_code: 1, output: 'stubbed: no GitHub in tests' }) });
   await context.route('**/api/ticket/*/github/**', ghStub);
   await context.route('**/api/github/**', ghStub);
+  // t-5ef8: the Cockpit rail's Sprint progress card reads the public API; no test reads this machine's pipeline or activity log. Defaults:
+  // canon's node list (SPC_NODES), no sprint events. A test that needs other answers routes them itself (a page route wins).
+  await context.route('**/api/v1/pipeline**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, nodes: SPC_NODES }) }));
+  await context.route('**/api/v1/sprint/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, ticket: '', events: [] }) }));
+  await context.route('**/api/v1/events?**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, events: [], cursor: '' }) }));
   // t-3a58: no test reads or writes a project's canon-config/pipeline.yaml. Factory > Pipeline's routes answer "stubbed" unless a test
   // routes them itself (a page route wins over this one).
   await context.route('**/api/pipeline**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'stubbed: no pipeline in tests', exists: false, can_reset: false, text: '' }) }));
@@ -3919,12 +3926,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
-  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false } = {}) {
+  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false, manual = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), [
       '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
-      `ci: ${ci}`, `demo: ${demo}`,
+      `ci: ${ci}`, `demo: ${demo}`, ...(manual ? ['manual: true'] : []),
       'created: 2026-08-24T00:00:00Z', '---', '', `# Cockpit test ${id}`, '',
     ].join('\n'));
     if (acceptanceCriteria) {
@@ -5991,30 +5998,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const row = page.locator('.ck-worktree-row').filter({ hasText: XSS_ATTR });
         await expect(row).toHaveCount(1);
         expect(await row.getAttribute('data-cwd')).toBe(wtPath);                         // data-cwd round-trips
-        expect(await onAttrs(page)).toEqual([]);
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id);
-        await page.unrouteAll({ behavior: 'ignoreErrors' });
-      }
-    });
-
-    test('t-d2e1: a quote in the locked worktree path stays inside the rail\'s "Running in" tooltip', async ({ page }) => {
-      const id = newTicketId(PROJECT_ROOT);
-      const wtPath = `/tmp/wt/${XSS_ATTR}`;
-      try {
-        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
-        await stubCockpit(page);
-        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]) }));
-        await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
-        await page.goto(BASE);
-        await page.waitForLoadState('networkidle');
-        await page.locator('#board-search').fill(id);
-        await page.locator(`.card[data-id="${id}"] .card-start`).click();
-        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-        const lockLine = page.locator('.ck-worktree-sub', { hasText: 'Running in' });
-        await expect(lockLine).toHaveAttribute('title', wtPath);                           // the rail's lock tooltip round-trips
         expect(await onAttrs(page)).toEqual([]);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
@@ -8679,7 +8662,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
   });
 
-  test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc) @webkit', async ({ page }) => {
+  test('collapse toggle is top-anchored (t-6ecc) @webkit', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, '6ecc');
     try {
       writeTicket(id, 'in_progress', {
@@ -8687,10 +8670,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
         plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
       });
       await stubCockpit(page);
-      await page.route('**/api/handoff', route => route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ raw: `# Handoff\n## Current Focus\n${id} — build it\n\n## Next Steps\n1. Run \`sprint complete\` to close ${id}.\n` }),
-      }));
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
@@ -8708,53 +8687,253 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
       await toggle.click();
       await expect(page.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
-
-      // (2) STATUS surfaces the HANDOFF ## Next Steps (Status accordion is open by default).
-      await expect(page.locator('#ck-state')).toContainText('Next steps');
-      await expect(page.locator('#ck-state')).toContainText('sprint complete');
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
   });
 
-  // t-0a80, protects the Cockpit rail's STATUS box (handoffNextSteps -> renderCockpitState): a "## Next Steps" with only the handoff END marker or a lone
-  // "1." (an old seed) draws no "Next steps:" label over nothing; a real step still draws both.
-  for (const [label, body, shows] of [
-    ['only the END marker', '\n\n<!-- canon:handoff:END -->\n', false],
-    ['a lone "1."', '\n1.\n\n<!-- canon:handoff:END -->\n', false],
-    ['a real step', '\n1.\n2. Run `sprint complete` to close TID.\n\n<!-- canon:handoff:END -->\n', true],
-  ]) {
-    test(`STATUS draws a Next steps block only when there is a step: ${label} (t-0a80) @webkit`, async ({ page }) => {
-      const id = newTicketId(PROJECT_ROOT, '0a80');
+  // t-5ef8, protects the Cockpit rail's Sprint progress card (renderCockpitProgress -> sprintProgress + progressCardHtml): the rail reads
+  // only GET /api/v1/pipeline, /api/v1/sprint/<id> and /api/v1/events, and the STATUS section it replaced (HANDOFF.md text) is gone.
+  test.describe('Sprint progress card in the rail (t-5ef8)', () => {
+    const PLAN_WRITTEN = ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'Build the thing.', ''];
+    const ev = (kind, data = {}, ts = '2026-11-19T10:00:00.000Z', ticket) => ({ schema: 1, id: kind + ts, ts, kind, source: 'sprint', project: '/p', data: { ticket, ...data } });
+    const json = body => r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    async function openRail(page, id, { sprint = [], events = [], opts = {} } = {}) {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'], ...opts });
+      await stubCockpit(page);
+      await page.route(`**/api/v1/sprint/${id}`, json({ schema: 1, ticket: id, events: sprint }));
+      await page.route('**/api/v1/events?**', json({ schema: 1, events, cursor: '' }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    }
+    const card = page => page.locator('#ck-progress');
+
+    // the fold's state table (every row, through sprintProgress and progressCardHtml) is tests/sprint-progress-card.js; this group is the rail
+    test('the rail shows the card for an open ticket, after Worktree, with no STATUS section', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
       try {
-        writeTicket(id, 'in_progress', {
-          acceptanceCriteria: ['- [ ] a criterion'],
-          plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+        await openRail(page, id, { sprint: [ev('sprint.started', {}, '2026-11-19T10:00:00.000Z', id), ev('gate.started', { role: 'reviewer', attempt: '1' }, '2026-11-19T10:05:00.000Z', id)] });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'reviewer');
+        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'amber');
+        await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Reviewer running');
+        await expect(card(page).locator('.spc-row.done')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').findIndex(n => n.id === 'reviewer'));   // every row before Reviewer
+        await expect(page.locator('#ck-state-section')).toHaveCount(0);
+        await expect(page.locator('#ck-state')).toHaveCount(0);
+        await expect(page.locator('#ck-progress-section')).not.toHaveClass(/collapsed/);
+        const order = await page.evaluate(() => {
+          const pos = (a, b) => !!(document.getElementById(a).compareDocumentPosition(document.getElementById(b)) & Node.DOCUMENT_POSITION_FOLLOWING);
+          return pos('ck-details', 'ck-progress-section') && pos('ck-worktree-section', 'ck-progress-section') && pos('ck-progress-section', 'ck-changes-section');
         });
-        await stubCockpit(page);
-        await page.route('**/api/handoff', route => route.fulfill({
-          status: 200, contentType: 'application/json',
-          body: JSON.stringify({ raw: `# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\n${id} — build it\n\n## Next Steps${body.replace('TID', id)}` }),
-        }));
-        await page.goto(BASE);
-        await page.waitForLoadState('networkidle');
-        await page.locator('#board-search').fill(id);
-        await page.locator(`.card[data-id="${id}"] .card-start`).click();
-        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-        await expect(page.locator('#ck-state')).toContainText(`${id} — build it`);   // the Current Focus is there: the box rendered
-        if (shows) {
-          await expect(page.locator('#ck-state')).toContainText('Next steps');
-          await expect(page.locator('#ck-state')).toContainText('sprint complete');
-          await expect(page.locator('#ck-state')).not.toContainText('canon:handoff');
-        } else {
-          await expect(page.locator('#ck-state')).not.toContainText('Next steps');
-          await expect(page.locator('#ck-state .ck-state-source', { hasText: 'Next steps' })).toHaveCount(0);   // (the Current Focus has its own .ck-state-source label)
-        }
+        expect(order).toBe(true);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
     });
-  }
+
+    test('Approve plan is current once plan.md has an Approach, and Plan before it', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
+      try {
+        await openRail(page, id, { sprint: [ev('sprint.started', {}, undefined, id)], opts: { plan: PLAN_WRITTEN } });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'approve-plan');
+        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'red');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+      const id2 = newTicketId(PROJECT_ROOT, '5ef8');
+      try {
+        await openRail(page, id2, { sprint: [ev('sprint.started', {}, undefined, id2)] });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'plan');
+        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'blue');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id2);
+      }
+    });
+
+    for (const [opts, head, struck] of [[{ demo: true }, 'a Lite ticket', 'reviewer'], [{ manual: true }, 'a Manual ticket', 'mutation-test'], [{}, null, null]]) {
+      test(`the ticket's options pick the card's mode: ${head || 'Normal'}`, async ({ page }) => {
+        const id = newTicketId(PROJECT_ROOT, '5ef8');
+        try {
+          await openRail(page, id, { opts });
+          if (head) {
+            await expect(card(page).locator('.spc-head')).toHaveText(head);
+            await expect(card(page).locator(`[data-spc-row="${struck}"]`)).toHaveClass(/gone/);
+          } else {
+            await expect(card(page).locator('.spc-row')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').length);   // a Manual-only node is not drawn
+            await expect(card(page).locator('.spc-head')).toHaveCount(0);   // the section label already says Sprint progress
+            await expect(card(page).locator('.spc-row.gone')).toHaveCount(0);
+          }
+          await expect(card(page).locator('.spc-live > .spc-status')).toHaveText('Not started');
+        } finally {
+          removeTestTicket(PROJECT_ROOT, id);
+        }
+      });
+    }
+
+    test('the event strip lists this ticket\'s 3 newest events, oldest first, escaped; or says there are none', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
+      const at = m => `2026-11-19T10:0${m}:00.000Z`;
+      try {
+        await openRail(page, id, {
+          sprint: [ev('plan.approved', {}, at(1), id)],
+          events: [ev('sprint.started', {}, at(0), id), ev('plan.approved', {}, at(1), id), ev('gate.started', { role: 'reviewer', attempt: '1' }, at(2), id),
+            ev('gate.started', { role: 'other' }, at(3), 't-zzzz'), ev('gate.finished', { role: '<b>x</b>' }, at(4), id), ev('session.needs_you', {}, at(5), id)],
+        });
+        const rows = card(page).locator('.spc-ev');
+        await expect(rows).toHaveCount(3);
+        await expect(rows.nth(0)).toContainText('gate.started reviewer · attempt 1');
+        await expect(rows.nth(1)).toContainText('gate.finished <b>x</b>');   // shown as text, never markup
+        await expect(card(page).locator('.spc-ev b')).toHaveCount(0);
+        await expect(rows.nth(2)).toContainText('session.needs_you');
+        await expect(card(page)).not.toContainText('other');
+        const hhmmss = await page.evaluate(t => { const d = new Date(t); return [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':'); }, at(5));
+        await expect(rows.nth(2).locator('.spc-ev-t')).toHaveText(hhmmss);   // local time
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+      const id2 = newTicketId(PROJECT_ROOT, '5ef8');
+      try {
+        await openRail(page, id2, { events: [ev('sprint.started', {}, at(0), 't-zzzz')] });
+        await expect(card(page).locator('.spc-ev-empty')).toHaveText('No events yet.');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id2);
+      }
+      const id3 = newTicketId(PROJECT_ROOT, '5ef8');
+      try {
+        await openRail(page, id3, { sprint: [ev('sprint.started', {}, at(0), id3)], events: [ev('sprint.started', {}, at(0), 't-zzzz')] });
+        await expect(card(page).locator('.spc-ev-empty')).toHaveText('No recent events.');
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id3);
+      }
+    });
+
+    for (const route of ['pipeline', 'sprint', 'events']) {
+      for (const [how, answer] of [['fails', r => r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"x"}' })], ['answers non-JSON', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<html>' })]]) {
+        test(`the card says it is unavailable when /api/v1/${route} ${how}`, async ({ page }) => {
+          const id = newTicketId(PROJECT_ROOT, '5ef8');
+          try {
+            writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+            await stubCockpit(page);
+            await page.route({ pipeline: '**/api/v1/pipeline**', sprint: `**/api/v1/sprint/${id}`, events: '**/api/v1/events?**' }[route], answer);
+            await page.goto(BASE);
+            await page.waitForLoadState('networkidle');
+            await page.locator('#board-search').fill(id);
+            await page.locator(`.card[data-id="${id}"] .card-start`).click();
+            await expect(card(page)).toHaveText('Sprint progress unavailable');
+            await expect(card(page).locator('.spc-row')).toHaveCount(0);
+          } finally {
+            removeTestTicket(PROJECT_ROOT, id);
+          }
+        });
+      }
+    }
+
+    test('requests: the pipeline once per tab, the events only when the snapshot changes; never HANDOFF or worktrees from the rail', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
+      let snap = [ev('sprint.started', {}, '2026-11-19T10:00:00.000Z', id)];
+      try {
+        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+        await stubCockpit(page);
+        await page.route(`**/api/v1/sprint/${id}`, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, ticket: id, events: snap }) }));
+        // every fetch the rail module makes, by URL: the board's own poll (board-core.js) also reads /api/handoff, and is not the rail's
+        await page.addInitScript(() => {
+          window.__railFetches = [];
+          const orig = window.fetch;
+          window.fetch = function (url, ...rest) {
+            if (/board-cockpit-rail\.js/.test(new Error().stack || '')) window.__railFetches.push(String(url));
+            return orig.call(this, url, ...rest);
+          };
+        });
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'plan');
+        const count = re => page.evaluate(src => window.__railFetches.filter(u => new RegExp(src).test(u)).length, re);
+        expect(await count('/api/v1/pipeline')).toBe(1);
+        expect(await count('/api/v1/events')).toBe(1);
+        await page.evaluate(() => { window.__railFetches = []; });   // from here on, only the 5 s ticks (opening the tab also reads the worktree list)
+        await expect.poll(() => count('/api/v1/sprint/'), { timeout: 15000 }).toBeGreaterThanOrEqual(2);   // two ticks
+        expect(await count('/api/v1/pipeline')).toBe(0);
+        expect(await count('/api/v1/events')).toBe(0);   // the snapshot did not change
+        expect(await count('/api/handoff')).toBe(0);
+        expect(await count('/api/worktrees')).toBe(0);
+        snap = [...snap, ev('plan.approved', {}, '2026-11-19T10:01:00.000Z', id)];
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'build', { timeout: 8000 });
+        expect(await count('/api/v1/events')).toBe(1);
+        expect(await count('/api/v1/pipeline')).toBe(0);
+        // the session starts waiting on the person (the state the daemon's status message sets): the next tick reads the events again
+        // and the card turns red, the snapshot unchanged
+        await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.status = 'needs-you'; });
+        await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'red', { timeout: 8000 });
+        await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Needs you');
+        expect(await count('/api/v1/events')).toBe(2);
+        // nothing changes for 30 s: the events are read again anyway (kinds outside the snapshot reach the strip)
+        await page.evaluate(async () => { (await import('/static/board-cockpit.js')).cockpitState.progress.eventsAt -= 31000; });
+        await expect.poll(() => count('/api/v1/events'), { timeout: 8000 }).toBe(3);
+        expect(await count('/api/v1/pipeline')).toBe(0);
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    test('a tab switched while the snapshot is in flight keeps its own card', async ({ page }) => {
+      const a = newTicketId(PROJECT_ROOT, '5ef8'), b = newTicketId(PROJECT_ROOT, '5ef8');
+      let releaseA, aHeld = false;
+      const gateA = new Promise(r => { releaseA = r; });
+      try {
+        writeTicket(a, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+        writeTicket(b, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+        await stubCockpit(page);
+        await page.route(`**/api/v1/sprint/${a}`, async r => { aHeld = true; await gateA; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ schema: 1, ticket: a, events: [ev('plan.approved', {}, undefined, a)] }) }); });
+        await page.route(`**/api/v1/sprint/${b}`, json({ schema: 1, ticket: b, events: [ev('gate.started', { role: 'evaluator', attempt: '1' }, undefined, b)] }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(a);
+        await page.locator(`.card[data-id="${a}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        await expect.poll(() => aHeld).toBe(true);   // A's snapshot request is in flight, held here
+        await page.evaluate(async b => { const m = await import('/static/board-cockpit-rail.js'); m.openCockpit(b); }, b);
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
+        // from now on, record any moment the card shows A's state (Build): a later 5 s tick redrawing B must not hide it
+        await page.evaluate(() => {
+          window.__sawA = false;
+          const box = document.getElementById('ck-progress');
+          new MutationObserver(() => { if (box.querySelector('.spc-row.cur[data-spc-row="build"]')) window.__sawA = true; }).observe(box, { childList: true, subtree: true });
+        });
+        const aAnswered = page.waitForResponse(r => r.url().includes(`/api/v1/sprint/${a}`));
+        releaseA();
+        await aAnswered;
+        await page.waitForTimeout(500);   // A's late answer has been read by the page
+        expect(await page.evaluate(() => window.__sawA)).toBe(false);
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
+      } finally {
+        releaseA && releaseA();
+        removeTestTicket(PROJECT_ROOT, a);
+        removeTestTicket(PROJECT_ROOT, b);
+      }
+    });
+
+    for (const [tone, sprint, animated] of [['amber', [['gate.started', { role: 'reviewer' }]], true], ['blue', [['plan.approved']], true], ['red', [['gate.rejected', { role: 'evaluator', reason: 'stale' }]], false], ['green', [['sprint.completed']], false], ['idle', [], false]]) {
+      test(`the current dot pulses only while work runs: ${tone} @webkit`, async ({ page }) => {
+        const id = newTicketId(PROJECT_ROOT, '5ef8');
+        try {
+          await openRail(page, id, { sprint: sprint.map(([k, d]) => ev(k, d, undefined, id)) });
+          await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', tone);
+          const anims = () => page.evaluate(() => [...document.querySelectorAll('#ck-progress .spc-dot')].reduce((n, d) => n + d.getAnimations().length, 0));
+          expect(await anims()).toBe(animated ? 1 : 0);
+          if (animated) {
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await expect.poll(anims).toBe(0);
+          }
+        } finally {
+          removeTestTicket(PROJECT_ROOT, id);
+        }
+      });
+    }
+  });
 
   test('rail state (t-0d2b): fold/unfold and a dragged width survive ← Board, a return and a tab switch @webkit', async ({ page }) => {
     const a = newTicketId(PROJECT_ROOT, '0d2a');
@@ -9337,9 +9516,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
       await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
 
-      // The Status rail resolves the friendly label, not the raw backslash path.
-      await expect(page.locator('#ck-state')).toContainText('Running in: Main checkout (current)');
-      await expect(page.locator('#ck-state')).not.toContainText(winStyleLock);
+      // The Worktree panel resolves the friendly label, not the raw backslash path (t-5ef8: the STATUS "Running in:" copy is gone).
+      await expect(page.locator('#ck-worktree')).toContainText('Working in: Main checkout');
+      await expect(page.locator('#ck-worktree')).not.toContainText(winStyleLock);
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }
@@ -11559,78 +11738,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(async () => {
         expect((await rail.boundingBox()).width).toBeGreaterThan(before + 60);
       }).toPass({ timeout: 2000 });
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
-  test('findHandoffStateForTicket extracts only the matching ticket\'s bullet, including continuation lines', async ({ page }) => {
-    await page.goto(BASE);
-    await page.waitForLoadState('networkidle');
-    const raw = [
-      '## In Progress',
-      '',
-      '- **`t-aaaa`** (Other ticket) — some unrelated state that should never match.',
-      '  Continuation line for the other ticket.',
-      '- **`t-bbbb`** (Our ticket) — plan approved, implementation done: built the thing.',
-      '  Next: user confirms, then sprint complete.',
-      '- **`t-cccc`** (A third ticket) — also unrelated.',
-      '',
-      '## Discoveries',
-      '- something that must never leak into the In Progress extraction',
-    ].join('\n');
-    const result = await page.evaluate(async (raw) => { const { findHandoffStateForTicket } = await import('/static/board-cockpit-rail.js'); return ( findHandoffStateForTicket(raw, 't-bbbb')); }, raw);
-    expect(result).toContain('Our ticket');
-    expect(result).toContain('Next: user confirms');
-    expect(result).not.toContain('t-aaaa');
-    expect(result).not.toContain('t-cccc');
-    expect(result).not.toContain('Discoveries');
-
-    const none = await page.evaluate(async (raw) => { const { findHandoffStateForTicket } = await import('/static/board-cockpit-rail.js'); return ( findHandoffStateForTicket(raw, 't-zzzz')); }, raw);
-    expect(none).toBeNull();
-  });
-
-  test('Status section renders this ticket\'s HANDOFF.md bullet, below Ticket details', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'ckstate');
-    try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
-      await stubCockpit(page);
-      await page.route('**/api/handoff', route => route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ focus: null, raw: `## In Progress\n\n- **\`${id}\`** (Test) — plan approved, doing the thing.\n` }),
-      }));
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      await expect(page.locator('#ck-state')).toContainText('plan approved, doing the thing');
-      // The Ticket details row sits above the (tall) Status in DOM order so its badge is never scrolled out of sight (t-6254); Status starts expanded.
-      const detailsFirst = await page.evaluate(() => !!(document.getElementById('ck-details').compareDocumentPosition(document.getElementById('ck-state-section')) & Node.DOCUMENT_POSITION_FOLLOWING));
-      expect(detailsFirst).toBe(true);
-      await expect(page.locator('#ck-state-section')).not.toHaveClass(/collapsed/);
-    } finally {
-      removeTestTicket(PROJECT_ROOT, id);
-    }
-  });
-
-  test('Status section shows a hint when this ticket has no HANDOFF.md bullet', async ({ page }) => {
-    const id = newTicketId(PROJECT_ROOT, 'cknostate');
-    try {
-      writeTicket(id, 'in_progress');
-      await stubCockpit(page);
-      await page.route('**/api/handoff', route => route.fulfill({
-        status: 200, contentType: 'application/json',
-        body: JSON.stringify({ focus: null, raw: '## In Progress\n\n- Nothing about this ticket here.\n' }),
-      }));
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      await expect(page.locator('#ck-state')).toContainText('No saved state yet');
     } finally {
       removeTestTicket(PROJECT_ROOT, id);
     }

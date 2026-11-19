@@ -1,5 +1,5 @@
 import { state } from './board-core.js';
-import { esc, escAttr, md, worktreeRun } from './board-helpers.js';
+import { esc, escAttr, worktreeRun } from './board-helpers.js';
 import { findTicketById, showToast } from './board-render.js';
 import { paneHostId, paneTabId } from './board-pane.js';
 import { activeIframe, activeTabId, cockpitState, cockpitTabs, missingTicketMessage, requestPreview, setTermMessage } from './board-cockpit.js';
@@ -615,17 +615,6 @@ export function applyActualWorkingCwd(cwd, requested) {
   } else {
     note.textContent = `Working in: ${label}`;
   }
-}
-
-// The ticket id/title prefix is already shown in the ck-ticket-card above —
-// drop it here. HANDOFF.md's own line breaks are just ~80-col source
-// wrapping for editing, not semantic paragraphs — collapse them, then split
-// into real sentences so this doesn't render as one dense wrapped blob.
-export function formatStateAsParagraphs(bullet, t) {
-  const withoutPrefix = bullet.replace(/^-\s+(\*\*[^*]*\*\*\s*)?(\([^)]*\)\s*)?[—-]\s*/, '');
-  const flat = withoutPrefix.replace(/\s+/g, ' ').trim();
-  const sentences = flat.split(/(?<=[.:])\s+(?=[A-Z0-9`$<])/g).filter(Boolean);
-  return sentences.map(s => `<p>${md(s, t.id)}</p>`).join('');
 }
 
 // t-3786: the GitHub panel is one element shared by every tab, so each tab change (a switch, a close) shows the active tab's own: its

@@ -205,15 +205,10 @@
     }
     .ck-ticket-card .ck-tc-id { font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted); }
     .ck-ticket-card .ck-tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 4px; }
-    .ck-state {
-      font-size: 12px; color: var(--text-body); line-height: 1.55;
+    .ck-progress {
       background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 8px; padding: 10px 12px;
     }
-    .ck-state p { margin: 0 0 8px 0; }
-    .ck-state p:last-child { margin-bottom: 0; }
-    /* t-8ff0: label marking a Current Focus fallback (not per-ticket state). */
-    .ck-state-source { font-size: 11px; color: var(--text-muted); margin: 0 0 6px 0; }
     /* t-6254: one row replaces the Plan/Acceptance/Test Plan accordions; it opens the ticket viewer as a popup. */
     .ck-details {
       display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;

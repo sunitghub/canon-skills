@@ -340,6 +340,17 @@ sprint agent without leaving the browser — no second terminal.
   check a box that isn't actually verified. The rail **polls** every 5s while
   the cockpit is open, so edits the running agent (or anyone else) makes to
   `acceptance.md` show up without closing/reopening the cockpit.
+- **Sprint progress (`t-5ef8`):** under **WORKTREE**, the rail's **SPRINT PROGRESS** card shows where the ticket's sprint is: the
+  steps of the project's pipeline (Start, Plan, Spec check, Approve plan, Build, the wrapup gates, Reviewer, Evaluator, Close), each
+  with its Step, Gate, Agent or You tag. Steps already passed have a green dot; the current one is boxed with a status line
+  ("Reviewer running · attempt 2", "Close refused: stale"). Its colour says what is happening: blue while you or the agent work in
+  the session, amber while a gate agent runs, red when it waits on you (the plan to approve, a refused close, a session that needs
+  you), green once closed, grey before the sprint starts. The current dot pulses only on blue and amber, and never when your system
+  asks for reduced motion. Under the steps are the ticket's last three events from the activity log ("No events yet." before
+  any). A Lite or Manual ticket strikes through the steps its option skips. The wrapup gates show as steps but are never marked
+  current, because nothing reports them yet. The card is read-only: it reads only the public API (`/api/v1/pipeline`,
+  `/api/v1/sprint/<id>`, `/api/v1/events`), so another tool can draw the same card, and when one of them cannot be read it says
+  *Sprint progress unavailable*. It replaced the rail's STATUS box (the HANDOFF.md text): that text is in **Logbook › Handoff**.
 - **Several sessions, several agents:** one project can run more than one session at a time, and each session picks its
   own agent (Claude Code, Pi or Copilot CLI) — for example Claude Code on one ticket while Pi takes another. The Agents
   rail groups them by project and shows each one's state and agent. Give each ticket its own worktree (next bullet)

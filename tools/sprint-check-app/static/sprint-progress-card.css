@@ -1,0 +1,38 @@
+/* t-5ef8: the Sprint progress card (sprint-progress-card.js), one sheet for both pages: the Pipeline tab's preview in the Cockpit shell
+   (its .spc box stays in cockpit-factory.css) and a ticket's live card in the board's Cockpit rail. Theme variables only. */
+.spc-head{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px}
+.spc-rail{list-style:none;margin:0;padding:0 0 0 4px;border-left:1px solid var(--border-muted)}
+.spc-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:5px 0 5px 14px;font-size:13px}
+.spc-dot{position:absolute;left:-5px;top:11px;width:9px;height:9px;border-radius:50%;border:1px solid var(--border);background:var(--bg)}
+.spc-n{color:var(--text)}
+.spc-row.gone .spc-n{text-decoration:line-through;color:var(--text-muted)}
+.spc-k{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:0 6px}
+.spc-k.you{border-color:var(--amber);color:var(--amber)}
+.spc-k.agent{border-color:var(--accent);color:var(--accent)}
+.spc-note{margin-left:auto;font-size:11px;font-weight:600;color:var(--text-muted)}
+.spc-note.skip,.spc-note.off{color:var(--amber)}
+.spc-note.wait,.spc-note.ro{color:var(--accent)}
+.spc-line{flex-basis:100%;font-size:11.5px;color:var(--text-muted)}
+.spc-status{flex-basis:100%;font-size:12px;font-weight:600;color:var(--text-body)}
+/* the live card: the row before the current one is done, the current row carries the tone; idle and later rows stay dim */
+.spc-live{--spc-tone:var(--text-dim)}
+.spc-live[data-tone="blue"]{--spc-tone:var(--col-progress)}
+.spc-live[data-tone="amber"]{--spc-tone:var(--th-warn, var(--amber))}
+.spc-live[data-tone="red"]{--spc-tone:var(--th-bad-ink, var(--col-discarded))}
+.spc-live[data-tone="green"]{--spc-tone:var(--th-ok, var(--ok))}
+.spc-live > .spc-status{margin:0 0 8px;color:var(--spc-tone)}
+.spc-live .spc-row:not(.done):not(.cur) .spc-n{color:var(--text-muted)}
+.spc-live .spc-row.done .spc-dot{background:var(--th-ok, var(--ok));border-color:var(--th-ok, var(--ok))}
+.spc-live .spc-row.cur{border:1px solid var(--spc-tone);border-radius:8px;margin:2px 0;padding-right:8px}
+.spc-live .spc-row.cur .spc-n{font-weight:700;color:var(--text)}
+.spc-live .spc-row.cur .spc-dot{background:var(--spc-tone);border-color:var(--spc-tone)}
+.spc-live .spc-row.cur .spc-status{color:var(--spc-tone)}
+/* the pulse exists only for a person who has not asked for less motion: nothing to override under reduce */
+@media (prefers-reduced-motion: no-preference){
+.spc-live[data-tone="blue"] .spc-row.cur .spc-dot,.spc-live[data-tone="amber"] .spc-row.cur .spc-dot{animation:spc-pulse 1.6s ease-in-out infinite}
+}
+@keyframes spc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
+.spc-evs{list-style:none;margin:10px 0 0;padding:0;font-family:var(--mono, monospace);font-size:11px;color:var(--text-muted)}
+.spc-ev{padding:1px 0;overflow-wrap:anywhere}
+.spc-ev-t{color:var(--text-muted)}
+.spc-ev-empty{margin-top:10px;font-size:11.5px;color:var(--text-muted)}

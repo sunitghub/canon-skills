@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/static/board-logbook.css">
   <link rel="stylesheet" href="/static/board-tags.css">
   <link rel="stylesheet" href="/static/buttons.css">
+  <link rel="stylesheet" href="/static/sprint-progress-card.css">
   <script src="/static/theme-boot.js" data-page="board"></script>
 </head>
 <body>
@@ -228,13 +229,13 @@
               <div class="ck-worktree" id="ck-worktree"></div>
             </div>
           </div>
-          <div class="ck-accordion-section" id="ck-state-section">
-            <div class="ck-accordion-header" data-accordion="ck-state-section">
-              <div class="ck-section-label">Status</div>
+          <div class="ck-accordion-section" id="ck-progress-section">
+            <div class="ck-accordion-header" data-accordion="ck-progress-section">
+              <div class="ck-section-label">Sprint progress</div>
               <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="ck-accordion-body">
-              <div class="ck-state" id="ck-state"></div>
+              <div class="ck-progress" id="ck-progress" aria-live="polite"></div>
             </div>
           </div>
           <div class="ck-accordion-section no-git-only" id="ck-changes-section">
