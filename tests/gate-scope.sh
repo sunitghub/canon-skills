@@ -209,13 +209,15 @@ g env && fail "a fresh record without snap= must still block"
 # canon gate-scope clear: no terminal lists and keeps; y ends it; n keeps it; none registered says so
 out="$(real_env "$CANON" gate-scope clear < /dev/null)"; assert_contains "$out" "is registered."; assert_contains "$out" "(no terminal to ask: kept)"
 [[ -e "$f" ]] || fail "gate-scope clear with no terminal must keep the record"
-command -v script >/dev/null || fail "gate-scope clear needs script(1) to be tested with a terminal"
+# the y/n answers need a pseudo-terminal from script(1); Git Bash on Windows has none, so they skip there, loudly (as in tkt-merge-pr.sh)
+if command -v script >/dev/null 2>&1; then
 tty_run() { local a="$1"; shift; if [[ "$(uname)" == Darwin ]]; then { sleep 1; printf '%s\n' "$a"; sleep 1; } | script -q /dev/null "$@"; else { sleep 1; printf '%s\n' "$a"; sleep 1; } | script -qec "$(printf '%q ' "$@")" /dev/null; fi; }   # the answer after the prompt is up   # BSD and util-linux script(1) differ
 out="$(tty_run n env HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_GATE_SCOPE_DIR="$reg" "$CANON" gate-scope clear)"; assert_contains "$out" "kept"
 [[ -e "$f" ]] || fail "gate-scope clear answered n must keep the record"
 sdir="$(sed -n 's/^dir=//p' "$f")"
 out="$(tty_run y env HOME="$realhome" CANON_HOME="$realhome/.canon" CANON_GATE_SCOPE_DIR="$reg" "$CANON" gate-scope clear)"; assert_contains "$out" "ended"
 [[ ! -e "$f" && ! -e "$sdir" ]] || fail "gate-scope clear answered y must remove the record and its scratch dir"
+else echo "gate-scope: SKIP the y/n cases of gate-scope clear: no script(1) here"; rm -f "$f"; fi
 assert_contains "$(real_env "$CANON" gate-scope clear < /dev/null)" "No canon close gate is registered."
 
 # t-11e6: a control character in the working folder's name (a tab, an escape) never reaches the recorded project name, so it never reaches the terminal

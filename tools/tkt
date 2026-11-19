@@ -1564,10 +1564,10 @@ cmd_import_issue() {
   repo="$(_gh_origin_repo "$root" import-issue 2>/dev/null)" || repo=""
   # t-b775: in a project that tracks .tickets/ (a cloud clone), canon's per-machine .tickets/.gitignore stays untracked, and claude.ai's
   # stop hook asks to commit every untracked file: hide it from this clone's git status (once), never by committing it.
-  local gd; if _tickets_tracked "$root" _ && gd="$(git -C "$root" rev-parse --absolute-git-dir 2>/dev/null)"; then
-    mkdir -p "$gd/info" && { grep -qxF '.tickets/.gitignore' "$gd/info/exclude" 2>/dev/null \
-      || { [[ -s "$gd/info/exclude" && "$(tail -c1 "$gd/info/exclude" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$gd/info/exclude"; echo '.tickets/.gitignore' >> "$gd/info/exclude"; }; } \
-      || echo "import-issue: note: could not add .tickets/.gitignore to $gd/info/exclude" >&2
+  local ex; if _tickets_tracked "$root" _ && ex="$(cd "$root" && git rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)"; then   # reviewer: the file git reads, a linked worktree included
+    mkdir -p "$(dirname "$ex")" && { grep -qxF '.tickets/.gitignore' "$ex" 2>/dev/null \
+      || { [[ -s "$ex" && "$(tail -c1 "$ex" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$ex"; echo '.tickets/.gitignore' >> "$ex"; }; } \
+      || echo "import-issue: note: could not add .tickets/.gitignore to $ex" >&2
   fi
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
@@ -3056,7 +3056,7 @@ _ff_here() {
       fi
     fi
     # t-b775: git checkout cannot drop a file git does not track here (HANDOFF.md on the VM): name a step that works for it
-    if [[ -n "$ut" ]]; then differ+=("$p (untracked here: move it aside: mv $p $p.local)"); else differ+=("$p"); tracked=1; fi
+    if [[ -n "$ut" ]]; then differ+=("$p (untracked here: move it aside: mv $(printf '%q' "$p") $(printf '%q' "$p.local"))"); else differ+=("$p"); tracked=1; fi   # quoted: the path comes from the PR
   done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
   if [[ ${#differ[@]} -gt 0 ]]; then
     # t-e7fb: plain words. What is left (merged on GitHub, local branch behind), which files, and the steps that end it.

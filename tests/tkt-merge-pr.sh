@@ -558,7 +558,7 @@ assert_eq "$PRHEAD" "$(git rev-parse main)"; [[ "$(git status --porcelain --untr
 git reset -q --hard "$BASE"; echo dirty >> .gitignore                      # t-41ff: an edit the merge does not touch survives it
 out="$(ff_merge)"; assert_contains "$out" "Local main: ${BASE:0:8} -> ${PRHEAD:0:8} (fast-forward)"
 assert_eq "$PRHEAD" "$(git rev-parse main)"; assert_grep '^dirty$' .gitignore; git checkout -q .gitignore; git reset -q --hard "$BASE"
-git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge changes, edited here: left alone
+git reset -q --hard "$BASE"; echo mine > change.txt                        # a file the merge adds, untracked here: left alone
 out="$(ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
 assert_contains "$out" $'\n  change.txt (untracked here: move it aside: mv change.txt change.txt.local)\n  Move each one aside as shown (it keeps your copy), then run: tkt merge-pr '"$id"$'\n  (in the Cockpit Terminal, type su first)'
 assert_eq "$BASE" "$(git rev-parse main)"; assert_eq mine "$(cat change.txt)"; rm change.txt
