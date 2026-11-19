@@ -328,7 +328,7 @@ assert_eq 2 "$(cat "$EV"/*.jsonl | grep -c '"kind":"evidence.stamped"')"
 
 # 9. t-985c: the Sprint progress card's close.started (the first `sprint pre-gate-check` of a sprint only: a re-run must not move the
 # card back from a later gate) and manual_qa.recorded (fail if any step failed). Protects the close's first step and the person's QA record.
-C="$W/close"; mkproj "$C"; cid="$(cd "$C" && "$TKT" create "Closing")"; ct="$C/.tickets/$cid"
+C="$W/close"; mkproj "$C"; cid="$(cd "$C" && "$TKT" create "Closing")"
 git -C "$C" add -A; git -C "$C" -c user.email=t@t -c user.name=t commit -qm closing
 "$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$C" "ticket=$cid" </dev/null >/dev/null
 (cd "$C" && "$ROOT/tools/pre-gate-check.sh" "$cid" >/dev/null 2>&1) || true
