@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-11-19
+
+- Added: the Cockpit rail's **Sprint progress** card replaces the STATUS box (t-5ef8). It shows the project's pipeline steps with the current one boxed and coloured (blue while you or the agent work, amber while a gate agent runs, red when it waits on you or a close is refused, green once closed), a status line such as "Reviewer running · attempt 2", and the ticket's last three events. The current dot pulses only on blue and amber, never under reduced motion; a Lite or Manual ticket strikes through the steps it skips. The card reads only the public API, including the new read-only `GET /api/v1/pipeline` (each node's id, kind, order, on, skip_on, only and group, listed in `canon-go api schema`), so another tool can draw the same card. The rail no longer polls HANDOFF.md or the worktree list every 5 s: HANDOFF.md's text is in Logbook › Handoff, and the Worktree panel already says where the session runs.
+
 ## [0.68.7] - 2026-11-19
 
 - Changed: canon's own changelog entries are written one file per ticket, `changelog.d/<id>.md`, so two tickets (two cloud PRs above all) never conflict on CHANGELOG.md and need no merge of main that moves the PR off its graded commit. `scripts/changelog-release.sh X.Y.Z` builds the release commit: the dated section in the order the entries landed, the fragments removed, VERSION written, all staged; `scripts/release.sh` refuses while a fragment is left, and `sprint pre-gate-check` names a canon sprint that edits CHANGELOG.md (t-5ed4). Maintainers only: nothing changes for a project using canon.
