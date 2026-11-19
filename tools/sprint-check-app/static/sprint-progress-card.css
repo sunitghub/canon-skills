@@ -5,6 +5,7 @@
 .spc-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:5px 0 5px 14px;font-size:13px}
 /* t-985c: a long step name gives way (ellipsis) so the time keeps its right edge */
 .spc-live .spc-row{flex-wrap:nowrap}
+.spc-live .spc-row:has(.spc-line){flex-wrap:wrap}   /* reviewer: the Manual Close row's sentence goes under it, the name stays whole */
 .spc-live .spc-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spc-t{margin-left:auto;padding-left:8px;font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .spc-note + .spc-t{margin-left:0}

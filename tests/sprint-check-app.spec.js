@@ -8756,6 +8756,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
+    // t-985c (reviewer Act On): the live rows do not wrap, so a long name ends in an ellipsis beside its time; the Manual Close row, which
+    // carries its sign-off sentence, wraps instead, its name whole. Protects the Cockpit rail's card at the rail's real width.
+    test('names stay whole or end in an ellipsis; the Manual Close sentence goes under its row', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '5ef8');
+      await page.setViewportSize({ width: 1280, height: 800 });
+      try {
+        await openRail(page, id, { opts: { manual: true }, sprint: [ev('plan.approved', {}, undefined, id)] });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'build');
+        const m = await card(page).evaluate(c => {
+          const row = c.querySelector('[data-spc-row="close"]'), n = row.querySelector('.spc-n'), line = row.querySelector('.spc-line');
+          // a skipped row's name may end in an ellipsis beside its note (the head already names the option); every other name stays whole
+          const cut = [...c.querySelectorAll('.spc-row:not(.gone) .spc-n')].filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent);
+          return { cut, closeWhole: n.scrollWidth <= n.clientWidth + 1, below: line.getBoundingClientRect().top >= n.getBoundingClientRect().bottom - 1 };
+        });
+        expect(m.cut).toEqual([]);   // at the rail's width no step that runs has its name cut
+        expect(m.closeWhole).toBe(true);
+        expect(m.below).toBe(true);   // the sentence sits under the name, not squeezed beside it
+        // a name too long for the row ends in an ellipsis on one line, its time still on the row's right edge
+        const e = await card(page).evaluate(c => {
+          const n = c.querySelector('[data-spc-row="build"] .spc-n'); n.textContent = 'A very long step name that cannot fit beside its time in the rail';
+          const s = getComputedStyle(n);
+          return { ellipsis: s.textOverflow === 'ellipsis' && s.whiteSpace === 'nowrap', cut: n.scrollWidth > n.clientWidth, oneLine: n.getBoundingClientRect().height < 24 };
+        });
+        expect(e).toEqual({ ellipsis: true, cut: true, oneLine: true });
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
     for (const [opts, head, struck] of [[{ demo: true }, 'a Lite ticket', 'reviewer'], [{ manual: true }, 'a Manual ticket', 'mutation-test'], [{}, null, null]]) {
       test(`the ticket's options pick the card's mode: ${head || 'Normal'}`, async ({ page }) => {
         const id = newTicketId(PROJECT_ROOT, '5ef8');

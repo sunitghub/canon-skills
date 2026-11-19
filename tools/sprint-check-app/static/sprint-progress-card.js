@@ -149,7 +149,8 @@ export function progressCardHtml(nodes, mode, live) {
     const cur = !!live && i === curAt;
     const at = live && !gone && Number.isFinite(times[n.id]) ? hm(times[n.id]) : '';
     // t-985c: the current step's status is its tooltip and accessible name, not a line under it (user: pulse only, no box)
-    const tip = cur ? ` title="${esc(`${label(n.id)}: ${live.status}${at ? ' · started ' + at : ''}`)}" aria-label="${esc(`${label(n.id)}: ${live.status}${at ? ' · started ' + at : ''}`)}"` : '';
+    const say = cur ? esc(`${label(n.id)}: ${live.status}${at ? ' · started ' + at : ''}`) : '';
+    const tip = cur ? ` title="${say}" aria-label="${say}"` : '';
     return `<li class="spc-row${gone ? ' gone' : ''}${done ? ' done' : ''}${cur ? ' cur' : ''}" data-spc-row="${esc(n.id)}"${tip}><span class="spc-dot" aria-hidden="true"></span>`
       + `<span class="spc-n">${esc(label(n.id))}</span><span class="spc-k ${n.kind === 'you' ? 'you' : n.kind === 'agent' ? 'agent' : ''}">${esc(TAG[n.kind] || n.kind)}</span>`
       + (text ? `<span class="spc-note ${cls}">${esc(text)}</span>` : '')
