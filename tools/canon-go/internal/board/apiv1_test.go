@@ -723,8 +723,14 @@ func TestAPIv1PipelineServesTheReadersNodes(t *testing.T) {
 		}
 	}
 	// the published schema: the route's top-level keys and the node keys, from the variables the handler uses
-	if keys := v1Body(t, w); len(keys) != len(v1Responses["/api/v1/pipeline"]) || keys["schema"] == nil || keys["nodes"] == nil {
+	keys := v1Body(t, w)
+	if len(keys) != len(v1Responses["/api/v1/pipeline"]) {
 		t.Errorf("response keys %v, schema %v", keys, v1Responses["/api/v1/pipeline"])
+	}
+	for _, k := range v1Responses["/api/v1/pipeline"] {
+		if _, ok := keys[k]; !ok {
+			t.Errorf("schema key %q missing from the response", k)
+		}
 	}
 	if fmt.Sprint(apiSchema()["pipeline_node"]) != fmt.Sprint([]string{"id", "kind", "order", "on", "skip_on", "only", "group"}) {
 		t.Errorf("schema pipeline_node %v", apiSchema()["pipeline_node"])
