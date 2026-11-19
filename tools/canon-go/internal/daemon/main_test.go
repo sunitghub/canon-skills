@@ -4920,6 +4920,57 @@ func TestResolveSpawnCwdReturnsTheFoldersOwnSpelling(t *testing.T) {
 	}
 }
 
+// t-154c (Windows VM 2026-11-19: tkt wrote the land worktree's lock as /c/Users/...; the daemon refused it, started the session in the
+// main checkout and overwrote the lock). Every incoming session path goes through fromMSYS; a stand-in mapper (this system is not
+// Windows) proves the readers use it: a lock and a start request in the Git Bash form reach the worktree and the lock is left alone.
+func TestSpawnCwdReadsGitBashLockThroughFromMSYS(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", "ticket.md"), []byte("---\nid: t-ab12\nstatus: in_progress\n---\n# t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	realWt, _ := filepath.EvalSymlinks(wt)
+	orig := fromMSYS
+	t.Cleanup(func() { fromMSYS = orig })
+	fromMSYS = func(p string) string { // "/c/wt" stands for the worktree, as Git Bash's /c/Users/... stands for C:/Users/...
+		if p == "/c/wt" {
+			return wt
+		}
+		return p
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	cwdFile := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")
+	if err := os.WriteFile(cwdFile, []byte("/c/wt\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := s.resolveSpawnCwdForTicket("t-ab12", "", root)
+	gotReal, _ := filepath.EvalSymlinks(got)
+	if !ok || gotReal != realWt {
+		t.Fatalf("a /c/ lock: spawn cwd %q (ok %v), want the worktree %q", gotReal, ok, realWt)
+	}
+	if after, _ := os.ReadFile(cwdFile); strings.TrimSpace(string(after)) != "/c/wt" {
+		t.Fatalf("the lock was rewritten to %q; it must be left alone", after)
+	}
+	// boundWorktreeIn answers only for a worktree holding the ticket's own folder (its status lives there)
+	if err := os.MkdirAll(filepath.Join(wt, ".tickets", "t-ab12"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt, ".tickets", "t-ab12", "ticket.md"), []byte("---\nid: t-ab12\nstatus: in_progress\n---\n# t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b := s.boundWorktreeIn(root, "t-ab12"); b == "" {
+		t.Fatalf("boundWorktreeIn did not read the /c/ lock")
+	}
+	if got, ok := s.resolveSpawnCwd("/c/wt", root); !ok || got == "" {
+		t.Fatalf("a start request with cwd=/c/wt was refused")
+	}
+	if _, ok := s.resolveProjectForCwd("/c/wt"); !ok {
+		t.Fatalf("resolveProjectForCwd refused cwd=/c/wt")
+	}
+}
+
 func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()

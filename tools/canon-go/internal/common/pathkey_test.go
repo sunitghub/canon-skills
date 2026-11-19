@@ -107,3 +107,24 @@ func TestSamePath(t *testing.T) {
 		}
 	}
 }
+
+// t-154c: a Git Bash drive path is read as Windows reads it, on Windows only; everything else is unchanged.
+func TestFromMSYS(t *testing.T) {
+	for _, c := range []struct{ in, goos, want string }{
+		{"/c/Users/x/wt", "windows", "C:/Users/x/wt"},
+		{"/d/a", "windows", "D:/a"},
+		{"/c", "windows", "C:/"},
+		{"/c/", "windows", "C:/"},
+		{"C:/Users/x", "windows", "C:/Users/x"},
+		{"/Users/x", "windows", "/Users/x"},
+		{"/cd/x", "windows", "/cd/x"},
+		{"/1/x", "windows", "/1/x"},
+		{"", "windows", ""},
+		{"/c/Users/x", "darwin", "/c/Users/x"},
+		{"/c/Users/x", "linux", "/c/Users/x"},
+	} {
+		if got := FromMSYS(c.in, c.goos); got != c.want {
+			t.Errorf("FromMSYS(%q, %q) = %q, want %q", c.in, c.goos, got, c.want)
+		}
+	}
+}

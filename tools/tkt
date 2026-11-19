@@ -351,7 +351,7 @@ cmd_set_status() {
     # dir to hold a binding, same guard as _ticket_cwd_binding's read side).
     if [[ "$(basename "$file")" == "ticket.md" ]]; then
       local tdir="$(dirname "$file")"
-      [[ -f "$tdir/.cockpit-cwd" ]] || { wt_write_ok "$tdir/.cockpit-cwd" || exit 1; printf '%s\n' "$(worktree_root)" > "$tdir/.cockpit-cwd"; }
+      [[ -f "$tdir/.cockpit-cwd" ]] || { wt_write_ok "$tdir/.cockpit-cwd" || exit 1; printf '%s\n' "$(canon_lock_path "$(worktree_root)")" > "$tdir/.cockpit-cwd"; }   # t-154c: the form the daemon reads
     fi
   else
     clear_active_if "$id"
@@ -3720,7 +3720,7 @@ cmd_land() {
   [[ -f "$SCRIPT_DIR/skills.sh" ]] && bash "$SCRIPT_DIR/skills.sh" link-worktree "$wt" < /dev/null | sed 's/^/  /' || true
   printf '%s\n' "$head" > "$tdir/.land-head"; printf '%s\n' "$pr" > "$tdir/.land-pr"
   [[ -f "$tdir/.cockpit-cwd" ]] && mv "$tdir/.cockpit-cwd" "$tdir/.cockpit-cwd.before-land"
-  printf '%s\n' "$(_normalize_path "$wt")" > "$tdir/.cockpit-cwd"
+  printf '%s\n' "$(canon_lock_path "$wt")" > "$tdir/.cockpit-cwd"   # t-154c: C:/... on Git Bash, the form the daemon reads
   set_field "$file" status in_progress && set_active "$id"
   canon_event ticket.status_changed tkt "$root" "ticket=$id" from=open to=in_progress
   echo "land: $id at PR #$pr head ${head:0:8}"

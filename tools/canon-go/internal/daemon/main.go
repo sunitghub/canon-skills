@@ -44,6 +44,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -374,7 +375,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	// has no token (only loopback-origin guard), so the value is validated the
 	// same conservative way as ticket above before it's embedded in a JS string
 	// literal — /session/start re-validates it independently regardless.
-	cwd := r.URL.Query().Get("cwd")
+	cwd := fromMSYS(r.URL.Query().Get("cwd")) // t-154c: an old Git Bash lock (/c/...) the page passed through
 	if cwd != "" && (!filepath.IsAbs(cwd) || !cwdPrefillRe.MatchString(cwd)) {
 		cwd = ""
 	}
@@ -4116,6 +4117,7 @@ func (s *server) listWorktreesIn(root string) ([]string, error) {
 // back to cfg.projectRoot (backward compatible). Reuses the OS-aware
 // EvalSymlinks/common.SamePath helpers — no per-OS path branch (DRY, Mac/Win).
 func (s *server) resolveProjectForCwd(cwd string) (string, bool) {
+	cwd = fromMSYS(cwd) // t-154c
 	if cwd == "" {
 		// Verbatim (not EvalSymlinks'd): the "" request resolves to the launch
 		// projectRoot and must echo it unchanged, matching the actual spawn cwd
@@ -4191,7 +4193,12 @@ func defaultRegistryFile() string {
 // client string alone (t-b19b). An empty cwd resolves to the project root.
 // t-391a: projectRoot is now per-request (resolveProjectForCwd), not the launch
 // global, so one daemon validates cwds for any project.
+// fromMSYS (t-154c) is every incoming session path's Git Bash → Windows mapping: the start request's and the page prefill's cwd, a
+// ticket's .cockpit-cwd lock. A var so a test on a non-Windows system can stand in a mapper and prove the readers use it.
+var fromMSYS = func(p string) string { return common.FromMSYS(p, runtime.GOOS) }
+
 func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
+	cwd = fromMSYS(cwd) // t-154c
 	if cwd == "" {
 		return projectRoot, true
 	}
@@ -4373,7 +4380,7 @@ func (s *server) boundWorktreeIn(root, ticket string) string {
 	if err != nil {
 		return ""
 	}
-	lock := strings.TrimSpace(string(b))
+	lock := fromMSYS(strings.TrimSpace(string(b))) // t-154c: a lock tkt wrote under Git Bash before the fix (/c/...)
 	if lock == "" || !filepath.IsAbs(lock) {
 		return ""
 	}
