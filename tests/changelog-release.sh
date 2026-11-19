@@ -98,6 +98,16 @@ cr "$d" 0.8.1 --date 2026-11-20 >/dev/null || fail "changelog-release: fragments
 assert_eq $'# Changelog\n\n## [Unreleased]\n\n## [0.8.1] - 2026-11-20\n\n- Fixed: only one (t-1111).\n\n## [0.8.0] - 2026-11-01\n\n- Old entry.' "$(cat "$d/CHANGELOG.md")"
 echo "changelog-release: fragments with an empty [Unreleased]"
 
+# [Unreleased] lines alone (no fragment) make a section; a tracked file in changelog.d/ that is not a top-level .md is no fragment: kept, not read
+d="$(fresh)"; mkdir -p "$d/changelog.d/sub"; echo "- not a fragment" > "$d/changelog.d/notes.txt"; echo "- nor this" > "$d/changelog.d/sub/x.md"
+git -C "$d" add changelog.d; git -C "$d" commit -qm other
+out="$(cr "$d" 0.8.1 --date 2026-11-20)" || fail "changelog-release: [Unreleased] lines alone refused: $out"
+assert_eq $'# Changelog\n\nIntro text.\n\n## [Unreleased]\n\n## [0.8.1] - 2026-11-20\n\n- Fixed: an entry written before fragments (t-0000).\n\n## [0.8.0] - 2026-11-01\n\n- Old entry.' "$(cat "$d/CHANGELOG.md")"
+assert_eq "changelog.d/notes.txt|changelog.d/sub/x.md" "$(git -C "$d" ls-files -- changelog.d | paste -sd'|' -)"
+assert_contains "$out" "[Unreleased] lines, then 0 fragment(s); VERSION 0.8.1; all staged"
+assert_contains "$out" "next: git diff --cached, then git commit -m 'chore: release 0.8.1'"
+echo "changelog-release: [Unreleased] lines alone; other files in changelog.d/ are left alone"
+
 # 3. each refusal exits 1, names its reason and changes no file
 snap() { (cd "$1" && git status --porcelain --untracked-files=all; cat VERSION CHANGELOG.md; { find changelog.d -type f 2>/dev/null || true; } | LC_ALL=C sort) ; }
 refuses() {   # refuses <label> <repo> <reason part> <args…>
@@ -115,6 +125,16 @@ d="$(withfrag "- Fixed: x (t-1111).")"; git -C "$d" checkout -q -b other
 refuses "off main" "$d" "run it on main" 0.9.0
 d="$(withfrag "- Fixed: x (t-1111).")"
 refuses "a version that is not X.Y.Z" "$d" "X.Y.Z" 0.9
+refuses "a version with a suffix" "$d" "X.Y.Z" 0.9.0-rc1
+refuses "a version with a prefix" "$d" "X.Y.Z" v0.9.0
+refuses "a date with a short day" "$d" "YYYY-MM-DD" 0.9.0 --date 2026-11-1
+refuses "a date with a prefix" "$d" "YYYY-MM-DD" 0.9.0 --date x2026-11-19
+for args in "" "--force 0.9.0" "0.9.0 0.9.1" "0.9.0 --date"; do   # usage errors exit 2, changing nothing
+  before="$(snap "$d")"; code=0; out="$(cr "$d" $args)" || code=$?   # word splitting intended
+  [[ "$code" == 2 ]] || fail "changelog-release: usage '$args' exited $code, not 2: $out"
+  assert_contains "$out" "usage: scripts/changelog-release.sh <X.Y.Z>"; assert_eq "$before" "$(snap "$d")"
+done
+echo "changelog-release: usage errors exit 2"
 refuses "an existing section" "$d" "already has a '## [0.8.0]' section" 0.8.0
 echo "- late" >> "$d/CHANGELOG.md"
 refuses "an uncommitted CHANGELOG.md" "$d" "uncommitted" 0.9.0
@@ -124,6 +144,9 @@ d="$(withfrag "- Fixed: x (t-1111)." "$(printf '# Changelog\n\n## [0.8.0] - 2026
 refuses "no [Unreleased] heading" "$d" "no '## [Unreleased]' heading" 0.9.0
 d="$(fresh "$(printf '# Changelog\n\n## [Unreleased]\n\n## [0.8.0] - 2026-11-01\n\n- Old entry.')")"
 refuses "nothing to release" "$d" "nothing to release" 0.9.0
+git -C "$d" rm -q CHANGELOG.md; git -C "$d" commit -qm gone; snap() { (cd "$1" && git status --porcelain --untracked-files=all; cat VERSION); }
+refuses "no CHANGELOG.md" "$d" "no CHANGELOG.md" 0.9.0
+snap() { (cd "$1" && git status --porcelain --untracked-files=all; cat VERSION CHANGELOG.md; { find changelog.d -type f 2>/dev/null || true; } | LC_ALL=C sort) ; }
 d="$(withfrag "Fixed: no list marker (t-1111).")"
 refuses "a fragment with no '- ' line" "$d" "changelog.d/t-1111.md has no line starting '- '" 0.9.0
 echo "changelog-release: ok"
