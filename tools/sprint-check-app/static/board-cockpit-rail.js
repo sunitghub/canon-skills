@@ -5,8 +5,9 @@ import { activateDoc, modalState, openModal } from './board-modal.js';
 import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
-import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
+import { progressCardHtml, sprintProgress, ticketMode } from './sprint-progress-card.js';
+import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, sessionNeedsYou, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
+import { cockpitPathKey, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
 // come through the message relay above. Ignored in fields and under a modal; a standalone board has no shell.
@@ -287,7 +288,7 @@ export async function renderCockpitRail(t) {
   // reflects that tree, not the main checkout. Then (re)render the doc panels.
   await fetchCockpitWorktreeDocs(t);
   await renderCockpitDocs(t);
-  await renderCockpitState(t);
+  await renderCockpitProgress(t);
 }
 
 // t-8a2a: one shared 5s poll for every open tab, not N independent timers
@@ -330,7 +331,7 @@ function ensureCockpitPollTimer() {
     if (!ct || ct.scratch) return;
     await fetchCockpitWorktreeDocs(ct);
     renderCockpitDocs(ct);
-    renderCockpitState(ct);
+    renderCockpitProgress(ct);
     renderCockpitStatusBadge(ct);
   }, 5000);
 }
@@ -601,118 +602,47 @@ export async function renderSidebarChanges() {
   box.innerHTML = parts.join('');
 }
 
-// Finds this ticket's own bullet under HANDOFF.md's "## In Progress" section
-// (the save-state convention documented in tools/handoff.md: "- Ticket or
-// file path — current state" — free-form prose, not a rigid schema) by
-// matching the ticket id anywhere in the bullet's own top line, then
-// capturing any indented continuation lines until the next top-level bullet.
-export function findHandoffStateForTicket(raw, ticketId) {
-  if (!raw) return null;
-  const section = sectionContent(raw, 'In Progress');
-  if (!section) return null;
-  const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
-  let current = null, matched = null;
-  const flush = () => { if (current && idRe.test(current[0])) matched = current.join('\n').trim(); };
-  for (const line of section.split('\n')) {
-    if (/^-\s+/.test(line)) {
-      flush();
-      if (matched) break;
-      current = [line];
-    } else if (current) {
-      current.push(line);
-    }
-  }
-  if (!matched) flush();
-  return matched;
+// t-5ef8: the rail's Sprint progress card, read through the public API only (GET /api/v1/pipeline, /api/v1/sprint/<id>, /api/v1/events),
+// so a third-party widget can draw the same card. The nodes are read once per tab (the reader runs a script); the snapshot every tick; the
+// event strip when the snapshot or the needs-you state changed, else every 30 s (session.needs_you and other kinds are not in the snapshot).
+const PROGRESS_EVENTS_MS = 30000;
+const PROGRESS_EVENTS_LIMIT = 500;
+
+// the array at key of a /api/v1 answer, or null for anything else (a failed request, a non-JSON body, no such array): never a stale value.
+async function v1List(url, key) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const body = await r.json();
+    return body && Array.isArray(body[key]) ? body[key] : null;
+  } catch { return null; }
 }
 
-// t-8ff0: decide what the STATUS panel shows for a ticket. Prefer the id-matched
-// ## In Progress bullet (findHandoffStateForTicket, unchanged — multi-ticket
-// HANDOFFs). When none names the ticket, fall back to ## Current Focus — but only
-// when this ticket is the active sprint (canon is single-active-sprint, so Current
-// Focus IS about it) OR Current Focus names the id, so an UNRELATED ticket's focus
-// is never shown. Returns { text, source: 'in-progress' | 'current-focus' | null }.
-export function handoffDisplayState(raw, ticketId, isActive) {
-  const bullet = findHandoffStateForTicket(raw, ticketId);
-  if (bullet) return { text: bullet, source: 'in-progress' };
-  const focus = raw ? sectionContent(raw, 'Current Focus') : '';
-  if (focus) {
-    const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
-    if (isActive || idRe.test(focus)) return { text: focus, source: 'current-focus' };
+export async function renderCockpitProgress(t) {
+  const cs = cockpitState, box = document.getElementById('ck-progress');
+  if (!cs || !box) return;
+  if (box.dataset.ticket !== t.id) { box.innerHTML = ''; box.dataset.ticket = t.id; }   // another tab's card never stays on this one
+  const p = cs.progress || (cs.progress = {});
+  const unavailable = () => { if (cs === cockpitState) box.innerHTML = '<div class="spc-ev-empty">Sprint progress unavailable</div>'; };
+  if (!p.nodes) p.nodes = await v1List('/api/v1/pipeline', 'nodes');
+  if (cs !== cockpitState) return;
+  if (!p.nodes) { unavailable(); return; }
+  const snap = await v1List(`/api/v1/sprint/${encodeURIComponent(t.id)}`, 'events');
+  if (cs !== cockpitState) return;
+  if (!snap) { unavailable(); return; }
+  const needsYou = sessionNeedsYou();
+  const key = JSON.stringify(snap) + '|' + needsYou;
+  if (key !== p.key || Date.now() - (p.eventsAt || 0) >= PROGRESS_EVENTS_MS) {
+    const all = await v1List(`/api/v1/events?limit=${PROGRESS_EVENTS_LIMIT}`, 'events');
+    if (cs !== cockpitState) return;
+    if (!all) { p.key = ''; unavailable(); return; }
+    p.events = all.filter(e => e && e.data && e.data.ticket === t.id).slice(-3);
+    p.key = key;
+    p.eventsAt = Date.now();
   }
-  return { text: null, source: null };
-}
-
-// t-6ecc: the actionable "## Next Steps" list, shown in the STATUS panel alongside
-// Current Focus (Current Focus is context; Next Steps is the action). Same id-scoping
-// discipline as handoffDisplayState's Current-Focus fallback — only when this ticket is
-// the active sprint OR the section names its id, so an unrelated ticket's steps are
-// never shown. Returns the section text, or '' when absent/out-of-scope.
-export function handoffNextSteps(raw, ticketId, isActive) {
-  // t-0a80: a section holding only the handoff END marker, an empty list marker ("1.", "-", "*") or whitespace has no steps: no label over nothing
-  const steps = (raw ? sectionContent(raw, 'Next Steps') : '').replace(/<!--[\s\S]*?-->/g, '').split('\n').filter(l => !/^\s*(\d+\.|[-*])\s*$/.test(l)).join('\n').trim();
-  if (!steps) return '';
-  if (isActive) return steps;
-  const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
-  return idRe.test(steps) ? steps : '';
-}
-
-// Renders this ticket's HANDOFF.md state bullet, if any — a fresh fetch each
-// call (not the page-load-cached state.handoff) so it reflects a save the
-// live agent just made, not a stale snapshot from when the cockpit opened.
-async function renderCockpitState(t) {
-  const box = document.getElementById('ck-state');
-  let raw = '';
-  const wdHandoff = (cockpitState.worktreeDocs || {}).handoff; // t-1357: worktree HANDOFF wins
-  if (wdHandoff != null) {
-    raw = wdHandoff;
-  } else {
-    try {
-      const r = await fetch('/api/handoff');
-      if (r.ok) raw = (await r.json()).raw || '';
-    } catch {}
-  }
-  const st = handoffDisplayState(raw, t.id, t.status === 'in_progress');
-
-  // t-cd06: the locked worktree is durable (.tickets/<id>/.cockpit-cwd) but
-  // previously only surfaced in the WORKTREE accordion above — show it here
-  // too, since Status is read independently and HANDOFF.md itself has no
-  // idea which directory the session actually runs in.
-  let worktreeLine = '';
-  const lock = await fetchWorktreeLock(t.id);
-  if (lock.locked && lock.cwd) {
-    // Short label, not the full absolute path (that forced the rail to be
-    // stretched wider just to read it) — the path is still available as a
-    // hover tooltip for anyone who wants it.
-    // t-f15b: cockpitPathKey compare (see the WORKTREE-panel selection logic
-    // below for why a raw === silently fails on Windows).
-    let label = lock.cwd;
-    try {
-      const wtr = await fetch('/api/worktrees');
-      if (wtr.ok) {
-        const entries = await wtr.json();
-        const match = entries.find(e => cockpitPathKey(e.path) === cockpitPathKey(lock.cwd));
-        if (match) label = match.is_main ? 'Main checkout (current)' : (match.branch || '(detached)');
-      }
-    } catch {}
-    worktreeLine = `<div class="ck-worktree-sub" style="margin-bottom:8px;" title="${esc(lock.cwd)}">Running in: ${esc(label)}</div>`;
-  }
-
-  let stateHtml;
-  if (st.source === 'in-progress') {
-    stateHtml = formatStateAsParagraphs(st.text, t);
-  } else if (st.source === 'current-focus') {
-    // t-8ff0: labeled so the project focus is never mistaken for per-ticket state.
-    stateHtml = '<div class="ck-state-source">Current focus (no per-ticket state yet):</div>' + formatStateAsParagraphs(st.text, t);
-  } else {
-    stateHtml = '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>';
-  }
-  // t-6ecc: surface the actionable "## Next Steps" alongside Current Focus.
-  const nextSteps = handoffNextSteps(raw, t.id, t.status === 'in_progress');
-  const nextHtml = nextSteps
-    ? '<div class="ck-state-source" style="margin-top:10px;">Next steps:</div>' + formatStateAsParagraphs(nextSteps, t)
-    : '';
-  box.innerHTML = worktreeLine + stateHtml + nextHtml;
+  const planWritten = ckDocHasSubstance('plan', (cs.docSeen || {}).plan);
+  const live = { ...sprintProgress(p.nodes, snap, { planWritten, needsYou }), events: p.events, eventsNote: snap.length ? 'No recent events.' : 'No events yet.' };
+  box.innerHTML = progressCardHtml(p.nodes, ticketMode(t), live);
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
