@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.4] - 2026-11-19
+
+- Fixed: the Cockpit's Build switch (after you approve a plan) now counts its "continue the build" line as taken only when Claude Code reports a submitted prompt (a new `UserPromptSubmit` hook in the session's settings) or you type, not on any screen output. On Windows a redraw had counted, so the card said Implementing while the line never reached Claude Code. Once `/model` went through, any later failure turns the session Needs you. Every end of the switch is a new `build.switch` event (`canon events`) with the outcome (`started`, `not_taken`, `not_at_rest`, `write_error`) and why (the session's status, a menu, output that never went quiet, attempts). Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-d2ab).
+
 ## [0.69.3] - 2026-11-19
 
 - Fixed: `canon update`, `skills add` and `canon uninstall` no longer stay blocked for two hours by a close gate (reviewer or evaluator) that a session left registered. A registration now names its ticket, and once that ticket is closed or its folder is gone (a finished land worktree) it no longer counts. For any other leftover, including ones made by older versions, the refusal names the way out: `canon gate-scope clear` lists each one and asks "End it? [y/N]" (t-b775).
