@@ -347,13 +347,15 @@ canon_tickets_ignore_lines() {
 # canon's own seeded lines: every added line is one of them and every removed line reappears unchanged among the added ones (a missing
 # final newline re-adds the last line); the file may be new. A mode-only change, a symlink or anything else is false.
 _tickets_ignore_canon_only() {
-  local dir="$1" graded="$2" head="$3" d own l added="" removed="" seen=0
+  local dir="$1" graded="$2" head="$3" d own l added="" removed="" seen=0 hunk=0
   [[ "$(git -C "$dir" ls-tree "$head" -- .tickets/.gitignore 2>/dev/null | cut -d' ' -f1)" == 100644 ]] || return 1
   d="$(git -C "$dir" -c core.quotepath=off diff --no-renames -U0 "$graded" "$head" -- .tickets/.gitignore 2>/dev/null)" || return 1
   own="$(canon_tickets_ignore_lines)"
   while IFS= read -r l; do
+    # headers only before the first hunk: inside one, a content line "++ x" shows as "+++ x" and must be judged (reviewer)
+    if (( ! hunk )); then case "$l" in '@@'*) hunk=1; continue ;; 'diff '*|'index '*|'new file mode'*|'+++ '*|'--- '*) continue ;; *) return 1 ;; esac; fi
     case "$l" in
-      '+++ '*|'--- '*|'@@'*|'diff '*|'index '*|'new file mode'*|'\'*) continue ;;
+      '@@'*|'\'*) continue ;;
       +*) l="${l#+}"; l="${l%$'\r'}"; [[ $'\n'"$own"$'\n' == *$'\n'"$l"$'\n'* ]] || return 1; added+="$l"$'\n'; seen=1 ;;
       -*) l="${l#-}"; removed+="${l%$'\r'}"$'\n' ;;
       *) return 1 ;;   # old mode / new mode lines and anything unexpected
