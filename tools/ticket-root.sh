@@ -580,7 +580,7 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
     # Line endings are not what this guards: with core.autocrlf=true the replayed old file comes back CRLF while a project file written
     # by a tool is LF (t-ae3b), so compare with a carriage return at the END of a line removed (one inside a line still differs).
     awk '{ sub(/\r$/, "") } 1' "$tmp/$name" > "$tmp/want.lf"
-    if [[ -n "$haverev" ]]; then git -C "$wroot" cat-file --filters "$haverev:$path" 2>/dev/null | awk '{ sub(/\r$/, "") } 1' > "$tmp/have.lf" || exit 1
+    if [[ -n "$haverev" ]]; then git -C "$wroot" cat-file --filters "$haverev:$path" > "$tmp/have.raw" 2>/dev/null || exit 1; awk '{ sub(/\r$/, "") } 1' "$tmp/have.raw" > "$tmp/have.lf"
     else awk '{ sub(/\r$/, "") } 1' "$wroot/$path" > "$tmp/have.lf"; fi
     cmp -s "$tmp/want.lf" "$tmp/have.lf" && exit 0
     diff "$tmp/want.lf" "$tmp/have.lf" > "$tmp/d.$v" 2>/dev/null || true
