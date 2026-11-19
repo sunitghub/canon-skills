@@ -160,6 +160,11 @@ d="$(fresh)"; echo "- late edit" >> "$d/CHANGELOG.md"
 refuses "an uncommitted CHANGELOG" "$d" "uncommitted"
 d="$(fresh)"; echo 0.3.1 > "$d/VERSION"
 refuses "an uncommitted VERSION" "$d" "uncommitted"
+# t-5ed4: a changelog fragment still tracked at HEAD is an entry the notes would leave out; dry run included, before any tag
+d="$(fresh)"; mkdir -p "$d/changelog.d"; echo "- Fixed: a thing (t-0001)" > "$d/changelog.d/t-0001.md"
+git -C "$d" add changelog.d; git -C "$d" commit -qm frag; git -C "$d" push -q public main 2>/dev/null
+refuses "a tracked changelog fragment" "$d" "HEAD tracks 1 changelog fragment(s)"
+refuses "a tracked changelog fragment (--dry-run)" "$d" "scripts/changelog-release.sh" --dry-run
 
 # t-d600: a pending security release in a pinned dependency refuses the release, dry run included, before any tag; a lookup that
 # cannot answer refuses too; CANON_RELEASE_SKIP_VENDORED skips the check, saying why. Protects scripts/release.sh (every release).
