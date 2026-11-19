@@ -21,5 +21,14 @@ ok('another drive is another folder', cockpitPathKey('/d/Users/agentops/Document
 ok('a bare drive: C: and /c agree', cockpitPathKey('C:') === cockpitPathKey('/c') && cockpitPathKey('C:/') === cockpitPathKey('/c/'));
 ok('a POSIX path is not taken for a drive', cockpitPathKey('/Users/x/p') === '/users/x/p' && cockpitPathKey('/cd/x') === '/cd/x');
 ok("'' and null both give '' (the caller keeps null and '' distinct)", cockpitPathKey('') === '' && cockpitPathKey(null) === '');
+// the lock → tab cwd rule: a /c/ lock runs under the matching worktree entry's own C:/ path, the main checkout as '' (reviewer: untested)
+const { lockedWorktreeCwd } = ctx;
+ok('lockedWorktreeCwd loaded', typeof lockedWorktreeCwd === 'function');
+const MAIN = { path: 'C:/Users/a/ToDo-Demo', branch: 'master', is_main: true };
+const WT = { path: 'C:/Users/a/ToDo-Demo-worktrees/land-t-exiu', branch: 'land/t-exiu', is_main: false };
+ok('a /c/ lock runs under the entry\'s own C:/ path', lockedWorktreeCwd('/c/Users/a/ToDo-Demo-worktrees/land-t-exiu', MAIN, [WT]) === WT.path);
+ok('a /c/ lock on the main checkout is \'\' (main)', lockedWorktreeCwd('/c/Users/a/ToDo-Demo', MAIN, [WT]) === '');
+ok('no matching entry: the lock as written', lockedWorktreeCwd('/c/Users/a/elsewhere', MAIN, [WT]) === '/c/Users/a/elsewhere');
+ok('no entries: the lock as written', lockedWorktreeCwd('C:/x', null, null) === 'C:/x');
 if (fails) { console.log(`sprint-check-cockpit-pathkey: ${fails} failure(s)`); process.exit(1); }
 console.log('sprint-check-cockpit-pathkey: ok');

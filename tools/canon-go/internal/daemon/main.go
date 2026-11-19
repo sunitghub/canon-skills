@@ -4260,7 +4260,7 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 				// closed on a transient `git worktree list` error, and rewriting would
 				// permanently unbind a legit worktree. A tampered value stays inert — it is
 				// re-validated on every start. Only a vanished directory is re-persisted.
-				if _, err := os.Stat(existing); err == nil {
+				if _, err := os.Stat(fromMSYS(existing)); err == nil { // t-154c (reviewer): an old /c/ lock is a folder too
 					keepPersisted = true
 				}
 			}

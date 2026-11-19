@@ -168,8 +168,7 @@ export async function renderCockpitWorktree(t) {
     if (lock.locked && lock.cwd) {
       // t-154c: a lock matching a worktree entry by key runs there under the entry's own path (git's native spelling), never the lock's
       // raw text: a Git Bash /c/... lock passed through as ?cwd= started the session in the main checkout on Windows
-      const lockHit = others.find(e => cockpitPathKey(e.path) === cockpitPathKey(lock.cwd));
-      tab.worktreeCwd = (mainEntry && cockpitPathKey(lock.cwd) === cockpitPathKey(mainEntry.path)) ? '' : (lockHit ? lockHit.path : lock.cwd);
+      tab.worktreeCwd = lockedWorktreeCwd(lock.cwd, mainEntry, others);
     }
   }
   // t-2a1c: remember the lock so maybeMountCockpitTerminal can gate on the
@@ -560,6 +559,15 @@ function updateWorktreeNote() {
 // lowercased, forward-slashed, trailing-slash-stripped key.
 // t-154c: one key for a drive path in any spelling — C:\x, C:/x and Git Bash's /c/x (the form tkt wrote its locks in on Windows) —
 // so a lock and the worktree list compare equal; runs of separators collapse, as canon's path contract does (tests/fixtures/path-keys.tsv).
+// lockedWorktreeCwd (t-154c): the cwd a tab runs a locked ticket in — '' for the main checkout, the matching worktree entry's own
+// path (git's native spelling), else the lock as written. Matched by cockpitPathKey, so a Git Bash /c/... lock finds its C:/ entry.
+export function lockedWorktreeCwd(lockCwd, mainEntry, others) {
+  const key = cockpitPathKey(lockCwd);
+  if (mainEntry && key === cockpitPathKey(mainEntry.path)) return '';
+  const hit = (Array.isArray(others) ? others : []).find(e => e && cockpitPathKey(e.path) === key);
+  return hit ? hit.path : lockCwd;
+}
+
 export function cockpitPathKey(p) {
   if (!p) return '';
   return String(p).replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/\/+$/, '').toLowerCase().replace(/^([a-z]):(?=\/|$)/, '/$1');
