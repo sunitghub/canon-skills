@@ -11,7 +11,7 @@ source "$ROOT/tests/helpers.sh"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/manual-qa.XXXXXX")"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" LC_ALL=C CANON_HOME="$WORK/home"
 unset CANON_TICKETS_DIR
-REPO="$WORK/repo"; ID=t-abcd; TD="$REPO/.tickets/$ID"; ED="$TD/evidence"; MQ="$ED/manual-qa.md"
+REPO="$WORK/repo"; ID="t-abcd"; TD="$REPO/.tickets/$ID"; ED="$TD/evidence"; MQ="$ED/manual-qa.md"
 mkdir -p "$REPO" && cd "$REPO"
 git init -q -b main . && git config user.name t && git config user.email t@t
 mkdir -p "$TD" src; echo a > src/a.txt; echo '# t' > "$TD/ticket.md"

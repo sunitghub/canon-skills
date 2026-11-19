@@ -568,6 +568,7 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
   git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null || exit 1
   for v in $variants; do
     cp "$tmp/prior" "$tmp/$name" || exit 1
+    # shellcheck disable=SC2034  # SKILLS_ROOT is read by the skills libs sourced next
     ( SKILLS_ROOT="$(cd "$_CANON_TOOLS/.." && pwd)"
       source "$_CANON_TOOLS/skills/lib.sh" && source "$_CANON_TOOLS/skills/project.sh" && source "$_CANON_TOOLS/skills/prompts.sh" || exit 1
       case "$v" in
