@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.68.6] - 2026-11-18
+
+- Changed: **Create issue approves a written plan.** Sending is your review of it, so `tkt send-issue` runs `sprint approve` first (and puts the plan back if the send is declined or fails); the issue says the plan is approved and to build it, so the cloud session no longer stops to wait. The plan goes into the issue as written, so its approval still matches in the cloud (t-6555).
+- Changed: the issue tells the cloud session to run every step to the end without asking, that a message sent mid-run interrupts it, and, on a Manual ticket, to tick QA "Tested locally" with its own test run (your by-hand test happens after the merge).
+- Changed: the Send panel holds **Create issue** until the ticket has a plan and acceptance criteria, with buttons that open them; saving either re-reads the panel. `sprint start` / `sprint import-issue` say "the plan is already approved: build it" when it is.
+
 ## [0.68.5] - 2026-11-18
 
 - Fixed: canon's pre-commit hook ran the project's whole test suite on a commit that only records a ticket, so **Check & merge**'s record commit was refused when the PR had added a test that cannot run on this machine. A commit that stages only records (`.tickets/`, and the root HANDOFF.md, LEARNINGS*.md, DECISIONS*.md) now skips the suite and says so; the secret scan and every other check still run, and any other path (a move of code into `.tickets/` included) still runs it. A refused record commit names the hook's reason instead of "test failed". Existing projects get the new hook with `canon update` (t-7db9).
