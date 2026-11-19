@@ -5,7 +5,7 @@ import { activateDoc, modalState, openModal } from './board-modal.js';
 import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { progressCardHtml, sprintProgress, ticketMode } from './sprint-progress-card.js';
+import { progressCardHtml, sprintProgress, stepStartTimes, ticketMode } from './sprint-progress-card.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, sessionNeedsYou, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
 import { cockpitPathKey, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
@@ -638,13 +638,16 @@ export async function renderCockpitProgress(t) {
     const all = await v1List(`/api/v1/events?limit=${PROGRESS_EVENTS_LIMIT}`, 'events');
     if (cs !== cockpitState) return;
     if (!all) { p.key = ''; unavailable(); return; }
-    p.events = all.filter(e => e && e.data && e.data.ticket === t.id).slice(-3);
+    p.events = all.filter(e => e && e.data && e.data.ticket === t.id);   // t-985c: all of the ticket's, for each step's start time
     p.key = key;
     p.eventsAt = Date.now();
   }
   const planWritten = ckDocHasSubstance('plan', (cs.docSeen || {}).plan);
-  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou }), events: p.events, eventsNote: snap.length ? 'No recent events.' : 'No events yet.' };
-  const html = progressCardHtml(nodes, ticketMode(t), live);
+  const mode = ticketMode(t);
+  // t-985c: start times from the ticket's events, the snapshot's (one per kind) filling what the events window no longer holds
+  const times = { ...stepStartTimes(nodes, snap, mode), ...stepStartTimes(nodes, p.events || [], mode) };
+  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times };
+  const html = progressCardHtml(nodes, mode, live);
   if (html !== p.html || !box.firstChild) { box.innerHTML = html; p.html = html; }   // an unchanged card is not redrawn: the pulse keeps running, a screen reader is not re-told
 }
 

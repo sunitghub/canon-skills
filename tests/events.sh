@@ -326,4 +326,22 @@ echo dirty >> "$A/.gitignore"; git -C "$A" add .gitignore; rc=0; (cd "$A" && "$R
 assert_eq 125 "$rc"   # a dirty tracked tree refuses: nothing ran, no event
 assert_eq 2 "$(cat "$EV"/*.jsonl | grep -c '"kind":"evidence.stamped"')"
 
-echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files)"
+# 9. t-985c: the Sprint progress card's close.started (the first `sprint pre-gate-check` of a sprint only: a re-run must not move the
+# card back from a later gate) and manual_qa.recorded (fail if any step failed). Protects the close's first step and the person's QA record.
+C="$W/close"; mkproj "$C"; cid="$(cd "$C" && "$TKT" create "Closing")"; ct="$C/.tickets/$cid"
+git -C "$C" add -A; git -C "$C" -c user.email=t@t -c user.name=t commit -qm closing
+"$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$C" "ticket=$cid" </dev/null >/dev/null
+(cd "$C" && "$ROOT/tools/pre-gate-check.sh" "$cid" >/dev/null 2>&1) || true
+assert_contains "$(event_line close.started "$cid")" '"data":{"ticket":"'"$cid"'"}'
+assert_contains "$(event_line close.started "$cid")" "\"project\":\"$(cd "$C" && pwd -P)\""
+(cd "$C" && "$ROOT/tools/pre-gate-check.sh" "$cid" >/dev/null 2>&1) || true
+assert_eq 1 "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"close.started"' | grep -cF "\"ticket\":\"$cid\"")"   # a re-run records nothing
+"$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$C" "ticket=$cid" </dev/null >/dev/null   # a new sprint of the same ticket
+(cd "$C" && "$ROOT/tools/pre-gate-check.sh" "$cid" >/dev/null 2>&1) || true
+assert_eq 2 "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"close.started"' | grep -cF "\"ticket\":\"$cid\"")"   # its first close counts again
+(cd "$C" && "$ROOT/tools/sprint" manual-qa "$cid" --by tester --step "looks right|pass" --step "n/a bit|n/a" >/dev/null)
+assert_contains "$(event_line manual_qa.recorded "$cid")" '"data":{"result":"pass","ticket":"'"$cid"'"}'
+(cd "$C" && "$ROOT/tools/sprint" manual-qa "$cid" --by tester --step "looks right|pass" --step "broke|fail" >/dev/null)
+assert_contains "$(event_line manual_qa.recorded "$cid")" '"result":"fail"'
+
+echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files; close.started once per sprint, manual_qa.recorded)"

@@ -90,13 +90,15 @@ Terminal audit kinds (t-57ab; written by the Cockpit daemon's restricted termina
 Audit events carry ids, numbers and names only: never a PR or issue title, an imported result's text, a token, or a URL
 with credentials.
 
-Sprint progress kinds (t-5ef8; the Cockpit card reads these; "Build" has no kind: it is the time after `plan.approved` and before the first `wrapup.gate_started`):
+Sprint progress kinds (t-5ef8; the Cockpit card reads these; "Build" begins at `implement.started` or a `build.switch` that started, else at `plan.approved`, and ends at `close.started`):
 
 | Kind | `data` | Written when |
 |---|---|---|
 | `plan.written` | `ticket`, `tier` | the plan is drafted and waits for approval |
 | `wrapup.gate_started` | `ticket`, `gate` (a Wrapup Gates row: `code-simplifier`, `code-reviewer`, `security-review`, `doc-audit`, ...) | a wrapup gate begins |
 | `wrapup.gate_finished` | `ticket`, `gate`, `result` (`ran`, `skipped`, `not-applicable`) | a wrapup gate ends |
+| `close.started` | `ticket` | the first `sprint pre-gate-check` of a sprint: the close began (a re-run records nothing) (t-985c) |
+| `manual_qa.recorded` | `ticket`, `result` (`fail` if any step failed, else `pass`) | `sprint manual-qa` recorded the person's check (t-985c) |
 
 An event never carries a ticket's description, documents or session text. Each field has a length limit, and longer
 values are cut.

@@ -195,6 +195,14 @@ run_checks() {
 
 if [[ "${1-}" == --run ]]; then run_checks; exit $?; fi
 
+# _close_started_since_start <id> — t-985c: true when the activity log holds a close.started for <id> after its newest sprint.started.
+_close_started_since_start() {
+  local d="${CANON_HOME:-${HOME:-}/.canon}/events" f files=()
+  for f in "$d"/*.jsonl; do [[ -f "$f" ]] && files+=("$f"); done
+  (( ${#files[@]} )) || return 1
+  awk -v t="\"ticket\":\"$1\"" 'index($0, t) { if (index($0, "\"kind\":\"sprint.started\"")) s = 0; else if (index($0, "\"kind\":\"close.started\"")) s = 1 } END { exit !s }' "${files[@]}"
+}
+
 id="${1-}"
 [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: pre-gate-check.sh <ticket-id>" >&2; exit 2; }
 export PRE_GATE_ID="$id"
@@ -206,4 +214,9 @@ if [[ $rc -eq 125 || ( $rc -eq 2 && "$msg" != "evidence: wrote "* ) ]]; then pri
 log="$(awk '/^evidence: wrote / { sub(/^evidence: wrote /, ""); sub(/ \(HEAD [^)]*\)$/, ""); print; exit }' <<<"$msg")"
 if [[ -z "$log" || ! -f "$log" || ! -r "$log" ]]; then echo "pre-gate-check: stamped, but evidence.sh did not name a readable log: $msg" >&2; exit "$rc"; fi
 sed -e '1,3d' -e '$d' "$log"
+# t-985c: the close began. Once per sprint (a re-run after a fix must not move the Sprint progress card back from a later gate): only when
+# the activity log has no close.started for this ticket since its newest sprint.started. The project is the ticket folder's grandparent, as
+# gate-snapshot.sh's events: a land worktree or a clone stamps into the project's .tickets/. Observer-only: never changes the exit.
+tdir="$(dirname "$(dirname "$log")")"
+if ! _close_started_since_start "$id"; then canon_event close.started sprint "$(dirname "$(dirname "$tdir")")" "ticket=$id" || true; fi
 exit "$rc"

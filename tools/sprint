@@ -1497,6 +1497,8 @@ cmd_manual_qa() {
     for row in "${rows[@]}"; do printf '%s\n' "$row"; done; } > "$tmp" || { rm -f "$tmp"; echo "sprint manual-qa: could not write $tmp" >&2; exit 1; }
   mv -f "$tmp" "$target" || { rm -f "$tmp"; echo "sprint manual-qa: could not replace $target" >&2; exit 1; }
   echo "manual-qa: wrote .tickets/$id/evidence/manual-qa.md ($n steps: $pass pass, $fail fail, $((n - pass - fail)) n/a) at HEAD ${sha:0:7}"
+  # t-985c: the Sprint progress card's record that the person's check is in (it clears a manual_qa refusal); fail if any step failed
+  canon_event manual_qa.recorded sprint "$(dirname "$(dirname "$tdir")")" "ticket=$id" "result=$( (( fail > 0 )) && echo fail || echo pass)" || true
 }
 
 # _manual_qa_state <id> — sets MQA_STATE to absent | fresh | stale | failing | bad and MQA_MSG to the detail. Fresh follows evidence.sh check's rule for logs:
