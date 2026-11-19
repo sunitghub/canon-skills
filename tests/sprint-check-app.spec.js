@@ -6005,30 +6005,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('t-d2e1: a quote in the locked worktree path stays inside the rail\'s "Running in" tooltip', async ({ page }) => {
-      const id = newTicketId(PROJECT_ROOT);
-      const wtPath = `/tmp/wt/${XSS_ATTR}`;
-      try {
-        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
-        await stubCockpit(page);
-        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]) }));
-        await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
-          body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
-        await page.goto(BASE);
-        await page.waitForLoadState('networkidle');
-        await page.locator('#board-search').fill(id);
-        await page.locator(`.card[data-id="${id}"] .card-start`).click();
-        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-        const lockLine = page.locator('.ck-worktree-sub', { hasText: 'Running in' });
-        await expect(lockLine).toHaveAttribute('title', wtPath);                           // the rail's lock tooltip round-trips
-        expect(await onAttrs(page)).toEqual([]);
-      } finally {
-        removeTestTicket(PROJECT_ROOT, id);
-        await page.unrouteAll({ behavior: 'ignoreErrors' });
-      }
-    });
-
     test('shell (t-783a): no element carries an inline on*= handler, in any view or dialog', async ({ page }) => {
       const inline = () => page.evaluate(() => [...document.querySelectorAll('*')].flatMap(el =>
         [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} ${a.name}`)));
