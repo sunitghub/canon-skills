@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.8] - 2026-11-19
+
+- Fixed (Windows): a ticket locked to a worktree now starts its Cockpit session in that worktree. `tkt land` and `tkt start` wrote the lock in Git Bash's form (`/c/Users/...`), which the daemon could not read, so the session started in the main checkout and the lock was overwritten. Locks are now written as `C:/Users/...`, the daemon reads an older `/c/...` lock too, and the Worktree panel names the worktree by its branch and no longer offers to "switch" to the worktree already in use. Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-154c).
+
 ## [0.69.7] - 2026-11-19
 
 - Fixed: a ticket sent to Claude's cloud comes back mergeable without manual nudges. The issue now tells the cloud session to give the reviewer and evaluator only the model family (Haiku, Sonnet or Opus), to commit both gate reports as written (with the repository owner's approval in advance if one still names a model identifier: claude.ai otherwise will not push it, and import found nothing to merge), and to commit nothing outside the ticket's folder after the evaluator except its DECISIONS row. Import and Check & merge accept a `.tickets/.gitignore` change made only of canon's own lines (a newer canon adds them), which before forced a local re-grade. The issue's checklist path is the one a project has (t-2f07).
