@@ -4674,7 +4674,7 @@ func typeLine(se *session, text string) error {
 
 // switchToBuild (t-3425, user 2026-11-14: switch at approval): when a claude or copilot session that started on the Plan model reaches
 // the prompt (awaiting-input) and its plan now carries sprint approve's record, it types `/model <build>` once, then one line that
-// continues the build, and records implement.started. Only at rest (waitAtRest): never while the agent works or the person types, never
+// continues the build, and records implement.started. Only at rest (waitAtRestWhy): never while the agent works or the person types, never
 // with a menu open; never twice (the session's stage becomes build); pi has no /model and is never switched.
 func (s *server) switchToBuild(se *session) {
 	agent := tierAgent(se.agent)
@@ -4865,12 +4865,9 @@ var (
 	restWait  = 30 * time.Second
 )
 
-// waitAtRest waits until se is at the prompt and quiet (awaiting-input, no menu, not exiting or being saved, no output or input for
-// restQuiet), checked under the lock each time, and reports whether it got there within restWait.
-func waitAtRest(se *session) bool { why, _ := waitAtRestWhy(se); return why == "" }
-
-// waitAtRestWhy is waitAtRest with the reason it stopped waiting (t-d2ab, for the build.switch event): "" at rest, else
-// status:<s>, menu, exited, reaping or not_quiet; quietMs is the time since the last output or input when it stopped.
+// waitAtRestWhy waits until se is at the prompt and quiet (awaiting-input, no menu, not exiting or being saved, no output or input
+// for restQuiet), checked under the lock each time, within restWait. It returns "" at rest, else why it stopped (t-d2ab, for the
+// build.switch event): status:<s>, menu, exited, reaping or not_quiet; quietMs is the time since the last output or input.
 func waitAtRestWhy(se *session) (string, int64) {
 	deadline := time.Now().Add(restWait)
 	for {
