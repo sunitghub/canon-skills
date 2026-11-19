@@ -276,6 +276,7 @@ fi
 if (( DRY )) || command -v node >/dev/null 2>&1; then
   suite tests/sprint-check-gherkin.js node "$ROOT/tests/sprint-check-gherkin.js"
   suite tests/sprint-check-editor.js node "$ROOT/tests/sprint-check-editor.js"
+  suite tests/sprint-progress-card.js node "$ROOT/tests/sprint-progress-card.js"
   suite tests/sprint-check-seed.js node "$ROOT/tests/sprint-check-seed.js"
   suite tests/sprint-check-status-badge.js node "$ROOT/tests/sprint-check-status-badge.js"
   suite tests/sprint-check-worktree-chip.js node "$ROOT/tests/sprint-check-worktree-chip.js"

@@ -10,11 +10,8 @@ const { newTicketId, claimTicketId, adoptBoardTicket, removeTestTicket } = requi
 const v1Sessions = rows => ({ schema: 1, sessions: rows });
 const v1SessionsBody = rows => JSON.stringify(v1Sessions(rows));
 
-// t-5ef8: canon's default pipeline nodes as GET /api/v1/pipeline serves them (tools/pipeline.sh resolve --full), for the rail card's stubs.
-const SPC_NODES = [['start', 'step', ''], ['plan', 'step', ''], ['spec-check', 'agent', 'lite'], ['approve-plan', 'you', ''], ['build', 'step', ''],
-  ['code-simplifier', 'gate', 'lite'], ['code-reviewer', 'gate', 'lite'], ['doc-audit', 'gate', 'lite'], ['reviewer', 'agent', 'lite,manual'],
-  ['security-review', 'gate', ''], ['mutation-test', 'gate', 'lite,manual'], ['eval', 'agent', ''], ['close', 'step', '']]
-  .map(([id, kind, skip_on], i) => ({ id, kind, order: (i + 1) * 10, on: true, skip_on, only: '', group: '' }));
+// t-5ef8: pipeline nodes as GET /api/v1/pipeline serves them, for the rail card's stubs (shared with tests/sprint-progress-card.js)
+const SPC_NODES = require('./fixtures/sprint-progress-nodes.json');
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 // t-ae96: a busy button's spinner is its ::before; read it the way the page paints it.
 const busySpin = loc => loc.evaluate(e => { const c = getComputedStyle(e, '::before'); return { shown: c.content !== 'none' && c.content !== 'normal' && c.display !== 'none', animation: c.animationName, duration: c.animationDuration, top: c.borderTopColor }; });
@@ -8738,51 +8735,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
     const card = page => page.locator('#ck-progress');
 
-    // every row of acceptance.md's state table, through the fold and the renderer the rail uses (the same page modules)
-    const STATES = [
-      ['no sprint events', [], {}, '', 'idle', ['Not started']],
-      ['started, plan empty', [['sprint.started']], {}, 'plan', 'blue', ['Writing the plan']],
-      ['started, plan written', [['sprint.started']], { planWritten: true }, 'approve-plan', 'red', ['Waiting on you']],
-      ['spec check running', [['sprint.started'], ['gate.started', { role: 'speccheck' }]], {}, 'spec-check', 'amber', ['Spec check running']],
-      ['spec check finished', [['gate.finished', { role: 'speccheck', verdict: 'READY' }]], {}, 'approve-plan', 'red', ['Waiting on you']],
-      ['plan approved', [['sprint.started'], ['plan.approved']], {}, 'build', 'blue', ['Implementing']],
-      ['reviewer running', [['plan.approved'], ['gate.started', { role: 'reviewer', attempt: '2' }]], {}, 'reviewer', 'amber', ['Reviewer running', 'attempt 2']],
-      ['reviewer finished', [['gate.finished', { role: 'reviewer', verdict: 'YES' }]], {}, 'security-review', 'blue', ['In your session']],
-      ['evaluator running', [['gate.started', { role: 'evaluator', attempt: '1' }]], {}, 'eval', 'amber', ['Evaluator running', 'attempt 1']],
-      ['second eval running', [['gate.started', { role: 'evaluator2' }]], {}, 'eval', 'amber', ['Second eval running']],
-      ['evaluator failed', [['gate.finished', { role: 'evaluator', verdict: 'fail' }]], {}, 'eval', 'red', ['fail']],
-      ['evaluator other verdict', [['gate.finished', { role: 'evaluator', verdict: 'error' }]], {}, 'eval', 'red', ['error']],
-      ['reviewer refused', [['gate.rejected', { role: 'reviewer', reason: 'stale' }]], {}, 'reviewer', 'red', ['Close refused', 'stale']],
-      ['evaluator refused', [['gate.rejected', { role: 'evaluator', reason: 'stale' }]], {}, 'eval', 'red', ['Close refused', 'stale']],
-      ['evaluator passed', [['gate.finished', { role: 'evaluator', verdict: 'pass' }]], {}, 'close', 'blue', ['Ready to close']],
-      ['close confirmed', [['close.confirmed']], {}, 'close', 'blue', ['Closing']],
-      ['closed', [['plan.approved'], ['sprint.completed']], {}, '', 'green', ['Closed']],
-      ['needs you while building', [['plan.approved']], { needsYou: true }, 'build', 'red', ['Needs you']],
-    ];
-    test('each state of the fold draws its current node, tone and status', async ({ page }) => {
-      await page.goto(BASE);
-      const got = await page.evaluate(async ({ STATES, nodes }) => {
-        const m = await import('/static/sprint-progress-card.js');
-        return STATES.map(([name, evs, opts]) => {
-          const events = evs.map(([kind, data], i) => ({ kind, ts: `2026-11-19T10:00:0${i}.000Z`, data: { ticket: 't-1', ...(data || {}) } }));
-          const div = document.createElement('div');
-          div.innerHTML = m.progressCardHtml(nodes, 'normal', { ...m.sprintProgress(nodes, events, opts), events: [] });
-          const cur = div.querySelector('.spc-row.cur');
-          const done = [...div.querySelectorAll('.spc-row.done')].map(r => r.dataset.spcRow);
-          return { name, cur: cur ? cur.dataset.spcRow : '', tone: div.querySelector('.spc-live').dataset.tone, status: div.querySelector('.spc-status').textContent, done };
-        });
-      }, { STATES, nodes: SPC_NODES });
-      const ids = SPC_NODES.map(n => n.id);
-      for (const [i, [name, , , cur, tone, words]] of STATES.entries()) {
-        const g = got[i];
-        expect(g.cur, name).toBe(cur);
-        expect(g.tone, name).toBe(tone);
-        for (const w of words) expect(g.status, name).toContain(w);
-        const want = tone === 'green' ? ids : cur ? ids.slice(0, ids.indexOf(cur)) : [];
-        expect(g.done, name).toEqual(want);
-      }
-    });
-
+    // the fold's state table (every row, through sprintProgress and progressCardHtml) is tests/sprint-progress-card.js; this group is the rail
     test('the rail shows the card for an open ticket, after Worktree, with no STATUS section', async ({ page }) => {
       const id = newTicketId(PROJECT_ROOT, '5ef8');
       try {
@@ -8790,7 +8743,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'reviewer');
         await expect(card(page).locator('.spc-live')).toHaveAttribute('data-tone', 'amber');
         await expect(card(page).locator('.spc-row.cur .spc-status')).toContainText('Reviewer running');
-        await expect(card(page).locator('.spc-row.done')).toHaveCount(8);   // start .. doc-audit
+        await expect(card(page).locator('.spc-row.done')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').findIndex(n => n.id === 'reviewer'));   // every row before Reviewer
         await expect(page.locator('#ck-state-section')).toHaveCount(0);
         await expect(page.locator('#ck-state')).toHaveCount(0);
         await expect(page.locator('#ck-progress-section')).not.toHaveClass(/collapsed/);
@@ -8832,7 +8785,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
             await expect(card(page).locator('.spc-head')).toHaveText(head);
             await expect(card(page).locator(`[data-spc-row="${struck}"]`)).toHaveClass(/gone/);
           } else {
-            await expect(card(page).locator('.spc-row')).toHaveCount(SPC_NODES.length);
+            await expect(card(page).locator('.spc-row')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').length);   // a Manual-only node is not drawn
             await expect(card(page).locator('.spc-head')).toHaveCount(0);   // the section label already says Sprint progress
             await expect(card(page).locator('.spc-row.gone')).toHaveCount(0);
           }

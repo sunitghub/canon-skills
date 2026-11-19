@@ -1,0 +1,146 @@
+[
+ {
+  "id": "start",
+  "kind": "step",
+  "order": 10,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "plan",
+  "kind": "step",
+  "order": 20,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "spec-check",
+  "kind": "agent",
+  "order": 25,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "approve-plan",
+  "kind": "you",
+  "order": 30,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "build",
+  "kind": "step",
+  "order": 40,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "your-test",
+  "kind": "you",
+  "order": 45,
+  "on": true,
+  "skip_on": "",
+  "only": "manual",
+  "group": ""
+ },
+ {
+  "id": "code-simplifier",
+  "kind": "gate",
+  "order": 50,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": "wrapup"
+ },
+ {
+  "id": "code-reviewer",
+  "kind": "gate",
+  "order": 52,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": "wrapup"
+ },
+ {
+  "id": "doc-audit",
+  "kind": "gate",
+  "order": 54,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": "wrapup"
+ },
+ {
+  "id": "skill-eval",
+  "kind": "gate",
+  "order": 60,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "break-it",
+  "kind": "agent",
+  "order": 62,
+  "on": true,
+  "skip_on": "lite",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "reviewer",
+  "kind": "agent",
+  "order": 70,
+  "on": true,
+  "skip_on": "lite,manual",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "security-review",
+  "kind": "gate",
+  "order": 80,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "mutation-test",
+  "kind": "gate",
+  "order": 90,
+  "on": true,
+  "skip_on": "lite,manual",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "eval",
+  "kind": "agent",
+  "order": 100,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ },
+ {
+  "id": "close",
+  "kind": "step",
+  "order": 110,
+  "on": true,
+  "skip_on": "",
+  "only": "",
+  "group": ""
+ }
+]
