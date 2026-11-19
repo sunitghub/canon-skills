@@ -68,9 +68,14 @@ top -l 1
 - Idle under 5%')"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\n- [ ] Idle CPU under 5%%\n\n## Test Plan\n- [ ] Measure for 60 s\n\n## QA\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > "$d/acceptance.md"
-printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [x] Plan approved\n\n## Approach\n1. Profile it.\n# a note in the plan, not a part\n2. Fix it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
+# t-6555: a written but unapproved plan, with the skeleton's comment under ## Approach: the send approves it (sprint approve), and the pin
+# must still match in the cloud once import-issue rebuilds plan.md from the issue
+printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [ ] Plan approved\n\n## Approach\n<!-- Describe how you will implement this. Keep this heading unchanged. -->\n1. Profile it.\n# a note in the plan, not a part\n2. Fix it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
 printf '# Research: x\n\n- Polls every 8 s.\n' > "$d/research.md"
-"$TKT" send-issue "$id" >/dev/null
+sout="$("$TKT" send-issue "$id")"
+assert_contains "$sout" "approved $id's plan"
+assert_grep '^- \[x\] Plan approved$' "$d/plan.md"; pin_laptop="$(sed -n 's/^Approved: sha256:\([0-9a-f]*\) .*/\1/p' "$d/plan.md")"
+[[ -n "$pin_laptop" ]] || fail "t-6555: the send did not pin the approved Approach"
 # t-1dec: a real send starts the GitHub trail: the heading, then one dated block with the issue and repo.
 gt="$A/$d/github.md"
 assert_eq "# GitHub" "$(head -1 "$gt")"; assert_eq 1 "$(grep -c '^## ' "$gt")"
@@ -101,6 +106,11 @@ assert_grep '^# a shell comment, not a heading$' "$e/ticket.md"   # a "# " line 
 for h in Criteria "Test Plan" QA "Wrapup Gates"; do assert_eq "$(sec "$A/$d/acceptance.md" "$h")" "$(sec "$e/acceptance.md" "$h")"; done
 for h in Sign-off Approach Files; do assert_eq "$(sec "$A/$d/plan.md" "$h")" "$(sec "$e/plan.md" "$h")"; done
 assert_grep '^- \[x\] Plan approved$' "$e/plan.md"            # sprint start kept the approved plan
+# t-6555: the pin survived the trip: sprint approve recomputes the cloud copy's Approach digest, and it is the laptop's
+assert_grep "^Approved: sha256:$pin_laptop " "$e/plan.md"
+(cd "$B" && "$SPRINT" approve "$id" >/dev/null) || fail "t-6555: sprint approve failed in the cloud copy"
+assert_eq "$pin_laptop" "$(sed -n 's/^Approved: sha256:\([0-9a-f]*\) .*/\1/p' "$e/plan.md")"
+assert_contains "$(cat "$W/import.out")" "already approved (its Sign-off is ticked): build it without waiting"
 assert_grep '^2. Fix it.$' "$e/plan.md"                        # a top-level "# " line in a section is content, not a part
 assert_grep '^- Polls every 8 s.$' "$e/research.md"
 

@@ -2,12 +2,14 @@
 // (send-issue, github-status, import-results, merge-pr --check / --yes, take-back); this module adds no logic of its
 // own beyond choosing which button a card shows. A ticket with runs: github (and its github: link, no merged: line) is
 // out on GitHub: it shows in In progress (board-helpers.js effectiveStatus) with a GitHub chip and one stage button instead of Start.
-import { state } from './board-core.js';
+import { state, docSlug } from './board-core.js';
 import { cockpitState, openTerminalPane } from './board-cockpit.js';
 import { esc, escAttr, isWindowsBrowser } from './board-helpers.js';
 import { render, showToast } from './board-render.js';
 import { boardHidden, loadData, SHELL_TAB } from './board-core.js';
 import { resetPanelDrag, resetPanelResize } from './board-panels.js';
+import { openModal, activateDoc, renderModalDocs } from './board-modal.js';
+import { activateGhost, renderModalBody } from './board-docs.js';
 
 const POLL_MS = 120000;          // github-status per card out on GitHub; the server caches each for 30 s
 const FAST_POLL_MS = 30000;      // t-d0ed: a card still waiting for its cloud session's first push or PR is checked this often (the server caches 30 s)
@@ -842,14 +844,16 @@ export function hideGithubPanel() {
   if (panel) { panel.hidden = true; panel.innerHTML = ''; }
 }
 
-export async function showGithubPanel(t, tab) {
+let sendShown = null, sendingId = '';   // t-6555: a send in flight is never redrawn under the person (a second Create could duplicate the issue)
+export async function showGithubPanel(t, tab, { reload = false } = {}) {
   const panel = document.getElementById('ck-gh-panel');
   if (!panel) return;
   const sent = tab && tab.ghSent && tab.ghSent.id === t.id;
   // t-8627: a panel already sending this ticket (loading, or a form with a preview) stays as it is; a failed preview still
   // reloads. openCockpit mounts once more when its rail render ends, and a GitHub pick and a failed send made before that lost
   // their reason to the second render.
-  if (!sent && !ghOut(t) && !panel.hidden && panel.querySelector('[data-gh-send]')?.dataset.ghSend === t.id) return;
+  // t-6555: a doc save asks for a reload on purpose (reload), which this guard must let through
+  if (!reload && !sent && !ghOut(t) && !panel.hidden && panel.querySelector('[data-gh-send]')?.dataset.ghSend === t.id) return;
   // t-32f9: so does a panel whose Commit and push form is open (a failed preview offers it, and would otherwise reload under it).
   if (!sent && !ghOut(t) && !panel.hidden && panel.querySelector('#ck-gh-cp')?.dataset.open === t.id) return;
   const gen = ++ghPanelGen;
@@ -861,6 +865,7 @@ export async function showGithubPanel(t, tab) {
       <p>A cloud agent works it there; this ticket does not run here until you take it back. Its card shows the next step.</p></div>`;
     return;
   }
+  sendShown = { id: t.id, tab };   // t-6555: which tab drew this Send view, so a doc save can redraw it in place
   panel.innerHTML = `<div class="ck-gh-box" data-gh-send="${esc(t.id)}"><h3>Send ${esc(t.id)} to GitHub</h3><p>Loading the preview…</p></div>`;
   let pv;
   // t-e790: a Manual ticket goes only on purpose: the preview is the --manual-after-merge issue, and Create waits for the checkbox
@@ -872,9 +877,12 @@ export async function showGithubPanel(t, tab) {
   const isPublic = /\(PUBLIC\)/.test(pv.output || '');
   // t-093a: send-issue's warnings (no criteria, no plan) are a note above the preview, in the CLI's own words; they don't block.
   const WARN = /^send-issue: warning: /;
+  // t-6555: a fixed `needs:` token (never the warning's words, P-057) holds Create issue until the plan and the criteria are written
+  const NEEDS = /^send-issue: needs: (plan|acceptance)$/;
   const outLines = String(pv.output || '').split(/\r?\n/);
-  const warns = outLines.filter(l => WARN.test(l)).map(l => l.replace(WARN, ''));
-  const preview = outLines.filter(l => !WARN.test(l)).join('\n');
+  const needs = outLines.map(l => (NEEDS.exec(l) || [])[1]).filter(Boolean);
+  const warns = outLines.filter(l => WARN.test(l) && !(needs.length && /has no (acceptance criteria|plan)/.test(l))).map(l => l.replace(WARN, ''));
+  const preview = outLines.filter(l => !WARN.test(l) && !NEEDS.test(l)).join('\n');
   // t-32f9: unpushed commits refuse the send and uncommitted files only warn; either way the cloud would not see them, so offer
   // to commit and push from here (tkt commit-push, after a confirm that names the files and the branch).
   const localChanges = warns.some(w => /have uncommitted or untracked changes/.test(w));
@@ -897,6 +905,7 @@ export async function showGithubPanel(t, tab) {
   panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
+      ${needs.length ? `<div class="ck-gh-note" id="ck-gh-needs" role="note"><p>Write ${needs.map(n => n === 'plan' ? 'the plan' : 'the acceptance criteria').join(' and ')} first: the cloud session starts from them, and Create issue approves the plan.</p><div class="ck-gh-actions">${needs.map(n => `<button type="button" data-gh-needs="${n}">Open ${n === 'plan' ? 'Plan' : 'Acceptance'} ↗</button>`).join('')}</div></div>` : ''}
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
       ${manual ? `<div class="ck-gh-note" id="ck-gh-manual" role="note"><p>${esc(t.id)} is a Manual ticket: you test it by hand. The cloud does the rest; its [manual] criteria stay here, and the ticket stays open after the merge until you test the merged result and close it.</p></div>` : ''}
       ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step1">Step 1: Commit and push — the cloud only sees what is on GitHub</h4>` : ''}
@@ -907,13 +916,20 @@ export async function showGithubPanel(t, tab) {
       ${isPublic ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-public"> This repository is public: anyone could read the ticket's notes. Send anyway.</label>` : ''}
       ${manual && pv.ok ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-manual-ok"> Send it. Will test after merged</label>` : ''}
       ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step2">Step 2: Create issue</h4>` : ''}
-      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok && !needPush && !manual ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
+      <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-create"${pv.ok && !needPush && !manual && !needs.length ? '' : ' disabled'}>Create issue</button><span class="ck-gh-status" id="ck-gh-status" role="status"></span></div>
     </div>`;
   if (cpOffer) wireCommitPush(t, tab, gen);
   const create = document.getElementById('ck-gh-create');
   const skip = document.getElementById('ck-gh-skip');
   const mok = document.getElementById('ck-gh-manual-ok');
-  const canCreate = () => pv.ok && (!needPush || skip.checked) && (!manual || (mok && mok.checked));
+  const canCreate = () => pv.ok && !needs.length && (!needPush || skip.checked) && (!manual || (mok && mok.checked));
+  // t-6555: open the ticket at the doc it still needs (a ghost doc when the file does not exist yet); saving it re-reads this panel
+  panel.querySelectorAll('[data-gh-needs]').forEach(b => b.addEventListener('click', () => {
+    openModal(t.id);
+    const cur = state.tickets.find(x => x.id === t.id) || t, slug = b.dataset.ghNeeds;
+    const doc = (cur.docs || []).find(d => docSlug(cur, d.file) === slug);
+    if (doc) { activateDoc(cur, doc.file); renderModalDocs(cur); renderModalBody(cur); } else activateGhost(cur, slug);
+  }));
   skip?.addEventListener('change', () => { create.disabled = !canCreate(); });
   mok?.addEventListener('change', () => { create.disabled = !canCreate(); });
   create?.addEventListener('click', async () => {
@@ -921,13 +937,14 @@ export async function showGithubPanel(t, tab) {
     if (pub && !pub.checked) { document.getElementById('ck-gh-status').textContent = 'Tick the public-repository box first.'; return; }
     // Held before the await: a tab switch replaces the panel, and a late failure must not write into the next one.
     const statusEl = document.getElementById('ck-gh-status'), previewEl = document.getElementById('ck-gh-preview');
-    create.disabled = true; create.textContent = 'Sending…';
+    create.disabled = true; create.textContent = 'Sending…'; sendingId = t.id;
     let res;
     const body = {};
     if (pub) body.public = true;
     if (manual) body.manual_after_merge = true;   // t-e790: only reachable with the box ticked (canCreate)
     try { res = await postJSON(ghApi(t.id, 'send'), body); }
     catch (e) { res = { ok: false, output: String(e.message || e) }; }
+    finally { sendingId = ''; }
     if (!res.ok) {
       create.disabled = !canCreate(); create.textContent = 'Create issue';
       statusEl.textContent = 'Not sent; nothing changed.';
@@ -1177,4 +1194,12 @@ export function initGithub() {
   // t-f053: the Cockpit hides a board with its view container, which fires no visibilitychange in an iframe; it focuses the
   // frame when the board comes back, so a Check fixed in Factory re-enables Sync. ensureDoctor stays bounded by DOCTOR_RETRY_MS.
   window.addEventListener('focus', ensureDoctor);
+  // t-6555: a doc saved in Ticket details re-reads the Send panel showing that ticket (its preview and its needs: lines), so writing
+  // the plan enables Create issue without a tab switch. Only a panel already on that ticket's Send view is touched.
+  window.addEventListener('canon:doc-saved', e => {
+    const id = e.detail && e.detail.id;
+    if (!id || id === sendingId || !sendShown || sendShown.id !== id || !document.querySelector(`#ck-gh-panel [data-gh-send="${CSS.escape(id)}"]`)) return;
+    const t = state.tickets.find(x => x.id === id);
+    if (t) showGithubPanel(t, sendShown.tab, { reload: true });
+  });
 }

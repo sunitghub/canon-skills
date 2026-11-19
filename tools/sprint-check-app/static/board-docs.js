@@ -414,6 +414,7 @@ export async function saveEdit(t) {
     if (headingMatch) t.title = headingMatch[1].trim();
   }
   exitEditMode(t);
+  window.dispatchEvent(new CustomEvent('canon:doc-saved', { detail: { id: t.id } }));   // t-6555: the Send panel re-reads its preview
 }
 
 function normalizeDocTitle(t, content) {

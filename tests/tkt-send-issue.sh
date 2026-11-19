@@ -78,7 +78,8 @@ assert_grep '^  over 60 s$' "$STUB_BODY"
 assert_grep '^1. Profile the idle board.$' "$STUB_BODY"
 # t-8543: a fenced block is kept as written: its comment and its "## " line stay, inside Approach, not a section of their own.
 approach="$(awk '/^```/ { fence = !fence } !fence && /^## Approach$/ { f = 1; next } !fence && /^## Files$/ { f = 0 } f' "$STUB_BODY")"
-assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
+# t-6555: the plan goes verbatim, <!-- lines too, so its ## Approach digest pin still matches once import-issue rebuilds plan.md in the cloud
+assert_eq $'1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n<!-- dropped: outside a fence -->\n3. Measure again.' "$(printf '%s' "$approach" | awk 'NF { s = 1 } s' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')"
 assert_grep '^- The board polls every 8 s.$' "$STUB_BODY"
 assert_grep "^<!-- canon:ticket $id -->\$" "$STUB_BODY"
 # t-67c5: "Working on this" is a numbered list in work order; each line is asserted whole (t-b2e5 plan mode, t-1cf4 approval and branch).
@@ -86,13 +87,16 @@ grep -qxF "1. Run \`sprint import-issue <this issue number>\` first: it rebuilds
   || fail "the issue lacks the import first line (t-67c5)"
 grep -qxF "   sprint. Edit no file before it has run. If gh cannot read this issue, save its text to a file and add \`--body-file <file>\`." "$STUB_BODY" \
   || fail "the issue lacks the import: edit nothing before it line (t-67c5)"
-grep -qxF "2. Plan with canon's own approval, not plan mode: plan mode has been observed to reach the close gates and stop them." "$STUB_BODY" \
+# t-6555: this plan is approved (Sign-off ticked), so the session builds it without waiting; the draft-and-wait text is for a missing plan
+grep -qxF "2. The plan above is approved (its Sign-off is ticked): build it without waiting for another approval. Use canon's plan," "$STUB_BODY" \
+  || fail "t-6555: an approved plan's issue lacks the build-without-waiting line"
+grep -qxF "   not plan mode: plan mode has been observed to reach the close gates and stop them." "$STUB_BODY" \
   || fail "the issue lacks the plan mode warning line (t-67c5)"
-# t-093a: a blank Acceptance or Plan is drafted the way sprint start does, then the session waits for approval.
-grep -qxF "   If Acceptance or Plan above read \"(none yet)\", draft them the way \`sprint start\` does (.tickets/$id/acceptance.md and" "$STUB_BODY" \
-  || fail "the issue lacks the draft on (none yet) line (t-093a)"
-grep -qxF "   plan.md). Then stop and wait for the user's approval of the plan before editing anything else." "$STUB_BODY" \
-  || fail "the issue lacks the wait for approval line (t-093a)"
+! grep -qF "Then stop and wait for the user's approval" "$STUB_BODY" || fail "t-6555: an approved plan's issue still says to wait for approval"
+# t-6555: run to the end without asking; a message mid-run interrupts the session
+grep -qxF "This repository uses canon. Work in this order, every step to the end, without asking whether to continue: stop only when a" "$STUB_BODY" \
+  || fail "t-6555: the issue lacks the run-to-the-end line"
+grep -qxF "interrupts it, so do not wait for one." "$STUB_BODY" || fail "t-6555: the issue lacks the mid-run interrupt line"
 grep -qxF "3. Work on a new branch, never main: push that branch and open a PR with \`Fixes #<this issue number>\`. Do not push to main or force-push anything." "$STUB_BODY" \
   || fail "the issue lacks the branch, never main line (t-67c5)"
 grep -qxF "4. Build it and run the tests; tick each acceptance item only when it is true." "$STUB_BODY" \
@@ -211,7 +215,8 @@ acc_part="$(awk '/^# Acceptance$/ { f = 1; next } /^# Plan$/ { f = 0 } f' "$STUB
 assert_contains "$acc_part" "The list shows the time"; [[ "$(grep -ci '\[manual\]' <<<"$acc_part")" == 1 ]] || fail "a [manual] criterion went into the cloud copy's acceptance"   # only the fenced example
 assert_grep '^- \[Manual\] Works offline$' "$STUB_BODY"
 assert_grep '^## Tested by the person after the merge$' "$STUB_BODY"; assert_grep '^- \[manual\] Looks right on a phone$' "$STUB_BODY"
-assert_grep 'do not run `sprint manual-qa`' "$STUB_BODY"; assert_grep 'by hand on their machine after the merge. Do not attempt$' "$STUB_BODY"
+assert_grep 'do not run `sprint manual-qa`' "$STUB_BODY"; assert_grep "^Tick acceptance.md's QA \"Tested locally\" with your own test run as its evidence" "$STUB_BODY"; assert_grep '^the cloud; the person tests by hand after the merge\), so `sprint complete` can pass here.$' "$STUB_BODY"   # t-6555
+assert_grep 'by hand on their machine after the merge. Do not attempt$' "$STUB_BODY"
 assert_contains "$acc_part" '- [ ] [manual] shown in a fence'   # a fenced example is text, not a criterion: it stays where it was
 [[ "$(grep -c 'shown in a fence' "$STUB_BODY")" == 1 ]] || fail "a fenced [manual] example was listed as a criterion"
 [[ "$(tail -2 "$STUB_BODY" | sed -n 1p)" == "<!-- canon:manual-after-merge -->" ]] || fail "the marker is not right above the ticket marker"
@@ -266,9 +271,9 @@ work="$(awk '/^# Working on this$/ { f = 1; next } f && n++ < 4' "$stub/capped")
 assert_eq "Capped files this plan lists (make room before adding to them):
 HANDOFF.md: 75 of 80 lines, 5 left: make room first
 
-This repository uses canon. Work in this order:" "$work"
+This repository uses canon. Work in this order, every step to the end, without asking whether to continue: stop only when a" "$work"
 handoff 60; issue_body > "$stub/roomy"
-assert_eq "This repository uses canon. Work in this order:" "$(awk '/^# Working on this$/ { getline; print; exit }' "$stub/roomy")"
+assert_eq "This repository uses canon. Work in this order, every step to the end, without asking whether to continue: stop only when a" "$(awk '/^# Working on this$/ { getline; print; exit }' "$stub/roomy")"
 # import-issue reads back the same plan.md and acceptance.md from either body
 for b in capped roomy; do
   imp="$(make_project)"
@@ -644,5 +649,40 @@ git add ".tickets/$tid"; git -c user.name=t -c user.email=t@t commit -qm "ticket
 git show --stat --format= HEAD > "$stub/stat"; grep -q "evidence/cloud/machine.log" "$stub/stat" || fail "the PR branch's commit lacks evidence/cloud/machine.log: $(git show --stat --format= HEAD)"
 echo "send-issue: a tracked .tickets/ project gets the commit-the-folder step 6, and following it puts machine.log in the PR"
 cd "$project"
+
+# t-6555: --dry-run never approves (it warns that Create issue will); a ticket with no plan or no criteria says so in a `needs:` line
+# the board keys on, and its issue keeps the draft-and-wait text. Protects the board's Send panel (Create issue held) and the preview.
+idq="$("$TKT" create "Unapproved plan" -t task -p 3)"
+printf '# Acceptance\n\n## Criteria\n- [ ] It works\n\n## Test Plan\n- [ ] Check it\n\n## QA\n- [ ] Tested locally\n' > ".tickets/$idq/acceptance.md"
+printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\n<!-- Describe how you will implement this. -->\n1. Do it.\n' > ".tickets/$idq/plan.md"
+pq="$(cksum < ".tickets/$idq/plan.md")"
+"$TKT" send-issue "$idq" --dry-run > "$stub/q.out" 2> "$stub/q.err" || fail "t-6555: the dry run failed: $(cat "$stub/q.err")"
+assert_eq "$pq" "$(cksum < ".tickets/$idq/plan.md")"   # a preview writes nothing
+assert_grep "^send-issue: warning: Create issue approves $idq's plan first" "$stub/q.err"
+assert_grep '^2. The plan above is approved' "$stub/q.out"   # the preview shows what Create issue will send
+! grep -q '^send-issue: needs:' "$stub/q.err" || fail "t-6555: a ticket with a plan and criteria got a needs: line"
+# a failed create (or a declined --launch) puts the approval back: "$id was not changed" stays true (reviewer)
+rc=0; out="$(STUB_FAIL=create "$TKT" send-issue "$idq" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-6555: a failed create should exit 1: $out"; assert_contains "$out" "plan is back as it was (not approved)"
+assert_eq "$pq" "$(cksum < ".tickets/$idq/plan.md")"
+# a real send of the unapproved plan approves it and its issue says so (mutation sweep: the approved flag after approving)
+"$TKT" send-issue "$idq" > "$stub/q-sent.out" 2>&1 || fail "t-6555: the send failed: $(cat "$stub/q-sent.out")"
+assert_grep "^send-issue: approved $idq's plan" "$stub/q-sent.out"; assert_grep '^- \[x\] Plan approved$' ".tickets/$idq/plan.md"
+assert_grep '^2. The plan above is approved' "$STUB_BODY"
+assert_grep '^gate fails or a refusal you cannot fix stops you, and then say what is needed. A message sent to this session mid-run$' "$STUB_BODY"
+# a refused approval sends nothing (a pipeline file the resolver refuses: sprint approve exits 1)
+idr="$("$TKT" create "Refused approval" -t task -p 3)"
+cp ".tickets/$idq/acceptance.md" ".tickets/$idr/acceptance.md"
+printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\n1. Do it.\n' > ".tickets/$idr/plan.md"; pr="$(cksum < ".tickets/$idr/plan.md")"
+mkdir -p canon-config; printf 'not: [a, valid\n' > canon-config/pipeline.yaml; : > "$STUB_LOG"
+rc=0; out="$("$TKT" send-issue "$idr" 2>&1)" || rc=$?
+rm -rf canon-config
+[[ "$rc" == 1 ]] || fail "t-6555: a refused approval should exit 1: $out"; assert_contains "$out" "could not approve $idr's plan, so nothing was sent"
+[[ "$(writes)" == 0 ]] || fail "t-6555: a refused approval still called gh: $(cat "$STUB_LOG")"; assert_eq "$pr" "$(cksum < ".tickets/$idr/plan.md")"
+idz="$("$TKT" create "Nothing written" -t task -p 3)"
+"$TKT" send-issue "$idz" --dry-run > "$stub/z.out" 2> "$stub/z.err" || fail "t-6555: the empty dry run failed: $(cat "$stub/z.err")"
+assert_grep '^send-issue: needs: plan$' "$stub/z.err"; assert_grep '^send-issue: needs: acceptance$' "$stub/z.err"
+assert_grep "Then stop and wait for the user's approval of the plan" "$stub/z.out"
+echo "send-issue: dry run approves nothing; needs: plan / acceptance for an empty ticket (t-6555)"
 
 echo "tkt-send-issue: ok"

@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-18-2026 17:21
+learnings-sweep last run: 11-18-2026 20:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-18 | [t-6555](.tickets/t-6555/learnings.md) | A value pinned by one extractor and recomputed by another (the plan's approval digest) must share one rule and be proven by a round trip; and a command that writes before its last refusable step must restore on every abort. | UNPROMOTED |
 | 2026-11-18 | [t-7db9](.tickets/t-7db9/learnings.md) | A check that classifies staged paths must read them with --no-renames: rename detection shows only a moved file's new path, so code moved into .tickets/ would pass as a record. | UNPROMOTED |
 | 2026-11-18 | [t-cd57](.tickets/t-cd57/learnings.md) | A rule that offers an action (Import results, keyed on a file the PR keeps) must stop holding once the action is done; the reviewer caught it staying true after the import (P-072 recurrence). | UNPROMOTED |
 | 2026-11-18 | [t-00d3](.tickets/t-00d3/learnings.md) | A format rule that is really a style (bold in a DECISIONS row) refused a correct cloud close and forced a local re-run; validate the lines canon parses by their meaning, not their styling (t-c2de schema). | UNPROMOTED |
@@ -80,6 +81,5 @@ learnings-sweep last run: 11-18-2026 17:21
 | 2026-11-11 | [t-46b9](.tickets/t-46b9/learnings.md) | A bug that a test already asserts as normal ("No sessions running." with the daemon stopped) survives every suite: when a symptom is reported, grep the tests for the old output and treat a passing assertion of it as the bug's own evidence. | UNPROMOTED |
 | 2026-11-11 | [t-2c06](.tickets/t-2c06/learnings.md) | A plan that lists the release (push, tag, a green workflow on the public repo) as a sprint deliverable cannot pass the close-time evaluator, because canon releases only after the close: put the release under a post-close heading from the start. | UNPROMOTED |
 | 2026-11-11 | [t-5b80](.tickets/t-5b80/learnings.md) | A new validation or probe needs a test that runs it against a stub that would otherwise succeed (a board that answers `working`, a probe that returns rows later): exit 2 from a stub that always refuses proves nothing, and a revert-proof that can loop must run under a bounded runner. | UNPROMOTED |
-| 2026-11-10 | [t-ad6f](.tickets/t-ad6f/learnings.md) | A script that rewrites test stubs by "the next call within N characters" wraps a neighbour's (list every changed site with its route before running); a shell client must pattern-check an env value before it goes into a URL (digits, no leading zero, bounded) and use `--noproxy '*'` for loopback, in one wrapper; shipping new commands can push the capped release zip over its cap. | `promoted → standards/efficiency-notes.md` |
 
 <!-- canon:learnings:END -->
