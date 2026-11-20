@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-11-20
+
+- Changed: a sprint close re-runs far less evidence. `sprint check-evidence` notes a stale mutation-sweep log instead of refusing it (the sweep is non-binding: re-sweeping after each fix was 20 of 39 hours of reruns in 30 days); a full-suite log stays usable after a test-only change or a failure in a suite the branch did not touch, once just those suites pass alone with the new `scripts/test.sh --only <suite>`; the close checklist stamps only after the reviewer's and security-review's fixes; a sweep can be skipped as `revert-proved by hand (N)`; and a board change confined to one panel runs that panel's spec cases, not the full spec (t-2ce8).
+
 ## [0.69.10] - 2026-11-20
 
 - Changed: the Model Tiers block canon copies into every project's AGENTS.md is now three lines that point at Admin > Model Tiers, instead of per-step model rules that disagreed with Admin and cost context in every session; `canon update` replaces the old block and leaves the rest of the file as it was (t-21d8).
