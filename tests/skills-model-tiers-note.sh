@@ -167,7 +167,7 @@ assert_eq "$(printf '# Agents\n')" "$(cat "$project3/AGENTS.md")"
 block="$(canon_block "$ROOT/AGENTS.md")"
 lines="$(printf '%s\n' "$block" | wc -l | tr -d ' ')"
 [[ "$lines" -le 5 ]] || fail "the MODEL-TIERS block is $lines lines with its markers (max 5): Admin > Model Tiers owns the per-step models (t-21d8)"
-for needle in '## Model Tiers' 'Admin > Model Tiers' 'Light work' 'subagent' 'skills/sprint/reference/complete.md'; do
+for needle in '## Model Tiers' 'Admin > Model Tiers' 'subagent you start yourself runs on the Light work model' 'skills/sprint/reference/complete.md'; do
   printf '%s\n' "$block" | grep -F -- "$needle" >/dev/null || fail "the MODEL-TIERS block lost '$needle'"
 done
 for retired in '`plan creation`' '`implement`' '`review` / `grill`' 'thinking'; do
