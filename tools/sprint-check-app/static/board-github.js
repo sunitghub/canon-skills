@@ -114,7 +114,7 @@ function toCloudTip() {
 export function ghChipHTML(t) {
   if (!ghOut(t)) return '';
   const p = ghParts(t), st = stageOf(t), n = p ? `GitHub #${p.issue}` : 'GitHub';
-  let text = n, title = String(t.github);
+  let text = n, title = String(t.github), failed = false;
   if (closedHere(t, st)) { text += ' · closed here'; title = `Closed here; nothing is open on GitHub (tkt take-back ${t.id} clears this)`; }   // t-1148
   else if (st.stage === 'sent' && cloudStarting(st)) { text += ' · starting'; title = 'A cloud session was launched; it has not pushed its branch yet'; }   // t-a7e0
   else if (st.stage === 'sent') text += ' · sent';
@@ -126,13 +126,17 @@ export function ghChipHTML(t) {
   else if (st.stage === 'pr-open') text += prOf(st) ? ` · PR #${prOf(st)}` : ' · PR open';
   else if (st.stage === 'branch' && cloudWorking(st)) { text += ' · cloud session working'; title = `${st.branch} is pushed; the session opens its PR when it finishes`; }
   else if (st.stage === 'branch') { text += ' · branch, no PR'; title = `${st.branch} is on GitHub with no PR`; }
+  else if (st.stage === 'results-ready' && st.results_verdict === 'fail') {   // t-a1f8: only an explicit fail, never a missing report
+    text += ' · results ready · eval failed'; failed = true;
+    title = 'The cloud evaluator failed on these results. Usually: ask the cloud session to fix it and run its evaluator again, then import.';
+  }
   else if (st.stage === 'results-ready') text += ' · results ready';
   else if (st.stage === 'results-in') text += ' · results in';
   else if (st.stage === 'merging') { const m = mergeById.get(t.id); text += ` · merging… ${mmss(m.elapsed)}`; title = lastLine(m.output) || title; }
   else if (st.stage === 'error') { text += " · can't check"; title = st.output || title; }
   else if (st.warning) { text += ' · ⚠ merge not recorded'; title = String(st.warning); }   // t-7c89: merged on GitHub, a check failed
   if (ghClosingHere(t)) { text += ` · closing in land/${t.id}`; title = `Closing in ${st.landed}: sprint complete there, then Finish`; }   // t-92f2
-  return `<span class="card-gh-chip" data-id="${esc(t.id)}" title="${escAttr(title)}">${esc(text)}</span>`
+  return `<span class="card-gh-chip${failed ? ' gh-eval-failed' : ''}" data-id="${esc(t.id)}" title="${escAttr(title)}">${esc(text)}</span>`
     + (st.stage === 'merging' ? '' : `<button class="card-gh-takeback" type="button" data-id="${esc(t.id)}" title="Bring this ticket back to work on it here">take back</button>`);
 }
 
@@ -489,6 +493,15 @@ function oneProgressLine(text) {
 
 // ── Import results ──────────────────────────────────────────────────────────────────────────────────────────────────
 async function importResults(t, pr) {
+  // t-a1f8: the cloud's evaluator failed on these results: say so first (importing a fail is also how a close finishes here, so it asks, not blocks)
+  if (stageOf(t).results_verdict === 'fail') {
+    const c = await openDialog({
+      title: `Import failing results for ${t.id}?`,
+      body: 'The cloud evaluator failed on these results. Usually you ask the cloud session to fix it and run its evaluator again, then import. Importing now brings the failing report here; the card then offers Continue here to finish the close on this machine.',
+      ok: 'Import anyway', cancel: 'Cancel', escape: true,
+    });
+    if (!c || !c.ok) return;
+  }
   const shown = openDialog({ title: `Importing results for ${t.id}…`, pre: 'Running tkt import-results…', cancel: 'Close', escape: false });
   let res;
   try { res = await postJSON(ghApi(t.id, 'import'), pr ? { pr } : {}); }
@@ -896,7 +909,9 @@ export async function showGithubPanel(t, tab, { reload = false } = {}) {
     catch (e) { cp = { ok: false }; }
     if (gen !== ghPanelGen) return;
     if (tab && (tab !== cockpitState || !tab.ghPick)) return;
-    const files = cp.ok ? String(cp.output || '').split(/\r?\n/).map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean) : null;
+    const cpLines = cp.ok ? String(cp.output || '').split(/\r?\n/) : [];
+    const canonOwn = new Set(cpLines.map(l => /^canon: (.+)$/.exec(l)).filter(Boolean).map(m => m[1]));   // t-a1f8: canon's own setup, not counted
+    const files = cp.ok ? cpLines.map(l => /^file: (..) (.+)$/.exec(l)).filter(m => m && !canonOwn.has(m[2])) : null;
     // t-8ae5: the warning (tkt send-issue) leaves .tickets/ out because the cloud rebuilds the ticket from the issue; the counts here follow it.
     const counted = files && files.filter(m => !/^\.tickets\//.test(m[2]));
     kinds = files ? { tracked: counted.filter(m => m[1] !== '??').length, untracked: counted.filter(m => m[1] === '??').length } : { tracked: 1, untracked: 0 };
@@ -996,10 +1011,14 @@ async function showCommitPush(t, tab, gen) {
   // t-3741: "mtime: <epoch seconds> <path>" lines say when each file was last written (absent in an older tkt: nothing is recent).
   const mtimes = new Map(lines.map(l => /^mtime: (\d+) (.+)$/.exec(l)).filter(Boolean).map(m => [m[2], +m[1]]));
   const nowS = Date.now() / 1000;
+  const canonOwn = new Set(lines.map(l => /^canon: (.+)$/.exec(l)).filter(Boolean).map(m => m[1]));   // t-a1f8
   const files = lines.map(l => /^file: (..) (.+)$/.exec(l)).filter(Boolean).map(m => {
     const age = mtimes.has(m[2]) ? Math.max(0, Math.floor(nowS - mtimes.get(m[2]))) : Infinity;
-    return { path: m[2], untracked: m[1] === '??', age: age < RECENT_S ? age : null };
+    return { path: m[2], untracked: m[1] === '??', age: age < RECENT_S ? age : null, canon: canonOwn.has(m[2]) };
   });
+  // t-a1f8: commits on no branch of origin (tkt's `ahead:` line); an older tkt prints none and the button stays "Commit and push"
+  const aheadLine = lines.find(l => /^ahead: \d+$/.test(l));
+  const ahead = aheadLine ? +aheadLine.slice('ahead: '.length) : null;
   // An agent is working in this checkout: its files may be half done, so nothing starts ticked. state.cockpitRows holds this
   // project's live sessions only (any ticket); t.working is an agent outside the Cockpit on this ticket (t-187e).
   const busy = !!t.working || [...state.cockpitRows.values()].some(r => r.state !== 'exited');
@@ -1008,11 +1027,23 @@ async function showCommitPush(t, tab, gen) {
   box.innerHTML = `<p>Branch: <code>${esc(branch)}</code></p>
       ${merge ? `<div class="ck-gh-note" id="ck-gh-cp-merge" role="note"><p>${esc(merge.text)}</p>${merge.commits.length ? `<pre class="ck-gh-pre">${esc(merge.commits.join('\n'))}</pre>` : ''}</div>` : ''}
       ${files.length && busy ? '<p class="ck-gh-cp-busy" id="ck-gh-cp-busy" role="note"><strong>An agent session is working in this checkout:</strong> these files may be its work in progress. Tick only what you mean to send.</p>' : ''}
-      ${files.length ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">tracked in git here: commit it so the cloud's copy matches the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : '<p>No uncommitted files: only the commits already here are pushed.</p>'}
+      ${files.some(f => !f.canon) ? `<ul class="ck-gh-cp-files" id="ck-gh-cp-files">${files.map((f, i) => [f, i]).filter(([f]) => !f.canon).map(([f, i]) => `<li><label><input type="checkbox" data-i="${i}"${startTicked(f) ? ' checked' : ''}> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span>${/^\.tickets\//.test(f.path) ? ` <span class="ck-gh-cp-ago ck-gh-cp-own">tracked in git here: commit it so the cloud's copy matches the issue</span>` : ''}${f.age === null ? '' : ` <span class="ck-gh-cp-ago">changed ${ago(f.age)} ago</span>`}</label></li>`).join('')}</ul>` : `<p id="ck-gh-cp-none">${canonOwn.size ? 'No changes of yours: only canon\'s own setup, which the cloud does not need.' : 'No uncommitted files: only the commits already here are pushed.'}</p>`}
+      ${canonOwn.size ? `<details class="ck-gh-cp-canon" id="ck-gh-cp-canon"><summary>canon's setup files (${files.filter(f => f.canon).length}) — not needed for the cloud</summary><ul class="ck-gh-cp-files">${files.map((f, i) => [f, i]).filter(([f]) => f.canon).map(([f, i]) => `<li><label><input type="checkbox" data-i="${i}"> <code>${esc(f.path)}</code> <span class="ck-gh-cp-st">${f.untracked ? 'new, not tracked' : 'changed'}</span></label></li>`).join('')}</ul></details>` : ''}
       <p class="ck-gh-cp-note" id="ck-gh-cp-note">This ticket's own files go in the issue below (Description, Acceptance, Plan, Research); the cloud session rebuilds <code>.tickets/${esc(t.id)}/</code> from it, so they are not committed here unless your project tracks them in git.</p>
       ${files.length ? `<label class="ck-gh-cp-msg">Commit message <input type="text" id="ck-gh-cp-msg" maxlength="200" value="${escAttr(`chore: ${t.id} work for the cloud session`)}"></label>` : ''}
       <div class="ck-gh-actions"><button type="button" class="ck-gh-create" id="ck-gh-cp-go"${rewritten ? ' disabled' : ''}>Commit and push</button><button type="button" id="ck-gh-cp-cancel">Cancel</button><span class="ck-gh-status" id="ck-gh-cp-status" role="status"></span></div>
       <pre class="ck-gh-pre" id="ck-gh-cp-out" hidden></pre>`;
+  // t-a1f8: the button names what is left to do, from the ticks and tkt's `ahead:` count (never its wording): something ticked → Commit and
+  // push; nothing ticked with commits to push → Push; nothing at all → disabled. Without an `ahead:` line (an older tkt) it stays as it was.
+  const go = document.getElementById('ck-gh-cp-go');
+  const syncGo = () => {
+    if (rewritten || ahead === null) return;
+    const n = box.querySelectorAll('input[type=checkbox][data-i]:checked').length;
+    go.textContent = n ? 'Commit and push' : ahead > 0 ? 'Push' : 'Nothing to send — go to Create issue';
+    go.disabled = !n && ahead === 0;
+  };
+  box.querySelectorAll('input[type=checkbox][data-i]').forEach(b => b.addEventListener('change', syncGo));
+  syncGo();
   document.getElementById('ck-gh-cp-cancel').addEventListener('click', () => {
     delete box.dataset.open;
     box.innerHTML = '<div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div>';
@@ -1020,7 +1051,7 @@ async function showCommitPush(t, tab, gen) {
   });
   document.getElementById('ck-gh-cp-go').addEventListener('click', async () => {
     const status = document.getElementById('ck-gh-cp-status');
-    const chosen = [...box.querySelectorAll('#ck-gh-cp-files input[type=checkbox]:checked')].map(b => files[+b.dataset.i].path);
+    const chosen = [...box.querySelectorAll('input[type=checkbox][data-i]:checked')].map(b => files[+b.dataset.i].path);
     const msg = (document.getElementById('ck-gh-cp-msg')?.value || '').trim();
     if (chosen.length && !msg) { status.textContent = 'Write a commit message first.'; return; }
     const choice = await openDialog({

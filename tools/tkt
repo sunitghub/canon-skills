@@ -1268,7 +1268,12 @@ _si_check_pushed() {
       return 1
     fi
   fi
-  dirty="$(git -C "$wt" status --porcelain -- . ':(exclude).tickets' 2>/dev/null | wc -l | tr -d ' ')"
+  # t-a1f8: the same list the Send panel's Commit and push form shows (_cp_files, one entry per file), without .tickets/ and canon's own setup
+  local xy p; dirty=0
+  while IFS=$'\t' read -r xy p; do
+    [[ -n "$p" && "$p" != .tickets/* ]] || continue
+    canon_own_change "$wt" "$xy" "$p" || dirty=$((dirty + 1))
+  done < <(_cp_files "$wt" "$id")
   (( dirty > 0 )) && echo "send-issue: warning: $dirty file(s) in $wt have uncommitted or untracked changes; the cloud session will not see them" >&2
   tracked="$(git -C "$root" ls-files -- ".tickets/$id" 2>/dev/null || true)"   # captured, not piped into head (pipefail)
   if [[ -n "$tracked" ]] && [[ -n "$(git -C "$root" status --porcelain --untracked-files=no -- ".tickets/$id" 2>/dev/null)" ]]; then
@@ -3200,6 +3205,24 @@ cmd_github_status() {
   elif $branch || $trk; then stage=results-ready
   elif [[ -n "$pr" ]]; then stage=pr-open
   else stage=sent; fi
+  # t-a1f8: the cloud evaluator's verdict in the results import-results would bring back (canon-results/<id> first, else the PR head), so
+  # the card can say "eval failed" before the import. A results tip is fetched once per new sha; no report or any failed read = none.
+  local rv=none rrev="" rsha
+  if [[ "$stage" == results-ready ]]; then
+    if $branch; then
+      rsha="${err%%[[:space:]]*}"   # ls-remote's first field
+      if [[ "$rsha" =~ ^[0-9a-f]{40}$ ]]; then
+        git -C "$root" cat-file -e "$rsha^{commit}" 2>/dev/null \
+          || git -C "$root" fetch -q origin "refs/heads/canon-results/$id" < /dev/null >/dev/null 2>&1 || true
+        git -C "$root" cat-file -e "$rsha^{commit}" 2>/dev/null && rrev="$rsha"
+      fi
+    elif $trk; then rrev="$phead"; fi
+    if [[ -n "$rrev" ]]; then
+      case "$(git -C "$root" show "$rrev:.tickets/$id/eval-report.md" 2>/dev/null | grep -m1 -E '^(pass|fail):' | cut -d: -f1 || true)" in
+        pass) rv=pass ;; fail) rv=fail ;;
+      esac
+    fi
+  fi
   # t-24b1: no PR and no results branch yet: did the session push a branch and stop short of a PR (#41)?
   local sb="" def="" sbout
   if [[ "$stage" == sent ]]; then
@@ -3252,7 +3275,7 @@ cmd_github_status() {
   mirrors="$(git -C "$root" config --get-all canon.mirror 2>/dev/null || true)"
   while IFS= read -r m; do [[ -n "$m" ]] && { mj+="$sep$(json_str "$m")"; sep=,; }; done <<< "$mirrors"
   if $json; then
-    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"launched":%s,"pr_pushed":%s,"warning":%s}\n' \
+    printf '{"id":%s,"issue":%s,"stage":%s,"pr":%s,"pr_state":%s,"pr_head":%s,"results_branch":%s,"branch":%s,"mirrors":[%s],"verdict":%s,"graded_head":%s,"graded_matches_pr":%s,"merged":%s,"land":%s,"close_here":%s,"landed":%s,"issue_updated":%s,"started":%s,"launched":%s,"pr_pushed":%s,"results_verdict":%s,"warning":%s}\n' \
       "$(json_str "$id")" "$(json_str "$gh")" "$(json_str "$stage")" "$(json_num "$pr" null)" \
       "$([[ -n "$pst" ]] && json_str "$pst" || echo null)" "$([[ -n "$phead" ]] && json_str "$phead" || echo null)" "$branch" \
       "$([[ -n "$sb" ]] && json_str "$sb" || echo null)" "$mj" \
@@ -3260,7 +3283,7 @@ cmd_github_status() {
       "$([[ -n "$merged" ]] && json_str "$merged" || echo null)" "$land" "$close_here" \
       "$([[ -n "$landed" ]] && json_str "$landed" || echo null)" "$([[ -n "$iupd" ]] && json_str "$iupd" || echo null)" \
       "$([[ -n "$started" ]] && json_str "$started" || echo null)" "$([[ -n "$launched" ]] && json_str "$launched" || echo null)" \
-      "$([[ -n "$ppush" ]] && json_str "$ppush" || echo null)" "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
+      "$([[ -n "$ppush" ]] && json_str "$ppush" || echo null)" "$(json_str "$rv")" "$([[ -n "$warn" ]] && json_str "$warn" || echo null)"
   else
     echo "$id · $gh · $stage"
     [[ -n "$pr" ]] && echo "  PR #$pr ($pst) head $phead"
@@ -3448,8 +3471,11 @@ cmd_commit_push() {
     echo "commit-push: $id in $wt"
     if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; echo "origin: $otip"; fi
     ! $diverged || _origin_merge_preview "$wt" "$b" "merge:" "Commit and push" || { echo "commit-push: git could not list origin's new commits" >&2; exit 1; }
+    # t-a1f8: commits on no branch of origin, as send-issue counts them: the form's Push / Nothing to send rule reads this, not the line above
+    local nahead; if nahead="$(git -C "$wt" rev-list --count HEAD --not --remotes=origin 2>/dev/null)"; then echo "ahead: $nahead"; fi   # a git failure prints none: the form keeps its plain button
     [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do
       printf 'file: %s %s\n' "$xy" "$p"
+      if canon_own_change "$wt" "$xy" "$p"; then printf 'canon: %s\n' "$p"; fi   # t-a1f8: canon's own setup, unticked in its own group
       # t-3741: when the file was last written (epoch seconds), so the form can leave a file changed moments ago unticked. GNU stat -c, BSD stat -f.
       m="$(stat -c %Y -- "$wt/$p" 2>/dev/null || stat -f %m -- "$wt/$p" 2>/dev/null)" || m=""
       if [[ "$m" =~ ^[0-9]+$ ]]; then printf 'mtime: %s %s\n' "$m" "$p"; fi
