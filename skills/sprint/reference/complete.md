@@ -23,7 +23,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory break-it runs before the reviewer
+- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory break-it runs in one batch with the reviewer (t-9e7a)
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md

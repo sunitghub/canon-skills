@@ -149,7 +149,7 @@ Canonical layout:
   research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
   review-notes.md  ← advisory reviewer findings (code quality, scope, standards) + YES/NO verdict; written at sprint complete for normal+ sprints
   eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for non-trivial sprints (normal, high-risk, and bugfix — bugfix is eval-only, so it keeps this)
-  skill-eval-<skill>.md ← optional advisory; the sprint's skill-eval report for a skill whose instructions it edited (run at sprint complete step 1, before the reviewer); never close-gated
+  skill-eval-<skill>.md ← optional advisory; the sprint's skill-eval report for a skill whose instructions it edited (run at sprint complete in the reviewer's batch, t-9e7a); never close-gated
   mutation-report.md ← non-binding pre-evaluator step; written by the mutation-test skill at sprint complete when logic files changed (a skip needs a reason); never close-gated
   learnings.md     ← optional UNPROMOTED lessons candidate; written by `tkt learn` from this sprint's deviations + evaluator and reviewer findings, for a non-builder to promote; never close-gated
   summary.md       ← plan-vs-actual table; written at sprint complete

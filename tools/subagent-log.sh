@@ -4,7 +4,7 @@
 #
 # Primary usage — explicit CLI call, made by the orchestrating agent right after
 # a reviewer/evaluator subagent completes (see skills/sprint/reference/complete.md):
-#   tools/subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES>]
+#   tools/subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES, or break-it (a cost row, no gate event)>]
 #     [--tokens N --minutes M --tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget] [--model <id>]
 # The cost fields (t-5ef3) come from the harness's hand-back for that run; each is written only when given,
 # so a row without them keeps the old shape. `sprint gate-cost` summarizes the rows that carry them.
@@ -39,7 +39,7 @@ MODEL_SET=0
 
 usage() {
   cat >&2 <<'EOF'
-Usage: subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES>]
+Usage: subagent-log.sh --agent-id <id> [--agent-type <a gate role: platform-lib.sh GATE_ROLES, or break-it (a cost row, no gate event)>]
                        [--tokens N] [--minutes M] [--tool-uses K] [--ticket <id>] [--tier <tier>] [--outcome pass|fail|budget]
                        [--model <id>]
 EOF
