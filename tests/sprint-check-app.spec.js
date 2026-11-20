@@ -18676,6 +18676,11 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(go).toHaveText('Commit and push'); await expect(go).toBeEnabled();
     aheadN = 2; await reopen(); await mine.first().uncheck();
     await expect(go).toHaveText('Push'); await expect(go).toBeEnabled();
+    person = ''; aheadN = 0; await reopen();   // only canon's own setup changed: says so, no empty list of the person's
+    await expect(page.locator('#ck-gh-cp-none')).toHaveText("No changes of yours: only canon's own setup, which the cloud does not need.");
+    await expect(page.locator('#ck-gh-cp-files')).toHaveCount(0);
+    await expect(go).toHaveText('Nothing to send — go to Create issue'); await expect(go).toBeDisabled();
+    person = 'file:  M src/app.js';
     aheadN = null; canonLines = false; await reopen();   // an older tkt: no ahead:/canon: lines, today's form
     await expect(page.locator('#ck-gh-cp-canon')).toHaveCount(0);
     await expect(mine).toHaveCount(3); await mine.first().uncheck(); await mine.nth(1).uncheck();

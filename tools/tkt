@@ -3472,7 +3472,7 @@ cmd_commit_push() {
     if $new; then echo "branch: $b -> origin/$b (new on origin)"; else echo "branch: $b -> origin/$b ($ahead commit(s) to push)"; echo "origin: $otip"; fi
     ! $diverged || _origin_merge_preview "$wt" "$b" "merge:" "Commit and push" || { echo "commit-push: git could not list origin's new commits" >&2; exit 1; }
     # t-a1f8: commits on no branch of origin, as send-issue counts them: the form's Push / Nothing to send rule reads this, not the line above
-    echo "ahead: $(git -C "$wt" rev-list --count HEAD --not --remotes=origin 2>/dev/null || echo 0)"
+    local nahead; if nahead="$(git -C "$wt" rev-list --count HEAD --not --remotes=origin 2>/dev/null)"; then echo "ahead: $nahead"; fi   # a git failure prints none: the form keeps its plain button
     [[ -z "$list" ]] || printf '%s\n' "$list" | while IFS=$'\t' read -r xy p; do
       printf 'file: %s %s\n' "$xy" "$p"
       if canon_own_change "$wt" "$xy" "$p"; then printf 'canon: %s\n' "$p"; fi   # t-a1f8: canon's own setup, unticked in its own group

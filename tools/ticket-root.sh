@@ -336,8 +336,6 @@ decisions_added_rows() {
   else printf '%s\n' "$out"; fi
 }
 
-# canon_tickets_ignore_lines — t-2f07: canon's seeded .tickets/.gitignore, one line each: one owner, read by tkt's ensure_tickets_dir (the new
-# file) and by late_docs_delta (a PR that only adds these lines after grading is late docs). The comment line marks a file canon seeded.
 # _canon_strip_own <file> — t-a1f8: the file without what canon writes into a project's AGENTS.md/CLAUDE.md/.gitattributes (the
 # AI-SKILLS block, the canon:gitattributes block, canon's `@AGENTS.md`/`@PROMOTED.md` lines), a line-end CR (autocrlf, t-ae3b) and blank lines.
 _canon_strip_own() {
@@ -377,6 +375,8 @@ canon_own_change() {
   esac
 }
 
+# canon_tickets_ignore_lines — t-2f07: canon's seeded .tickets/.gitignore, one line each: one owner, read by tkt's ensure_tickets_dir (the new
+# file) and by late_docs_delta (a PR that only adds these lines after grading is late docs). The comment line marks a file canon seeded.
 canon_tickets_ignore_lines() {
   printf '%s\n' '# canon runtime files — per-machine session state, never commit (t-2f53)' '.cockpit-*' 'ACTIVE' 'ACTIVE.beat' '.before-import/' \
     '*/gate-snapshot.txt' '*/gate-snapshot.txt.scope'
