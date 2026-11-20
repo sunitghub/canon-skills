@@ -78,6 +78,7 @@ tests=(
   "$ROOT/tests/sprint-manual-merged.sh"
   "$ROOT/tests/sprint-gate-model.sh"
   "$ROOT/tests/sprint-caps-close.sh"
+  "$ROOT/tests/sprint-close-hint.sh"
   "$ROOT/tests/sprint-handoff-notice.sh"
   "$ROOT/tests/ticket-root-worktree.sh"
   "$ROOT/tests/frontmatter-lib.sh"

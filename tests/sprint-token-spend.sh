@@ -215,7 +215,7 @@ assert_contains "$out" "cost: 513 tokens (gates 343, 66%), 1 gate runs"
 assert_contains "$ln" '"builder":"claude-opus-5-5"'; assert_contains "$ln" '"same_model":"evaluator"'
 assert_contains "$out" "note: the evaluator ran on claude-opus-5-5, the model that built this change, so it is not independent of it (advisory, never a block)."
 [[ "$out" != *"reviewer ran"* && "$out" != *"reviewer and"* ]] || fail "the reviewer's last row is sonnet: it must not be named: $out"
-assert_contains "$out" "Most of this ticket's tokens went to the close gates"
+[[ "$out" != *"Most of this ticket's tokens"* ]] || fail "t-bc1e: the >50% gates sentence is back (it fired on nearly every close): $out"
 out="$(recspend --ticket t-aaaa)"; assert_eq "" "$out"; assert_eq "1" "$(cost_lines)"   # idempotent
 # the cost survives the transcripts (about 9 days): the row comes from the event
 mv "$cfg/projects" "$cfg/projects.gone"; mkdir -p "$cfg/projects/$(printf '%s' "$root" | sed 's/[^A-Za-z0-9]/-/g')"

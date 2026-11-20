@@ -1267,6 +1267,7 @@ cmd_complete() {
   cmd_token_spend --ticket "$id" --record 2>/dev/null || true   # t-7e26: the cost line; never fails a close
   # t-4c09: the audit line for the close: the plan's tier (the word after "Tier:" in the Sign-off), when it names one
   local _tier; _tier="$(_signoff_tier "$tdir/plan.md")"
+  _close_hint "$id" "$(project_root)" "$_tier"   # t-bc1e: why a slow close was slow; advisory
   canon_event close.confirmed sprint "$(project_root)" "ticket=$id" ${_tier:+"tier=$_tier"}
   # t-7e76: a node this project's pipeline removed leaves one event each (the declared wrapup.gate_finished, result=removed)
   if [[ -n "$PIPELINE_OFF_NODES" && "$PIPELINE_OFF_NODES" != "-" ]]; then
@@ -2262,6 +2263,56 @@ cmd_token_spend() {
   _record_cost "$only" "$root" "$res"
 }
 
+# _close_hint <id> <root> <tier> — t-bc1e: one advisory line saying why a close was slow, read from the activity log ($CANON_HOME/events, the
+# newest 7 day files): from this ticket's last close.started to its sprint.completed. It prints only when the close passed its tier's
+# target (high-risk 60 min, every other tier 30; CANON_CLOSE_TARGET_HIGH / _NORMAL), a stamp ran more than once, or a gate was rejected:
+#   close: [<N> min (<tier> target <T>): ]<name> stamped <n>x[ (<f> failed)], <role> refused <n>x (<reason>), <role> <n> run(s)
+# Gate events must name this project; evidence.stamped may come from a scratch clone (its project is the clone), so it is matched by
+# ticket alone. A malformed line is skipped; no log or no close.started prints nothing; it never fails the close. (The gates' token
+# ratio was the first idea and was dropped: 2-10x on nearly every close, 1.4x on the 3 h t-eeb5 one.)
+_close_hint() {
+  local id="$1" root="$2" tier="${3:-}" evdir f hi lo target
+  evdir="${CANON_HOME:-${HOME:-}/.canon}/events"
+  [[ -d "$evdir" ]] || return 0   # an unreadable folder globs to nothing
+  local -a evfiles=()
+  for f in "$evdir"/*.jsonl "$evdir"/*.jsonl.gz; do [[ -f "$f" && -r "$f" ]] && evfiles+=("$f"); done
+  [[ ${#evfiles[@]} -gt 0 ]] || return 0
+  hi="${CANON_CLOSE_TARGET_HIGH:-60}"; lo="${CANON_CLOSE_TARGET_NORMAL:-30}"
+  [[ "$hi" =~ ^[1-9][0-9]{0,4}$ ]] || hi=60; [[ "$lo" =~ ^[1-9][0-9]{0,4}$ ]] || lo=30
+  if [[ "$tier" == high-risk ]]; then target="$hi"; else target="$lo"; fi
+  printf '%s\n' "${evfiles[@]}" | sort | tail -n 7 | _token_spend_events | CH_ROOT="$root" LC_ALL=C awk -v id="$id" -v tier="${tier:-normal}" -v target="$target" "$canon_awk_pkey"'
+    function field(name,   m) { if (!match($0, "\"" name "\":\"[^\"]*\"")) return ""; m = substr($0, RSTART, RLENGTH); sub(/^[^:]*:"/, "", m); sub(/"$/, "", m); return m }
+    function days(y, m, d) { if (m <= 2) { y--; m += 12 }; return 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d }
+    function secs(ts) { if (ts !~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}/) return -1
+      return days(substr(ts, 1, 4) + 0, substr(ts, 6, 2) + 0, substr(ts, 9, 2) + 0) * 86400 + substr(ts, 12, 2) * 3600 + substr(ts, 15, 2) * 60 + substr(ts, 18, 2) }
+    function clean(v) { gsub(/[^A-Za-z0-9._-]/, "?", v); return v }
+    BEGIN { root = pkey(ENVIRON["CH_ROOT"]) }
+    index($0, "\"ticket\":\"" id "\"") == 0 { next }   # a malformed line has no kind or ts: skipped below
+    {
+      k = field("kind"); t = secs(field("ts")); if (k == "" || t < 0) next
+      mine = (pkey(field("project")) == root)
+      if (k == "close.started" && mine) { start = t; split("", SN); split("", SF); split("", RJ); split("", GR); nn = nr = ng = 0; end = -1; next }
+      if (start == "") next
+      if (k == "evidence.stamped") { n = clean(field("name")); if (n == "") next; if (!(n in SN)) ON[++nn] = n; SN[n]++; if (field("exit") != "0") SF[n]++ }
+      else if (!mine) next
+      else if (k == "gate.rejected") { r = clean(field("role")) " refused" SUBSEP clean(field("reason")); if (!(r in RJ)) OR[++nr] = r; RJ[r]++ }
+      else if (k == "gate.started") { g = clean(field("role")); if (g == "" || g == "speccheck") next; if (!(g in GR)) OG[++ng] = g; GR[g]++ }
+      else if (k == "sprint.completed") end = t
+    }
+    END {
+      if (start == "" || end < start) exit
+      min = int((end - start) / 60); out = ""; show = 0
+      if (min > target) { out = min " min (" tier " target " target "): "; show = 1 }
+      sep = ""
+      for (i = 1; i <= nn; i++) { n = ON[i]; if (SN[n] < 2) continue; show = 1; out = out sep n " stamped " SN[n] "x" (SF[n] ? " (" SF[n] " failed)" : ""); sep = ", " }
+      for (i = 1; i <= nr; i++) { split(OR[i], P, SUBSEP); show = 1; out = out sep P[1] " " RJ[OR[i]] "x (" P[2] ")"; sep = ", " }
+      if (!show) exit
+      for (i = 1; i <= ng; i++) { g = OG[i]; out = out sep g " " GR[g] " run" (GR[g] > 1 ? "s" : ""); sep = ", " }
+      sub(/: $/, "", out); print "close: " out
+    }' 2>/dev/null || true
+  return 0
+}
+
 # _record_cost <id> <root> <line> — t-7e26: write the ticket's one sprint.cost event (numbers, model ids and gate names only, no transcript text) from token-spend's
 # machine line, and print the one-line summary. An empty line (no transcripts, no turns, already recorded) writes and prints nothing.
 _record_cost() {
@@ -2282,7 +2333,6 @@ _record_cost() {
   total=$((planning + impl + gates)); [[ "$total" -gt 0 ]] || return 0
   pct=$((100 * gates / total))
   echo "cost: $(_cost_h "$total") tokens (gates $(_cost_h "$gates"), ${pct}%), $runs gate runs"
-  [[ "$pct" -le 50 ]] || echo "  Most of this ticket's tokens went to the close gates, not the building. 'sprint token-spend --ticket $id' shows which."
   if [[ -n "$same" ]]; then
     if [[ "$same" == *,* ]]; then
       echo "note: the reviewer and the evaluator ran on $builder, the model that built this change, so neither is independent of it (advisory, never a block)."
@@ -2517,6 +2567,9 @@ Usage:
                             those files or tickets (id, date, the rule); archive <row-id> --by
                             <t-xxxx> moves one whole row to DECISIONS-archive.md; mark <row-id>
                             <date> "<fragment>" appends superseded-by to one row (t-79bf)
+  sprint close-hint <id>      Why a closed sprint's close was slow: one line from the activity log
+                              (over its tier's target, re-stamps, gate rejections, gate runs); prints
+                              nothing for a close that was on time with no reruns (t-bc1e).
   sprint check-evidence <id>  Pre-flight before the evaluator: every stamped
                             evidence log is fresh with exit 0, or covered
                             (read-only; exit 1 names each log and the fix);
@@ -2559,6 +2612,9 @@ main() {
     relay-report) cmd_relay_report "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
+    close-hint)
+      [[ "${1:-}" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: sprint close-hint <ticket-id>" >&2; exit 2; }
+      _close_hint "$1" "$(project_root)" "$(_signoff_tier "$(ticket_dir_for "$1")/plan.md" 2>/dev/null)" ;;
     manual-qa) cmd_manual_qa "$@" ;;
     gate-cost) cmd_gate_cost "$@" ;;
     token-spend) cmd_token_spend "$@" ;;

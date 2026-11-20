@@ -823,7 +823,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    `tkt import-results` on the user's machine adds the row from the candidate instead. The signal is the issue's text, not a ticket field: the
    cloud's own `ticket.md` has no `runs: github` until a PR exists.
 
-9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
+9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. After the cost line it may print `close: <why it was slow>` (over the tier's target, re-stamps, gate rejections; t-bc1e): carry a recurring cause into the summary or a ticket. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
    and stop. After closing it runs `tkt compact` (`t-2fb6`), which shrinks `evidence/` of tickets
    closed more than 14 days ago and prints one total line; a compact warning never undoes the close.
