@@ -25,7 +25,7 @@ canon_lock_path() {
 # file as "<seconds> <file>:<line> <command>" (the text before expansion), so a hang names its last command. A DEBUG trap with functrace, not
 # set -x: bash 3.2 (macOS) has no BASH_XTRACEFD. Unset: nothing happens. An unwritable file is said once and tracing stays off.
 canon_trace_start() {
-  [[ -n "${CANON_TRACE:-}" ]] || return 0
+  case "${CANON_TRACE:-}" in ""|0|false|no|off) return 0 ;; esac   # reviewer: "0" is off, never a file named 0
   local f="$CANON_TRACE"
   [[ "$f" == 1 ]] && f="${TMPDIR:-/tmp}/canon-trace-$(date +%s)-$$.log"
   if ! : >> "$f" 2>/dev/null; then echo "${0##*/}: cannot write the trace file $f; not tracing" >&2; return 0; fi

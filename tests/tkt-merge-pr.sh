@@ -791,6 +791,7 @@ TR="$W/trace.log"; out="$(CANON_TRACE="$TR" STUB_HEAD="$H5" "$TKT" merge-pr "$id
 assert_contains "$out" "tkt: tracing to $TR"; grep -q ' tkt:[0-9]* .*_ff_local_base' "$TR" || fail "t-f9b1: the trace has no _ff_local_base line: $(head -3 "$TR")"
 grep -qE '^[0-9]+ ' "$TR" || fail "t-f9b1: trace lines carry no seconds"
 out="$(CANON_TRACE="$W/nodir/x.log" "$TKT" list 2>&1 >/dev/null)" || true; assert_contains "$out" "cannot write the trace file"
+( cd "$W" && CANON_TRACE=0 "$TKT" list >/dev/null 2>&1 || true ); [[ ! -e "$W/0" ]] || fail "t-f9b1: CANON_TRACE=0 wrote a file named 0"
 [[ "$(printf '%s\n' "$out" | grep -c 'cannot write')" == 1 ]] || fail "t-f9b1: an unwritable trace file is said more than once"
 rm -f "$GH0"
 git checkout -q -- .; git reset -q --hard "$BASE"; rm -f HANDOFF.md; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"

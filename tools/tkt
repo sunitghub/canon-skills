@@ -2265,9 +2265,10 @@ cmd_merge_pr() {
   # merged, recorded or logged a second time.
   # t-f9b1: also a PR merged on GitHub that this ticket has not recorded yet (Check & merge stopped or stalled before the record): the retry
   # the dialog names records it after the local update. Only when the issue has no open PR, so a resend's new PR still takes the normal path.
-  local recnow=false
-  if ! $check && [[ -z "$(get_field "$file" merged)" ]] \
-    && [[ -z "$pr" && -n "$issue" ]] && [[ -z "$(_fixes_prs "$repo" "$issue" open 2>/dev/null | cut -f1 | grep . || true)" ]]; then
+  local recnow=false openprs
+  # reviewer: a gh failure is "cannot tell", never "no open PR"
+  if ! $check && [[ -z "$(get_field "$file" merged)" ]] && [[ -z "$pr" && -n "$issue" ]] \
+    && openprs="$(_fixes_prs "$repo" "$issue" open 2>/dev/null)" && [[ -z "$(printf '%s\n' "$openprs" | cut -f1 | grep . || true)" ]]; then
     recnow=true
   fi
   if ! $check && { [[ -n "$(get_field "$file" merged)" ]] || $recnow; }; then
