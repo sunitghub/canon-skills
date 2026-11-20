@@ -40,7 +40,7 @@ mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
-  "pr list")  cat "$STUB_W/prlist" ;;
+  "pr list")  [[ -n "${STUB_NO_OPEN:-}" && "$*" == *"--state open"* ]] || cat "$STUB_W/prlist" ;;   # t-f9b1: the PR is merged, none open
   "pr view")  [[ -n "${STUB_VIEW_FAIL:-}" && "$*" != *mergeCommit* ]] && { echo "HTTP 502" >&2; exit 1; }
               if [[ "$*" == *"--json state,headRefOid,baseRefName"* ]]; then   # t-7c89: tkt merged's read of a PR merged outside merge-pr
                 [[ -n "${STUB_RM_FAIL:-}" ]] && { echo "HTTP 502" >&2; exit 1; }
@@ -778,6 +778,20 @@ out="$(STUB_HEAD="$H5" "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)"; as
 assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"; assert_eq "$H5" "$(git rev-parse main)"
 [[ "$out" != *"Merged PR #7 into"* ]] || fail "the retry merged again: $out"
 assert_eq "$MERGED0" "$(grep -c '' "$f")"; assert_eq "$TRAIL0" "$(grep -c '— merged' "$GH0" || true)"; assert_eq "$GHSUM" "$(cksum < "$GH0")"   # nothing logged twice; github.md untouched
+# t-f9b1: GitHub merged it but this ticket has no merged: (Check & merge stopped or stalled before the record, the VM 2026-11-19): the retry the
+# dialog names, `tkt merge-pr <id>` with no open PR, updates local main (with its progress lines) and records the merge. Protects that retry.
+git reset -q --hard "$BASE3"; git checkout -q -- .; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; printf '7\n' > "$W/prlist"
+out="$(STUB_NO_OPEN=1 STUB_HEAD="$H5" "$TKT" merge-pr "$id" 2>&1)" || fail "t-f9b1: the retry on an unrecorded merged PR failed: $out"
+assert_contains "$out" "PR #7 is already merged; updating local main only"
+assert_contains "$out" "Updating local main: reading origin…"; assert_contains "$out" "Updating local main: fast-forwarding to ${H5:0:8}…"
+assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"; assert_eq "$H5" "$(git rev-parse main)"
+grep -q '^merged: ' "$f" || fail "t-f9b1: the retry did not record the merge: $out"
+# CANON_TRACE: every command goes to the trace file, its path said once; unset, no file
+TR="$W/trace.log"; out="$(CANON_TRACE="$TR" STUB_HEAD="$H5" "$TKT" merge-pr "$id" 2>&1)" || true
+assert_contains "$out" "tkt: tracing to $TR"; grep -q ' tkt:[0-9]* .*_ff_local_base' "$TR" || fail "t-f9b1: the trace has no _ff_local_base line: $(head -3 "$TR")"
+grep -qE '^[0-9]+ ' "$TR" || fail "t-f9b1: trace lines carry no seconds"
+out="$(CANON_TRACE="$W/nodir/x.log" "$TKT" list 2>&1 >/dev/null)" || true; assert_contains "$out" "cannot write the trace file"
+[[ "$(printf '%s\n' "$out" | grep -c 'cannot write')" == 1 ]] || fail "t-f9b1: an unwritable trace file is said more than once"
 rm -f "$GH0"
 git checkout -q -- .; git reset -q --hard "$BASE"; rm -f HANDOFF.md; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; eval_ok "$PRHEAD"
 git push -qf origin "$PRHEAD:refs/pull/7/head"; git --git-dir="$W/origin.git" update-ref refs/heads/main "$BASE"

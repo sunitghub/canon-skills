@@ -629,7 +629,9 @@ async function followMerge(t, prB, show) {
     if (st) {
       lost = 0;
       mergeById.set(t.id, st);
-      if (gen !== undefined) updateDialog({ body: st.status === 'running' ? `Running… ${mmss(st.elapsed)}` : '', pre: st.output || '' }, gen);
+      // t-f9b1: past GitHub's merge, a stalled local update must not read as a merge still to come (the Windows VM, 2026-11-19)
+      const ghDone = !w.wt && /^Merged PR #\d+ into /m.test(st.output || '');
+      if (gen !== undefined) updateDialog({ body: st.status === 'running' ? (ghDone ? `Merged on GitHub; updating your local branch… ${mmss(st.elapsed)}. If this stays, Stop is safe: then run git pull origin, then tkt merge-pr ${t.id}, in the Terminal.` : `Running… ${mmss(st.elapsed)}`) : '', pre: st.output || '' }, gen);
       render();
       if (st.status !== 'running') break;
     }
@@ -647,6 +649,13 @@ async function followMerge(t, prB, show) {
   const suiteFailed = !merged && /failed on .* \+ PR #\d+/.test(st?.output || '');
   const draftRefused = !merged && isDraftRefusal(st?.output);   // t-a463
   const local = merged ? localMainNote(st.output) : '';
+  // t-f9b1: GitHub merged the PR, then the job stopped or failed (the local update): say so and give the two steps that finish it
+  if (!merged && !w.wt && /^Merged PR #\d+ into /m.test(st?.output || '')) {
+    if (gen !== undefined) updateDialog({ title: 'Merged on GitHub',
+      body: `The PR is merged on GitHub, but your local branch was not updated here. In the Terminal run git pull origin, then tkt merge-pr ${t.id} (it records the merge).`,
+      pre: st.output || '', ok: '', cancel: 'Close', escape: true }, gen);
+    return;
+  }
   if (gen !== undefined) updateDialog({
     title: merged ? 'Merged' : 'Not merged',
     body: merged ? `${w.wt ? `${w.name} is merged into ${(String(st.output).match(/^Merged \S+ into (\S+) /m) || [])[1] || 'main'} here.${finishOffer ? ' Next: Finish pushes it to origin and resets the worktree, each after its own confirmation.' : nextLine(st.output) ? ` Next: ${nextLine(st.output).replace(/[.\s]+$/, '')}.` : ''}` : 'The PR is merged and the issue closed by its Fixes line.'}${local ? ` ${local}` : ''}${offer ? ` Also push main to ${mirrors.join(', ')} (git config canon.mirror)?` : ''}` : `${(refusalReason(st?.output) || 'Not merged').replace(/[.:\s]+$/, '')}. ${w.wt ? 'Nothing was merged; main is unchanged.' : 'Nothing changed on GitHub.'} See the output.`,

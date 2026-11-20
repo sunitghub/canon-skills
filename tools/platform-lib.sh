@@ -21,6 +21,20 @@ canon_lock_path() {
   printf '%s\n' "$p"
 }
 
+# canon_trace_start — t-f9b1: with CANON_TRACE set (1, or a file path), every command the calling script runs from here on is appended to a trace
+# file as "<seconds> <file>:<line> <command>" (the text before expansion), so a hang names its last command. A DEBUG trap with functrace, not
+# set -x: bash 3.2 (macOS) has no BASH_XTRACEFD. Unset: nothing happens. An unwritable file is said once and tracing stays off.
+canon_trace_start() {
+  [[ -n "${CANON_TRACE:-}" ]] || return 0
+  local f="$CANON_TRACE"
+  [[ "$f" == 1 ]] && f="${TMPDIR:-/tmp}/canon-trace-$(date +%s)-$$.log"
+  if ! : >> "$f" 2>/dev/null; then echo "${0##*/}: cannot write the trace file $f; not tracing" >&2; return 0; fi
+  CANON_TRACE_FILE="$f"
+  echo "${0##*/}: tracing to $f" >&2
+  set -o functrace
+  trap 'printf "%s %s:%s %s\n" "$SECONDS" "${BASH_SOURCE[0]##*/}" "$LINENO" "$BASH_COMMAND" >> "$CANON_TRACE_FILE" 2>/dev/null || true' DEBUG
+}
+
 # True if path is a directory symlink (Unix) or junction (Windows).
 _is_dir_link() {
   local link="$1"

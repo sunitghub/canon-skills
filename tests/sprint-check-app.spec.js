@@ -18542,7 +18542,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     expect(seen.posts).toBe(1);
   });
 
-  test('Check & merge: only a real merge shows Merged; the card button reopens a merge still running (t-718b)', async ({ page }) => {
+  test('Check & merge: only a real merge shows Merged; the card button reopens a merge still running; a stalled local update says Merged on GitHub (t-718b, t-f9b1)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh17');
     const { job, seen, button } = await mergeFlow(page, id);
     await button.click();
@@ -18561,6 +18561,17 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await button.click();
     await page.locator('#gh-dialog-ok').click();
     Object.assign(job, { status: 'done', exit_code: 1, output: 'Merged PR #58 into main\nthen it failed\n' });   // the line, but a failing exit
+    // t-f9b1: GitHub merged it and the local update failed: "Merged on GitHub" with the two steps, never "Not merged"
+    await expect(page.locator('#gh-dialog-title')).toHaveText('Merged on GitHub');
+    await expect(page.locator('#gh-dialog-body')).toContainText(`git pull origin, then tkt merge-pr ${id}`);
+    await page.keyboard.press('Escape');
+    Object.assign(job, { status: 'idle', output: '', exit_code: null });
+    await button.click();
+    await page.locator('#gh-dialog-ok').click();
+    Object.assign(job, { status: 'running', exit_code: null, elapsed: 70, output: 'Merged PR #58 into main\nUpdating local main: checking 7 file(s) the merge changes…\n' });   // t-f9b1: stalled after GitHub merged
+    await expect(page.locator('#gh-dialog-body')).toContainText('Merged on GitHub; updating your local branch…');
+    await expect(page.locator('#gh-dialog-body')).toContainText('Stop is safe');
+    Object.assign(job, { status: 'done', exit_code: 1, output: 'merge-pr: PR #58 cannot merge cleanly\n' });   // a refusal before any merge stays "Not merged"
     await expect(page.locator('#gh-dialog-title')).toHaveText('Not merged');
   });
 
