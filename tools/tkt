@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
 source "$SCRIPT_DIR/platform-lib.sh"   # canon_event (t-f182)
+canon_trace_start   # t-f9b1: CANON_TRACE=1 writes every command to a trace file (a hang names its step)
 
 VERSION="1.0.0"
 
@@ -2262,13 +2263,22 @@ cmd_merge_pr() {
   local issue=""; issue="$(get_field "$file" github)"; _same_repo "${issue%#*}" "$repo" && [[ "${issue##*#}" =~ ^[0-9]+$ ]] && issue="${issue##*#}" || issue=""
   # t-e7fb: the retry a refused local update names. A ticket already recorded as merged runs only that update again: nothing is
   # merged, recorded or logged a second time.
-  if ! $check && [[ -n "$(get_field "$file" merged)" ]]; then
+  # t-f9b1: also a PR merged on GitHub that this ticket has not recorded yet (Check & merge stopped or stalled before the record): the retry
+  # the dialog names records it after the local update. Only when the issue has no open PR, so a resend's new PR still takes the normal path.
+  local recnow=false openprs
+  # reviewer: a gh failure is "cannot tell", never "no open PR"
+  if ! $check && [[ -z "$(get_field "$file" merged)" ]] && [[ -z "$pr" && -n "$issue" ]] \
+    && openprs="$(_fixes_prs "$repo" "$issue" open 2>/dev/null)" && [[ -z "$(printf '%s\n' "$openprs" | cut -f1 | grep . || true)" ]]; then
+    recnow=true
+  fi
+  if ! $check && { [[ -n "$(get_field "$file" merged)" ]] || $recnow; }; then
     local mpr="$pr" mst="" mbase=""
     local mfound=""; [[ -n "$mpr" || -z "$issue" ]] || { mfound="$(_fixes_prs "$repo" "$issue" merged 2>/dev/null | cut -f1 || true)"; mpr="${mfound%%$'\n'*}"; }
     [[ -z "$mpr" ]] || IFS=$'\t' read -r mst mbase < <(gh pr view "$mpr" --repo "$repo" --json state,baseRefName --jq '[.state, .baseRefName] | @tsv' 2>/dev/null || true) || true
     if [[ "$mst" == MERGED && -n "$mbase" ]]; then
       echo "merge-pr: PR #$mpr is already merged; updating local $mbase only"
       FF_OWN_RECORDS=1 _ff_local_base "$root" "$mbase" "$id"; handoff_recent "$root"   # t-ab7e: the ticket's own close records are kept
+      if $recnow; then _record_merge merge-pr "$file" "$repo" "$mpr" "" "" || exit 1; fi   # t-f9b1: after the local update, as the normal path does
       record_ticket_commit "$root" "$id" "$mbase" "chore: record $id merge of #$mpr"   # t-8990
       return 0
     fi
@@ -2983,6 +2993,7 @@ _origin_rewritten() {
 _ff_local_base() {
   local root="$1" b="$2" id="${3:-}" old new wt here
   _branch_ok "$b" || { echo "Local branch: the base branch name ($b) is not usable; update it by hand: git pull"; return 0; }
+  echo "Updating local $b: reading origin…"   # t-f9b1: the first step a stall could be in
   git -C "$root" fetch -q origin "+refs/heads/$b:refs/remotes/origin/$b" 2>/dev/null || { echo "Local $b: could not fetch origin/$b; update it by hand: git pull"; return 0; }
   # t-41ff: every git call is guarded: merge-pr writes merged: after this, under set -e, so a failure here must not end it.
   new="$(git -C "$root" rev-parse -q --verify "refs/remotes/origin/$b")" || { echo "Local $b: could not read origin/$b; update it by hand: git pull"; return 0; }
@@ -3027,7 +3038,11 @@ _ff_here() {
   local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" p m rp rb ut safe=() kinds=() differ=() tracked=0
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
   rp="$(cd "$root" && pwd -P)"
-  while IFS= read -r -d '' p; do
+  # t-f9b1: the list is read first so the progress line can count it (a stall on the Windows VM showed nothing)
+  local changed=() cf
+  while IFS= read -r -d '' cf; do changed+=("$cf"); done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
+  echo "Updating local $b: checking ${#changed[@]} file(s) the merge changes…"
+  for p in ${changed[@]+"${changed[@]}"}; do
     if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); tracked=1; continue; fi
     if ! git -C "$root" diff --cached --quiet "$old" -- "$p"; then differ+=("$p (staged)"); tracked=1; continue; fi
     ut=""
@@ -3059,7 +3074,7 @@ _ff_here() {
     fi
     # t-b775: git checkout cannot drop a file git does not track here (HANDOFF.md on the VM): name a step that works for it
     if [[ -n "$ut" ]]; then differ+=("$p (untracked here: move it aside: mv $(printf '%q' "$p") $(printf '%q' "$p.local"))"); else differ+=("$p"); tracked=1; fi   # quoted: the path comes from the PR
-  done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
+  done
   if [[ ${#differ[@]} -gt 0 ]]; then
     # t-e7fb: plain words. What is left (merged on GitHub, local branch behind), which files, and the steps that end it.
     echo "${FF_LEAD:-The PR is merged on GitHub, but local $b was not updated:} $([[ ${#differ[@]} == 1 ]] && echo "this file has" || echo "these ${#differ[@]} files have") changes here that the merge would overwrite:"
@@ -3069,6 +3084,7 @@ _ff_here() {
     echo "  (in the Cockpit Terminal, type su first)"
     return 1
   fi
+  echo "Updating local $b: fast-forwarding to ${new:0:8}…"   # t-f9b1
   if [[ ${#safe[@]} -eq 0 ]]; then
     git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     return 0
