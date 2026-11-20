@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.10] - 2026-11-20
+
+- Changed: the Model Tiers block canon copies into every project's AGENTS.md is now three lines that point at Admin > Model Tiers, instead of per-step model rules that disagreed with Admin and cost context in every session; `canon update` replaces the old block and leaves the rest of the file as it was (t-21d8).
+- Fixed: a cloud round trip from a folder that was copied and given a fresh git history (not cloned from GitHub) is now stopped at Send, with the clone step; the GitHub setup checklist shows it too, and Import results, Check & merge and `tkt merge` refuse a PR or branch that joins an unrelated history (t-eeb5).
+- Fixed: Check & merge no longer leaves your local main behind over canon's own files: untracked copies of AGENTS.md, CLAUDE.md, HANDOFF.md and the like that the PR also carries are moved to `.git/canon-set-aside/`, a `.gitignore` changed only by canon keeps its lines, and what happened to local main is written to the ticket's GitHub tab on every run (t-eeb5).
+- Changed: the Send panel holds Create issue for untracked files of yours, as it already did for changed ones: the cloud cannot see them and its PR would collide with them (t-eeb5).
+- Changed: Check & merge's local update asks git a fixed handful of times instead of several per file; on the arm64 Windows VM it had sat for minutes on 35 files (t-eeb5).
+
 ## [0.69.9] - 2026-11-20
 
 - Send panel: canon's own setup changes (its AGENTS.md block, .gitignore/.gitattributes lines, CLAUDE.md, PROMOTED/HANDOFF/LEARNINGS/DECISIONS.md, .claude/settings.json) no longer count as work the cloud will miss: the warning leaves them out, and Commit and push lists them in one collapsed, unticked "canon's setup files" group. Its button follows what is left: Commit and push, Push, or "Nothing to send — go to Create issue". The GitHub card reads "results ready · eval failed" when the cloud evaluator failed on the results waiting to be imported, and Import results asks first (t-a1f8 slice 1).
