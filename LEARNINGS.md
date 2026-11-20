@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-19-2026 20:54
+learnings-sweep last run: 11-20-2026 13:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-20 | [t-21d8](.tickets/t-21d8/learnings.md) | A cap value pinned in three places (tools/caps.tsv, tests/caps.sh:22, docs/releasing.md): raising it in two left the suite red; grep the number before changing a cap, or derive the test row from caps.tsv | UNPROMOTED |
 | 2026-11-20 | [t-f9b1](.tickets/t-f9b1/learnings.md) | Get the person's exact sequence before naming a cause: the first story (merge-pr moved master, then hung) was wrong — the user had run git pull in between — and the guessed fix targeted code that had run fine; when the code cannot name a hang, ship a trace and the recovery path, not a guess | UNPROMOTED |
 | 2026-11-20 | [t-a1f8](.tickets/t-a1f8/learnings.md) | A "not pass" signal is not a fail: the first plan painted every passing cloud result red, because none meant both "no report" and "could not read"; key a warning on the explicit bad value only, and derive a test list from a real setup run, not memory | UNPROMOTED |
 | 2026-11-19 | [t-154c](.tickets/t-154c/learnings.md) | A path one tool writes and another reads has one owner for its form: tkt wrote Git Bash's /c/... and the Windows daemon refused it at every IsAbs, so worktree sessions started in main; the spec check found a third reader (the page's ?cwd=) — list every reader of a path before fixing one | UNPROMOTED |
