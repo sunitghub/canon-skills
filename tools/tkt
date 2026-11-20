@@ -3128,15 +3128,18 @@ _ff_has() { [[ "$1" == *$'\n'"$2"$'\n'* ]]; }
 # _ff_tree <rev> <root> <paths...> — t-eeb5: sets _FF_TREE to `\n<path>\t<mode> <blob>` lines for <paths> in <rev>: one git call per
 # ~16 KB of path names (Windows' command line is 32 KB), never one per file. _ff_tval <path> sets _FF_TV to `<mode> <blob>`, or fails.
 _ff_tree() {
-  local rev="$1" root="$2" e chunk=() len=0 out=$'\n'; shift 2
-  _ff_tree_run() {
+  local rev="$1" root="$2" e chunk=() len=0 out=$'\n' tf rc=0; shift 2
+  tf="$(mktemp "${TMPDIR:-/tmp}/tkt-tree.XXXXXX")" || return 1
+  _ff_tree_run() {   # a failed read fails the whole call: a missing entry would make a tracked file look untracked (reviewer)
     [[ ${#chunk[@]} -gt 0 ]] || return 0
-    while IFS= read -r -d '' e; do out+="${e#*$'\t'}"$'\t'"${e%% *} ${e%%$'\t'*}"$'\n'; done < <(git -C "$root" ls-tree -z "$rev" -- "${chunk[@]}" 2>/dev/null)
+    git -C "$root" ls-tree -z "$rev" -- "${chunk[@]}" > "$tf" 2>/dev/null || return 1
+    while IFS= read -r -d '' e; do out+="${e#*$'\t'}"$'\t'"${e%% *} ${e%%$'\t'*}"$'\n'; done < "$tf"
     chunk=(); len=0
   }
-  for e in "$@"; do chunk+=("$e"); len=$((len + ${#e} + 1)); (( len < 16000 )) || _ff_tree_run; done
-  _ff_tree_run
-  _FF_TREE="$out"
+  for e in "$@"; do chunk+=("$e"); len=$((len + ${#e} + 1)); (( len < 16000 )) || _ff_tree_run || { rc=1; break; }; done
+  [[ $rc != 0 ]] || _ff_tree_run || rc=1
+  rm -f "$tf"
+  [[ $rc == 0 ]] && _FF_TREE="$out"
 }
 _ff_tval() {
   [[ "$1" == *$'\n'"$2"$'\t'* ]] || return 1
@@ -3184,12 +3187,14 @@ _ff_here() {
   local staged edited oldt newt
   _ff_list staged < <(git -C "$root" diff --cached --no-renames --name-only -z "$old" 2>/dev/null)
   _ff_list edited < <(git -C "$root" diff --no-renames --name-only -z "$old" 2>/dev/null)
-  _ff_tree "$old" "$root" "${changed[@]}"; oldt="$_FF_TREE"
-  _ff_tree "$new" "$root" "${changed[@]}"; newt="$_FF_TREE"
+  if ! { _ff_tree "$old" "$root" "${changed[@]}" && oldt="$_FF_TREE" && _ff_tree "$new" "$root" "${changed[@]}" && newt="$_FF_TREE"; }; then
+    echo "Local $b: git could not read the files the merge changes; left at ${old:0:8}. Update it by hand: $retry"; return 1
+  fi
   # Pass 1 (no git): which files need a closer look. Pass 2 hashes them all at once.
   local look=() lookut=() nb
   for p in "${changed[@]}"; do
-    case "$p" in *$'\n'*|*$'\t'*) differ+=("$p (its name holds a line break or tab)"); tracked=1; continue ;; esac
+    # t-eeb5 reviewer: hash-object --stdin-paths reads a leading " as a C-quoted name (`"a"` hashes the file a), so such a name is refused too
+    case "$p" in *$'\n'*|*$'\t'*|\"*) differ+=("$p (its name holds a line break or tab, or starts with a quote)"); tracked=1; continue ;; esac
     if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); tracked=1; continue; fi
     if _ff_has "$staged" "$p"; then differ+=("$p (staged)"); tracked=1; continue; fi
     if _ff_tval "$oldt" "$p"; then _ff_has "$edited" "$p" || continue; ut=""

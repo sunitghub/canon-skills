@@ -719,6 +719,13 @@ for b in main master; do git update-ref "refs/remotes/origin/$b" HEAD; done   # 
 out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: a related history was refused: $out"
 for b in main master; do git update-ref -d "refs/remotes/origin/$b"; done   # nothing fetched (an empty origin): not refused by this check
 out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: an empty origin was refused: $out"
+# reviewer (t-eeb5): send-issue fetches origin's branch itself: origin (a local bare repo here) holds the other history, and nothing
+# was fetched before the send, so only send-issue's own fetch can find it.
+git init -q --bare "$stub/o.git"; for b in main master; do git push -q "$stub/o.git" "$other:refs/heads/$b"; done
+git config url."$stub/o.git".insteadOf https://github.com/acme/app.git
+rc=0; out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || rc=$?
+git config --unset url."$stub/o.git".insteadOf; for b in main master; do git update-ref -d "refs/remotes/origin/$b" 2>/dev/null || true; done
+[[ "$rc" == 1 ]] || fail "t-eeb5: send-issue did not fetch origin's branch before checking ($rc): $out"; assert_contains "$out" "send-issue: unrelated history: "
 i=0; for b in main master; do [[ "${saved[$i]}" == - ]] || git update-ref "refs/remotes/origin/$b" "${saved[$i]}"; i=$((i + 1)); done
 echo "send-issue: an unrelated history is refused (send, --dry-run, --allow-unpushed) with the clone step; related or empty origin pass (t-eeb5)"
 

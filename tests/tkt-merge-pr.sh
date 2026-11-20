@@ -990,7 +990,7 @@ echo "merge-pr: a tracked ticket folder is recorded and pushed after the merge, 
 W2="$W/eeb5"; mkdir -p "$W2/bin" "$W2/tmp"; export TMPDIR="$W2/tmp"
 sed "s#$W/origin.git#$W2/origin.git#g; s#$W/ff-spy#$W2/ff-spy#g" "$W/bin/git" > "$W2/bin/git.real"
 # the wrapper also logs each call, for criterion 11's count (STUB_GIT_LOG)
-printf '#!/usr/bin/env bash\n[[ -z "${STUB_GIT_LOG:-}" ]] || printf "%%s\\n" "$*" >> "$STUB_GIT_LOG"\nexec "%s" "$@"\n' "$W2/bin/git.real" > "$W2/bin/git"; chmod +x "$W2/bin/git" "$W2/bin/git.real"
+printf '#!/usr/bin/env bash\n[[ -z "${STUB_GIT_LOG:-}" ]] || printf "%%s\\n" "$*" >> "$STUB_GIT_LOG"\n[[ -z "${STUB_LSTREE_FAIL:-}" || " $* " != *" ls-tree -z "* ]] || exit 128\nexec "%s" "$@"\n' "$W2/bin/git.real" > "$W2/bin/git"; chmod +x "$W2/bin/git" "$W2/bin/git.real"
 export PATH="$W2/bin:$PATH" STUB_W="$W2" STUB_LOG="$W2/gh.log"; : > "$STUB_LOG"; echo 7 > "$W2/prlist"
 git init -q --bare "$W2/origin.git"
 V="$W2/vm"; mkdir "$V"; cd "$V"; git init -q; git symbolic-ref HEAD refs/heads/main
@@ -1059,6 +1059,16 @@ out="$(STUB_FF_MERGE_FAIL=1 vm_merge "$HV")" || true; assert_contains "$out" "gi
 assert_eq "$before" "$(cat AGENTS.md CLAUDE.md .claude/settings.json .tickets/.gitignore | cksum)"; assert_eq mine "$(head -1 HANDOFF.md)"   # merge-pr then writes its Recent block
 diff -r "$keep" "$(git rev-parse --git-path canon-set-aside)" > /dev/null || fail "t-eeb5: a refused update changed an earlier run's set-aside folder"
 echo "merge-pr: a fast-forward git refuses puts canon's files back and leaves earlier set-aside copies alone (t-eeb5)"
+# reviewer (t-eeb5): a PR path starting with a quote is refused by name: hash-object --stdin-paths would read `"a"` as the file a,
+# call the person's own `"a"` identical to the merged copy and remove it. And a failed tree read refuses: it never makes a tracked file look untracked.
+git -C "$B2" checkout -q -B pq "$V0"; printf 'X\n' > "$B2/\"a\""; git -C "$B2" add -A; git -C "$B2" commit -qm 'a quoted name'; HQ="$(git -C "$B2" rev-parse HEAD)"
+git -C "$B2" push -qf origin "$HQ:refs/pull/7/head"; vm_state "$HQ"; rm -f index.html; printf 'X\n' > a; printf 'mine\n' > '"a"'
+out="$(vm_merge "$HQ")" || true; assert_contains "$out" 'starts with a quote'; assert_eq "$V0" "$(git rev-parse main)"; assert_eq mine "$(cat '"a"')"
+rm -f a '"a"'
+git -C "$B2" push -qf origin "$HV:refs/pull/7/head"; vm_state "$HV"; rm -f index.html; before="$(cat AGENTS.md CLAUDE.md .claude/settings.json | cksum)"
+out="$(STUB_LSTREE_FAIL=1 vm_merge "$HV")" || true; assert_contains "$out" "git could not read the files the merge changes; left at ${V0:0:8}"
+assert_eq "$V0" "$(git rev-parse main)"; assert_eq "$before" "$(cat AGENTS.md CLAUDE.md .claude/settings.json | cksum)"
+echo "merge-pr: a quote-leading PR path and a failed tree read each refuse with nothing moved (t-eeb5)"
 # 11: git starts from _ff_here's first read (the changed list) to the fast-forward, for the criterion's mix: 24 new files absent here,
 # 5 canon files untracked here, 6 tracked files changed by the merge and clean here (35); then 0 new files (11): the same handful.
 cnt() { awk '/^-C .* diff --no-renames --name-only -z /{ s = 1 } s && / merge -q --ff-only /{ print n; exit } s { n++ }' "$1"; }
