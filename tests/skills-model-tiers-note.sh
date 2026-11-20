@@ -166,44 +166,33 @@ assert_eq "$(printf '# Agents\n')" "$(cat "$project3/AGENTS.md")"
 
 block="$(canon_block "$ROOT/AGENTS.md")"
 lines="$(printf '%s\n' "$block" | wc -l | tr -d ' ')"
-[[ "$lines" -le 14 ]] || fail "the MODEL-TIERS block is $lines lines (max 14): canon-internal prose belongs after the END marker"
-for needle in '## Model Tiers' '`explore` → Haiku' '`plan creation` → Fable or Opus' '`implement` → Haiku/Sonnet' '`review` / `grill` → Opus' 'skills/sprint/reference/complete.md'; do
+[[ "$lines" -le 5 ]] || fail "the MODEL-TIERS block is $lines lines with its markers (max 5): Admin > Model Tiers owns the per-step models (t-21d8)"
+for needle in '## Model Tiers' 'Admin > Model Tiers' 'Light work' 'subagent' 'skills/sprint/reference/complete.md'; do
   printf '%s\n' "$block" | grep -F -- "$needle" >/dev/null || fail "the MODEL-TIERS block lost '$needle'"
+done
+for retired in '`plan creation`' '`implement`' '`review` / `grill`' 'thinking'; do
+  if printf '%s\n' "$block" | grep -F -- "$retired" >/dev/null; then fail "the MODEL-TIERS block restates a per-step model Admin owns: $retired (t-21d8)"; fi
 done
 for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spawn_agent' 'Cross-harness' 'Gate model' 't-7e36' 't-ef27' 't-c774' 'North-star' 'Close-gate effort' 'pi session'; do
   if printf '%s\n' "$block" | grep -F -- "$internal" >/dev/null; then fail "the MODEL-TIERS block carries canon-internal text: $internal"; fi
 done
 
-# Nothing is lost for canon: every line the old block had and the new one dropped is still in canon's AGENTS.md after the END marker,
-# or in the doc that now owns it (t-8837 moved the board dropdown paragraph to the board's CLAUDE.md, leaving a pointer). The old
-# Codex cross-harness paragraph is the one exception (t-7e5d): complete.md's "Cross-harness caveat" and pi-dispatch bullets already
-# say it, so it counts as covered while AGENTS.md keeps its Cross-harness pointer and complete.md keeps that caveat.
-old_block="$ROOT/tests/fixtures/model-tiers-old-block.md"
+# t-21d8 retired the old block's per-step lines on purpose (Admin owns them), so its lines are no longer locked word for word
+# after END. What is locked instead: canon keeps its North-star paragraph and a pointer after END, and each fact the old
+# internals paragraphs held still has its owner. The fixture stays as the oldest installs carry it (the legacy test below).
 after_end="$(awk '/<!-- MODEL-TIERS:END -->/{f=1; next} f' "$ROOT/AGENTS.md")"
-codex="$(awk '/^\*\*Cross-harness note\.\*\*/{f=1} f && /^[[:space:]]*$/{exit} f' "$old_block")"
-[[ -n "$codex" ]] || fail "could not find the old Codex paragraph in $old_block"
-grep -q '^\*\*Cross-harness note\.\*\*' "$ROOT/AGENTS.md" || fail "AGENTS.md lost its Cross-harness pointer to complete.md (t-7e5d)"
-grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat, which covers the old Codex note (t-7e5d)"
-# The North-star paragraph is policy that moves on (t-51c6 added the second user-set option, Manual): the old line counts as covered while
-# AGENTS.md keeps a paragraph that opens the same way after END. The old text stays in the fixture because installs still carry it.
-north="$(awk '/^\*\*North-star \(gate floor\)\.\*\*/{print; exit}' "$old_block")"
-[[ -n "$north" ]] || fail "could not find the old North-star paragraph in $old_block"
 grep -q '^\*\*North-star (gate floor)\.\*\* Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator\.' <<< "$after_end" || fail "AGENTS.md lost its North-star paragraph after END (t-51c6)"
-# The old "OpenAI defaults stay recorded only" line is superseded (t-8f6d: a Copilot CLI pick runs that agent's gates): it counts as covered
-# while the board's CLAUDE.md names the per-step, per-agent defaults that replaced it. The old text stays in the fixture: installs carry it.
-openai_old="$(grep -F 'the Admin OpenAI defaults stay recorded only.' "$old_block")"
-[[ -n "$openai_old" ]] || fail "could not find the old OpenAI line in $old_block"
-grep -qF 'defaults.{plan,build,speccheck,reviewer,evaluator,evaluator2,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults that replace the old OpenAI line (t-8f6d)"
-while IFS= read -r l; do
-  [[ -z "${l//[[:space:]]/}" ]] && continue
-  [[ "$l" == "$north" ]] && continue   # covered by the North-star check above
-  [[ "$l" == "$openai_old" ]] && continue   # superseded by t-8f6d, checked above
-  [[ "$l" == *'"Review & Eval" default'* && "$after_end" == *'Reviewer and Evaluator defaults (per agent, t-8f6d)'* ]] && continue   # t-8f6d split it
-  printf '%s\n' "$block" | grep -xF -- "$l" >/dev/null && continue
-  printf '%s\n' "$after_end" | grep -xF -- "$l" >/dev/null && continue
-  printf '%s\n' "$codex" | grep -xF -- "$l" >/dev/null && continue   # covered by the pointer + caveat checked above
-  grep -qxF -- "$l" "$ROOT/tools/sprint-check-app/CLAUDE.md" "$ROOT/skills/sprint/reference/complete.md" || fail "a line the old block had was dropped, not moved after END or to its new home: $l"
-done < "$old_block"
+pointer="$(grep -F 'Gate models, effort and the Codex/pi caveats:' <<< "$after_end" || true)"
+for owner in 'skills/sprint/reference/complete.md' 'agents/canon-reviewer.md' 'tools/sprint-check-app/CLAUDE.md'; do
+  [[ "$pointer" == *"$owner"* ]] || fail "AGENTS.md's internals pointer lost $owner (t-21d8)"
+done
+for agent in canon-reviewer canon-evaluator; do
+  grep -qx 'effort: high' "$ROOT/agents/$agent.md" || fail "agents/$agent.md lost effort: high, which AGENTS.md now points at (t-21d8)"
+done
+grep -qF '**Model tier for gates.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Model tier for gates note (t-21d8)"
+grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat (t-7e5d, t-21d8)"
+grep -qF 'defaults.{plan,build,speccheck,reviewer,evaluator,evaluator2,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults (t-8f6d)"
+old_block="$ROOT/tests/fixtures/model-tiers-old-block.md"
 
 # A project still carrying the old long block gets the short one; the rest of its file is untouched.
 legacy="$(make_project)"
@@ -218,6 +207,6 @@ out="$("$SKILLS" add efficiency "$legacy" 2>&1)"
 assert_contains "$out" "updated MODEL-TIERS block"
 assert_eq "$(canon_block "$ROOT/AGENTS.md")" "$(canon_block "$legacy/AGENTS.md")"
 assert_eq "$before_outside" "$(outside_block "$legacy/AGENTS.md")"
-[[ "$(canon_block "$legacy/AGENTS.md" | wc -l | tr -d ' ')" -le 14 ]] || fail "the legacy project's block did not shrink"
+[[ "$(canon_block "$legacy/AGENTS.md" | wc -l | tr -d ' ')" -le 5 ]] || fail "the legacy project's block did not shrink"
 
 printf 'skills-model-tiers-note: ok\n'

@@ -28,7 +28,7 @@ never actually holds the content.
    saves — mirrors the same tradeoff `skills/sprint/reference/orient.md`'s own dispatch step
    accepts for small subsystems.
 3. **300+ lines, exploratory read:** dispatch one fresh-context subagent (`Agent` tool,
-   `model: haiku` — same tier as `explore` in `AGENTS.md`'s Model Tiers) with:
+   `model: haiku` — the Light work tier, `AGENTS.md`'s `## Model Tiers`) with:
    - The file path (forward slashes — never a Windows-style backslash path in the prompt).
    - The specific question you need answered (not "summarize this file" — a targeted question
      keeps the subagent's own read purposeful and its citations relevant).
@@ -57,8 +57,8 @@ then, this skill is the portable alternative, not a guarantee.
   is confirmed working under Claude Code. Under Codex, the generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in `~/.codex/agents/*.toml` can set its
   own `model`, overriding `agents.default_subagent_model` — don't assume the cost savings hold
-  under Codex without setting up and testing such an agent file live (same caveat canon's own
-  `AGENTS.md` carries under `## Model Tiers: canon internals`, not copied to projects, for `explore`).
+  under Codex without setting up and testing such an agent file live (the same caveat as
+  `skills/sprint/reference/complete.md`'s "Cross-harness caveat").
 - **A vague question produces a vague citation set.** If the subagent's answer doesn't actually
   resolve what you needed, that's a sign the question was under-specified, not that this skill
   failed — re-dispatch with a sharper question rather than falling back to a direct `Read`.

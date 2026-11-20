@@ -67,7 +67,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    This reduction is driven by an explicit **user flag, not structural
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
-   `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
+   `AGENTS.md`'s North-star paragraph and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
 
    **Maintenance-skill report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
    `skills:` line (an *auto-Demo'd maintenance chore* — `t-354b`), the demo light-close is valid
@@ -213,8 +213,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 Configures the step 2-3 fresh-context gates below — not the wrapup pipeline above.
 
-**Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
-Opus` default, scoped only to the two close-gate dispatches below.
+**Model tier for gates.** Which model the two close-gate dispatches below run on (Admin > Model
+Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
 
 - **Explicit Gate model override wins — check first.** Read `plan.md`'s `## Sign-off` line
   for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a model id
@@ -303,7 +303,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   **does** apply to high-risk sprints too (that is the accepted tradeoff above); an explicit
   `Gate model:` override is how a high-risk ticket opts into something stronger.
 - **Cross-harness caveat.** Applying the Admin default is confirmed only under Claude
-  Code. Per canon's own `AGENTS.md` (`## Model Tiers: canon internals`, not copied to projects), Codex's generic `spawn_agent` call has no
+  Code. Codex's generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in a `~/.codex/agents/*.toml` file can
   set its own `model`, overriding `agents.default_subagent_model`. Don't assume the default
   takes effect under Codex without setting up and testing such an agent file live — an
@@ -347,8 +347,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   report it; never fall back to the old flags. The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (the empty-diff/drift hazard and the fork-point recovery are documented in `shared-gate-protocol.md ## Base-ref derivation`) rather than relying on the subagent's own `sprint base-ref` (the merge-base of HEAD and origin's default branch): a `pi -p` subprocess derives its base ref live, so an advance of origin's default branch mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
   **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
   This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
-  model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule
-  (that tier is the *default this section overrides*; a model must not grab it here). Left to the
+  model**, full stop — not the Admin defaults, and not any model named elsewhere. Left to the
   model this dispatch is non-deterministic (a strong Claude model reconstructs it; a weaker/
   non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
   follow this recipe verbatim rather than deriving one.

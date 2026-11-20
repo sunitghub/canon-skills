@@ -24,34 +24,12 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 
 <!-- MODEL-TIERS:BEGIN -->
 ## Model Tiers
-Match model to the sprint work being done. `plan creation` and `grill` usually run inline
-in the main session rather than as separate dispatches — the tier below still applies to
-whichever session/dispatch does that work.
-
-- `explore` → Haiku, thinking `minimal` — read-only, bounded search/mapping, no judgment calls.
-- `plan creation` → Fable or Opus, thinking `medium`/`high` — needs design judgment before scope locks in.
-- `implement` → Haiku/Sonnet, thinking `medium` — execution inside an approved plan. Without `advisor`
-  configured on Sonnet+Opus, bump to Opus for high-risk sprints instead.
-- `review` / `grill` → Opus, thinking `high` — adversarial, judgment-heavy; a weaker model would rubber-stamp.
-
-Close-gate model rules (sprint reviewer/evaluator) live in `skills/sprint/reference/complete.md`, not here.
+Models per step come from Admin > Model Tiers on the board (Plan, Spec check, Build, Reviewer, Evaluator, Simple / Light work); the close applies the gate models (`skills/sprint/reference/complete.md`). A read-only search or explore subagent you start yourself runs on the Light work model (Haiku by default).
 <!-- MODEL-TIERS:END -->
 
 ## Model Tiers: canon internals (not copied to projects)
 
-The board's `Gate model:` dropdown and its Admin registry: `tools/sprint-check-app/CLAUDE.md`.
-
-**Close-gate effort** comes from canon's gate agent definitions (`agents/canon-reviewer.md`,
-`canon-evaluator.md`: `effort: high`, a `claude-sonnet-5` model floor, read-only tools with `Bash`/`execute` shells), not from this prose.
-A dispatch can set only the model, never effort (`t-c774`).
-
-**Exception — sprint close gates** follow their own rule (may downgrade to the Admin > Model
-Tiers Reviewer and Evaluator defaults (per agent, t-8f6d), applied unconditionally to every interactive close since
-2026-09-23; to Haiku on a `demo: true` ticket, evaluator only; or via an explicit user
-`Gate model:` override, which always wins) — see the
-"Model tier for gates" note in `skills/sprint/reference/complete.md`, not this block.
-
-**Cross-harness note.** Codex and pi dispatch differ (per-agent model only through a `~/.codex/agents/*.toml` custom agent; pi gates run on the pi session model): see `complete.md`'s "Cross-harness caveat" and pi-dispatch bullets.
+Gate models, effort and the Codex/pi caveats: `skills/sprint/reference/complete.md` ("Model tier for gates", "Cross-harness caveat") and `agents/canon-reviewer.md` / `canon-evaluator.md`; the `Gate model:` dropdown and the Admin registry: `tools/sprint-check-app/CLAUDE.md`.
 
 **North-star (gate floor).** Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator. The documented exceptions are two user-set ticket options that only skip optional gates, `demo: true` (Lite) and `manual: true` (Manual, the user's recorded testing is the evidence): the evaluator still runs (read-only on Manual) and no locked row is skipped. The full policy — demo mode, the model tier for gates, and the north-star amendments — lives in `skills/sprint/reference/complete.md` (see also `DECISIONS.md` 2026-07-25 / 07-30 / 08-02).
 
