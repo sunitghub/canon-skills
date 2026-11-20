@@ -1264,7 +1264,8 @@ _si_check_pushed() {
     git -C "$wt" fetch -q origin "+refs/heads/$hb:refs/remotes/origin/$hb" < /dev/null 2>/dev/null || true
     _history_related "$wt" "$hb" || hrc=$?
     if [[ $hrc == 1 ]]; then
-      url="$(git -C "$wt" remote get-url origin 2>/dev/null)" || url="<origin URL>"
+      # origin's URL without its user:password@ part: a token in it (https://user:token@…) must not be printed
+      url="$(git -C "$wt" remote get-url origin 2>/dev/null | sed -E 's#^([A-Za-z][A-Za-z0-9+.-]*://)[^/@]*@#\1#')" && [[ -n "$url" ]] || url="<origin URL>"
       echo "send-issue: unrelated history: $wt and origin ($url) share no commit: this folder was not cloned from GitHub's repository, so the cloud session would have to join two unrelated histories and its PR would collide with your files here." >&2
       echo "  Clone the repository into a new folder and work there: git clone $url   (copy any file you changed here into the clone, then send from it)" >&2
       return 1
@@ -4306,7 +4307,7 @@ cmd_import_results() {
     local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; prline="PR: #$pr (gh could not read it)"; }
     # t-eeb5: a PR that joined an unrelated history (ToDo-Demo PR #2: the head even matched graded-head) is refused here, before the
     # card offers Check & merge. Read from GitHub's copy of the base; a failed fetch only notes it, as merge-pr checks again and refuses.
-    if [[ $rc == 0 ]]; then
+    if [[ $rc == 0 && "$pr" =~ ^[0-9]+$ ]]; then   # a number only: it goes into the refs/pull/<n>/head refspec below
       local prb fl; prb="$(cd "$root" && gh pr view "$pr" --json baseRefName --jq .baseRefName 2>/dev/null)" || prb=""
       _branch_ok "$prb" || prb="$(_base_branch "$root" 2>/dev/null)" || prb=""
       if [[ -n "$prb" ]] && git -C "$root" fetch -q origin "+refs/heads/$prb:refs/remotes/origin/$prb" "refs/pull/$pr/head" < /dev/null 2>/dev/null \

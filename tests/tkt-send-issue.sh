@@ -715,6 +715,10 @@ for a in "" "--dry-run" "--allow-unpushed"; do
   assert_contains "$out" "git clone https://github.com/acme/app.git"
   [[ "$(writes)" == 0 ]] || fail "t-eeb5: a refused send called gh to write: $(cat "$STUB_LOG")"; ! grep -q '^github:' ".tickets/$idu/ticket.md" || fail "t-eeb5: refused send linked the ticket"
 done
+# a token in origin's URL is never printed: the clone step is built from the parsed owner/repo (security review, t-eeb5)
+git remote set-url origin https://u:s3cr3t-token@github.com/acme/app.git; out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true # canon:allow-secret (a made-up token: the test proves it is never printed)
+git remote set-url origin https://github.com/acme/app.git
+[[ "$out" != *s3cr3t* ]] || fail "t-eeb5: the refusal printed origin's token: $out"; assert_contains "$out" "git clone https://github.com/acme/app.git"
 for b in main master; do git update-ref "refs/remotes/origin/$b" HEAD; done   # related: origin's branch is this history
 out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: a related history was refused: $out"
 for b in main master; do git update-ref -d "refs/remotes/origin/$b"; done   # nothing fetched (an empty origin): not refused by this check
