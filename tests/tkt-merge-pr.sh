@@ -772,7 +772,7 @@ sc_setup; printf '\n## Scratch\n\n%s\n- my own note\n' "$SC1" >> HANDOFF.md
 GH0="$PWD/.tickets/$id/github.md"; printf '# GitHub\n\n## 2026-11-06T20:11:52Z — sent\nissue: x\n' > "$GH0"
 out="$(BASE="$BASE3" STUB_HEAD="$H5" ff_merge)"; assert_contains "$out" "local main was not updated: this file has changes here that the merge would overwrite:"
 assert_contains "$out" $'\n  HANDOFF.md\n'; assert_eq "$BASE3" "$(git rev-parse main)"; grep -q '^merged: ' "$f" || fail "merged: was not recorded before the refusal"
-GHSUM="$(cksum < "$GH0")"; MERGED0="$(grep -c '' "$f")"; TRAIL0="$(grep -c '— merged' "$GH0" || true)"
+MERGED0="$(grep -c '' "$f")"; TRAIL0="$(grep -c '— merged' "$GH0" || true)"
 git checkout -q -- HANDOFF.md                                               # the person resolves it (drops their edit), then runs what the refusal named
 out="$(STUB_HEAD="$H5" "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)"; assert_contains "$out" "PR #7 is already merged; updating local main only"
 assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"; assert_eq "$H5" "$(git rev-parse main)"
