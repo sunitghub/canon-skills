@@ -155,6 +155,22 @@
       ],
       "ticket": "t-6555",
       "reason": "failed 1 of 3 (chromium) in the t-6555 full run, 2026-11-18 (machine load rose to 9.9 on 10 CPUs during a solo rerun); passed solo; t-6555 changes no Sessions-row code (Send panel and send-issue only)"
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-3c9a: after a daemon restart (the framed relay holds the old token) the shell re-frames it and retries once @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in the t-eeb5 full run at 4018e823 (2026-11-20, load 9.2 on 10 CPUs at start, 3 runs per browser); passed 3 of 3 alone in webkit on that head; not in the code this change touches (only the Send panel's Create issue hold)"
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > End does not drop a live tab on an empty list the daemon did not answer (t-27bc) @webkit",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed 1 of 3 (webkit) in the t-eeb5 full run at 4018e823 (2026-11-20, load 9.2 on 10 CPUs at start, 3 runs per browser); passed 3 of 3 alone in webkit on that head; not in the code this change touches (only the Send panel's Create issue hold)"
     }
   ],
   "skipped": []
