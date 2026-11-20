@@ -8,8 +8,6 @@ hidden: true
 
 # Sprint Complete — checklist
 
-Other cases: last table.
-
 **First** ask "Ready to close sprint `<id>`? This will run wrapup and move the ticket to Done.
 Confirm to proceed." A broad "continue"/"finish" is not approval.
 
@@ -28,14 +26,15 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    show PRE hash), `sprint subagent-log --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
-3. **Evaluator** (binding). First `security-review` (inline) on the final diff, after the reviewer's fixes; commit its fixes. Then once:
+3. **Evaluator** (binding). First `security-review` (inline) on the final diff; commit its fixes. Then,
+   after the reviewer's and security-review's fixes (never edit a tracked file while a stamp runs), once:
    - **Mutation sweep** (logic files): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
-     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason:
-     `mutation-test | skipped | <reason>`.
+     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding (stale sweep log is not re-stamped); skip
+     with a reason: `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
      `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
-     (canon: `scripts/test.sh`); re-stamp after tracked changes.
+     (canon: `scripts/test.sh`; test-only or out-of-branch failure: `--only <suite>`, complete.md).
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
@@ -74,13 +73,13 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 | Case | Read in `complete.md` |
 |---|---|
 | `Tier: bugfix` or `Tier: trivial` in Sign-off | step 1 "Bugfix tier — lighter wrapup"; step 2 "Bugfix downgrade" |
-| `demo: true` in ticket.md (and the `skills:` maintenance-skill guard) | step 1 "Demo mode"; "Maintenance-skill report-only guard" |
-| `Gate model: openai:<id>`, Copilot CLI, Codex or pi | "Gate dispatch mechanics": its `openai`, Copilot, Codex and pi bullets |
+| `demo: true`, or the `skills:` maintenance-skill guard | step 1 "Demo mode"; "Maintenance-skill report-only guard" |
+| `Gate model: openai:<id>`, Copilot CLI, Codex or pi | "Gate dispatch mechanics" |
 | no git, or no commit yet | step 1 "Folder without git"; mechanics rule 7 |
-| a gate wrote outside its report, or snapshot post differs | mechanics rule 7 |
+| gate wrote outside its report, or snapshot post differs | mechanics rule 7 |
 | a subagent could not write its report | mechanics rule 6 |
-| evaluator `fail`, retry budget at 3, or `eval_override` | step 3 "Retry budget" and the `fail` paragraph |
-| the close refuses the report (transcript or stale-eval guard) | step 3 "Stale-eval guard", "backed by a real transcript" |
+| evaluator `fail`, retry budget at 3, or `eval_override` | step 3 "Retry budget", `fail` paragraph |
+| close refuses the report (transcript, stale-eval guard) | step 3 "Stale-eval guard", "backed by a real transcript" |
 | high-risk or untrusted-input sprint (break-it) | step 3 "Break-it" |
 | scenario-backed Test Plan lines | step 4 |
 | a waived, deferred or partial item, or the learnings cap | step 8 |

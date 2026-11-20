@@ -15,7 +15,11 @@ suite. If nothing fails, the test was decoration. A surviving mutant is a **test
 At sprint close this is a **pre-evaluator step for shell, JS, Python or Go logic changes** (t-087c): run it, kill or
 triage every survivor, record the result in `evidence/`, then the evaluator is dispatched. It is **non-binding, not a
 gate**: it reports surviving mutants and never blocks `sprint complete`. But it is not skippable without a reason: the
-Wrapup Gates row reads `ran | …` or `mutation-test | skipped | <reason>`.
+Wrapup Gates row reads `ran | …` or `mutation-test | skipped | <reason>`. When every new guard in the diff already has a hand revert-proof (a revert in a scratch copy that made a named test
+fail), recorded one row per guard in `.tickets/<id>/evidence/revert-proofs.md`, the row may read
+`mutation-test | skipped | revert-proved by hand (N)` (N = the guards); the evaluator checks that file against the diff (t-2ce8: t-eeb5
+started a 530-mutant sweep twice after 17 such proofs). A stale sweep log from an older commit is not re-stamped: `sprint check-evidence`
+notes it (the sweep is non-binding).
 It **complements, does not replace, the fresh-context evaluator**: the evaluator checks acceptance
 criteria against the code; mutation-test checks whether the tests protecting that code have teeth.
 
