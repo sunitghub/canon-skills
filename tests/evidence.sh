@@ -796,4 +796,74 @@ git reset -q --hard "$C3"; rm -rf "$ED"; ev stamp "$ID" base3 -- true; echo "my-
 ev check "$ID"; assert_contains "$out" "stale base3.log"
 echo "evidence: canon's own setup lines pass the stamp and keep logs fresh; anything else does not (t-e9aa)"
 
+# --- t-2ce8: a full-suite log is `covered` by `--only` re-runs after a suite-only change or an out-of-branch failure -------------------
+SR="$WORK/suites"; mkdir -p "$SR/scripts" "$SR/tests" "$SR/src" "$SR/.tickets/$ID"; cd "$SR"
+git init -q -b main . && git config user.name t && git config user.email t@t
+cat > scripts/test.sh <<'RUNNER'
+tests=(
+  "$ROOT/tests/a.sh"
+  "$ROOT/tests/b.sh"
+  "$ROOT/tests/c.sh"
+  "$ROOT/tests/d.sh"
+  "$ROOT/tests/e.sh"
+)
+  suite tools/canon-go/internal/board go_board
+  suite tests/n.js node "$ROOT/tests/n.js"
+RUNNER
+for t in a b c d; do echo "echo $t" > "tests/$t.sh"; done; echo 'source "$(dirname "$0")/d.sh"' > tests/e.sh
+echo 'x' > tests/helpers.sh; echo '1' > tests/n.js; echo p > src/p.txt; echo '# t' > ".tickets/$ID/ticket.md"
+git add scripts tests src && git commit -qm base; git switch -q -c feat; echo q >> src/p.txt; git commit -qam product; F1="$(git rev-parse HEAD)"
+SED="$SR/.tickets/$ID/evidence"; T="2026-11-20T10:00:00Z"
+sev() { set +e; out="$(cd "$SR" && bash "$EV" check "$ID" 2>&1)"; code=$?; set -e; }
+sput() { mkdir -p "$SED"; printf '%b' "$2" > "$SED/$1"; }
+line_of() { printf '%s\n' "$out" | grep -E "^[a-z]+ $1 " || true; }
+full() { sput full.log "HEAD $1 $T\n\$ scripts/test.sh${3:-}\n$2"; }
+# (3) only registered suite files changed since the stamp
+full "$F1" "ok\nexit 0\n"; echo a2 >> tests/a.sh; git commit -qam "test edit"; F2="$(git rev-parse HEAD)"
+sev; [[ "$(line_of full.log)" == "stale full.log exit=0 "* ]] || fail "evidence: a suite edit with no re-run must stay stale: $out"
+sput only.log "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 0\n"; sev
+assert_contains "$(line_of full.log)" "covered full.log exit=0 (HEAD ${F1:0:7}; suite file(s) changed since; re-run at ${F2:0:7} by only.log over 1 suite(s))"
+full "$F1" "ok\nexit 0\n" " --jobs 4"; sev; assert_contains "$(line_of full.log)" "covered full.log exit=0"   # --jobs N is still the full suite
+sput only.log "HEAD $F2 $T\n\$ bash scripts/test.sh --jobs 2 --only tests/b.sh --only tests/a.sh\nexit 0\n"; sev; assert_contains "$(line_of full.log)" "covered full.log"
+for bad in "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 1\n" "HEAD $F2 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n" \
+           "HEAD $F1 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 0\n" "HEAD $F2 $T\n\$ bash -c scripts/test.sh\\\\ --only\\\\ tests/a.sh\nexit 0\n" \
+           "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh --list\nexit 0\n" "\$ scripts/test.sh --only tests/a.sh\nexit 0\n"; do
+  sput only.log "$bad"; sev; [[ "$(line_of full.log)" == "stale full.log "* ]] || fail "evidence: a re-run that does not prove tests/a.sh at HEAD covered the full suite ($bad): $out"
+done
+sput only.log "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 0\n"
+sput wrap.log "HEAD $F1 $T\n\$ bash -c scripts/test.sh\nexit 0\n"; sev; [[ "$(line_of wrap.log)" == "stale wrap.log "* ]] || fail "evidence: a wrapped runner was treated as the full suite: $out"; rm "$SED/wrap.log"
+# a changed non-suite file (a helper, the runner itself, product code) or a suite another file names keeps it stale
+for chg in tests/helpers.sh scripts/test.sh src/p.txt; do
+  git switch -q --detach "$F2"; echo z >> "$chg"; git commit -qam "$chg"; H="$(git rev-parse HEAD)"
+  sput only.log "HEAD $H $T\n\$ scripts/test.sh --only tests/a.sh --only $chg\nexit 0\n"; sev   # even "re-run" by name, a non-suite is never covered
+  [[ "$(line_of full.log)" == "stale full.log "* ]] || fail "evidence: a change to $chg was covered by suite re-runs: $out"
+done
+git switch -q --detach "$F1"; echo d2 >> tests/d.sh; git commit -qam d; H="$(git rev-parse HEAD)"
+sput only.log "HEAD $H $T\n\$ scripts/test.sh --only tests/d.sh --only tests/e.sh\nexit 0\n"; sev
+[[ "$(line_of full.log)" == "stale full.log "* ]] || fail "evidence: a suite that another file sources was covered: $out"
+git switch -q --detach "$F1"; echo 2 >> tests/n.js; git commit -qam n; H="$(git rev-parse HEAD)"
+sput only.log "HEAD $H $T\n\$ scripts/test.sh --only tests/n.js\nexit 0\n"; sev; assert_contains "$(line_of full.log)" "covered full.log exit=0"
+# (2) failing only on suites the branch did not change, each re-run alone and passing at the graded head
+git switch -q feat; git reset -q --hard "$F1"; rm -f "$SED/only.log"
+full "$F1" "==> tests/b.sh\nFAILED: tests/b.sh (exit 1)\nFAILED: tools/canon-go/internal/board (exit 137)\nexit 1\n"; sev
+[[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a failing full suite with no re-run must stay failing: $out"
+sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n"; sev
+[[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: one failed suite re-run covered two: $out"
+sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tools/canon-go/internal/board --only tests/b.sh\nexit 0\n"; sev
+assert_contains "$(line_of full.log)" "covered full.log exit=1 (HEAD ${F1:0:7}; failing only on suite(s) the branch did not change; re-run at ${F1:0:7} by only.log over 2 suite(s))"
+full "$F1" "FAILED: tests/b.sh (exit 1)\nFAIL: the test run left sprint-check servers running (PIDs): 1\nexit 1\n"; sev
+[[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a run-level FAIL was covered by suite re-runs: $out"
+full "$F1" "boom\nexit 1\n"; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a failure with no FAILED line was covered: $out"
+full "$F1" "FAILED: tests/b.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n"; sev; assert_contains "$(line_of full.log)" "covered full.log exit=1"
+git branch -q -m main trunk; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: no merge base with main, yet covered: $out"; git branch -q -m trunk main
+echo c2 >> tests/c.sh; git commit -qam "branch edits c"; F3="$(git rev-parse HEAD)"
+full "$F3" "FAILED: tests/c.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F3 $T\n\$ scripts/test.sh --only tests/c.sh\nexit 0\n"; sev
+[[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a failing suite the branch changed was covered by a solo pass: $out"
+# check-evidence counts a covered full-suite log as ok
+full "$F3" "FAILED: tests/b.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F3 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n"
+set +e; out="$(cd "$SR" && CANON_HOME="$WORK/ch" bash "$ROOT/tools/sprint" check-evidence "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "ok      covered full.log exit=1"
+cd "$REPO"
+echo "evidence: a full-suite log is covered by --only re-runs only after a suite-only change or an out-of-branch failure (t-2ce8)"
+
 echo "evidence: ok"

@@ -20,12 +20,15 @@ if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d "${TMPDIR:-/tmp}/can
 # t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
 # t-abb1: suites run in parallel, `--jobs N` workers (default: the CPU count, at most 8); `--jobs 1` is the sequential run, which stops
 # at the first failure. A parallel run runs every suite and exits with the first failing suite's code in list order.
-LIST=0; JOBS=""; JOBS_GIVEN=0
+# t-2ce8: `--only <label>` (repeatable, a --list label) runs just those suites with the run's usual end checks: the re-run that lets
+# `sprint evidence check` call a full-suite log `covered` after a test-only change or an out-of-branch failure, instead of a whole re-run.
+LIST=0; JOBS=""; JOBS_GIVEN=0; ONLY=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --list) LIST=1; shift ;;
+    --only) if [[ $# -lt 2 || -z "$2" ]]; then echo "test.sh: --only needs a suite label (scripts/test.sh --list)" >&2; exit 2; fi; ONLY+=("$2"); shift 2 ;;
     --jobs) if [[ $# -lt 2 ]]; then echo "test.sh: --jobs needs a positive number" >&2; exit 2; fi; JOBS="$2"; JOBS_GIVEN=1; shift 2 ;;
-    -h|--help) echo "usage: scripts/test.sh [--list] [--jobs N]   (--list prints every suite label, one per line; --jobs 1 runs them one at a time)"; exit 0 ;;
+    -h|--help) echo "usage: scripts/test.sh [--list] [--jobs N] [--only LABEL]...   (--list prints every suite label, one per line; --jobs 1 runs them one at a time; --only runs just that suite, repeatable)"; exit 0 ;;
     *) echo "test.sh: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -238,6 +241,7 @@ PLAN=0; KINDS=(); CMDS=()   # t-abb1: the planning pass records each suite's com
 suite() {
   local label="$1"; shift
   if (( DRY )); then LABELS+=("$label"); return 0; fi
+  wanted "$label" || return 0
   if (( PLAN )); then LABELS+=("$label"); KINDS+=(suite); CMDS+=("$(printf '%q ' "$@")"); return 0; fi
   printf '==> %s\n' "$label"
   CURRENT="$label"; CURRENT_T0=$SECONDS
@@ -254,6 +258,7 @@ print_timings() {   # an EXIT trap: the run's own exit status stands, whatever t
 }
 # skipped <line> — a `==> <line>` note for a suite whose tool is absent; the parallel run prints it in its place.
 skipped() {
+  (( ${#ONLY[@]} == 0 )) || return 0   # an --only run prints no skip line; a wanted suite that did not run fails the run below
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
@@ -372,7 +377,17 @@ stop_workers() {   # on any exit: stop a batch still running (an interrupted run
   if [[ -n "${RUN:-}" ]]; then case "$RUN" in */test-sh-run.*) rm -rf -- "$RUN" ;; esac; fi
 }
 
+wanted() { local o; (( ${#ONLY[@]} == 0 )) && return 0; for o in "${ONLY[@]}"; do [[ "$o" == "$1" ]] && return 0; done; return 1; }
 if (( LIST )); then DRY=1; run_all; printf '%s\n' "${LABELS[@]}"; exit 0; fi
+ONLY_N=0
+if (( ${#ONLY[@]} )); then
+  DRY=1; run_all; DRY=0
+  for _o in "${ONLY[@]}"; do
+    _hit=0; for _l in "${LABELS[@]}"; do [[ "$_l" == "$_o" ]] && _hit=1; done
+    (( _hit )) || { printf 'test.sh: --only %s is not a suite label (scripts/test.sh --list)\n' "$_o" | LC_ALL=C tr -d '\000-\010\013-\037\177' >&2; exit 2; }
+  done
+  LABELS=(); ONLY_N="$(printf '%s\n' "${ONLY[@]}" | sort -u | wc -l | tr -d ' ')"
+fi
 # t-acfa: no suite may write the user's real project registry (skills.sh add appends to it, and uninstall walks it and edits every
 # folder it names that exists). Copied before the run and compared after, so a new writer fails the run whoever it is.
 REGISTRY="$HOME/.config/canon/projects"; REGISTRY_BEFORE="$(mktemp)"
@@ -403,5 +418,8 @@ if [[ -n "${LEAKED_SERVERS// /}" ]]; then
   exit 1
 fi
 if (( FIRST_RC != 0 )); then exit "$FIRST_RC"; fi
+if (( ONLY_N && ${#TIMES[@]} != ONLY_N )); then   # a wanted suite whose tool (go, node) is absent ran nothing: never a pass
+  printf '\nFAIL: --only asked for %s suite(s), %s ran\n' "$ONLY_N" "${#TIMES[@]}" >&2; exit 2
+fi
 
 printf '\nAll tests passed.\n'

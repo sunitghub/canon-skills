@@ -19,6 +19,8 @@
 #                              tests/board-spec-baseline.json changed since, that ended in exit 0 or 1 (the guard's verdict; 2 is the
 #                              runner's own failure: the tree moved or a process leaked), and re-judged at the graded head by a fresh exit-0 log of
 #                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
+#   covered <file> exit=<N>    t-2ce8: a `scripts/test.sh` full-suite log stale only for registered suite files no other file names, and/or
+#                              failing only on suites the branch did not change, each re-run by a fresh exit-0 `scripts/test.sh --only` log
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 #   (t-278d) a log stale only for the baseline but not covered gets a `  hint:` line after it with the covered recipe.
@@ -309,7 +311,7 @@ join_names() {
 # the stamp is tests/board-spec-baseline.json, optionally with QUARANTINE-comment-only edits to the spec (t-7f5f): the one case `covered` may lift). Called directly, never in $(...), so the globals survive.
 classify_one() {
   local f="$1" first last sha when cmdline osline shown full names p readers dropped kept ign wtline stamped_scope scopecmd readers_nl scoped_nl
-  BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""
+  BASEONLY=0; SPECQ=0; CODE="?"; STAMP=""; SHOWN=""; CHG=""
   base="$(safe "${f##*/}")"
   if [[ -L "$f" || ! -f "$f" ]]; then KIND=unstamped; LINE="unstamped $base exit=?"; return 0; fi
   first="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | head -n1 | tr -d '\r')" || first=""   # `|| …`: head exiting early may SIGPIPE a writer, which pipefail would turn into a silent exit
@@ -383,6 +385,7 @@ classify_one() {
   fi
   join_names "${names[@]}"
   ign=""; if [[ ${#dropped[@]} -gt 0 ]]; then ign=" (+${#dropped[@]} outside its scope ignored)"; fi
+  if (( ! wt_dirty )); then CHG="$(printf '%s\n' "${names[@]}")"; fi   # t-2ce8: what suite_covered_by may re-run
   LINE="stale $base exit=$CODE (HEAD ${sha:0:7}; $JOINED_N tracked file(s) changed since: $JOINED$ign)$shown"
 }
 
@@ -428,11 +431,69 @@ covered_by() {
   return 0   # the caller assigns this under set -e
 }
 
+# t-2ce8: a full-suite log (`scripts/test.sh`, optionally `--jobs N`) and a suite re-run (the same plus one or more `--only <label>`)
+full_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?$'
+only_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?( --only [A-Za-z0-9._/-]+)+$'
+# is_suite <label> — 0 when the graded head's scripts/test.sh runs <label> as a suite: a `"$ROOT/<label>"` line of tests=( or a
+# `suite <label> ` line. Read from git, never run: check executes nothing from the tree it judges.
+is_suite() {
+  [[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+  printf '%s\n' "$RUNNER" | grep -Fxq -e "  \"\$ROOT/$1\"" -e "  suite $1 node \"\$ROOT/$1\"" && return 0
+  [[ "$1" == tools/canon-go/internal/board || "$1" == tools/canon-go/internal/daemon ]] && printf '%s\n' "$RUNNER" | grep -Fq "  suite $1 go_"
+}
+# suite_covered_by <i> — t-2ce8: for a full-suite log that is stale only because registered suite files changed, and/or failing only on
+# suites the branch did not change, prints "<re-run logs>|<what>|<count>" when fresh exit-0 `--only` logs at the graded head re-ran
+# every one of those suites, else nothing. Each link is checked, never trusted: a changed suite that another tracked file names (a
+# sourced helper, a required module) keeps the log stale; a failing log needs `FAILED:` lines and no other `FAIL:` line (the registry or
+# leaked-server checks fail the whole run, which no suite re-run clears); a failed suite's path changed on the branch (the branch may
+# have made it flaky) or no merge base with main keeps it failing.
+suite_covered_by() {
+  local i="$1" f="${FILES[$1]}" p b hits base want="" what="" k g a got="" used="" n=0
+  [[ "$(line2_of "$f")" =~ $full_re ]] || return 0
+  RUNNER="$(git -C "$root" show "$graded:scripts/test.sh" 2>/dev/null)" || return 0
+  if [[ "${KINDS[$i]}" == stale ]]; then
+    [[ -n "${CHGS[$i]}" ]] || return 0   # stale for another reason (unknown commit, not an ancestor, a dirty tree)
+    while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      is_suite "$p" || return 0
+      b="${p##*/}"
+      hits="$(git -C "$root" grep -l -F -e "$b" "$graded" -- tests scripts tools ':(exclude,glob)**/*.md' 2>/dev/null | sed "s/^$graded://" | grep -vFx -e "$p" -e scripts/test.sh || true)"
+      [[ -z "$hits" ]] || return 0
+      want+="$p"$'\n'
+    done <<< "${CHGS[$i]}"
+    what="suite file(s) changed since"
+  elif [[ "${KINDS[$i]}" != fresh || "${CODES[$i]}" == 0 ]]; then return 0
+  fi
+  if [[ "${CODES[$i]}" != 0 ]]; then
+    [[ "${CODES[$i]}" =~ ^[0-9]+$ ]] || return 0
+    ! LC_ALL=C grep -a -q -E '^FAIL: ' -- "$f" || return 0
+    base="$(git -C "$root" merge-base "$graded" main 2>/dev/null || git -C "$root" merge-base "$graded" origin/main 2>/dev/null)" || return 0
+    k=0
+    while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      is_suite "$p" || return 0
+      git -C "$root" diff --quiet --no-renames "$base" "$graded" -- "$p" 2>/dev/null || return 0
+      want+="$p"$'\n'; k=$((k + 1))
+    done < <(LC_ALL=C grep -a -E '^FAILED: [A-Za-z0-9._/-]+ \(exit [0-9]+\)$' -- "$f" | sed -E 's/^FAILED: ([^ ]+) .*/\1/')
+    (( k )) || return 0
+    what="${what:+$what and }failing only on suite(s) the branch did not change"
+  fi
+  want="$(printf '%s' "$want" | sort -u)"; [[ -n "$want" ]] || return 0
+  for k in "${!FILES[@]}"; do
+    [[ "${KINDS[$k]}" == fresh && "${CODES[$k]}" == 0 ]] || continue
+    g="$(line2_of "${FILES[$k]}")"; [[ "$g" =~ $only_re ]] || continue
+    a=0; for p in $g; do if (( a )); then got+="$p"$'\n'; used+="${used:+, }${FILES[$k]##*/}"; fi; if [[ "$p" == --only ]]; then a=1; else a=0; fi; done
+  done
+  while IFS= read -r p; do printf '%s' "$got" | grep -Fxq -e "$p" || return 0; n=$((n + 1)); done <<< "$want"
+  used="$(printf '%s' "$used" | tr ',' '\n' | sed 's/^ //' | sort -u | paste -sd, - | sed 's/,/, /g')"
+  printf '%s|%s|%s' "$used" "$what" "$n"
+}
+
 REDIR="$(cd "$edir" && pwd -P)"
-FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); SPECQS=(); STAMPS=(); SHOWNS=()
+FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); SPECQS=(); STAMPS=(); SHOWNS=(); CHGS=()
 for f in "$edir"/*.log; do
   classify_one "$f"
-  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); SPECQS+=("$SPECQ"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN")
+  FILES+=("$f"); KINDS+=("$KIND"); CODES+=("$CODE"); LINES+=("$LINE"); BASES+=("$BASEONLY"); SPECQS+=("$SPECQ"); STAMPS+=("$STAMP"); SHOWNS+=("$SHOWN"); CHGS+=("$CHG")
 done
 for i in "${!FILES[@]}"; do
   if [[ "${BASES[$i]}" == 1 && "${CODES[$i]}" =~ ^[01]$ ]]; then   # exit 2: the run itself failed, nothing to re-judge
@@ -444,6 +505,13 @@ for i in "${!FILES[@]}"; do
     elif [[ "$(line2_of "${FILES[$i]}")" =~ ^\$\ (bash\ )?(\./)?tests/run-board-spec\.sh(\ |$) ]]; then
       # t-278d: the recipe, so the next stamp neither overwrites the run's log nor leaves its reports outside evidence/.
       LINES[$i]+=$'\n'"  hint: to cover it, keep the run's --out folder inside .tickets/$id/evidence/, then stamp the guard under its OWN name, never this log's (that overwrites it): sprint evidence stamp $id board-spec-guard -- node tests/board-spec-guard.js <those reports>"
+    fi
+  fi
+  if [[ "${KINDS[$i]}" == stale || ( "${KINDS[$i]}" == fresh && "${CODES[$i]}" != 0 ) ]]; then
+    g="$(suite_covered_by "$i")"
+    if [[ -n "$g" ]]; then
+      IFS='|' read -r a what n <<< "$g"
+      LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; $what; re-run at ${graded:0:7} by $(safe "$a") over $n suite(s))${SHOWNS[$i]}"
     fi
   fi
   echo "${LINES[$i]}"

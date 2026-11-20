@@ -232,4 +232,21 @@ for mode in writes clean; do
   fi
 done
 
+# t-2ce8: --only <label> runs just those suites (both runners), exits with a failing one's code, refuses an unknown label, and never
+# passes when a wanted suite could not run (go/node absent); the evidence `covered` rule for a full-suite log depends on this
+O="$WORK/only"; runner_copy "$O" tests/a.sh tests/b.sh tests/c.sh
+printf 'echo a-ran\n' > "$O/tests/a.sh"; printf 'echo b-ran\n' > "$O/tests/b.sh"; printf 'echo c-ran; exit 5\n' > "$O/tests/c.sh"
+for j in 4 1; do
+  set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" --only tests/b.sh 2>&1)"; rc=$?; set -e
+  assert_eq 0 "$rc"; assert_contains "$out" "b-ran"; assert_contains "$out" "All tests passed."; assert_contains "$out" "for 1 suite(s)"
+  [[ "$out" != *a-ran* && "$out" != *c-ran* && "$out" != *"skipped ("* ]] || fail "test.sh --only ran or printed another suite (jobs $j): $out"
+  set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --jobs "$j" --only tests/c.sh --only tests/a.sh 2>&1)"; rc=$?; set -e
+  assert_eq 5 "$rc"; assert_contains "$out" "a-ran"; assert_contains "$out" "c-ran"; [[ "$out" != *b-ran* ]] || fail "test.sh --only ran tests/b.sh (jobs $j): $out"
+done
+set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --only tests/a.sh --only tests/nope.sh 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" "--only tests/nope.sh is not a suite label"; [[ "$out" != *a-ran* ]] || fail "test.sh ran suites before refusing an unknown label: $out"
+set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --only 2>&1)"; rc=$?; set -e; assert_eq 2 "$rc"; assert_contains "$out" "--only needs a suite label"
+set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --only tools/canon-go/internal/board 2>&1)"; rc=$?; set -e
+assert_eq 2 "$rc"; assert_contains "$out" "FAIL: --only asked for 1 suite(s), 0 ran"; [[ "$out" != *"All tests passed."* ]] || fail "test.sh passed an --only run that ran nothing: $out"
+
 echo "test-sh-runner: ok"
