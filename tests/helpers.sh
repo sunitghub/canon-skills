@@ -28,6 +28,10 @@ unset CLAUDECODE
 # `git init` / `git commit` in a temp dir then acts on the real repository. No suite wants them.
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
 export CLAUDE_CONFIG_DIR="/nonexistent-canon-test-claude-config"
+# t-eeb5: send-issue fetches origin's branch (the unrelated-history check), and test projects point origin at https://github.com/acme/app.git:
+# no suite may reach GitHub. git may use only the file transport (local paths, and URLs a suite's insteadOf or git wrapper rewrites to
+# one), so an https or ssh fetch fails at once. Not an insteadOf: `git remote get-url` would show it, and tkt reads the repo name there.
+export GIT_ALLOW_PROTOCOL=file
 TOOLS_DIR="$ROOT/tools"
 # shellcheck disable=SC2034  # read by the suites that source this file
 {
