@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.69.9] - 2026-11-20
+
+- Send panel: canon's own setup changes (its AGENTS.md block, .gitignore/.gitattributes lines, CLAUDE.md, PROMOTED/HANDOFF/LEARNINGS/DECISIONS.md, .claude/settings.json) no longer count as work the cloud will miss: the warning leaves them out, and Commit and push lists them in one collapsed, unticked "canon's setup files" group. Its button follows what is left: Commit and push, Push, or "Nothing to send — go to Create issue". The GitHub card reads "results ready · eval failed" when the cloud evaluator failed on the results waiting to be imported, and Import results asks first (t-a1f8 slice 1).
+- Fixed: after Check & merge, a stalled local update no longer reads as "Not merged". The dialog says the PR is merged on GitHub and gives the two steps that finish it (`git pull origin`, then `tkt merge-pr <id>`, which now also records a merge that was never recorded). The local update prints what it is doing (reading origin, checking the files, fast-forwarding), and `CANON_TRACE=1` makes `tkt` write every command it runs to a trace file, to find a hang (t-f9b1).
+
 ## [0.69.8] - 2026-11-19
 
 - Fixed (Windows): a ticket locked to a worktree now starts its Cockpit session in that worktree. `tkt land` and `tkt start` wrote the lock in Git Bash's form (`/c/Users/...`), which the daemon could not read, so the session started in the main checkout and the lock was overwritten. Locks are now written as `C:/Users/...`, the daemon reads an older `/c/...` lock too, and the Worktree panel names the worktree by its branch and no longer offers to "switch" to the worktree already in use. Daemon change: after `canon update`, press Admin's **Restart Daemon** (t-154c).
