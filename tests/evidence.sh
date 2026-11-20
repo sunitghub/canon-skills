@@ -831,6 +831,9 @@ for bad in "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 1\n" "HEAD $
   sput only.log "$bad"; sev; [[ "$(line_of full.log)" == "stale full.log "* ]] || fail "evidence: a re-run that does not prove tests/a.sh at HEAD covered the full suite ($bad): $out"
 done
 sput only.log "HEAD $F2 $T\n\$ scripts/test.sh --only tests/a.sh\nexit 0\n"
+sput list.log "HEAD $F1 $T\n\$ scripts/test.sh --list\nexit 0\n"; sev; [[ "$(line_of list.log)" == "stale list.log "* ]] || fail "evidence: a --list log was covered as a suite run: $out"; rm "$SED/list.log"
+full "$F1" "boom\nexit 1\n"; sev; [[ "$(line_of full.log)" == "stale full.log exit=1 "* ]] || fail "evidence: an unexplained failure was covered by a suite-edit re-run: $out"
+full "$F1" "ok\nexit 0\n"
 sput wrap.log "HEAD $F1 $T\n\$ bash -c scripts/test.sh\nexit 0\n"; sev; [[ "$(line_of wrap.log)" == "stale wrap.log "* ]] || fail "evidence: a wrapped runner was treated as the full suite: $out"; rm "$SED/wrap.log"
 # a changed non-suite file (a helper, the runner itself, product code) or a suite another file names keeps it stale
 for chg in tests/helpers.sh scripts/test.sh src/p.txt; do
@@ -855,6 +858,10 @@ full "$F1" "FAILED: tests/b.sh (exit 1)\nFAIL: the test run left sprint-check se
 [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a run-level FAIL was covered by suite re-runs: $out"
 full "$F1" "boom\nexit 1\n"; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a failure with no FAILED line was covered: $out"
 full "$F1" "FAILED: tests/b.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n"; sev; assert_contains "$(line_of full.log)" "covered full.log exit=1"
+git switch -q --detach main; echo side >> src/p.txt; git commit -qam side; SIDE="$(git rev-parse HEAD)"; git switch -q feat
+full "$SIDE" "FAILED: tests/b.sh (exit 1)\nexit 1\n"; sev   # stamped off the branch: stale for "not an ancestor", never covered by failures
+[[ "$(line_of full.log)" == "stale full.log exit=1 "* ]] || fail "evidence: a failing log from a non-ancestor commit was covered: $out"
+full "$F1" "FAILED: tests/b.sh (exit 1)\nexit 1\n"
 git branch -q -m main trunk; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: no merge base with main, yet covered: $out"; git branch -q -m trunk main
 echo c2 >> tests/c.sh; git commit -qam "branch edits c"; F3="$(git rev-parse HEAD)"
 full "$F3" "FAILED: tests/c.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F3 $T\n\$ scripts/test.sh --only tests/c.sh\nexit 0\n"; sev

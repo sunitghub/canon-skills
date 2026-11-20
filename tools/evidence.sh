@@ -462,7 +462,6 @@ suite_covered_by() {
       want+="$p"$'\n'
     done <<< "${CHGS[$i]}"
     what="suite file(s) changed since"
-  elif [[ "${KINDS[$i]}" != fresh || "${CODES[$i]}" == 0 ]]; then return 0
   fi
   if [[ "${CODES[$i]}" != 0 ]]; then
     [[ "${CODES[$i]}" =~ ^[0-9]+$ ]] || return 0
