@@ -338,6 +338,45 @@ decisions_added_rows() {
 
 # canon_tickets_ignore_lines — t-2f07: canon's seeded .tickets/.gitignore, one line each: one owner, read by tkt's ensure_tickets_dir (the new
 # file) and by late_docs_delta (a PR that only adds these lines after grading is late docs). The comment line marks a file canon seeded.
+# _canon_strip_own <file> — t-a1f8: the file without what canon writes into a project's AGENTS.md/CLAUDE.md/.gitattributes (the
+# AI-SKILLS block, the canon:gitattributes block, canon's `@AGENTS.md`/`@PROMOTED.md` lines), a line-end CR (autocrlf, t-ae3b) and blank lines.
+_canon_strip_own() {
+  awk '{ sub(/\r$/, "") }
+    /^<!-- AI-SKILLS:BEGIN -->$/ || /^# canon:gitattributes:BEGIN$/ { skip = 1; next }
+    skip && (/^<!-- AI-SKILLS:END -->$/ || /^# canon:gitattributes:END$/) { skip = 0; next }
+    skip || /^@(AGENTS|PROMOTED)\.md$/ || /^[ \t]*$/ { next }
+    { print }' "$1"
+}
+
+# canon_own_change <wt> <xy> <path> — t-a1f8: true when this `git status` change is canon's own setup, not the person's work, so the
+# Send panel leaves it unticked and send-issue's warning does not count it. Untracked: canon's sprint/setup files (PROMOTED, HANDOFF,
+# LEARNINGS, DECISIONS.md, .claude/settings.json) by name; AGENTS.md, CLAUDE.md and .gitattributes only when nothing but canon's lines is
+# in them. Modified: .gitignore/.gitattributes exactly canon's setup edit of HEAD's copy (_canon_setup_edit_only); AGENTS.md/CLAUDE.md
+# equal to HEAD's once canon's lines are dropped from both. Any failed read answers false: the person's.
+canon_own_change() {
+  local wt="$1" xy="$2" path="$3" t rc
+  if [[ "$xy" == '??' ]]; then
+    case "$path" in
+      PROMOTED.md|HANDOFF.md|LEARNINGS.md|DECISIONS.md|.claude/settings.json) return 0 ;;
+      AGENTS.md|CLAUDE.md|.gitattributes)
+        [[ -f "$wt/$path" && ! -L "$wt/$path" ]] || return 1
+        [[ -z "$(_canon_strip_own "$wt/$path")" ]]; return ;;
+    esac
+    return 1
+  fi
+  [[ "$xy" == ' M' || "$xy" == 'M ' || "$xy" == 'MM' ]] || return 1
+  case "$path" in
+    .gitignore|.gitattributes) _canon_setup_edit_only "$wt" HEAD "$path" >/dev/null 2>&1 ;;
+    AGENTS.md|CLAUDE.md)
+      [[ -f "$wt/$path" && ! -L "$wt/$path" ]] || return 1
+      t="$(mktemp "${TMPDIR:-/tmp}/canon-own.XXXXXX")" || return 1
+      git -C "$wt" cat-file --filters "HEAD:$path" > "$t" 2>/dev/null || { rm -f "$t"; return 1; }
+      [[ "$(_canon_strip_own "$t")" == "$(_canon_strip_own "$wt/$path")" ]]; rc=$?
+      rm -f "$t"; return $rc ;;
+    *) return 1 ;;
+  esac
+}
+
 canon_tickets_ignore_lines() {
   printf '%s\n' '# canon runtime files — per-machine session state, never commit (t-2f53)' '.cockpit-*' 'ACTIVE' 'ACTIVE.beat' '.before-import/' \
     '*/gate-snapshot.txt' '*/gate-snapshot.txt.scope'

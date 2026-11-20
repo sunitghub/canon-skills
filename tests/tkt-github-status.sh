@@ -39,6 +39,7 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 echo "unexpected gh call: $*" >&2; exit 9
 SH
 chmod +x "$W/bin/gh"; export PATH="$W/bin:$PATH" STUB_LOG="$W/log" STUB_W="$W"
+rv() { "$TKT" github-status "$id" --json | node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(0,"utf8")).results_verdict))'; }
 st() { "$TKT" github-status "$id" --json | node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write([j.stage,j.pr,j.pr_state,j.results_branch,j.verdict,j.graded_matches_pr].join("|"))'; }
 
 : > "$W/prs";                                   assert_eq "sent|||false||false" "$(st)"
@@ -200,6 +201,18 @@ mkdir -p "$W/c/.tickets/$id"; sed 's/^status: .*$/status: closed/' "$f" > "$W/c/
 git -C "$W/c" add -f ".tickets/$id/ticket.md"; git -C "$W/c" commit -qm "cloud close"; TR="$(git -C "$W/c" rev-parse HEAD)"
 git -C "$W/c" push -q origin "+$TR:refs/pull/24/head"
 printf '24\tOPEN\t%s\n' "$TR" > "$W/prs";       assert_eq "results-ready|24|OPEN|false||false" "$(st)"
+# t-a1f8: the cloud's verdict before the import, from the results import-results would bring (protects the card's "eval failed"):
+# a closed ticket with no eval-report is none (never red), a failing report fail, a passing one pass; a canon-results branch is read first.
+assert_eq none "$(rv)"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\nfail: createdAt test cannot fail\n' "$TR" > "$W/c/.tickets/$id/eval-report.md"
+git -C "$W/c" add -f ".tickets/$id/eval-report.md"; git -C "$W/c" commit -qm "eval fail"; TF="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TF:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TF" > "$W/prs";       assert_eq fail "$(rv)"
+printf 'evaluator-run-id: 1-1\ngraded-head: %s\npass: all met\n' "$TR" > "$W/c/.tickets/$id/eval-report.md"
+git -C "$W/c" commit -qam "eval pass"; TP="$(git -C "$W/c" rev-parse HEAD)"; git -C "$W/c" push -q origin "+$TP:refs/pull/24/head"
+printf '24\tOPEN\t%s\n' "$TP" > "$W/prs";       assert_eq pass "$(rv)"
+git -C "$W/c" push -q origin "+$TF:refs/heads/canon-results/$id"; assert_eq fail "$(rv)"   # the results branch (fail) wins over the PR head (pass)
+git -C "$W/c" push -q origin --delete "canon-results/$id"; git -C "$W/c" rm -q --cached ".tickets/$id/eval-report.md"; git -C "$W/c" commit -qm "back to the close only"
+git -C "$W/c" push -q origin "+$TR:refs/pull/24/head"; printf '24\tOPEN\t%s\n' "$TR" > "$W/prs"; rm -f "$W/c/.tickets/$id/eval-report.md"
 assert_contains "$("$TKT" github-status "$id")" "tkt import-results $id --pr 24"
 STUB_CROSS=true; export STUB_CROSS; assert_eq "pr-open|24|OPEN|false||false" "$(st)"
 [[ "$("$TKT" github-status "$id")" != *"carries the closed ticket"* ]] || fail "the plain form offered a fork's PR head"

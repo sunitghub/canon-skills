@@ -264,4 +264,42 @@ echo "tkt-commit-push: a stale ticked file is left out; other unlisted paths sti
 ! grep -qE -- '(^| )(-f|--force|--force-with-lease[^ ]*|\+refs)' "$W/pushes" || fail "a push was forced: $(cat "$W/pushes")"
 [[ -s "$W/pushes" ]] || fail "the push log is empty: the shim saw no push"
 
+# t-a1f8: canon's own setup is marked `canon:` (the Send panel groups it unticked; send-issue's warning leaves it out), after a real
+# `skills.sh add sprint` and `sprint start` in a project that already has its own AGENTS.md and .gitignore; the person's own changes are not;
+# `ahead:` counts commits on no branch of origin. Protects the Send panel's Commit and push list and send-issue's Step 1 trigger.
+git init -q --bare "$W/o2.git"; Q="$W/q"; git clone -q "$W/o2.git" "$Q" 2>/dev/null; cd "$Q"
+printf '# app\n' > AGENTS.md; printf 'node_modules\n' > .gitignore; git add -A; git commit -qm base; git push -q origin HEAD:main; git branch -q -u origin/main
+touch "$W/releases.txt"
+env -u XDG_RUNTIME_DIR TMPDIR="$W/tmp" XDG_CACHE_HOME="$W/cache" COCKPIT_STATE_DIR="$W/state" CANON_COCKPIT_PORT=1 \
+  CANON_MANIFEST_URL="file://$W/releases.txt" CANON_RELEASE_BASE="file://$W/nowhere" CANON_DAEMON_RELEASE_BASE="file://$W/nowhere" \
+  CANON_FETCH_NO_BUILD=1 SKILLS_SH_NO_TTY=1 bash "$SKILLS" add sprint "$Q" </dev/null >/dev/null 2>&1 || fail "t-a1f8: skills.sh add sprint failed"
+qid="$("$TKT" create "Setup check" -t task)"; "$SPRINT" start "$qid" </dev/null >/dev/null 2>&1 || true
+dry() { "$TKT" commit-push "$qid" --dry-run 2>&1; }
+out="$(dry)"; files="$(printf '%s\n' "$out" | sed -n 's/^file: .. //p' | grep -v '^\.tickets/' || true)"
+[[ -n "$files" ]] || fail "t-a1f8: setup left no changes to classify: $out"
+while IFS= read -r p; do
+  printf '%s\n' "$out" | grep -qxF "canon: $p" || fail "t-a1f8: canon's own setup change is not marked canon: $p"
+done <<< "$files"
+for want in AGENTS.md .gitignore CLAUDE.md PROMOTED.md HANDOFF.md DECISIONS.md; do
+  printf '%s\n' "$out" | grep -qxF "canon: $want" || fail "t-a1f8: $want (left by setup or sprint start) not marked canon: $out"
+done
+assert_contains "$out" "ahead: 0"
+cp AGENTS.md "$W/agents.canon"; cp .gitignore "$W/gitignore.canon"; sed 's/$/\r/' "$W/agents.canon" > AGENTS.md   # a CRLF checkout of the same edit (Windows autocrlf)
+printf '%s\n' "$(dry)" | grep -qxF "canon: AGENTS.md" || fail "t-a1f8: a CRLF copy of canon's AGENTS.md edit read as the person's"
+printf '\nOur own rule.\n' >> AGENTS.md; printf 'dist\n' >> .gitignore; mkdir -p src/new; echo x > src/new/a.js; echo y > src/new/b.js
+out="$(dry)"
+for mine in AGENTS.md .gitignore src/new/a.js; do
+  printf '%s\n' "$out" | grep -qxF "canon: $mine" && fail "t-a1f8: the person's change marked canon: $mine"
+done
+cp "$W/agents.canon" AGENTS.md; cp "$W/gitignore.canon" .gitignore
+rm CLAUDE.md; printf 'Our team notes.\n' > CLAUDE.md
+printf '%s\n' "$(dry)" | grep -qxF "canon: CLAUDE.md" && fail "t-a1f8: an untracked CLAUDE.md with the person's text marked canon"
+# send-issue's warning counts the same list without canon's own: the two new src files only, one per file
+w="$("$TKT" send-issue "$qid" --dry-run 2>&1 || true)"
+assert_contains "$w" "warning: 3 file(s)"   # src/new/a.js, src/new/b.js, and the person's CLAUDE.md
+rm -rf src CLAUDE.md; printf '@AGENTS.md\n' > CLAUDE.md
+w="$("$TKT" send-issue "$qid" --dry-run 2>&1 || true)"
+[[ "$w" != *"have uncommitted or untracked changes"* ]] || fail "t-a1f8: only canon's own setup changed, yet send-issue warned: $w"
+git commit -q --allow-empty -m local; assert_contains "$(dry)" "ahead: 1"
+
 echo "tkt-commit-push: ok"

@@ -5,6 +5,8 @@
   border: 1px solid var(--accent); border-radius: 999px; padding: 0 8px; color: var(--accent); white-space: nowrap;
   max-width: 100%; overflow: hidden; text-overflow: ellipsis;
 }
+/* t-a1f8: the cloud evaluator failed on the results waiting to be imported */
+.card-gh-chip.gh-eval-failed { border-color: var(--th-bad-line, var(--bad-ink)); color: var(--th-bad-ink, var(--bad-ink)); }
 .card-gh-takeback, .card-gh-dismiss {
   margin-left: 6px; font: inherit; font-size: 10.5px; background: none; border: 0; padding: 0; cursor: pointer;
   color: var(--text-muted); text-decoration: underline;
@@ -57,6 +59,10 @@ html[data-theme="light"] .ck-gh-box .ck-gh-note p { color: var(--th-warn-ink, #9
 .ck-gh-cp { display: flex; flex-direction: column; gap: 8px; }
 .ck-gh-cp-files { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .ck-gh-cp-st { color: var(--text-muted); }
+/* t-a1f8: canon's own setup files, one collapsed group under the person's own */
+.ck-gh-cp-canon { font-size: 12.5px; color: var(--text-muted); }
+.ck-gh-cp-canon summary { cursor: pointer; }
+.ck-gh-cp-canon .ck-gh-cp-files { margin-top: 4px; }
 .ck-gh-cp-ago { color: var(--text-muted); font-size: 11px; }
 .ck-gh-box .ck-gh-cp-note { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }   /* t-2560 */
 /* t-3942: body text on the panel's own colour, a red left bar and a red lead (red on a red tint was hard to read) */

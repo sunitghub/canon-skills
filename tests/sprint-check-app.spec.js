@@ -18608,6 +18608,97 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(chip).toHaveText('GitHub #57 · results in');
   });
 
+  // Prod path: the GitHub card's badge and Import results (t-a1f8): only an explicit cloud evaluator fail paints "eval failed" and asks first.
+  test('a failing cloud evaluator reads "eval failed" and Import asks first; no report keeps the plain badge (t-a1f8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gha1');
+    ghTicket(id, { github: 'acme/app#57' });
+    const st = await routeStatus(page, id, { stage: 'results-ready', pr: 58, results_verdict: 'fail' });
+    let imports = 0;
+    await page.route(`**/api/ticket/${id}/github/import`, r => { imports++; return json(r, { ok: true, exit_code: 0, output: 'import-results: 10 files' }); });
+    await openBoard(page, id);
+    const chip = page.locator(`.card[data-id="${id}"] .card-gh-chip`);
+    await expect(chip).toHaveText('GitHub #57 · results ready · eval failed');
+    await expect(chip).toHaveClass(/gh-eval-failed/);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect(page.locator('#gh-dialog-title')).toHaveText(`Import failing results for ${id}?`);
+    await page.locator('#gh-dialog-cancel').click();
+    expect(imports).toBe(0);
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await page.locator('#gh-dialog-ok').click();
+    await expect.poll(() => imports).toBe(1);
+    // no report (none) and an older tkt without the field: the plain badge, Import goes straight on
+    for (const extra of [{ results_verdict: 'none' }, {}]) {
+      st.status = { stage: 'results-ready', pr: 58, ...extra };
+      await openBoard(page, id);   // a fresh page: no cached status
+      await expect(chip).toHaveText('GitHub #57 · results ready');
+      await expect(chip).not.toHaveClass(/gh-eval-failed/);
+    }
+    const before = imports;
+    await page.locator(`.card[data-id="${id}"] .card-gh-btn`).click();
+    await expect.poll(() => imports).toBe(before + 1);
+    await expect(page.locator('#gh-dialog-title')).not.toHaveText(`Import failing results for ${id}?`);
+  });
+
+  // Prod path: the Send panel's Commit and push list (t-a1f8): canon's own setup (tkt's `canon:` lines) is one collapsed, unticked group left
+  // out of the counts, and the button follows the ticks and tkt's `ahead:` count; a preview without those lines keeps today's form.
+  test('Send panel groups canon\'s setup files unticked and the button follows what is left to send (t-a1f8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gha2');
+    ghTicket(id);
+    let aheadN = 0, person = 'file:  M src/app.js', canonLines = true;
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'send-issue: warning: 1 file(s) in /w have uncommitted or untracked changes; the cloud session will not see them\nrepo: acme/app (PRIVATE)' }));
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: [
+      `commit-push: ${id} in /w`, 'branch: main -> origin/main (0 commit(s) to push)', 'origin: ' + 'a'.repeat(40),
+      ...(aheadN === null ? [] : [`ahead: ${aheadN}`]), person,
+      'file:  M AGENTS.md', ...(canonLines ? ['canon: AGENTS.md'] : []), 'file: ?? CLAUDE.md', ...(canonLines ? ['canon: CLAUDE.md'] : []),
+    ].join('\n') }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    const reopen = async () => {
+      if (await page.locator('#ck-gh-cp-cancel').count()) await page.locator('#ck-gh-cp-cancel').click();
+      await page.locator('#ck-gh-cp-open').click();
+      await expect(page.locator('#ck-gh-cp-go')).toBeVisible();
+    };
+    await reopen();
+    const mine = page.locator('#ck-gh-cp-files input[type=checkbox]'), group = page.locator('#ck-gh-cp-canon');
+    await expect(mine).toHaveCount(1); await expect(mine.first()).toBeChecked();
+    await expect(group).not.toHaveAttribute('open', '');
+    await expect(group.locator('summary')).toHaveText("canon's setup files (2) — not needed for the cloud");
+    await expect(group.locator('input[type=checkbox]')).toHaveCount(2);
+    for (const b of await group.locator('input[type=checkbox]').all()) await expect(b).not.toBeChecked();
+    const go = page.locator('#ck-gh-cp-go');
+    await expect(go).toHaveText('Commit and push'); await expect(go).toBeEnabled();
+    await mine.first().uncheck();
+    await expect(go).toHaveText('Nothing to send — go to Create issue'); await expect(go).toBeDisabled();
+    await group.locator('summary').click(); await group.locator('input[type=checkbox]').first().check();   // still tickable
+    await expect(go).toHaveText('Commit and push'); await expect(go).toBeEnabled();
+    aheadN = 2; await reopen(); await mine.first().uncheck();
+    await expect(go).toHaveText('Push'); await expect(go).toBeEnabled();
+    aheadN = null; canonLines = false; await reopen();   // an older tkt: no ahead:/canon: lines, today's form
+    await expect(page.locator('#ck-gh-cp-canon')).toHaveCount(0);
+    await expect(mine).toHaveCount(3); await mine.first().uncheck(); await mine.nth(1).uncheck();
+    await expect(go).toHaveText('Commit and push'); await expect(go).toBeEnabled();
+  });
+
+  // Prod path: send-issue's Step 1 counts (t-a1f8): with canon's own tracked edit left out, an untracked file of the person's is only a note,
+  // so Create issue does not wait on Commit and push.
+  test('Send panel counts leave canon\'s own changes out: Create issue does not wait on them (t-a1f8)', async ({ page }) => {
+    const id = newTicketId(PROJECT_ROOT, 'gha3');
+    ghTicket(id);
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
+    await page.route('**/api/worktrees**', r => json(r, [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]));
+    await page.route(`**/api/ticket/${id}/github/send-preview`, r => json(r, { ok: true, exit_code: 0, output: 'send-issue: warning: 1 file(s) in /w have uncommitted or untracked changes; the cloud session will not see them\nrepo: acme/app (PRIVATE)' }));
+    await page.route(`**/api/ticket/${id}/github/commit-push-preview`, r => json(r, { ok: true, exit_code: 0, output: `commit-push: ${id} in /w\nbranch: main -> origin/main (0 commit(s) to push)\nahead: 0\nfile:  M AGENTS.md\ncanon: AGENTS.md\nfile: ?? notes.txt` }));
+    await openBoard(page, id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await page.locator('#ck-worktree .ck-gh-row').click();
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it. You can still create the issue.');
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+  });
+
   test('an import whose PR head does not match still points to the close here (t-718b)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh21');
     ghTicket(id, { github: 'acme/app#57' });
