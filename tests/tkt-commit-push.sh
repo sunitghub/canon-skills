@@ -275,25 +275,26 @@ env -u XDG_RUNTIME_DIR TMPDIR="$W/tmp" XDG_CACHE_HOME="$W/cache" COCKPIT_STATE_D
   CANON_FETCH_NO_BUILD=1 SKILLS_SH_NO_TTY=1 bash "$SKILLS" add sprint "$Q" </dev/null >/dev/null 2>&1 || fail "t-a1f8: skills.sh add sprint failed"
 qid="$("$TKT" create "Setup check" -t task)"; "$SPRINT" start "$qid" </dev/null >/dev/null 2>&1 || true
 dry() { "$TKT" commit-push "$qid" --dry-run 2>&1; }
+has_line() { [[ $'\n'"$1"$'\n' == *$'\n'"$2"$'\n'* ]]; }   # no pipe into grep -q (pipefail-early-exit)
 out="$(dry)"; files="$(printf '%s\n' "$out" | sed -n 's/^file: .. //p' | grep -v '^\.tickets/' || true)"
 [[ -n "$files" ]] || fail "t-a1f8: setup left no changes to classify: $out"
 while IFS= read -r p; do
-  printf '%s\n' "$out" | grep -qxF "canon: $p" || fail "t-a1f8: canon's own setup change is not marked canon: $p"
+  has_line "$out" "canon: $p" || fail "t-a1f8: canon's own setup change is not marked canon: $p"
 done <<< "$files"
 for want in AGENTS.md .gitignore CLAUDE.md PROMOTED.md HANDOFF.md DECISIONS.md; do
-  printf '%s\n' "$out" | grep -qxF "canon: $want" || fail "t-a1f8: $want (left by setup or sprint start) not marked canon: $out"
+  has_line "$out" "canon: $want" || fail "t-a1f8: $want (left by setup or sprint start) not marked canon: $out"
 done
 assert_contains "$out" "ahead: 0"
 cp AGENTS.md "$W/agents.canon"; cp .gitignore "$W/gitignore.canon"; sed 's/$/\r/' "$W/agents.canon" > AGENTS.md   # a CRLF checkout of the same edit (Windows autocrlf)
-printf '%s\n' "$(dry)" | grep -qxF "canon: AGENTS.md" || fail "t-a1f8: a CRLF copy of canon's AGENTS.md edit read as the person's"
+has_line "$(dry)" "canon: AGENTS.md" || fail "t-a1f8: a CRLF copy of canon's AGENTS.md edit read as the person's"
 printf '\nOur own rule.\n' >> AGENTS.md; printf 'dist\n' >> .gitignore; mkdir -p src/new; echo x > src/new/a.js; echo y > src/new/b.js
 out="$(dry)"
 for mine in AGENTS.md .gitignore src/new/a.js; do
-  printf '%s\n' "$out" | grep -qxF "canon: $mine" && fail "t-a1f8: the person's change marked canon: $mine"
+  has_line "$out" "canon: $mine" && fail "t-a1f8: the person's change marked canon: $mine"
 done
 cp "$W/agents.canon" AGENTS.md; cp "$W/gitignore.canon" .gitignore
 rm CLAUDE.md; printf 'Our team notes.\n' > CLAUDE.md
-printf '%s\n' "$(dry)" | grep -qxF "canon: CLAUDE.md" && fail "t-a1f8: an untracked CLAUDE.md with the person's text marked canon"
+has_line "$(dry)" "canon: CLAUDE.md" && fail "t-a1f8: an untracked CLAUDE.md with the person's text marked canon"
 # send-issue's warning counts the same list without canon's own: the two new src files only, one per file
 w="$("$TKT" send-issue "$qid" --dry-run 2>&1 || true)"
 assert_contains "$w" "warning: 3 file(s)"   # src/new/a.js, src/new/b.js, and the person's CLAUDE.md

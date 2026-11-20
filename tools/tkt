@@ -3210,7 +3210,7 @@ cmd_github_status() {
   local rv=none rrev="" rsha
   if [[ "$stage" == results-ready ]]; then
     if $branch; then
-      rsha="$(printf '%s\n' "$err" | awk '{ print $1; exit }')"
+      rsha="${err%%[[:space:]]*}"   # ls-remote's first field
       if [[ "$rsha" =~ ^[0-9a-f]{40}$ ]]; then
         git -C "$root" cat-file -e "$rsha^{commit}" 2>/dev/null \
           || git -C "$root" fetch -q origin "refs/heads/canon-results/$id" < /dev/null >/dev/null 2>&1 || true
