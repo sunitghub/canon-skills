@@ -40,6 +40,7 @@ case "$1 $2" in
                     [[ "$*" =~ ^pr\ view\ [0-9]+\ --repo\ acme/app\ --json\ isCrossRepository\ --jq\ \.isCrossRepository$ ]] || { echo "bad PR question: $*" >&2; exit 9; }
                     [[ "${STUB_CROSS:-}" == fail ]] && { echo "HTTP 502: pr view" >&2; exit 1; }
                     echo "${STUB_CROSS:-false}"
+                  elif [[ " $* " == *" baseRefName "* ]]; then echo "${STUB_PR_BASE:-main}"   # t-eeb5: import-results' history check
                   else echo "${STUB_PR_HEAD:?}"; fi ;;
   "pr diff")      printf '%s\n' ${STUB_PR_FILES:-docs/x.md} ;;
   "pr list")      printf '%b' "${STUB_PRS:-}" ;;
@@ -418,6 +419,20 @@ rc=0; out="$(STUB_PR_FILES="LEARNINGS.md tools/x.sh" "$TKT" import-results "$id"
 [[ "$rc" == 1 ]] || fail "a code commit after grading should exit 1: $out"
 assert_contains "$out" "does NOT match graded-head"; assert_contains "$out" "since then it changes: tools/x.sh"
 assert_contains "$out" "next: tkt land $id --pr 58 --fix"   # t-75f5: the cloud closed the ticket; `land` without --fix refuses a closed one, so the way out is named
+# t-eeb5 (ToDo-Demo PR #2): a PR whose head joined an unrelated history is refused even when the head IS the graded head, and the
+# trail keeps why. Protects Import results (the card's button), which offered Check & merge for it.
+cd "$X" && git checkout -q sweep && OH="$(git -c user.name=t -c user.email=t@t commit-tree "$(git mktree < /dev/null)" -m "another history")" \
+  && UH="$(git -c user.name=t -c user.email=t@t commit-tree "sweep^{tree}" -p sweep -p "$OH" -m "Merge branch 'main' (unrelated)")" \
+  && git checkout -q "$UH" && printf 'graded-head: %s\n## Verdict\npass: all criteria met\n' "$UH" > ".tickets/$id/eval-report.md" \
+  && "$TKT" export "$id" >/dev/null 2>&1 && git push -qf origin "$UH:refs/pull/58/head" && git checkout -q sweep && cd "$L"
+rc=0; out="$(STUB_PR_HEAD="$UH" STUB_PR_FILES="LEARNINGS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-eeb5: an unrelated-history PR imported with rc $rc: $out"
+assert_contains "$out" "PR #58 joins a history unrelated to main: it adds root commit ${OH:0:8}"
+assert_contains "$out" "next: close PR #58 on GitHub without merging it"
+assert_grep '— import refused$' ".tickets/$id/github.md"; assert_grep "joins a history unrelated to main" ".tickets/$id/github.md"
+cp "$W/eval-report.keep" "$X/.tickets/$id/eval-report.md"; git -C "$X" push -qf origin "sweep:refs/pull/58/head"
+(cd "$X" && "$TKT" export "$id" >/dev/null 2>&1)   # canon-results/<id> back as the cases below expect it
+echo "import-results: a PR joining an unrelated history is refused, even at the graded head, and the trail says why (t-eeb5)"
 [[ -n "$(git --git-dir="$W/origin.git" branch --list "canon-results/$id")" ]] || fail "a code delta deleted canon-results/$id"
 # An import that cannot write keeps the branch on origin, so nothing is lost.
 if [[ "$(id -u)" != 0 ]]; then

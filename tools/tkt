@@ -1256,6 +1256,22 @@ _si_launch() {
 _si_check_pushed() {
   local root="$1" wt="$2" allow="$3" id="$4" n dirty tracked
   git -C "$wt" rev-parse -q --verify HEAD >/dev/null 2>&1 || return 0   # no git, or no commit yet: nothing to be ahead
+  # t-eeb5: a folder whose history is not GitHub's (copied, then a fresh `git init`) sends a cloud session that can only join the two
+  # with --allow-unrelated-histories; that PR then collides with every file here. Checked against origin's branch as GitHub has it
+  # now; --allow-unpushed does not skip it, as no later step can repair it.
+  local hb hrc=0 url
+  if hb="$(_base_branch "$wt")"; then
+    git -C "$wt" fetch -q origin "+refs/heads/$hb:refs/remotes/origin/$hb" < /dev/null 2>/dev/null || true
+    _history_related "$wt" "$hb" || hrc=$?
+    if [[ $hrc == 1 ]]; then
+      url="$(git -C "$wt" remote get-url origin 2>/dev/null)" || url="<origin URL>"
+      echo "send-issue: unrelated history: $wt and origin ($url) share no commit: this folder was not cloned from GitHub's repository, so the cloud session would have to join two unrelated histories and its PR would collide with your files here." >&2
+      echo "  Clone the repository into a new folder and work there: git clone $url   (copy any file you changed here into the clone, then send from it)" >&2
+      return 1
+    elif [[ $hrc == 2 ]]; then
+      echo "send-issue: warning: could not tell whether $wt shares its history with origin/$hb (a shallow clone?); if this folder was not cloned from GitHub, clone it first" >&2
+    fi
+  fi
   if [[ -z "$(git -C "$wt" for-each-ref --count=1 refs/remotes/origin 2>/dev/null)" ]]; then
     echo "send-issue: warning: no origin branches are known here, so I cannot tell whether GitHub has your commits: run git fetch, then send again" >&2
   elif ! n="$(git -C "$wt" rev-list --count HEAD --not --remotes=origin 2>/dev/null)"; then
@@ -1455,6 +1471,8 @@ cmd_send_issue() {
       printf '   plan.md). Then stop and wait for the user'"'"'s approval of the plan before editing anything else.\n'
     fi
     printf '3. Work on a new branch, never main: push that branch and open a PR with `Fixes #<this issue number>`. Do not push to main or force-push anything.\n'
+    # t-eeb5 (ToDo-Demo PR #2): the session joined two unrelated histories to merge main in, and the PR carried another history's commits.
+    printf '   Never merge with --allow-unrelated-histories. If your branch and the base branch share no history, stop and say so in the PR.\n'
     printf '4. Build it and run the tests; tick each acceptance item only when it is true.\n'
     if [[ "$lite" == true ]]; then   # t-4d39: a Lite ticket closes Lite in the cloud too; the binding evaluator still runs
       printf '5. Run `sprint complete`. This is a Lite ticket (demo: true): it runs the Lite close, security-review and a fresh evaluator\n'
@@ -1922,6 +1940,21 @@ cmd_github_doctor() {
   if [[ "$rstate" == empty ]] && $points; then
     GD_GROUP=repo-setup _gd push bad "First push" "The repository is empty: send your current branch so the cloud session has code to work on (it clones what origin holds).${winhint}" cmd "git push -u origin HEAD"
   fi
+  # t-eeb5: a folder copied and given a fresh git history, pointed at a repository that already has one: Send refuses it, so say it here
+  # first. Read-only: compares with origin's branch as last fetched, and says it cannot tell when it was never fetched.
+  if [[ "$rstate" == exists ]] && $points; then
+    local hb hrc=0
+    if hb="$(_base_branch "$root")" && git -C "$root" rev-parse -q --verify "refs/remotes/origin/$hb^{commit}" >/dev/null 2>&1; then
+      _history_related "$root" "$hb" || hrc=$?
+      case "$hrc" in
+        0) GD_GROUP=repo-setup _gd history ok "This folder's history is GitHub's" "Its commits and origin/$hb's are one history." ;;
+        1) GD_GROUP=repo-setup _gd history bad "This folder's history is not GitHub's" "This folder and $repo share no commit: it was not cloned from GitHub (a copied folder with a fresh git history). A cloud session's PR would join the two histories and collide with your files here, so Send refuses. Clone the repository into a new folder and work there; copy any file you changed here into the clone.${winhint}" cmd "git clone https://github.com/$repo.git" ;;
+        *) GD_GROUP=repo-setup _gd history warn "Could not compare this folder's history with GitHub's" "git could not tell whether this folder shares its history with origin/$hb (a shallow clone?). If it was not cloned from $repo, clone it first." ;;
+      esac
+    else
+      GD_GROUP=repo-setup _gd history warn "History not compared yet" "origin's branch has not been fetched here, so this check cannot tell whether this folder's history is GitHub's. Send fetches it and checks.${winhint}" cmd "git fetch origin"
+    fi
+  fi
   local tree; tree="$(git -C "$root" ls-tree HEAD -- scripts/test.sh 2>/dev/null)" || tree=""
   if [[ "$tree" == 100755* ]]; then
     GD_OPT=1 _gd tests ok "Check & merge test command: scripts/test.sh" "Before merging, Check & merge runs it on main + the PR in a scratch clone, after you confirm."
@@ -2175,6 +2208,12 @@ _resolve_learnings_file() {
 _merge_core() {
   _mc_fetch || { echo "$label: could not fetch $base and $subj${fetch_from:+ from $fetch_from}: $err" >&2; _mc_refuse "could not fetch $base and the $kind${fetch_from:+ from $fetch_from}"; }
   [[ "$(git -C "$tmp/w" rev-parse o/cand)" == "$head" ]] || { echo "$label: $subj moved while checking it; run $label again" >&2; _mc_refuse "$kind moved while it was checked"; }
+  # t-eeb5: before any graded-head rule: a head that joined an unrelated history passed "graded-head plus late docs" (ToDo-Demo PR #2).
+  local fl; if ! fl="$(_foreign_line "$tmp/w" "o/$base" o/cand "$subj" "$base")"; then
+    echo "$label: $fl" >&2
+    echo "$label: next: do not merge it; close it, then send the ticket again from a clone of the repository (tkt github-doctor names it)" >&2
+    _mc_refuse "$kind joins a history unrelated to $base"
+  fi
   # t-fdb1: a head past graded-head passes only when what came after is merge-safe late docs (the cloud's learnings sweep, complete.md
   # step 8); read from the fetched objects, so a non-ancestor or a git failure refuses. A worktree branch closed here also takes the
   # close's own docs (t-2a95, MERGE_SAFE_CLOSE_ALT); a PR never does.
@@ -2277,7 +2316,8 @@ cmd_merge_pr() {
     [[ -z "$mpr" ]] || IFS=$'\t' read -r mst mbase < <(gh pr view "$mpr" --repo "$repo" --json state,baseRefName --jq '[.state, .baseRefName] | @tsv' 2>/dev/null || true) || true
     if [[ "$mst" == MERGED && -n "$mbase" ]]; then
       echo "merge-pr: PR #$mpr is already merged; updating local $mbase only"
-      FF_OWN_RECORDS=1 _ff_local_base "$root" "$mbase" "$id"; handoff_recent "$root"   # t-ab7e: the ticket's own close records are kept
+      _mp_local_update "$root" "$mbase" "$id"; handoff_recent "$root"   # t-ab7e: the ticket's own close records are kept
+      _gh_trail "$tdir" "local update" "PR: #$mpr" "base: $mbase" ${MP_LOCAL[@]+"${MP_LOCAL[@]}"}   # t-eeb5: every run says what happened here
       if $recnow; then _record_merge merge-pr "$file" "$repo" "$mpr" "" "" || exit 1; fi   # t-f9b1: after the local update, as the normal path does
       record_ticket_commit "$root" "$id" "$mbase" "chore: record $id merge of #$mpr"   # t-8990
       return 0
@@ -2373,12 +2413,13 @@ cmd_merge_pr() {
   _ticket_lock "$tdir"
   local rec=false; [[ -n "$(get_field "$file" merged)" ]] || rec=true
   $rec && canon_event github.merged tkt "$root" "ticket=$id" "pr=$pr"   # t-4c09
-  FF_OWN_RECORDS=1 _ff_local_base "$root" "$base" "$id"   # t-ab7e: the ticket's own close records are kept
+  _mp_local_update "$root" "$base" "$id"   # t-ab7e: the ticket's own close records are kept
   handoff_recent "$root"   # t-2db7: after the fast-forward, which set a block-only HANDOFF.md difference aside
   # t-41ff: written after the local update, so ticket.md is not yet dirty from this merge when the fast-forward runs.
   if $rec; then
     set_or_add_field "$file" merged "${sha:-PR #$pr}"
-    _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base"
+    _gh_trail "$tdir" merged "PR: #$pr" "merge commit: ${sha:-unknown}" "base: $base" ${MP_LOCAL[@]+"${MP_LOCAL[@]}"}
+  else _gh_trail "$tdir" "local update" "PR: #$pr" "base: $base" ${MP_LOCAL[@]+"${MP_LOCAL[@]}"}   # t-eeb5: the merge was recorded by the board's poll
   fi
   _ticket_unlock "$tdir"
   # t-9807: GitHub's Fixes keyword may not run for a merge made this way: read the issue, close it if still open. Always reported.
@@ -2976,6 +3017,45 @@ _merge_origin_before_push() {
   _merge_origin_into_base "$root" "$b" "$id" "$lold" "$otip" "$retry" || return 1
 }
 
+# _history_related <repo> <branch> — t-eeb5: does this checkout's history belong to origin's? 0: related, or nothing to compare (no
+# commit here, no origin/<branch> fetched); 1: HEAD and origin/<branch> share no commit (a folder copied and given a fresh `git init`,
+# then pointed at a repository that already had history: ToDo-Demo 2026-11-20); 2: cannot tell (a shallow clone, whose boundary hides
+# the shared commits; a git failure).
+_history_related() {
+  local r="$1" b="$2" rc=0
+  git -C "$r" rev-parse -q --verify 'HEAD^{commit}' >/dev/null 2>&1 || return 0
+  git -C "$r" rev-parse -q --verify "refs/remotes/origin/$b^{commit}" >/dev/null 2>&1 || return 0
+  [[ "$(git -C "$r" rev-parse --is-shallow-repository 2>/dev/null)" == false ]] || return 2
+  git -C "$r" merge-base HEAD "refs/remotes/origin/$b" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0) return 0 ;; 1) return 1 ;; *) return 2 ;; esac
+}
+
+# _foreign_roots <repo> <base ref> <head ref> — t-eeb5: the root commits of <head ref> that <base ref> does not reach, one per line:
+# a PR or branch that joined a history unrelated to its base (a cloud session's --allow-unrelated-histories merge: ToDo-Demo PR #2
+# carried 10 commits from another history). Returns 2 when git cannot tell (a shallow repository, whose boundary commits look like
+# roots: 3; a failed read: 2, and the caller refuses).
+_foreign_roots() {
+  local r sh
+  sh="$(git -C "$1" rev-parse --is-shallow-repository 2>/dev/null)" || return 2
+  [[ "$sh" == false ]] || return 3
+  r="$(git -C "$1" rev-list --max-parents=0 "$3" --not "$2" 2>/dev/null)" || return 2
+  [[ -z "$r" ]] || printf '%s\n' "$r"
+}
+
+# _foreign_line <repo> <base ref> <head ref> <subject> <base name> — t-eeb5: 0 and no output when <head ref> shares its history with
+# <base ref>; else prints why (one line, `<subject> joins a history unrelated to <base name>` or `cannot tell`) and returns 1. A shallow
+# repository cannot be checked (a refusal there would block every merge in it): a note on stderr, and 0.
+_foreign_line() {
+  local roots n rc=0
+  roots="$(_foreign_roots "$1" "$2" "$3")" || rc=$?
+  if [[ $rc == 3 ]]; then echo "note: this is a shallow clone, so whether $4 shares its history with $5 was not checked" >&2; return 0; fi
+  if [[ $rc != 0 ]]; then echo "$4: git could not read whether it shares its history with $5; refused"; return 1; fi
+  [[ -n "$roots" ]] || return 0
+  n="$(git -C "$1" rev-list --count "$3" --not "$2" 2>/dev/null)" || n="?"
+  echo "$4 joins a history unrelated to $5: it adds root commit ${roots:0:8} and $n commit(s) $5 lacks (a merge made with --allow-unrelated-histories)"
+  return 1
+}
+
 # _origin_rewritten <root> <branch> — t-dde9: true when refs/remotes/origin/<branch> lost commits at its last change (a force-push
 # rewrote origin): its value before its last change (`@{1}`, the reflog; the Finish dialog's fetch included) is not in the current one.
 # Merging local into a rewritten origin would bring back what was removed (a leaked secret, say). No reflog: false.
@@ -2984,6 +3064,20 @@ _origin_rewritten() {
   cur="$(git -C "$1" rev-parse -q --verify "refs/remotes/origin/$2" 2>/dev/null)" || return 1
   prev="$(git -C "$1" rev-parse -q --verify "refs/remotes/origin/$2@{1}" 2>/dev/null)" || return 1   # its value before the last change
   [[ -n "$prev" ]] && ! git -C "$1" merge-base --is-ancestor "$prev" "$cur" 2>/dev/null
+}
+
+# _mp_local_update <root> <base> <id> — t-eeb5: merge-pr's local update (_ff_local_base, keeping the ticket's own closed records), shown
+# as it runs and kept in MP_LOCAL (one array item per line, progress lines left out, control characters dropped) for the github.md
+# trail: a refused update was only in the terminal, so the board showed "merged" and the person saw no changes (VM 2026-11-20).
+_mp_local_update() {
+  local tf l; MP_LOCAL=()
+  tf="$(mktemp "${TMPDIR:-/tmp}/tkt-local.XXXXXX")" || { FF_OWN_RECORDS=1 _ff_local_base "$1" "$2" "$3"; MP_LOCAL=("local $2: (not recorded: no temp file)"); return 0; }
+  FF_OWN_RECORDS=1 _ff_local_base "$1" "$2" "$3" | tee "$tf"
+  while IFS= read -r l; do
+    [[ "$l" == "Updating local "* || -z "$l" ]] && continue
+    MP_LOCAL+=("${l//[^[:print:]]/?}")
+  done < "$tf"
+  rm -f "$tf"
 }
 
 # _ff_local_base <root> <branch> [<id>] — t-24b1: after a merge, move the local <branch> to origin's, fast-forward only. Never a
@@ -3027,13 +3121,57 @@ _advance_local() {
   fi
 }
 
+# _ff_list <text var> — t-eeb5: a newline-framed set (`\n<a>\n<b>\n`) of NUL-separated paths read from stdin, for _ff_has. Paths
+# holding a line break never match (they are refused by name in _ff_here).
+_ff_list() { local e out=$'\n'; while IFS= read -r -d '' e; do out+="$e"$'\n'; done; printf -v "$1" '%s' "$out"; }
+_ff_has() { [[ "$1" == *$'\n'"$2"$'\n'* ]]; }
+# _ff_tree <rev> <root> <paths...> — t-eeb5: sets _FF_TREE to `\n<path>\t<mode> <blob>` lines for <paths> in <rev>: one git call per
+# ~16 KB of path names (Windows' command line is 32 KB), never one per file. _ff_tval <path> sets _FF_TV to `<mode> <blob>`, or fails.
+_ff_tree() {
+  local rev="$1" root="$2" e chunk=() len=0 out=$'\n'; shift 2
+  _ff_tree_run() {
+    [[ ${#chunk[@]} -gt 0 ]] || return 0
+    while IFS= read -r -d '' e; do out+="${e#*$'\t'}"$'\t'"${e%% *} ${e%%$'\t'*}"$'\n'; done < <(git -C "$root" ls-tree -z "$rev" -- "${chunk[@]}" 2>/dev/null)
+    chunk=(); len=0
+  }
+  for e in "$@"; do chunk+=("$e"); len=$((len + ${#e} + 1)); (( len < 16000 )) || _ff_tree_run; done
+  _ff_tree_run
+  _FF_TREE="$out"
+}
+_ff_tval() {
+  [[ "$1" == *$'\n'"$2"$'\t'* ]] || return 1
+  _FF_TV="${1#*$'\n'"$2"$'\t'}"; _FF_TV="${_FF_TV%%$'\n'*}"
+  _FF_TV="${_FF_TV%% *} ${_FF_TV##* }"   # <mode> <blob> (ls-tree's type word dropped)
+}
+
+# _ff_aside_kind <root> <id> <path> — t-eeb5: 0 when <path>, untracked here and brought by the merge, is a file canon wrote that may
+# be moved aside without asking: canon's own setup (canon_own_change, the one owner), canon's seeded .tickets/.gitignore, or a file
+# of another ticket that is closed or cancelled here. A live ticket's file (open, in_progress) and a project file are never moved.
+_ff_aside_kind() {
+  local root="$1" id="$2" p="$3" t st l
+  canon_own_change "$root" '??' "$p" && return 0
+  if [[ "$p" == .tickets/.gitignore ]]; then
+    local own; own=$'\n'"$(canon_tickets_ignore_lines)"$'\n'   # captured once, matched in bash (no early-exit grep under pipefail)
+    while IFS= read -r l; do l="${l%$'\r'}"; [[ -z "$l" || "$own" == *$'\n'"$l"$'\n'* ]] || return 1; done < "$root/$p"
+    return 0
+  fi
+  [[ "$p" =~ ^\.tickets/(t-[a-z0-9]+)/ ]] || return 1
+  t="${BASH_REMATCH[1]}"; [[ "$t" != "$id" ]] || return 1   # the ticket's own files keep t-ab7e's rule
+  st="$(get_field "$root/.tickets/$t/ticket.md" status 2>/dev/null)" || return 1
+  [[ "$st" == closed || "$st" == cancelled ]]
+}
+
 # _ff_here <root> <branch> <id> <old> <new> [<retry>] — t-41ff: the fast-forward of the branch checked out here. What blocks it is a file
 # the merge changes that is here but not as HEAD has it (edited, or untracked). One canon wrote that the merge carries anyway
 # is set aside and put back after: byte-identical to the merged copy, any ticket's ticket.md (t-dde9) differing only in canon's
 # per-machine fields (kept as it is here), the audit log (its lines the merged copy lacks are appended), or, for merge-pr
-# (FF_OWN_RECORDS, t-ab7e), any file under .tickets/<id>/ when that ticket is closed here (kept as it is here). Any other one, or a
+# (FF_OWN_RECORDS, t-ab7e), any file under .tickets/<id>/ when that ticket is closed here (kept as it is here). t-eeb5: canon's own
+# untracked files (_ff_aside_kind) are moved into .git/canon-set-aside/<stamp>/ and stay there (named in the output); a .gitignore
+# whose only local change is canon's setup edit takes the merged copy plus its lines that copy lacks. Any other one, or a
 # staged one, stops it with nothing changed. A refused fast-forward restores every file set aside. Returns 1 when not moved.
 # The paths come from the PR, so they are untrusted: matched literally, never through a symlinked folder, printed sanitized.
+# t-eeb5: git is asked a fixed handful of times (the lists, both trees, one hash-object), never per file: the per-file loop sat for
+# minutes on the arm64 Windows VM, where each git start is emulated.
 _ff_here() {
   local root="$1" b="$2" id="$3" old="$4" new="$5" retry="${6:-git pull}" p m rp rb ut safe=() kinds=() differ=() tracked=0
   local GIT_LITERAL_PATHSPECS=1; export GIT_LITERAL_PATHSPECS
@@ -3042,35 +3180,56 @@ _ff_here() {
   local changed=() cf
   while IFS= read -r -d '' cf; do changed+=("$cf"); done < <(git -C "$root" diff --no-renames --name-only -z "$old" "$new")
   echo "Updating local $b: checking ${#changed[@]} file(s) the merge changes…"
-  for p in ${changed[@]+"${changed[@]}"}; do
+  [[ ${#changed[@]} -gt 0 ]] || { echo "Updating local $b: fast-forwarding to ${new:0:8}…"; git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: $retry"; return 1; }; return 0; }
+  local staged edited oldt newt
+  _ff_list staged < <(git -C "$root" diff --cached --no-renames --name-only -z "$old" 2>/dev/null)
+  _ff_list edited < <(git -C "$root" diff --no-renames --name-only -z "$old" 2>/dev/null)
+  _ff_tree "$old" "$root" "${changed[@]}"; oldt="$_FF_TREE"
+  _ff_tree "$new" "$root" "${changed[@]}"; newt="$_FF_TREE"
+  # Pass 1 (no git): which files need a closer look. Pass 2 hashes them all at once.
+  local look=() lookut=() nb
+  for p in "${changed[@]}"; do
+    case "$p" in *$'\n'*|*$'\t'*) differ+=("$p (its name holds a line break or tab)"); tracked=1; continue ;; esac
     if [[ "$p" == */* && "$(cd "$root/${p%/*}" 2>/dev/null && pwd -P)" != "$rp/${p%/*}" && -e "$root/${p%/*}" ]]; then differ+=("$p (inside a symlinked folder)"); tracked=1; continue; fi
-    if ! git -C "$root" diff --cached --quiet "$old" -- "$p"; then differ+=("$p (staged)"); tracked=1; continue; fi
-    ut=""
-    if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" diff --quiet "$old" -- "$p" && continue
+    if _ff_has "$staged" "$p"; then differ+=("$p (staged)"); tracked=1; continue; fi
+    if _ff_tval "$oldt" "$p"; then _ff_has "$edited" "$p" || continue; ut=""
     else [[ -e "$root/$p" || -L "$root/$p" ]] || continue; ut=1; fi
-    m="$(git -C "$root" ls-tree "$new" -- "$p" | cut -d' ' -f1)"
-    if [[ -f "$root/$p" && ! -L "$root/$p" && ( "$m" == 100644 || "$m" == 100755 ) ]]; then
-      # t-2560: identical as git sees it (eol and attribute filters applied, so a CRLF copy under core.autocrlf=true matches)
-      if [[ "$(git -C "$root" hash-object --path="$p" -- "$root/$p" 2>/dev/null)" == "$(git -C "$root" rev-parse -q --verify "$new:$p" 2>/dev/null)" ]]; then
-        safe+=("$p"); kinds+=(same); continue
+    look+=("$p"); lookut+=("$ut")
+  done
+  local hashes=() hi=() h i
+  for i in ${look[@]+"${!look[@]}"}; do p="${look[$i]}"; [[ -f "$root/$p" && ! -L "$root/$p" ]] && hi+=("$i"); done
+  if [[ ${#hi[@]} -gt 0 ]]; then
+    # t-2560: identical as git sees it (eol and attribute filters applied by path, so a CRLF copy under core.autocrlf=true matches)
+    while IFS= read -r h; do hashes+=("$h"); done < <(cd "$root" && for i in "${hi[@]}"; do printf '%s\n' "${look[$i]}"; done | git hash-object --stdin-paths 2>/dev/null)
+  fi
+  local hk=0 hv
+  for i in ${look[@]+"${!look[@]}"}; do
+    p="${look[$i]}"; ut="${lookut[$i]}"; m=""; nb=""; hv=""
+    if _ff_tval "$newt" "$p"; then m="${_FF_TV%% *}"; nb="${_FF_TV##* }"; fi
+    if [[ $hk -lt ${#hi[@]} && "${hi[$hk]}" == "$i" ]]; then hv="${hashes[$hk]:-}"; hk=$((hk + 1)); fi
+    if [[ -n "$hv" && ( "$m" == 100644 || "$m" == 100755 ) ]]; then
+      if [[ "$hv" == "$nb" ]]; then safe+=("$p"); kinds+=(same); continue; fi
+      # t-ab7e: merge-pr only (FF_OWN_RECORDS): the ticket closed here (a land or manual close) holds its own close record in
+      # .tickets/<id>/, newer than the PR's copies; the local files are kept and t-8990's record commit commits them. Asked before the
+      # ticket.md rule below (t-eeb5: no git read for it), which would keep the same local copy.
+      if [[ -n "${FF_OWN_RECORDS:-}" && -n "$id" && "$p" == ".tickets/$id/"* && "$(get_field "$root/.tickets/$id/ticket.md" status 2>/dev/null)" == closed ]]; then
+        safe+=("$p"); kinds+=(own); continue
       fi
       # t-dde9: any ticket's ticket.md, not only $id's: an imported cloud ticket's local copy collides when another ticket's merge brings it
       if [[ "$p" =~ ^\.tickets/t-[a-z0-9]+/ticket\.md$ ]] \
         && { local mm=""; grep -qE $'^manual: true\r?$' "$root/$p" && mm=manual
-             cmp -s <(git -C "$root" cat-file blob "$new:$p" | tr -d '\r' | _ff_strip_fields "$mm") <(tr -d '\r' < "$root/$p" | _ff_strip_fields "$mm"); }; then safe+=("$p"); kinds+=(ticket); continue; fi
+             cmp -s <(git -C "$root" cat-file blob "$nb" | tr -d '\r' | _ff_strip_fields "$mm") <(tr -d '\r' < "$root/$p" | _ff_strip_fields "$mm"); }; then safe+=("$p"); kinds+=(ticket); continue; fi
       if [[ "$p" == .claude/subagent-runs.jsonl ]]; then safe+=("$p"); kinds+=(log); continue; fi
       # t-2db7: the main checkout's HANDOFF.md whose only local change (against HEAD) is canon's generated Recent activity block:
       # the merged copy is taken (the PR may edit the narrative), and merge-pr writes the block again from the activity log. t-e7fb: canon's own
       # `## Scratch` entries count the same; those the merged copy lacks are put back under its heading after the fast-forward.
-      if [[ "$p" == HANDOFF.md ]] && rb="$(recent_board)" && git -C "$root" cat-file -e "$old:$p" 2>/dev/null \
+      if [[ "$p" == HANDOFF.md && -z "$ut" ]] && rb="$(recent_board)" \
         && cmp -s <(git -C "$root" cat-file blob "$old:$p" | "$rb" recent --strip | _ff_scratch_strip) <("$rb" recent --strip < "$root/$p" | _ff_scratch_strip); then   # review: CRLF on disk (core.autocrlf=true, Git for Windows' default), LF in git; t-e7fb: canon's Scratch entries are not a person's edit
         safe+=("$p"); kinds+=(handoff); continue
       fi
-      # t-ab7e: merge-pr only (FF_OWN_RECORDS): the ticket closed here (a land or manual close) holds its own close record in
-      # .tickets/<id>/, newer than the PR's copies; the local files are kept and t-8990's record commit commits them.
-      if [[ -n "${FF_OWN_RECORDS:-}" && -n "$id" && "$p" == ".tickets/$id/"* && "$(get_field "$root/.tickets/$id/ticket.md" status 2>/dev/null)" == closed ]]; then
-        safe+=("$p"); kinds+=(own); continue
-      fi
+      # t-eeb5: a tracked .gitignore whose only change here is canon's setup edit (VM 2026-11-20: it stopped `git pull`)
+      if [[ "$p" == .gitignore && -z "$ut" ]] && canon_own_change "$root" ' M' "$p"; then safe+=("$p"); kinds+=(ignore); continue; fi
+      if [[ -n "$ut" ]] && _ff_aside_kind "$root" "$id" "$p"; then safe+=("$p"); kinds+=(aside); continue; fi
     fi
     # t-b775: git checkout cannot drop a file git does not track here (HANDOFF.md on the VM): name a step that works for it
     if [[ -n "$ut" ]]; then differ+=("$p (untracked here: move it aside: mv $(printf '%q' "$p") $(printf '%q' "$p.local"))"); else differ+=("$p"); tracked=1; fi   # quoted: the path comes from the PR
@@ -3089,18 +3248,30 @@ _ff_here() {
     git -C "$root" merge -q --ff-only "$new" || { echo "Local $b: git refused the fast-forward; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     return 0
   fi
-  local bk i err=""; bk="$(mktemp -d "${TMPDIR:-/tmp}/tkt-ff.XXXXXX")" || { echo "Local $b: no room to set files aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+  local bk err="" ad="" na=0 back=()
+  bk="$(mktemp -d "${TMPDIR:-/tmp}/tkt-ff.XXXXXX")" || { echo "Local $b: no room to set files aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
   for i in "${!safe[@]}"; do
     p="${safe[$i]}"
-    cp -p "$root/$p" "$bk/$i" || { rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
-    [[ "${kinds[$i]}" != log ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
+    if [[ "${kinds[$i]}" == aside ]]; then
+      if [[ -z "$ad" ]]; then
+        ad="$(git -C "$root" rev-parse --git-path canon-set-aside 2>/dev/null)" || ad=""
+        [[ -z "$ad" || "$ad" == /* || "$ad" =~ ^[A-Za-z]: ]] || ad="$root/$ad"
+        [[ -n "$ad" ]] && ad="$ad/$(date -u +%Y%m%dT%H%M%SZ)" && mkdir -p "$ad" \
+          || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not make a folder to set canon's files aside in; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+      fi
+      mkdir -p "$ad/$(dirname "$p")" && mv "$root/$p" "$ad/$p" \
+        || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+      na=$((na + 1)); continue
+    fi
+    cp -p "$root/$p" "$bk/$i" || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+    [[ "${kinds[$i]}" != log && "${kinds[$i]}" != ignore ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
     [[ "${kinds[$i]}" != handoff ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p" | _ff_scratch_lines) <(_ff_scratch_lines < "$root/$p") > "$bk/$i.extra"
+    if _ff_tval "$oldt" "$p"; then back+=("$p"); else rm -f "$root/$p"; fi
   done
-  for p in "${safe[@]}"; do
-    if git -C "$root" cat-file -e "$old:$p" 2>/dev/null; then git -C "$root" checkout -q -- "$p"; else rm -f "$root/$p"; fi
-  done
+  [[ ${#back[@]} -eq 0 ]] || git -C "$root" checkout -q -- "${back[@]}"
   if ! err="$(git -C "$root" merge -q --ff-only "$new" 2>&1)"; then
-    for i in "${!safe[@]}"; do cp -p "$bk/$i" "$root/${safe[$i]}"; done
+    for i in "${!safe[@]}"; do [[ "${kinds[$i]}" == aside ]] || cp -p "$bk/$i" "$root/${safe[$i]}"; done
+    _ff_undo_aside
     rm -rf "$bk"
     echo "Local $b: git refused the fast-forward; left at ${old:0:8}, every file set aside put back. Update it by hand: $retry"
     [[ -z "$err" ]] || printf '%s\n' "$err" | sed 's/^/  git: /'
@@ -3111,12 +3282,24 @@ _ff_here() {
       ticket|own) cp -p "$bk/$i" "$root/${safe[$i]}" ;;
       handoff) [[ ! -s "$bk/$i.extra" ]] || _ff_put_scratch "$root/${safe[$i]}" "$bk/$i.extra" \
                  || { echo "warning: could not put canon's Scratch lines back into ${safe[$i]}; they are:" >&2; cat "$bk/$i.extra" >&2; } ;;
-      log)    # a merged copy without a final newline must not glue the first local line onto its last one
+      log|ignore)   # a merged copy without a final newline must not glue the first local line onto its last one
               [[ ! -s "$bk/$i.extra" || ! -s "$root/${safe[$i]}" || -z "$(tail -c 1 "$root/${safe[$i]}")" ]] || printf '\n' >> "$root/${safe[$i]}"
               cat "$bk/$i.extra" >> "$root/${safe[$i]}" ;;
     esac
   done
   rm -rf "$bk"
+  (( na == 0 )) || echo "Set aside $na of canon's files the merge brings (your copies): $ad"
+}
+# _ff_undo_aside — t-eeb5: _ff_here's set-aside files go back where they were (a refused or failed update changes nothing). Reads
+# _ff_here's locals (bash's dynamic scope): ad, safe, kinds, root.
+_ff_undo_aside() {
+  local i
+  [[ -n "${ad:-}" ]] || return 0
+  for i in "${!safe[@]}"; do
+    [[ "${kinds[$i]}" == aside && -e "$ad/${safe[$i]}" ]] || continue
+    mkdir -p "$root/$(dirname "${safe[$i]}")" && mv "$ad/${safe[$i]}" "$root/${safe[$i]}"
+  done
+  rm -rf "$ad" 2>/dev/null || true
 }
 
 # _record_branch_merge <ticket.md> <commit> <base> — t-1148: a ticket closed here whose graded commit is already on origin's <base>
@@ -4110,6 +4293,20 @@ cmd_import_results() {
   fi
   if [[ -n "$pr" ]]; then
     local prh; prh="$(cd "$root" && gh pr view "$pr" --json headRefOid --jq .headRefOid 2>&1)" || { echo "import-results: gh could not read PR #$pr: $prh" >&2; rc=1; prline="PR: #$pr (gh could not read it)"; }
+    # t-eeb5: a PR that joined an unrelated history (ToDo-Demo PR #2: the head even matched graded-head) is refused here, before the
+    # card offers Check & merge. Read from GitHub's copy of the base; a failed fetch only notes it, as merge-pr checks again and refuses.
+    if [[ $rc == 0 ]]; then
+      local prb fl; prb="$(cd "$root" && gh pr view "$pr" --json baseRefName --jq .baseRefName 2>/dev/null)" || prb=""
+      _branch_ok "$prb" || prb="$(_base_branch "$root" 2>/dev/null)" || prb=""
+      if [[ -n "$prb" ]] && git -C "$root" fetch -q origin "+refs/heads/$prb:refs/remotes/origin/$prb" "refs/pull/$pr/head" < /dev/null 2>/dev/null \
+        && git -C "$root" cat-file -e "$prh^{commit}" 2>/dev/null; then   # gh's head must be what the fetch brought
+        if ! fl="$(_foreign_line "$root" "refs/remotes/origin/$prb" "$prh" "PR #$pr" "$prb")"; then
+          echo "  $fl" >&2
+          echo "  next: close PR #$pr on GitHub without merging it, then send $id again from a clone of the repository (tkt github-doctor names it)" >&2
+          rc=1; prline="PR: #$pr head $prh: $fl"
+        fi
+      else echo "  note: could not fetch PR #$pr and origin/${prb:-<base>} to check its history here; Check & merge checks it before merging" >&2; fi
+    fi
     if [[ $rc == 0 && -n "$graded" && "$prh" == "$graded"* ]]; then echo "  PR #$pr head $prh: matches graded-head"; prline="PR: #$pr head $prh: matches graded-head"
     elif [[ $rc == 0 ]]; then
       # t-fdb1: the cloud's learnings sweep lands after grading; a delta of merge-safe late docs only still counts as the graded code.

@@ -699,4 +699,27 @@ assert_grep '^send-issue: needs: plan$' "$stub/z.err"; assert_grep '^send-issue:
 assert_grep "Then stop and wait for the user's approval of the plan" "$stub/z.out"
 echo "send-issue: dry run approves nothing; needs: plan / acceptance for an empty ticket (t-6555)"
 
+# t-eeb5 (ToDo-Demo 2026-11-20): a folder whose history is not GitHub's (copied, then a fresh git init) is refused before anything is sent:
+# send, --dry-run (the Send panel's preview) and --allow-unpushed alike, naming the clone step. A related or absent origin branch is not.
+# Protects `tkt send-issue` and the Send panel. The issue also tells the cloud session never to join unrelated histories.
+assert_grep '^   Never merge with --allow-unrelated-histories. If your branch and the base branch share no history, stop and say so in the PR.$' "$STUB_BODY"
+idu="$("$TKT" create "Unrelated history" -t task -p 3 -d x)"; cp ".tickets/$idq/acceptance.md" ".tickets/$idu/acceptance.md"
+printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Do it.\n' > ".tickets/$idu/plan.md"
+saved=(); for b in main master; do saved+=("$(git rev-parse -q --verify "refs/remotes/origin/$b" || echo -)"); done
+other="$(git -c user.name=t -c user.email=t@t commit-tree "$(git mktree < /dev/null)" -m "another history")"
+for b in main master; do git update-ref "refs/remotes/origin/$b" "$other"; done
+for a in "" "--dry-run" "--allow-unpushed"; do
+  : > "$STUB_LOG"; rc=0; out="$("$TKT" send-issue "$idu" $a 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "t-eeb5: send-issue $a sent from an unrelated history ($rc): $out"
+  assert_contains "$out" "send-issue: unrelated history: "; assert_contains "$out" "share no commit"
+  assert_contains "$out" "git clone https://github.com/acme/app.git"
+  [[ "$(writes)" == 0 ]] || fail "t-eeb5: a refused send called gh to write: $(cat "$STUB_LOG")"; ! grep -q '^github:' ".tickets/$idu/ticket.md" || fail "t-eeb5: refused send linked the ticket"
+done
+for b in main master; do git update-ref "refs/remotes/origin/$b" HEAD; done   # related: origin's branch is this history
+out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: a related history was refused: $out"
+for b in main master; do git update-ref -d "refs/remotes/origin/$b"; done   # nothing fetched (an empty origin): not refused by this check
+out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || true; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: an empty origin was refused: $out"
+i=0; for b in main master; do [[ "${saved[$i]}" == - ]] || git update-ref "refs/remotes/origin/$b" "${saved[$i]}"; i=$((i + 1)); done
+echo "send-issue: an unrelated history is refused (send, --dry-run, --allow-unpushed) with the clone step; related or empty origin pass (t-eeb5)"
+
 echo "tkt-send-issue: ok"

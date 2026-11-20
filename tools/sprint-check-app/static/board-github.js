@@ -910,7 +910,8 @@ export async function showGithubPanel(t, tab, { reload = false } = {}) {
   const localChanges = warns.some(w => /have uncommitted or untracked changes/.test(w));
   const cpOffer = /are on no branch of origin/.test(pv.output || '') || localChanges;
   // t-6f51: a changed tracked file is something the cloud would miss, so Create issue waits for Commit and push (or an explicit
-  // opt-out); untracked files only get a note. The kinds come from the same list the Commit and push form shows; unreadable = tracked.
+  // opt-out). t-eeb5: an untracked project file too (ToDo-Demo: index.html was never committed, the cloud's PR then added its own
+  // copy and Check & merge could not update the folder). The kinds come from the same list the Commit and push form shows; unreadable = tracked.
   let kinds = { tracked: 0, untracked: 0 };
   if (localChanges) {
     let cp;
@@ -925,7 +926,7 @@ export async function showGithubPanel(t, tab, { reload = false } = {}) {
     const counted = files && files.filter(m => !/^\.tickets\//.test(m[2]));
     kinds = files ? { tracked: counted.filter(m => m[1] !== '??').length, untracked: counted.filter(m => m[1] === '??').length } : { tracked: 1, untracked: 0 };
   }
-  const needPush = pv.ok && kinds.tracked > 0;
+  const needPush = pv.ok && (kinds.tracked > 0 || kinds.untracked > 0);
   panel.innerHTML = `<div class="ck-gh-box"${pv.ok ? ` data-gh-send="${esc(t.id)}"` : ''}>
       <h3>Send ${esc(t.id)} to GitHub</h3>
       <p>${pv.ok ? 'The issue, exactly as it will be created. Nothing is sent until you press Create issue.' : 'The preview failed, so nothing can be sent yet:'}</p>
@@ -933,7 +934,7 @@ export async function showGithubPanel(t, tab, { reload = false } = {}) {
       ${warns.length ? `<div class="ck-gh-note" id="ck-gh-note" role="note">${warns.map(w => `<p>${esc(w)}</p>`).join('')}</div>` : ''}
       ${manual ? `<div class="ck-gh-note" id="ck-gh-manual" role="note"><p>${esc(t.id)} is a Manual ticket: you test it by hand. The cloud does the rest; its [manual] criteria stay here, and the ticket stays open after the merge until you test the merged result and close it.</p></div>` : ''}
       ${localChanges ? `<h4 class="ck-gh-step" id="ck-gh-step1">Step 1: Commit and push — the cloud only sees what is on GitHub</h4>` : ''}
-      ${localChanges && !kinds.tracked && kinds.untracked ? `<p id="ck-gh-untracked">${kinds.untracked} new file${kinds.untracked === 1 ? ' is' : 's are'} not tracked, so the cloud will not see ${kinds.untracked === 1 ? 'it' : 'them'}. You can still create the issue.</p>` : ''}
+      ${localChanges && !kinds.tracked && kinds.untracked ? `<p id="ck-gh-untracked">${kinds.untracked} new file${kinds.untracked === 1 ? ' is' : 's are'} not tracked, so the cloud will not see ${kinds.untracked === 1 ? 'it' : 'them'}, and its PR would collide with ${kinds.untracked === 1 ? 'it' : 'them'} here. Commit and push first.</p>` : ''}
       ${cpOffer ? `<div class="ck-gh-cp" id="ck-gh-cp"><div class="ck-gh-actions"><button type="button" id="ck-gh-cp-open">Commit and push…</button></div></div>` : ''}
       <pre class="ck-gh-pre" id="ck-gh-preview">${esc(preview)}</pre>
       ${needPush ? `<label class="ck-gh-public"><input type="checkbox" id="ck-gh-skip"> Send without these changes (the cloud will not see them)</label>` : ''}

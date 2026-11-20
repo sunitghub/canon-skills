@@ -58,6 +58,12 @@ refuses "uncommitted changes in the worktree (--check)" "uncommitted changes the
 git -C "$WT" checkout -q -- change.txt
 refuses "--pr on a worktree ticket" "--pr is for a ticket sent to GitHub" --pr 3
 refuses "--yes with --check" "do not go together" --yes --check
+# t-eeb5: a branch that joined an unrelated history (git merge --allow-unrelated-histories) is refused before any merge, --check too.
+OH="$(git commit-tree "$(git mktree < /dev/null)" -m "another history")"; UH="$(git commit-tree "$BHEAD^{tree}" -p "$BHEAD" -p "$OH" -m "join")"
+git update-ref refs/heads/feat/x "$UH" "$BHEAD"; eval_ok "$UH"   # same tree as BHEAD, so the worktree stays clean
+refuses "a branch joining an unrelated history" "feat/x joins a history unrelated to main: it adds root commit ${OH:0:8}" --yes
+refuses "a branch joining an unrelated history (--check)" "joins a history unrelated to main" --check
+git update-ref refs/heads/feat/x "$BHEAD" "$UH"; eval_ok
 
 # A conflict: main changed the same file. The files are named, and so is the way out.
 echo other > change.txt; git add change.txt; git commit -qm "main's change"; MAIN_C="$(git rev-parse HEAD)"

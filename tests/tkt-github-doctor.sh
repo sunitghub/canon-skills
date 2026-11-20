@@ -151,12 +151,14 @@ nochain "$out"
 git remote set-url origin git@github.com:acme/app.git
 mkdir -p scripts; printf '#!/bin/sh\n' > scripts/test.sh; chmod +x scripts/test.sh
 git add scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -m tests
+BR="$(git symbolic-ref --short HEAD)"; git update-ref "refs/remotes/origin/$BR" HEAD   # fetched, and this folder's history (t-eeb5)
 before="$(git status --porcelain; git for-each-ref)"; : > "$STUB_LOG"
 out="$(PATH="$W/bin:$PATH" doctor)"
 assert_eq "ok|Signed in to GitHub|nofix" "$(check "$out" gh)"; assert_eq "Signed in as octo." "$(field "$out" "d['checks'][0]['detail']")"
 assert_eq "ok|Repository found, and private|nofix" "$(check "$out" repo)"; assert_eq "Issues go to acme/app (origin, private)." "$(field "$out" "[c for c in d['checks'] if c['id']=='repo'][0]['detail']")"
 assert_eq "ok|origin points at it|nofix" "$(check "$out" origin)"
 assert_eq "" "$(check "$out" push)"
+assert_eq "ok|This folder's history is GitHub's|nofix" "$(check "$out" history)"
 assert_eq "ok|Check & merge test command: scripts/test.sh|nofix" "$(check "$out" tests)"
 # Read-only: only these gh reads ran, and the repo is as it was.
 assert_eq "auth status|api user --jq .login|repo view acme/app --json isEmpty --jq .isEmpty|api repos/acme/app --jq .visibility" "$(paste -sd'|' "$STUB_LOG")"
@@ -175,6 +177,19 @@ chmod -x scripts/test.sh; git -c user.name=t -c user.email=t@t commit -q -am 'no
 out="$(PATH="$W/bin:$PATH" STUB_VIS=public doctor)"
 assert_eq "warn|Repository found, and public|nofix" "$(check "$out" repo)"; assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='repo'][0]['detail']")" "Send needs --public"
 assert_eq "warn|No test command (optional)|nofix" "$(check "$out" tests)"
+
+# t-eeb5 (ToDo-Demo 2026-11-20): a folder copied and given a fresh git history, pointed at a repo that has one: 2.x says so with the clone
+# step (Send refuses it); never fetched: a warning that it cannot tell yet; read-only throughout. Protects the GitHub setup checklist.
+other="$(git -c user.name=t -c user.email=t@t commit-tree "$(git mktree < /dev/null)" -m "another history")"
+git update-ref "refs/remotes/origin/$BR" "$other"; out="$(PATH="$W/bin:$PATH" doctor)"
+assert_eq "bad|This folder's history is not GitHub's|git clone https://github.com/acme/app.git|" "$(check "$out" history)"
+assert_contains "$(field "$out" "[c for c in d['checks'] if c['id']=='history'][0]['detail']")" "share no commit"; nochain "$out"
+assert_eq "repo-setup" "$(field "$out" "[c for c in d['checks'] if c['id']=='history'][0]['group']")"
+git update-ref -d "refs/remotes/origin/$BR"; out="$(PATH="$W/bin:$PATH" doctor)"
+assert_eq "warn|History not compared yet|git fetch origin|" "$(check "$out" history)"
+on="$(cd "$no" && PATH="$W/bin:$PATH" STUB_REPO=exists STUB_EMPTY=true "$TKT" github-doctor --json)"; assert_eq "" "$(check "$on" history)"   # an empty repo: nothing to compare
+git update-ref "refs/remotes/origin/$BR" HEAD
+echo "github-doctor: a folder whose history is not GitHub's is bad with the clone step; unfetched warns; related is ok (t-eeb5)"
 
 # t-9955: the cloud recipe is this project's `tkt cloud-env --json`, from tools/cloud-env.sh: no go.mod here, so the base only.
 assert_eq "$("$TKT" cloud-env --json)" "$(field "$out" "json.dumps(d['cloud'], separators=(',', ':'))")"

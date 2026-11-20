@@ -777,7 +777,9 @@ git checkout -q -- HANDOFF.md                                               # th
 out="$(STUB_HEAD="$H5" "$TKT" merge-pr "$id" --pr 7 --yes --test true 2>&1)"; assert_contains "$out" "PR #7 is already merged; updating local main only"
 assert_contains "$out" "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)"; assert_eq "$H5" "$(git rev-parse main)"
 [[ "$out" != *"Merged PR #7 into"* ]] || fail "the retry merged again: $out"
-assert_eq "$MERGED0" "$(grep -c '' "$f")"; assert_eq "$TRAIL0" "$(grep -c '— merged' "$GH0" || true)"; assert_eq "$GHSUM" "$(cksum < "$GH0")"   # nothing logged twice; github.md untouched
+assert_eq "$MERGED0" "$(grep -c '' "$f")"; assert_eq "$TRAIL0" "$(grep -c '— merged' "$GH0" || true)"   # nothing logged twice
+# t-eeb5: the retry records only what it did here, as a "local update" entry: the outcome line, so the board shows it
+assert_eq 1 "$(grep -c '— local update$' "$GH0" || true)"; grep -qxF "Local main: ${BASE3:0:8} -> ${H5:0:8} (fast-forward)" "$GH0" || fail "t-eeb5: the retry's outcome is not in github.md: $(cat "$GH0")"
 # t-f9b1: GitHub merged it but this ticket has no merged: (Check & merge stopped or stalled before the record, the VM 2026-11-19): the retry the
 # dialog names, `tkt merge-pr <id>` with no open PR, updates local main (with its progress lines) and records the merge. Protects that retry.
 git reset -q --hard "$BASE3"; git checkout -q -- .; sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; printf '7\n' > "$W/prlist"
@@ -979,3 +981,103 @@ assert_eq "" "$(git status --porcelain -- ".tickets/$id")"
 echo 'note: retry' >> "$f"; out="$("$TKT" merge-pr "$id" 2>&1)" || true
 assert_contains "$out" "is already merged; updating local"; assert_contains "$out" "record: committed"
 echo "merge-pr: a tracked ticket folder is recorded and pushed after the merge, also on the already-merged retry (t-8990)"
+
+# ---- t-eeb5: the Windows VM 2026-11-20 (ToDo-Demo, PR #2), end to end. Protects Check & merge (`tkt merge-pr`, the card's button) ----
+# A project whose canon files are untracked here while the PR adds its own copies: canon's own are set aside under .git, a .gitignore
+# edited here only by canon takes the merged copy plus canon's lines, a project file still refuses with nothing moved, every run's
+# outcome lands in github.md, git is asked a fixed number of times, and a PR that joined an unrelated history is refused.
+(
+W2="$W/eeb5"; mkdir -p "$W2/bin" "$W2/tmp"; export TMPDIR="$W2/tmp"
+sed "s#$W/origin.git#$W2/origin.git#g; s#$W/ff-spy#$W2/ff-spy#g" "$W/bin/git" > "$W2/bin/git.real"
+# the wrapper also logs each call, for criterion 11's count (STUB_GIT_LOG)
+printf '#!/usr/bin/env bash\n[[ -z "${STUB_GIT_LOG:-}" ]] || printf "%%s\\n" "$*" >> "$STUB_GIT_LOG"\nexec "%s" "$@"\n' "$W2/bin/git.real" > "$W2/bin/git"; chmod +x "$W2/bin/git" "$W2/bin/git.real"
+export PATH="$W2/bin:$PATH" STUB_W="$W2" STUB_LOG="$W2/gh.log"; : > "$STUB_LOG"; echo 7 > "$W2/prlist"
+git init -q --bare "$W2/origin.git"
+V="$W2/vm"; mkdir "$V"; cd "$V"; git init -q; git symbolic-ref HEAD refs/heads/main
+printf 'node_modules/\n' > .gitignore; for i in 1 2 3 4 5; do echo "v1" > "lib$i.js"; done   # index.html: never committed, as on the VM
+git add -A; git commit -qm "start tracking changes with canon"; V0="$(git rev-parse HEAD)"
+git remote add origin "$W2/origin.git"; git push -q origin HEAD:main; git remote set-url origin https://github.com/acme/app.git; git fetch -q origin
+id2="$("$TKT" create "VM ticket" -t feature)"; f2=".tickets/$id2/ticket.md"   # also seeds canon's .tickets/.gitignore, untracked here
+cp "$f2" "$W2/f2.orig"; cp .tickets/.gitignore "$W2/tig.orig"   # a reset to V0 removes them once a merge has tracked them
+# The PR, built in another clone: the app change, plus every canon file the 11-19 history brought (different from the copies here)
+B2="$W2/build"; git clone -q "$W2/origin.git" "$B2" 2>/dev/null
+mk_pr() {   # mk_pr <n new files> [lean]: writes the PR head commit in $B2 on top of V0; prints its sha. lean: no .tickets/, .gitignore or DECISIONS.md
+  git -C "$B2" checkout -q -B pr "$V0"; local n="$1" lean="${2:-}" k
+  for i in 1 2 3 4 5; do echo "v2" > "$B2/lib$i.js"; done; echo "app v2" > "$B2/index.html"
+  for ((k = 1; k <= n; k++)); do echo "n$k" > "$B2/new$k.txt"; done
+  printf '# Project\n' > "$B2/AGENTS.md"; printf '# Notes\n' > "$B2/CLAUDE.md"; echo theirs > "$B2/HANDOFF.md"; echo theirs > "$B2/PROMOTED.md"
+  mkdir -p "$B2/.claude"; echo '{"a":1}' > "$B2/.claude/settings.json"
+  if [[ -n "$lean" ]]; then git -C "$B2" add -A -f; git -C "$B2" commit -qm "feat + canon's root files"; git -C "$B2" rev-parse HEAD; return; fi
+  echo theirs > "$B2/DECISIONS.md"; mkdir -p "$B2/.tickets/t-0ld1" "$B2/.tickets/$id2"
+  printf '# other\n' > "$B2/.tickets/.gitignore"; printf -- '---\nid: t-0ld1\nstatus: closed\n---\n# Old\n' > "$B2/.tickets/t-0ld1/ticket.md"; echo theirs > "$B2/.tickets/t-0ld1/summary.md"
+  printf -- '---\nid: %s\nstatus: closed\n---\n# VM ticket\n' "$id2" > "$B2/.tickets/$id2/ticket.md"; echo theirs > "$B2/.tickets/$id2/summary.md"
+  printf 'node_modules/\n.DS_Store\n' > "$B2/.gitignore"
+  git -C "$B2" add -A -f; git -C "$B2" commit -qm "feat + the 11-19 files"; git -C "$B2" rev-parse HEAD
+}
+vm_state() {   # the VM before Check & merge: main at V0, canon's copies untracked here and different, .gitignore edited by canon
+  git checkout -q -f main; git reset -q --hard "$V0"; git clean -qfdx -e .tickets/
+  rm -rf .tickets/t-0ld1 "$(git rev-parse --git-path canon-set-aside)"; git --git-dir="$W2/origin.git" update-ref refs/heads/main "$V0"
+  mkdir -p ".tickets/$id2"; cp "$W2/f2.orig" "$f2"; cp "$W2/tig.orig" .tickets/.gitignore
+  printf '<!-- AI-SKILLS:BEGIN -->\nsprint\n<!-- AI-SKILLS:END -->\n' > AGENTS.md; printf '@AGENTS.md\n' > CLAUDE.md
+  echo mine > HANDOFF.md; echo mine > PROMOTED.md; echo mine > DECISIONS.md; mkdir -p .claude .tickets/t-0ld1; echo '{"b":2}' > .claude/settings.json
+  printf -- '---\nid: t-0ld1\nstatus: closed\nlocal: here\n---\n# Old\n' > .tickets/t-0ld1/ticket.md; echo mine > .tickets/t-0ld1/summary.md
+  ( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh" && source "$ROOT/tools/skills/project.sh" && source "$ROOT/tools/skills/prompts.sh" \
+      && _ensure_mirror_gitignored "$V" ) > /dev/null   # canon's own setup edit, by its real writer
+  cp .gitignore "$W2/gi.local"
+  sed -i.bak 's/^status: .*/status: closed/; /^merged: /d' "$f2" && rm -f "$f2.bak"; echo mine > ".tickets/$id2/summary.md"
+  printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "$1" > ".tickets/$id2/eval-report.md"
+  rm -f ".tickets/$id2/github.md"
+}
+vm_merge() { STUB_HEAD="$1" STUB_MERGE_PUSH=1 "$TKT" merge-pr "$id2" --pr 7 --yes --test true 2>&1; }
+HV="$(mk_pr 25)"; git -C "$B2" push -qf origin "$HV:refs/pull/7/head"
+# 9: a project file differs here (index.html, as on the VM): refused, and NOTHING moved, canon's files included
+vm_state "$HV"; echo "my app" > index.html; before="$(cat AGENTS.md CLAUDE.md PROMOTED.md .claude/settings.json .tickets/t-0ld1/summary.md .gitignore | cksum)"
+out="$(vm_merge "$HV")"; assert_contains "$out" $'\n  index.html (untracked here: move it aside: mv index.html index.html.local)\n'; assert_eq "$V0" "$(git rev-parse main)"
+assert_eq "my app" "$(cat index.html)"
+[[ "$out" != *"AGENTS.md"* && "$out" != *"Set aside"* ]] || fail "t-eeb5: the refusal named or moved canon's files: $out"
+assert_eq "$before" "$(cat AGENTS.md CLAUDE.md PROMOTED.md .claude/settings.json .tickets/t-0ld1/summary.md .gitignore | cksum)"; assert_grep '^mine$' HANDOFF.md
+[[ ! -e "$(git rev-parse --git-path canon-set-aside)" ]] || fail "t-eeb5: a refused update left a set-aside folder"
+# 10: the refusal is in github.md (the merged entry carries it): what blocked it and the step
+assert_grep '— merged$' ".tickets/$id2/github.md"; assert_grep 'local main was not updated' ".tickets/$id2/github.md"; assert_grep '^  index.html .untracked here: move it aside' ".tickets/$id2/github.md"
+# 7, 8, 12: the same state without the project file: main fast-forwards, canon's copies go under .git, .gitignore keeps canon's lines
+vm_state "$HV"; rm -f index.html; : > "$W2/gitcalls"
+out="$(STUB_GIT_LOG="$W2/gitcalls" vm_merge "$HV")" || fail "t-eeb5: the VM merge failed: $out"
+assert_contains "$out" "Local main: ${V0:0:8} -> "; assert_contains "$out" "Set aside 9 of canon's files the merge brings (your copies): "
+assert_eq "$HV" "$(git rev-parse main^)"   # the PR head, plus t-8990's record commit (this project tracks .tickets/)
+ad="$(ls -d "$(git rev-parse --git-path canon-set-aside)"/*)"; assert_eq mine "$(cat "$ad/HANDOFF.md")"; assert_eq mine "$(cat "$ad/.tickets/t-0ld1/summary.md")"
+assert_eq '{"b":2}' "$(cat "$ad/.claude/settings.json")"; [[ -f "$ad/.tickets/.gitignore" && -f "$ad/AGENTS.md" && -f "$ad/CLAUDE.md" ]] || fail "t-eeb5: set-aside copies missing: $(find "$ad" -type f)"
+assert_eq theirs "$(head -1 HANDOFF.md)"; assert_eq "# Project" "$(cat AGENTS.md)"   # merge-pr then writes its Recent activity block
+{ printf 'node_modules/\n.DS_Store\n'; sed 1d "$W2/gi.local"; } | cmp -s - .gitignore || fail "t-eeb5: .gitignore: $(cat .gitignore)"   # merged copy + canon's lines
+assert_eq mine "$(cat ".tickets/$id2/summary.md")"   # t-ab7e: the ticket's own closed records stay as they are here
+st="$(git status --porcelain)"; assert_eq " M .gitignore" "$(printf '%s\n' "$st" | grep -v "^?? \.tickets/$id2/" || true)"
+assert_grep '^Local main: ' ".tickets/$id2/github.md"; assert_grep "^Set aside 9 of canon's files" ".tickets/$id2/github.md"
+echo "merge-pr: the VM's state (canon files untracked here) fast-forwards, sets canon's copies aside under .git, keeps canon's .gitignore lines; a project file refuses with nothing moved (t-eeb5)"
+# 11: git starts from _ff_here's first read (the changed list) to the fast-forward, for the criterion's mix: 24 new files absent here,
+# 5 canon files untracked here, 6 tracked files changed by the merge and clean here (35); then 0 new files (11): the same handful.
+cnt() { awk '/^-C .* diff --no-renames --name-only -z /{ s = 1 } s && / merge -q --ff-only /{ print n; exit } s { n++ }' "$1"; }
+for nn in 24 0; do
+  HL="$(mk_pr "$nn" lean)"; git -C "$B2" push -qf origin "$HL:refs/pull/7/head"; vm_state "$HL"; : > "$W2/gitcalls"
+  out="$(STUB_GIT_LOG="$W2/gitcalls" vm_merge "$HL")" || fail "t-eeb5: the lean VM merge ($nn) failed: $out"; assert_contains "$out" "(fast-forward)"
+  c="$(cnt "$W2/gitcalls")"; nf="$(git diff --name-only "$V0" "$HL" | grep -c .)"
+  [[ "$c" =~ ^[0-9]+$ && "$c" -le 12 ]] || fail "t-eeb5: _ff_here ran $c git calls for $nf files: $(cat "$W2/gitcalls")"
+  if [[ "$nn" == 24 ]]; then assert_eq 35 "$nf"; c35="$c"; else assert_eq "$c35" "$c"; fi
+done
+echo "merge-pr: the local update asks git $c35 times whether 35 or 11 files change (t-eeb5)"
+HS="$(mk_pr 0)"; git -C "$B2" push -qf origin "$HS:refs/pull/7/head"
+# 10: the already-merged re-run writes a "local update" entry
+vm_state "$HS"; git --git-dir="$W2/origin.git" update-ref refs/heads/main "$HS"
+awk -v m="merged: $HS" '/^---$/ && ++n == 2 { print m } { print }' "$f2" > "$W2/t" && mv "$W2/t" "$f2"
+out="$(STUB_HEAD="$HS" "$TKT" merge-pr "$id2" --pr 7 2>&1)" || true; assert_contains "$out" "is already merged; updating local main only"
+assert_grep '— local update$' ".tickets/$id2/github.md"; assert_grep '^Local main: ' ".tickets/$id2/github.md"
+echo "merge-pr: the already-merged re-run records its local update in github.md (t-eeb5)"
+# 4: a PR that joined an unrelated history (the cloud's --allow-unrelated-histories merge) is refused before any merge, --check too
+git -C "$B2" checkout -q --orphan other; git -C "$B2" rm -rqf . ; echo old > "$B2/old.txt"; git -C "$B2" add old.txt; git -C "$B2" commit -qm "another history"
+HO="$(git -C "$B2" rev-parse HEAD)"; HU="$(git -C "$B2" commit-tree "$HS^{tree}" -p "$HS" -p "$HO" -m "Merge branch 'main' (unrelated)")"
+git -C "$B2" push -qf origin "$HU:refs/pull/7/head"; vm_state "$HU"; : > "$STUB_LOG"
+for a in "--yes --test true" "--check"; do
+  out="$(STUB_HEAD="$HU" "$TKT" merge-pr "$id2" --pr 7 $a 2>&1)" && fail "t-eeb5: an unrelated-history PR passed merge-pr $a: $out"
+  assert_contains "$out" "joins a history unrelated to main: it adds root commit ${HO:0:8} and 3 commit(s) main lacks"   # HS, the foreign root HO, the joining merge HU
+  ! grep -q '^pr merge' "$STUB_LOG" || fail "t-eeb5: merge-pr $a merged an unrelated-history PR"; assert_eq "$V0" "$(git rev-parse main)"
+done
+echo "merge-pr: a PR joining an unrelated history is refused, --check too, nothing merged (t-eeb5)"
+)

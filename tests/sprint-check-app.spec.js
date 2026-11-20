@@ -18698,9 +18698,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(go).toHaveText('Commit and push'); await expect(go).toBeEnabled();
   });
 
-  // Prod path: send-issue's Step 1 counts (t-a1f8): with canon's own tracked edit left out, an untracked file of the person's is only a note,
-  // so Create issue does not wait on Commit and push.
-  test('Send panel counts leave canon\'s own changes out: Create issue does not wait on them (t-a1f8)', async ({ page }) => {
+  // Prod path: send-issue's Step 1 counts (t-a1f8): canon's own tracked edit is left out, so only the person's untracked file counts;
+  // t-eeb5: that file now holds Create issue (Commit and push, or the opt-out), as a changed tracked file does.
+  test('Send panel counts leave canon\'s own changes out: only the person\'s file holds Create issue (t-a1f8, t-eeb5)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gha3');
     ghTicket(id);
     await page.route('**/api/cockpit', r => json(r, { running: true, addr: FAKE_DAEMON_ADDR, launched: true }));
@@ -18710,9 +18710,9 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await openBoard(page, id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await page.locator('#ck-worktree .ck-gh-row').click();
-    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it. You can still create the issue.');
-    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
-    await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it, and its PR would collide with it here. Commit and push first.');
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();   // t-eeb5: held; AGENTS.md (canon's own) alone would not hold it
+    await page.locator('#ck-gh-skip').check(); await expect(page.locator('#ck-gh-create')).toBeEnabled();
   });
 
   test('an import whose PR head does not match still points to the close here (t-718b)', async ({ page }) => {
@@ -20817,7 +20817,7 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     const id = newTicketId(PROJECT_ROOT, 'gh64');
     ghTicket(id);
     await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY.replace('1 file(s)', '2 file(s)') }), files: `file:  M .tickets/${id}/ticket.md\nfile: ?? a.txt\nfile: ?? b.txt` });   // t-2560: listed only when tracked
-    await expect(page.locator('#ck-gh-untracked')).toHaveText('2 new files are not tracked, so the cloud will not see them. You can still create the issue.');
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('2 new files are not tracked, so the cloud will not see them, and its PR would collide with them here. Commit and push first.');
     await page.locator('#ck-gh-cp-open').click();
     await expect(page.locator('#ck-gh-cp-files li')).toHaveCount(3);
     await expect(page.locator('#ck-gh-cp-files li').first()).toContainText(`.tickets/${id}/ticket.md`);
@@ -20836,13 +20836,19 @@ test.describe('GitHub workflow on the board (t-718b)', () => {
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
   });
 
-  test('only untracked files give a one-line note and leave Create issue enabled (t-6f51)', async ({ page }) => {
+  // Prod path: the Send panel's Create issue (t-eeb5, ToDo-Demo 2026-11-20: index.html was never committed, the cloud's PR added its own
+  // copy and Check & merge could not update the folder). Untracked project files hold it like changed tracked files; the opt-out releases it.
+  test('only untracked files hold Create issue until Commit and push or the opt-out (t-6f51, t-eeb5)', async ({ page }) => {
     const id = newTicketId(PROJECT_ROOT, 'gh63');
     ghTicket(id);
     await sendPanel(page, id, { preview: () => ({ ok: true, exit_code: 0, output: DIRTY }), files: 'file: ?? notes.txt' });
-    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it. You can still create the issue.');
-    await expect(page.locator('#ck-gh-skip')).toHaveCount(0);
+    await expect(page.locator('#ck-gh-untracked')).toHaveText('1 new file is not tracked, so the cloud will not see it, and its PR would collide with it here. Commit and push first.');
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
+    await expect(page.locator('#ck-gh-skip')).toHaveCount(1);
+    await page.locator('#ck-gh-skip').check();
     await expect(page.locator('#ck-gh-create')).toBeEnabled();
+    await page.locator('#ck-gh-skip').uncheck();
+    await expect(page.locator('#ck-gh-create')).toBeDisabled();
   });
 
   // ── t-3741: Commit and push never ticks a file an agent may still be writing ──
