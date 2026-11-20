@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-20-2026 13:58
+learnings-sweep last run: 11-20-2026 19:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-20 | [t-eeb5](.tickets/t-eeb5/learnings.md) | Stamp after the gates' fixes: the full suite was stamped 4 times because stamps ran before the reviewer and security-review fixes (t-2ce8, P0); `git hash-object --stdin-paths` C-quotes a `"`-leading name | UNPROMOTED |
 | 2026-11-20 | [t-21d8](.tickets/t-21d8/learnings.md) | A cap value pinned in three places (tools/caps.tsv, tests/caps.sh:22, docs/releasing.md): raising it in two left the suite red; grep the number before changing a cap, or derive the test row from caps.tsv | UNPROMOTED |
 | 2026-11-20 | [t-f9b1](.tickets/t-f9b1/learnings.md) | Get the person's exact sequence before naming a cause: the first story (merge-pr moved master, then hung) was wrong — the user had run git pull in between — and the guessed fix targeted code that had run fine; when the code cannot name a hang, ship a trace and the recovery path, not a guess | UNPROMOTED |
 | 2026-11-20 | [t-a1f8](.tickets/t-a1f8/learnings.md) | A "not pass" signal is not a fail: the first plan painted every passing cloud result red, because none meant both "no report" and "could not read"; key a warning on the explicit bad value only, and derive a test list from a real setup run, not memory | UNPROMOTED |
