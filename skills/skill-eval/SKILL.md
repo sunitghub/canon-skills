@@ -83,6 +83,7 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
 
 3. **Aggregate and report.** After all cases complete:
    - Output the eval report inline (see Output format below).
+   - **When dispatched by the sprint gate** (`complete.md` "Advisory batch", t-9e7a): send every case's executor in one message, together with the reviewer and break-it, and dispatch each grader as its executor returns. The history line below is a tracked write: run `tools/skill-eval-history.sh` and commit its line only after the reviewer's `gate-snapshot post`.
    - **Record the pass rate.** In canon (where `tools/skill-eval-history.sh` exists), run `tools/skill-eval-history.sh $ARGUMENTS <model> <pass> <total>` with the model that ran the executors and graders and the expectation counts from the Summary, and add the one line it prints (`N/M pass (was K/M)`) under `### Summary`. It appends to `skills/$ARGUMENTS/evals/history.jsonl`; skip it when execution evals did not run (missing `evals.json`, fallback path), because a count of zero is not a result.
    - Write the same report to `skills/$ARGUMENTS/skill-eval-result.md`, replacing any prior contents. The file is always written — even if execution evals were skipped due to a missing `evals.json`. **When dispatched by the sprint gate** (`complete.md` step 1), write it to `.tickets/<id>/skill-eval-$ARGUMENTS.md` instead, so the tracked tree gains only the history line.
 

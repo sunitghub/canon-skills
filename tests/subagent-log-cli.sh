@@ -150,4 +150,10 @@ assert_count 1 '"agent_id":"wt0001"' "$log"
 [[ ! -e "$wt/.claude/subagent-runs.jsonl" ]] || fail "worktree got its own subagent-runs.jsonl"
 rm -rf "$wt"
 
+# ── t-9e7a: break-it, dispatched beside the reviewer, gets a cost row like a gate (its runtime was never recorded) ──
+(cd "$project" && "$SUBAGENT_LOG" --agent-id break-it-t-abcd --agent-type break-it --ticket t-abcd --tokens 51234 --minutes 7)
+assert_count 1 '"agent_id":"break-it-t-abcd","agent_type":"break-it"' "$log"
+row="$(grep -F '"agent_id":"break-it-t-abcd"' "$log")"
+assert_contains "$row" '"tokens":51234'; assert_contains "$row" '"minutes":7'; assert_contains "$row" '"ticket":"t-abcd"'
+
 printf 'subagent-log-cli: ok\n'

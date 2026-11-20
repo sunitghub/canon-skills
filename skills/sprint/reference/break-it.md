@@ -27,7 +27,12 @@ containment, or write where it should not. **Advisory only** — it never blocks
 1. Snapshot without history: `git archive HEAD <changed tools + their tests + fixtures> | tar -x -C <scratch>/snap`.
    No `.git`, no `.tickets`: the agent cannot read the plan, the acceptance criteria, earlier fixes or reviewer output.
    Drop binaries and unrelated dirs. Do not tell it about known defects.
-2. Fresh `Agent` subagent with a clean context, `subagent_type: "Plan"` (Bash stays available for stubs and scratch
+2. Dispatched in the same message as the reviewer (and any skill-eval executors: `complete.md` "Advisory batch", t-9e7a); it
+   writes nothing in the repo, only under its snapshot, so the reviewer's `gate-snapshot` window stays truthful. Its fixes land
+   after the batch returns and get security-review and the binding evaluator, not the advisory reviewer. Log it like a gate:
+   `sprint subagent-log --agent-id break-it-<id> --agent-type break-it --ticket <id>` with the tokens and minutes from its
+   usage notice (its runtime was never recorded before t-9e7a).
+   Fresh `Agent` subagent with a clean context, `subagent_type: "Plan"` (Bash stays available for stubs and scratch
    files, as in the t-46dc trial; if a harness refuses Bash writes, have it relay results in its reply). It runs on the
    session model: the gate model-tier downgrade and `Gate model:` override in `complete.md` apply only to the reviewer
    and evaluator dispatches, so do not hand this gate to a cheaper model.

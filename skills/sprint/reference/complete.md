@@ -155,10 +155,11 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `skills/<skill>/evals/history.jsonl` through `tools/skill-eval-history.sh`, writes its report to
    `.tickets/<id>/skill-eval-<skill>.md`, and never starts the fallback evaluator. **Advisory only:** it never blocks close, and a failing case is triaged like any finding (fix
    the instruction, ticket it, or note it as noise) — never edit `evals.json` to make a case pass. Evals are noisy
-   on small models, so read `was K/M` only against the same model (the history line records it). **It runs here,
-   before the reviewer and evaluator, not after them:** `history.jsonl` is a tracked file and
-   `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so the new
-   line goes into the interim commit below and the gates grade the final tree. Record it in the Wrapup Gates table
+   on small models, so read `was K/M` only against the same model (the history line records it). **Its executors run in
+   the reviewer's batch (t-9e7a, step 2's advisory batch), never after the evaluator:** `history.jsonl` is a tracked file and
+   `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so
+   `tools/skill-eval-history.sh` runs, and its line is committed, after the reviewer's `gate-snapshot post` and before
+   security-review, and the evaluator grades the final tree. Record it in the Wrapup Gates table
    (`ran | sprint 9/10 (was 10/10), wrapup 7/7 (advisory)`, or `skipped | no skill or gate agent changed`, or
    `skipped | <skill> has no evals.json`, or `skipped | sprint: only docs outside SKILL.md changed`). **Canon only, and only in a git checkout:** where `tools/skill-eval-scope.sh`
    does not exist (a consumer project) or there is no git (the scope tool needs it), record `skipped | not a canon checkout` /
@@ -647,8 +648,10 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
+   **Advisory batch (t-9e7a).** When two or more of skill-eval, break-it and the reviewer run at a close, dispatch them in one message inside the reviewer's `gate-snapshot pre`/`post` window: the reviewer, break-it and every skill-eval executor together; each skill-eval grader as soon as its executor returns. None writes a tracked file while it runs (break-it works on a snapshot outside the repo; skill-eval's history line waits), so `post` stays truthful. After all return: `post`, then each `sprint subagent-log`, then `tools/skill-eval-history.sh` and its commit, then the fixes from all three, then security-review, the sweep and the evaluator, which stays last and alone. In the batch neither report is readable by the other gate: break-it's snapshot has no `.git`/`.tickets`, and the reviewer's prompt names no break-it output. The trade (user, 2026-11-20): a break-it fix no longer gets the advisory reviewer; it still gets inline security-review, which covers the same untrusted surface, and the binding evaluator. Wall time is the longest of the three, not their sum (t-2ce8: ~10 min sequential from close start to the reviewer's end).
+
    **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch, after the wrapup gates and
-   before the reviewer (the pipeline file's order, `t-7e76`: a fix it causes still gets the reviewer and security-review passes), an isolated
+   in one message with the reviewer (the advisory batch above, t-9e7a; its fixes get security-review and the evaluator), an isolated
    hostile-input subagent on a history-free snapshot of the changed code — read
    `skills/sprint/reference/break-it.md` and follow it. It never blocks close; re-run every claim it
    makes yourself, triage each reproduced defect (fix with a regression test / ticket / accept with a

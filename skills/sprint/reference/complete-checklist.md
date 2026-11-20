@@ -15,14 +15,14 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), docs.
    - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop.
-   - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: for each `run <skill>`
-     follow `skills/skill-eval/SKILL.md`; advisory. Commit its `history.jsonl` line.
+   - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: per `run <skill>`
+     follow `skills/skill-eval/SKILL.md`; advisory, batched in step 2.
    - **Interim commit** (specific paths) before any gate.
    - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
      `code-reviewer` are separate.
-   - Gates run in turn; no push to `origin/main` until both report.
+   - Push `origin/main` after the gates.
 2. **Reviewer** (advisory). `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
-   `Agent` with `subagent_type: "canon-reviewer"`; after (before fix commits): `sprint gate-snapshot post …` (differs: stop,
+   `Agent` with `subagent_type: "canon-reviewer"`, batched with break-it, skill-eval executors; after all (before any fix or commit): `sprint gate-snapshot post …` (differs: stop,
    show PRE hash), `sprint subagent-log --agent-id reviewer-<id> --agent-type reviewer` + cost flags, `--model` (complete.md),
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
