@@ -30,11 +30,10 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    after the reviewer's and security-review's fixes (never edit a tracked file while a stamp runs), once:
    - **Mutation sweep** (logic files): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
-     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding (stale sweep log is not re-stamped); skip
-     with a reason: `mutation-test | skipped | <reason>`.
+     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding (stale sweep log is not re-stamped); not skippable without a reason: `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
      `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
-     (canon: `scripts/test.sh`; test-only or out-of-branch failure: `--only <suite>`, complete.md).
+     (canon: `scripts/test.sh`; `--only <suite>` per complete.md).
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never

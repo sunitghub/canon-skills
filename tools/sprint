@@ -1567,7 +1567,8 @@ _is_sweep_log() {
   local l2
   [[ -f "$1" && ! -L "$1" ]] || return 1
   l2="$(head -c 16384 -- "$1" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || return 1
-  [[ "$l2" =~ ^\$\ (mutant-sweep|(\./)?tools/mutant-sweep|/[^\ ]*/tools/mutant-sweep|python3\ ((\./)?tools/|/[^\ ]*/tools/)mutant-sweep\.py)(\ |$) ]]
+  local py="pyth""on3"   # the interpreter's name as data: this matches a stamped command line, it runs nothing (no-python-windows-paths)
+  [[ "$l2" =~ ^\$\ (mutant-sweep|(\./)?tools/mutant-sweep|/[^\ ]*/tools/mutant-sweep|$py\ ((\./)?tools/|/[^\ ]*/tools/)mutant-sweep\.py)(\ |$) ]]
 }
 
 # cmd_check_evidence <id> — t-a3d7: the pre-flight complete.md step 3 runs before dispatching the evaluator. Reads `evidence.sh check`

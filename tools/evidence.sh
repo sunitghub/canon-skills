@@ -438,8 +438,8 @@ only_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?( --only [A
 # `suite <label> ` line. Read from git, never run: check executes nothing from the tree it judges.
 is_suite() {
   [[ "$1" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
-  printf '%s\n' "$RUNNER" | grep -Fxq -e "  \"\$ROOT/$1\"" -e "  suite $1 node \"\$ROOT/$1\"" && return 0
-  [[ "$1" == tools/canon-go/internal/board || "$1" == tools/canon-go/internal/daemon ]] && printf '%s\n' "$RUNNER" | grep -Fq "  suite $1 go_"
+  grep -Fxq -e "  \"\$ROOT/$1\"" -e "  suite $1 node \"\$ROOT/$1\"" <<< "$RUNNER" && return 0
+  [[ "$1" == tools/canon-go/internal/board || "$1" == tools/canon-go/internal/daemon ]] && grep -Fq "  suite $1 go_" <<< "$RUNNER"
 }
 # suite_covered_by <i> — t-2ce8: for a full-suite log that is stale only because registered suite files changed, and/or failing only on
 # suites the branch did not change, prints "<re-run logs>|<what>|<count>" when fresh exit-0 `--only` logs at the graded head re-ran
@@ -484,7 +484,7 @@ suite_covered_by() {
     g="$(line2_of "${FILES[$k]}")"; [[ "$g" =~ $only_re ]] || continue
     a=0; for p in $g; do if (( a )); then got+="$p"$'\n'; used+="${used:+, }${FILES[$k]##*/}"; fi; if [[ "$p" == --only ]]; then a=1; else a=0; fi; done
   done
-  while IFS= read -r p; do printf '%s' "$got" | grep -Fxq -e "$p" || return 0; n=$((n + 1)); done <<< "$want"
+  while IFS= read -r p; do grep -Fxq -e "$p" <<< "$got" || return 0; n=$((n + 1)); done <<< "$want"
   used="$(printf '%s' "$used" | tr ',' '\n' | sed 's/^ //' | sort -u | paste -sd, - | sed 's/,/, /g')"
   printf '%s|%s|%s' "$used" "$what" "$n"
 }

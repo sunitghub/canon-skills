@@ -80,6 +80,7 @@ assert_eq 2 "$code"
 
 # t-2ce8: a stale exit-0 log whose stamped argv IS the mutation sweep is a note (the sweep is non-binding), with no stale_evidence event;
 # a wrapper that names the sweep later, a failing or unstamped sweep, and any other stale log beside it still refuse
+use_fresh_board "$WORK/bin"   # canon_event needs a board binary; a plain clone has none (gitignored)
 export CANON_HOME="$WORK/canon-home"; evcount() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -c '"stale_evidence"' || true; }
 CS="$(git rev-parse HEAD)"; echo d >> src/a.txt; git commit -qam later; CL="$(git rev-parse HEAD)"
 put a.log "HEAD $CL $T\nexit 0\n"; put b.log "HEAD $CL $T\nexit 0\n"
