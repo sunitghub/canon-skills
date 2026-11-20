@@ -78,4 +78,26 @@ ce t-ffff; assert_eq 2 "$code"; assert_contains "$out" "evidence.sh check failed
 mkdir -p "$WORK/nogit/.tickets/$ID"; set +e; out="$(cd "$WORK/nogit" && bash "$ROOT/tools/sprint" check-evidence "$ID" 2>&1)"; code=$?; set -e
 assert_eq 2 "$code"
 
+# t-2ce8: a stale exit-0 log whose stamped argv IS the mutation sweep is a note (the sweep is non-binding), with no stale_evidence event;
+# a wrapper that names the sweep later, a failing or unstamped sweep, and any other stale log beside it still refuse
+export CANON_HOME="$WORK/canon-home"; evcount() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -c '"stale_evidence"' || true; }
+CS="$(git rev-parse HEAD)"; echo d >> src/a.txt; git commit -qam later; CL="$(git rev-parse HEAD)"
+put a.log "HEAD $CL $T\nexit 0\n"; put b.log "HEAD $CL $T\nexit 0\n"
+for cmd in 'mutant-sweep --map x' 'tools/mutant-sweep --check' './tools/mutant-sweep' '/opt/canon/tools/mutant-sweep --map y' 'python3 tools/mutant-sweep.py' 'python3 /opt/c/tools/mutant-sweep.py --map z'; do
+  put sweep.log "HEAD $CS $T\n\$ $cmd\nexit 0\n"; before="$(evcount)"; ce "$ID"
+  assert_eq 0 "$code"; assert_contains "$out" "  note    stale sweep.log exit=0"; assert_contains "$out" "(non-binding sweep from an older commit: not re-stamped, not reused)"
+  [[ "$out" != *REFUSE* ]] || fail "check-evidence refused a stale sweep ($cmd): $out"; assert_eq "$before" "$(evcount)"
+done
+for cmd in "bash -c 'mutant-sweep --map x'" 'env mutant-sweep --map x' 'echo mutant-sweep' 'tools/mutant-sweepx' 'mutant-sweep.py' 'python3 mutant-sweep.py' 'bash tests/x.sh mutant-sweep'; do
+  put sweep.log "HEAD $CS $T\n\$ $cmd\nexit 0\n"; before="$(evcount)"; ce "$ID"
+  assert_eq 1 "$code"; assert_contains "$out" "REFUSE  stale sweep.log"; [[ "$out" != *"  note "* ]] || fail "check-evidence noted a non-sweep ($cmd): $out"
+  [[ "$(evcount)" -gt "$before" ]] || fail "no stale_evidence event for a refused non-sweep ($cmd)"
+done
+put sweep.log "HEAD $CS $T\n\$ mutant-sweep --map x\nexit 1\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  stale sweep.log exit=1"
+put sweep.log "HEAD $CL $T\n\$ mutant-sweep --map x\nexit 1\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  fresh sweep.log exit=1"
+put sweep.log "\$ mutant-sweep --map x\nexit 0\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  unstamped sweep.log"
+put sweep.log "HEAD $CS $T\n\$ mutant-sweep --map x\nexit 0\n"; put b.log "HEAD $CS $T\n\$ bash tests/x.sh\nexit 0\n"; ce "$ID"
+assert_eq 1 "$code"; assert_contains "$out" "  note    stale sweep.log"; assert_contains "$out" "REFUSE  stale b.log"
+rm "$ED/sweep.log"; put b.log "HEAD $CL $T\nexit 0\n"; unset CANON_HOME
+
 echo "sprint-check-evidence: ok"
