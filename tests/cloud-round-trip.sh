@@ -430,6 +430,11 @@ rc=0; out="$(STUB_PR_HEAD="$UH" STUB_PR_FILES="LEARNINGS.md" "$TKT" import-resul
 assert_contains "$out" "PR #58 joins a history unrelated to main: it adds root commit ${OH:0:8}"
 assert_contains "$out" "next: close PR #58 on GitHub without merging it"
 assert_grep '— import refused$' ".tickets/$id/github.md"; assert_grep "joins a history unrelated to main" ".tickets/$id/github.md"
+# evaluator M4 (t-eeb5): the check reads the PR's own base (baseRefName): against a base that holds both histories it is no refusal
+git --git-dir="$W/origin.git" update-ref refs/heads/release "$UH"
+rc=0; out="$(STUB_PR_BASE=release STUB_PR_HEAD="$UH" STUB_PR_FILES="LEARNINGS.md" "$TKT" import-results "$id" --pr 58 2>&1)" || rc=$?
+git --git-dir="$W/origin.git" update-ref -d refs/heads/release
+[[ "$out" != *"joins a history unrelated"* ]] || fail "t-eeb5: import-results ignored the PR's base branch (release): $out"
 cp "$W/eval-report.keep" "$X/.tickets/$id/eval-report.md"; git -C "$X" push -qf origin "sweep:refs/pull/58/head"
 (cd "$X" && "$TKT" export "$id" >/dev/null 2>&1)   # canon-results/<id> back as the cases below expect it
 echo "import-results: a PR joining an unrelated history is refused, even at the graded head, and the trail says why (t-eeb5)"

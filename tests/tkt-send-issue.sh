@@ -731,6 +731,12 @@ rc=0; out="$("$TKT" send-issue "$idu" --dry-run 2>&1)" || rc=$?
 git config --unset url."$stub/o.git".insteadOf; for b in main master; do git update-ref -d "refs/remotes/origin/$b" 2>/dev/null || true; done
 [[ "$rc" == 1 ]] || fail "t-eeb5: send-issue did not fetch origin's branch before checking ($rc): $out"; assert_contains "$out" "send-issue: unrelated history: "
 i=0; for b in main master; do [[ "${saved[$i]}" == - ]] || git update-ref "refs/remotes/origin/$b" "${saved[$i]}"; i=$((i + 1)); done
-echo "send-issue: an unrelated history is refused (send, --dry-run, --allow-unpushed) with the clone step; related or empty origin pass (t-eeb5)"
+# evaluator M5 (t-eeb5): a shallow clone cannot be compared: a warning that says so, never a refusal for history
+SH="$stub/shallow"; git clone -q --depth 1 "file://$PWD" "$SH" 2>/dev/null; git -C "$SH" remote set-url origin https://github.com/acme/app.git
+ids="$(cd "$SH" && "$TKT" create "Shallow" -t task -p 3 -d x)"
+out="$(cd "$SH" && "$TKT" send-issue "$ids" --dry-run 2>&1)" || true
+assert_contains "$out" "send-issue: warning: could not tell whether"; [[ "$out" != *"unrelated history"* ]] || fail "t-eeb5: a shallow clone was refused for history: $out"
+rm -rf "$SH"
+echo "send-issue: an unrelated history is refused (send, --dry-run, --allow-unpushed) with the clone step; related or empty origin pass; a shallow clone warns (t-eeb5)"
 
 echo "tkt-send-issue: ok"

@@ -1059,6 +1059,11 @@ out="$(STUB_FF_MERGE_FAIL=1 vm_merge "$HV")" || true; assert_contains "$out" "gi
 assert_eq "$before" "$(cat AGENTS.md CLAUDE.md .claude/settings.json .tickets/.gitignore | cksum)"; assert_eq mine "$(head -1 HANDOFF.md)"   # merge-pr then writes its Recent block
 diff -r "$keep" "$(git rev-parse --git-path canon-set-aside)" > /dev/null || fail "t-eeb5: a refused update changed an earlier run's set-aside folder"
 echo "merge-pr: a fast-forward git refuses puts canon's files back and leaves earlier set-aside copies alone (t-eeb5)"
+# evaluator M1 (t-eeb5): another ticket that is still live here (in_progress) keeps its files: refused, never set aside
+vm_state "$HV"; rm -f index.html; sed -i.bak 's/^status: closed$/status: in_progress/' .tickets/t-0ld1/ticket.md && rm -f .tickets/t-0ld1/ticket.md.bak
+out="$(vm_merge "$HV")" || true; assert_contains "$out" $'\n  .tickets/t-0ld1/summary.md (untracked here: move it aside'
+assert_eq "$V0" "$(git rev-parse main)"; assert_eq mine "$(cat .tickets/t-0ld1/summary.md)"
+echo "merge-pr: an in-progress ticket's files here refuse the update, nothing set aside (t-eeb5)"
 # reviewer (t-eeb5): a PR path starting with a quote is refused by name: hash-object --stdin-paths would read `"a"` as the file a,
 # call the person's own `"a"` identical to the merged copy and remove it. And a failed tree read refuses: it never makes a tracked file look untracked.
 git -C "$B2" checkout -q -B pq "$V0"; printf 'X\n' > "$B2/\"a\""; git -C "$B2" add -A; git -C "$B2" commit -qm 'a quoted name'; HQ="$(git -C "$B2" rev-parse HEAD)"
