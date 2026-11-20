@@ -3254,10 +3254,11 @@ _ff_here() {
     p="${safe[$i]}"
     if [[ "${kinds[$i]}" == aside ]]; then
       if [[ -z "$ad" ]]; then
-        ad="$(git -C "$root" rev-parse --git-path canon-set-aside 2>/dev/null)" || ad=""
-        [[ -z "$ad" || "$ad" == /* || "$ad" =~ ^[A-Za-z]: ]] || ad="$root/$ad"
-        [[ -n "$ad" ]] && ad="$ad/$(date -u +%Y%m%dT%H%M%SZ)" && mkdir -p "$ad" \
-          || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not make a folder to set canon's files aside in; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
+        local adp; adp="$(git -C "$root" rev-parse --git-path canon-set-aside 2>/dev/null)" || adp=""
+        [[ -z "$adp" || "$adp" == /* || "$adp" =~ ^[A-Za-z]: ]] || adp="$root/$adp"
+        # a folder of its own (mktemp), never shared with an earlier run in the same second: undo removes only this one
+        [[ -n "$adp" ]] && mkdir -p "$adp" && ad="$(mktemp -d "$adp/$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")" \
+          || { ad=""; rm -rf "$bk"; echo "Local $b: could not make a folder to set canon's files aside in; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
       fi
       mkdir -p "$ad/$(dirname "$p")" && mv "$root/$p" "$ad/$p" \
         || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
@@ -3266,7 +3267,11 @@ _ff_here() {
     cp -p "$root/$p" "$bk/$i" || { _ff_undo_aside; rm -rf "$bk"; echo "Local $b: could not set $p aside; left at ${old:0:8}. Update it by hand: $retry"; return 1; }
     [[ "${kinds[$i]}" != log && "${kinds[$i]}" != ignore ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p") "$root/$p" > "$bk/$i.extra"
     [[ "${kinds[$i]}" != handoff ]] || _ff_extra_lines <(git -C "$root" cat-file blob "$new:$p" | _ff_scratch_lines) <(_ff_scratch_lines < "$root/$p") > "$bk/$i.extra"
-    if _ff_tval "$oldt" "$p"; then back+=("$p"); else rm -f "$root/$p"; fi
+  done
+  # every copy is made before any file is removed, so a failed copy above leaves the tree as it was
+  for i in "${!safe[@]}"; do
+    [[ "${kinds[$i]}" != aside ]] || continue
+    if _ff_tval "$oldt" "${safe[$i]}"; then back+=("${safe[$i]}"); else rm -f "$root/${safe[$i]}"; fi
   done
   [[ ${#back[@]} -eq 0 ]] || git -C "$root" checkout -q -- "${back[@]}"
   if ! err="$(git -C "$root" merge -q --ff-only "$new" 2>&1)"; then
@@ -3293,13 +3298,14 @@ _ff_here() {
 # _ff_undo_aside — t-eeb5: _ff_here's set-aside files go back where they were (a refused or failed update changes nothing). Reads
 # _ff_here's locals (bash's dynamic scope): ad, safe, kinds, root.
 _ff_undo_aside() {
-  local i
+  local i left=0
   [[ -n "${ad:-}" ]] || return 0
   for i in "${!safe[@]}"; do
     [[ "${kinds[$i]}" == aside && -e "$ad/${safe[$i]}" ]] || continue
-    mkdir -p "$root/$(dirname "${safe[$i]}")" && mv "$ad/${safe[$i]}" "$root/${safe[$i]}"
+    { mkdir -p "$root/$(dirname "${safe[$i]}")" && mv "$ad/${safe[$i]}" "$root/${safe[$i]}"; } || left=1
   done
-  rm -rf "$ad" 2>/dev/null || true
+  # this run's own folder, removed only once every file is back; otherwise it stays, named, so nothing is lost
+  if (( left )); then echo "warning: some of canon's files could not be put back; they are in $ad" >&2; else rm -rf "$ad" 2>/dev/null || true; fi
 }
 
 # _record_branch_merge <ticket.md> <commit> <base> — t-1148: a ticket closed here whose graded commit is already on origin's <base>

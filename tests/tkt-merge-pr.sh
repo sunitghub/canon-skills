@@ -1052,6 +1052,13 @@ assert_eq mine "$(cat ".tickets/$id2/summary.md")"   # t-ab7e: the ticket's own 
 st="$(git status --porcelain)"; assert_eq " M .gitignore" "$(printf '%s\n' "$st" | grep -v "^?? \.tickets/$id2/" || true)"
 assert_grep '^Local main: ' ".tickets/$id2/github.md"; assert_grep "^Set aside 9 of canon's files" ".tickets/$id2/github.md"
 echo "merge-pr: the VM's state (canon files untracked here) fast-forwards, sets canon's copies aside under .git, keeps canon's .gitignore lines; a project file refuses with nothing moved (t-eeb5)"
+# 9: git refusing the fast-forward itself puts canon's files back, and an earlier run's set-aside folder is never touched
+keep="$W2/keep-aside"; rm -rf "$keep"; cp -R "$(git rev-parse --git-path canon-set-aside)" "$keep"
+vm_state "$HV"; rm -f index.html; cp -R "$keep" "$(git rev-parse --git-path canon-set-aside)"; before="$(cat AGENTS.md CLAUDE.md .claude/settings.json .tickets/.gitignore | cksum)"
+out="$(STUB_FF_MERGE_FAIL=1 vm_merge "$HV")" || true; assert_contains "$out" "git refused the fast-forward"; assert_eq "$V0" "$(git rev-parse main)"
+assert_eq "$before" "$(cat AGENTS.md CLAUDE.md .claude/settings.json .tickets/.gitignore | cksum)"; assert_eq mine "$(head -1 HANDOFF.md)"   # merge-pr then writes its Recent block
+diff -r "$keep" "$(git rev-parse --git-path canon-set-aside)" > /dev/null || fail "t-eeb5: a refused update changed an earlier run's set-aside folder"
+echo "merge-pr: a fast-forward git refuses puts canon's files back and leaves earlier set-aside copies alone (t-eeb5)"
 # 11: git starts from _ff_here's first read (the changed list) to the fast-forward, for the criterion's mix: 24 new files absent here,
 # 5 canon files untracked here, 6 tracked files changed by the merge and clean here (35); then 0 new files (11): the same handful.
 cnt() { awk '/^-C .* diff --no-renames --name-only -z /{ s = 1 } s && / merge -q --ff-only /{ print n; exit } s { n++ }' "$1"; }
