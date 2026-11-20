@@ -446,7 +446,7 @@ is_suite() {
 # every one of those suites, else nothing. Each link is checked, never trusted: a changed suite that another tracked file names (a
 # sourced helper, a required module) keeps the log stale; a failing log needs `FAILED:` lines and no other `FAIL:` line (the registry or
 # leaked-server checks fail the whole run, which no suite re-run clears); a failed suite's path changed on the branch (the branch may
-# have made it flaky) or no merge base with main keeps it failing.
+# have made it flaky), no merge base with main, or a graded head on main itself keeps it failing.
 suite_covered_by() {
   local i="$1" f="${FILES[$1]}" p b hits base want="" what="" k g a got="" used="" n=0
   [[ "$(line2_of "$f")" =~ $full_re ]] || return 0
@@ -467,6 +467,7 @@ suite_covered_by() {
     [[ "${CODES[$i]}" =~ ^[0-9]+$ ]] || return 0
     ! LC_ALL=C grep -a -q -E '^FAIL: ' -- "$f" || return 0
     base="$(git -C "$root" merge-base "$graded" main 2>/dev/null || git -C "$root" merge-base "$graded" origin/main 2>/dev/null)" || return 0
+    [[ "$base" != "$graded" ]] || return 0   # graded on main itself: no branch to tell the suite's own changes from, so nothing is "untouched"
     k=0
     while IFS= read -r p; do
       [[ -n "$p" ]] || continue

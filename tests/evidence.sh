@@ -862,6 +862,7 @@ git switch -q --detach main; echo side >> src/p.txt; git commit -qam side; SIDE=
 full "$SIDE" "FAILED: tests/b.sh (exit 1)\nexit 1\n"; sev   # stamped off the branch: stale for "not an ancestor", never covered by failures
 [[ "$(line_of full.log)" == "stale full.log exit=1 "* ]] || fail "evidence: a failing log from a non-ancestor commit was covered: $out"
 full "$F1" "FAILED: tests/b.sh (exit 1)\nexit 1\n"
+git branch -q -f main "$F1"; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: graded on main itself, yet a failure was covered: $out"; git branch -q -f main "$(git rev-parse feat~1)"
 git branch -q -m main trunk; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: no merge base with main, yet covered: $out"; git branch -q -m trunk main
 echo c2 >> tests/c.sh; git commit -qam "branch edits c"; F3="$(git rev-parse HEAD)"
 full "$F3" "FAILED: tests/c.sh (exit 1)\nexit 1\n"; sput only.log "HEAD $F3 $T\n\$ scripts/test.sh --only tests/c.sh\nexit 0\n"; sev
