@@ -18,8 +18,7 @@ gate**: it reports surviving mutants and never blocks `sprint complete`. But it 
 Wrapup Gates row reads `ran | …` or `mutation-test | skipped | <reason>`. When every new guard in the diff already has a hand revert-proof (a revert in a scratch copy that made a named test
 fail), recorded one row per guard in `.tickets/<id>/evidence/revert-proofs.md`, the row may read
 `mutation-test | skipped | revert-proved by hand (N)` (N = the guards); the evaluator checks that file against the diff (t-2ce8: t-eeb5
-started a 530-mutant sweep twice after 17 such proofs). A stale sweep log from an older commit is not re-stamped: `sprint check-evidence`
-notes it (the sweep is non-binding).
+started a 530-mutant sweep twice after 17 such proofs). A stale sweep log is not re-stamped (`complete.md` step 3, close-speed rules).
 It **complements, does not replace, the fresh-context evaluator**: the evaluator checks acceptance
 criteria against the code; mutation-test checks whether the tests protecting that code have teeth.
 
