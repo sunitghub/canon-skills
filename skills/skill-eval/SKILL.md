@@ -74,6 +74,7 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
    - Include the eval `prompt` under "Your task:"
    - Instruct it to execute the task as if it were a fresh session with that skill active
    - Ask it to report: what steps it took, what it would write or output, what tool calls it would make
+   - Tell it to write no file in the repo (it simulates): at a sprint close it runs inside the reviewer's `gate-snapshot` window, where a stray write stops the close (t-9e7a)
 
    **Grader** — spawn a second Agent with a clean context. The prompt must:
    - Include the executor's full response
