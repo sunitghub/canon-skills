@@ -46,9 +46,9 @@ assert_eq "close: 45 min (normal target 30): test-sh stamped 2x (1 failed), eval
 tier bugfix; assert_contains "$(hint)" "close: 45 min (bugfix target 30): "
 tier ""; assert_contains "$(hint)" "close: 45 min (normal target 30): "
 tier high-risk; assert_eq "close: test-sh stamped 2x (1 failed), evaluator refused 1x (stale_evidence), reviewer 1 run, evaluator 2 runs" "$(hint)"
-CANON_CLOSE_TARGET_HIGH=40 hint | grep -qF "close: 45 min (high-risk target 40): " || fail "close-hint: CANON_CLOSE_TARGET_HIGH was not honoured"
+out="$(CANON_CLOSE_TARGET_HIGH=40 hint)"; assert_contains "$out" "close: 45 min (high-risk target 40): "
 sed -i.bak 's/T10:45:00/T11:05:00/' "$EV"; rm -f "$EV.bak"   # 65 min: over the default 60, so a bad override must fall back to 60, not compare as text
-CANON_CLOSE_TARGET_HIGH=abc hint | grep -qF "close: 65 min (high-risk target 60): " || fail "close-hint: a bad CANON_CLOSE_TARGET_HIGH did not fall back to 60"
+out="$(CANON_CLOSE_TARGET_HIGH=abc hint)"; assert_contains "$out" "close: 65 min (high-risk target 60): "
 
 # on time, no re-stamp, no rejection: nothing, gate runs alone never print
 tier normal; : > "$EV"
