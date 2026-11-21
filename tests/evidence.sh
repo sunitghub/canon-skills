@@ -854,6 +854,8 @@ sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tests/b.sh\nexit 0\n"; sev
 [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: one failed suite re-run covered two: $out"
 sput only.log "HEAD $F1 $T\n\$ scripts/test.sh --only tools/canon-go/internal/board --only tests/b.sh\nexit 0\n"; sev
 assert_contains "$(line_of full.log)" "covered full.log exit=1 (HEAD ${F1:0:7}; failing only on suite(s) the branch did not change; re-run at ${F1:0:7} by only.log over 2 suite(s))"
+full "$F1" "==> tests/b.sh\nFAIL: b: an assertion failed\nFAILED: tests/b.sh (exit 1)\nexit 1\n"; sev   # t-bc1e: a suite's own fail() line is not a run-level failure
+assert_contains "$(line_of full.log)" "covered full.log exit=1"
 full "$F1" "FAILED: tests/b.sh (exit 1)\nFAIL: the test run left sprint-check servers running (PIDs): 1\nexit 1\n"; sev
 [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a run-level FAIL was covered by suite re-runs: $out"
 full "$F1" "boom\nexit 1\n"; sev; [[ "$(line_of full.log)" == "fresh full.log exit=1 "* ]] || fail "evidence: a failure with no FAILED line was covered: $out"

@@ -465,7 +465,7 @@ suite_covered_by() {
   fi
   if [[ "${CODES[$i]}" != 0 ]]; then
     [[ "${CODES[$i]}" =~ ^[0-9]+$ ]] || return 0
-    ! LC_ALL=C grep -a -q -E '^FAIL: ' -- "$f" || return 0
+    ! LC_ALL=C grep -a -q -E '^FAIL: (the test run |--only asked )' -- "$f" || return 0   # scripts/test.sh's own run-level failures; a suite's fail() line is its FAILED: entry (t-bc1e)
     base="$(git -C "$root" merge-base "$graded" main 2>/dev/null || git -C "$root" merge-base "$graded" origin/main 2>/dev/null)" || return 0
     [[ "$base" != "$graded" ]] || return 0   # graded on main itself: no branch to tell the suite's own changes from, so nothing is "untouched"
     k=0
