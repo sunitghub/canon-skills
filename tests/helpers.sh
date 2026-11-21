@@ -18,6 +18,7 @@ if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d)"; export CANON_HOME
 # environment: no CLAUDECODE, and a config root that does not exist (the check then fails open). A test that exercises the
 # check sets both itself.
 unset CLAUDECODE
+unset COPILOT_CLI   # t-4084: likewise Copilot CLI (it sets COPILOT_CLI=1 for its subprocesses); a test that exercises its branch sets it
 # t-1cfc, t-ce0b: a suite run from a pre-commit hook (an install that predates the t-ce0b fix) inherits git's GIT_DIR / GIT_INDEX_FILE, and every
 # `git init` / `git commit` in a temp dir then acts on the real repository. No suite wants them.
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX

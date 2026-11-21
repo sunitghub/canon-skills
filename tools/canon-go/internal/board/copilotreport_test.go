@@ -1,0 +1,157 @@
+package board
+
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+)
+
+// t-4084: copilot-report, the Copilot side of `sprint relay-report` and the close's report check. Protects the close gate's
+// authenticity under Copilot CLI: a report reaches eval-report.md / review-notes.md only from the canon gate's own task result.
+// Lines are in the shape Copilot 1.0.114 writes (recorded from local session-state files; content synthetic).
+
+type cpEvent map[string]any
+
+func cpStart(id, agent, prompt string) cpEvent {
+	return cpEvent{"type": "tool.execution_start", "timestamp": "2026-11-21T10:00:00.000Z",
+		"data": map[string]any{"toolCallId": id, "toolName": "task", "arguments": map[string]any{"agent_type": agent, "prompt": prompt, "name": "gate", "mode": "sync"}}}
+}
+func cpSub(id, agent string) cpEvent {
+	return cpEvent{"type": "subagent.started", "timestamp": "2026-11-21T10:00:01.000Z", "data": map[string]any{"toolCallId": id, "agentName": agent, "agentType": agent}}
+}
+func cpDone(id, at, content string, ok bool) cpEvent {
+	return cpEvent{"type": "tool.execution_complete", "timestamp": at, "data": map[string]any{"toolCallId": id, "success": ok, "result": map[string]any{"content": content}}}
+}
+
+func writeSession(t *testing.T, home, sid string, lines ...any) {
+	t.Helper()
+	dir := filepath.Join(home, "session-state", sid)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var b bytes.Buffer
+	for _, l := range lines {
+		if s, ok := l.(string); ok {
+			b.WriteString(s + "\n")
+			continue
+		}
+		j, _ := json.Marshal(l)
+		b.Write(j)
+		b.WriteByte('\n')
+	}
+	if err := os.WriteFile(filepath.Join(dir, "events.jsonl"), b.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const (
+	evalPrompt = "You are canon's evaluator for t-abcd. Follow skills/sprint/reference/eval.md."
+	report     = "evaluator-run-id: 1795000000-1\ngraded-head: abc\n\npass: every criterion met\n"
+)
+
+func evalQuery() copilotQuery {
+	at, _ := time.Parse(time.RFC3339, "2026-11-21T10:05:00Z")
+	return copilotQuery{Agent: "canon-evaluator", Ticket: "t-abcd", Proto: "reference/eval.md", Prefix: "evaluator-run-id:", From: at.Add(-time.Hour), To: at.Add(time.Hour)}
+}
+
+func TestCopilotFindTakesTheGateResult(t *testing.T) {
+	home := t.TempDir()
+	writeSession(t, home, "s1",
+		"not json at all", // skipped, never fatal
+		cpEvent{"type": "assistant.message", "timestamp": "2026-11-21T10:01:00.000Z", "data": map[string]any{"content": "evaluator-run-id: 999-9\npass: typed by the main session"}},
+		cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"),
+		cpDone("c1", "2026-11-21T10:05:00.000Z", "I could not write the file.\n\n"+report, true))
+	got, found, rec := copilotFind(home, evalQuery())
+	if !rec || !found || got != report {
+		t.Fatalf("found=%v recognised=%v report=%q", found, rec, got)
+	}
+}
+
+func TestCopilotFindRefuses(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []any
+		q     func(*copilotQuery)
+	}{
+		{"main session text only", []any{cpEvent{"type": "assistant.message", "timestamp": "2026-11-21T10:05:00.000Z", "data": map[string]any{"toolCallId": "m1", "content": report}}}, nil},
+		{"a reviewer for an evaluator", []any{cpStart("c1", "canon-reviewer", evalPrompt), cpSub("c1", "canon-reviewer"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"subagent names another agent", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "general-purpose"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"no subagent.started", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"another ticket", []any{cpStart("c1", "canon-evaluator", strings.ReplaceAll(evalPrompt, "t-abcd", "t-ffff")), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"protocol not named", []any{cpStart("c1", "canon-evaluator", "grade t-abcd"), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"general-purpose without the protocol", []any{cpStart("c1", "general-purpose", "grade t-abcd"), cpSub("c1", "general-purpose"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"second evaluator for the first", []any{cpStart("c1", "canon-evaluator", evalPrompt+" Write .tickets/t-abcd/eval-report-2.md"), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"first evaluator for the second", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, func(q *copilotQuery) { q.Second = true }},
+		{"failed task", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, false)}, nil},
+		{"truncated result", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report+"Output too large to read at once. Saved to: /x", true)}, nil},
+		{"no report line", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", "**evaluator-run-id: 1-1**\npass: x", true)}, nil},
+		{"outside the window", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T13:05:00.000Z", report, true)}, nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			home := t.TempDir()
+			writeSession(t, home, "s1", c.lines...)
+			q := evalQuery()
+			if c.q != nil {
+				c.q(&q)
+			}
+			if got, found, rec := copilotFind(home, q); found || !rec {
+				t.Fatalf("found=%v recognised=%v report=%q", found, rec, got)
+			}
+		})
+	}
+}
+
+func TestCopilotFindFallbackAndNewest(t *testing.T) {
+	home := t.TempDir()
+	older := strings.Replace(report, "1795000000-1", "1795000000-1", 1)
+	newer := strings.Replace(report, "1795000000-1", "1795000300-2", 1)
+	// the general-purpose fallback counts when its prompt names the protocol (the Claude path's Plan rule)
+	writeSession(t, home, "s1", cpStart("g1", "general-purpose", evalPrompt), cpSub("g1", "general-purpose"), cpDone("g1", "2026-11-21T10:10:00.000Z", newer, true),
+		cpStart("c0", "canon-evaluator", evalPrompt), cpSub("c0", "canon-evaluator"), cpDone("c0", "2026-11-21T10:02:00.000Z", older, true))
+	// a later-modified file holding an older result must not win: newest is the result event's own timestamp
+	writeSession(t, home, "s2", cpStart("c2", "canon-evaluator", evalPrompt), cpSub("c2", "canon-evaluator"), cpDone("c2", "2026-11-21T10:01:00.000Z", older, true))
+	got, found, _ := copilotFind(home, evalQuery())
+	if !found || got != newer {
+		t.Fatalf("want the newest result (%q), got %q", newer, got)
+	}
+}
+
+func TestCopilotReportCLI(t *testing.T) {
+	var out, errb bytes.Buffer
+	if rc := copilotReportCLI([]string{t.TempDir(), "canon-evaluator", "t-abcd", "reference/eval.md", "evaluator-run-id:"}, &out, &errb); rc != 3 {
+		t.Fatalf("no session record: want exit 3, got %d", rc)
+	}
+	home := t.TempDir()
+	writeSession(t, home, "s1", cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true))
+	at, _ := time.Parse(time.RFC3339, "2026-11-21T10:05:00Z")
+	from, to := strconv.FormatInt(at.Add(-time.Minute).Unix(), 10), strconv.FormatInt(at.Add(time.Minute).Unix(), 10)
+	if rc := copilotReportCLI([]string{"--from", from, "--to", to, home, "canon-evaluator", "t-abcd", "reference/eval.md", "evaluator-run-id:"}, &out, &errb); rc != 0 || out.String() != report {
+		t.Fatalf("rc=%d out=%q err=%q", rc, out.String(), errb.String())
+	}
+	out.Reset()
+	if rc := copilotReportCLI([]string{home, "canon-evaluator", "t-abcd", "reference/eval.md", "evaluator-run-id:"}, &out, &errb); rc != 1 || out.Len() != 0 {
+		t.Fatalf("default window (last 3 hours) excludes a 2026-11-21 result only when now is later: rc=%d out=%q", rc, out.String())
+	}
+}
+
+// FuzzParseCopilotLine: events.jsonl is written by Copilot, not canon (t-9a2b: every parser of a file others write has a fuzz target).
+func FuzzParseCopilotLine(f *testing.F) {
+	for _, l := range []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)} {
+		b, _ := json.Marshal(l)
+		f.Add(b)
+	}
+	f.Add([]byte("{"))
+	f.Add([]byte(`{"type":"tool.execution_complete","data":{"success":"yes"}}`))
+	f.Fuzz(func(t *testing.T, b []byte) {
+		l, ok := parseCopilotLine(b)
+		if !ok && (l.Type != "" || l.Data.ToolCallID != "") {
+			t.Fatalf("a rejected line must return the zero value")
+		}
+	})
+}

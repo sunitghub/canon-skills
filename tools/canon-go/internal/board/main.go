@@ -232,6 +232,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   event <kind> --project <dir> --source <name> [--actor user|agent|system] key=value...
   log verify | seal        the activity log's day seals (canon log)
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
+  copilot-report [--second] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol-file> <first-line-prefix>
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
   gate-insights [--days N] [--json]

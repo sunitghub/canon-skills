@@ -753,6 +753,47 @@ _transcript_has_all() {
   return 0
 }
 
+# _report_harness — t-4084: which harness's own record backs a gate report: claude (CLAUDECODE set, Claude Code's transcripts), else
+# copilot (COPILOT_CLI=1, Copilot CLI's session record), else none. Claude Code wins when both are set.
+_report_harness() {
+  if [[ -n "${CLAUDECODE:-}" ]]; then echo claude
+  elif [[ "${COPILOT_CLI:-}" == 1 ]]; then echo copilot
+  else echo none; fi
+}
+
+# _copilot_report_bin — the board binary when it has copilot-report (t-4084), else nothing: an older one would take the word for a port.
+_copilot_report_bin() {
+  local board; board="$(board_bin)"
+  case "$("$board" --help 2>/dev/null || true)" in *copilot-report*) printf '%s\n' "$board" ;; esac
+}
+
+# _gate_eval_report_copilot <id> <run-epoch> <needles> — t-4084: the close check under Copilot CLI. The report must be the result of a real
+# canon-evaluator task (or a general-purpose one that names reference/eval.md) in Copilot's session record, from a minute before the
+# run-id to an hour after it (the result event's own time), holding the run-id, the ticket id and every verdict-line prefix. Fails
+# OPEN with a Note when the board binary predates the helper or there is no session record (layout not recognised); CLOSED otherwise.
+_gate_eval_report_copilot() {
+  local id="$1" epoch="$2" needles="$3" bin chome rc=0 tmp
+  chome="${COPILOT_HOME:-${HOME:-}/.copilot}"
+  bin="$(_copilot_report_bin)"
+  if [[ -z "$bin" ]]; then
+    echo "Note: transcript check skipped (the installed board binary predates copilot-report; run 'canon update'): eval-report.md is not verified against Copilot's session record here."
+    return 0
+  fi
+  tmp="$(mktemp)" || return 1
+  "$bin" copilot-report --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
+  if (( rc == 3 )); then
+    rm -f "$tmp"
+    echo "Note: transcript check skipped (no Copilot session record under $chome/session-state, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
+    return 0
+  fi
+  if (( rc == 0 )) && _transcript_has_all "$tmp" "$needles"; then rm -f "$tmp"; return 0; fi
+  rm -f "$tmp"
+  echo "Sprint $id cannot close: no canon-evaluator task result in Copilot's session record backs eval-report.md."
+  echo "Looked in $chome/session-state/*/events.jsonl for a canon-evaluator task (or a general-purpose one naming reference/eval.md) whose prompt names $id, finished from a minute before the run-id to an hour after it, whose result holds the run-id and every verdict line. A report no real evaluator returned (typed by hand or edited after) has none: dispatch the evaluator again, then 'sprint relay-report $id evaluator'."
+  _gate_dispatch_notice evaluator eval-report.md
+  return 1
+}
+
 # _gate_eval_report_transcript <id> <tdir> — t-0231: the report must be backed by the harness's own transcript of a real
 # canon-evaluator dispatch. subagent-runs.jsonl cannot prove one (subagent-log.sh writes whatever --agent-id it is given,
 # with empty session and transcript fields), but Claude Code keeps every subagent's transcript, which an agent cannot write:
@@ -768,17 +809,20 @@ _gate_eval_report_transcript() {
   local id="$1" tdir="$2"
   local report="$tdir/eval-report.md"   # a separate `local`: under bash 3.2 + set -u one word cannot use the previous word's value
   local cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
-  if [[ -z "${CLAUDECODE:-}" ]]; then
-    echo "Note: transcript check skipped (not running under Claude Code): eval-report.md is not verified against a harness transcript here."
+  local harness; harness="$(_report_harness)"   # t-4084: Copilot CLI's session record backs the report as Claude Code's transcripts do
+  if [[ "$harness" == none ]]; then
+    echo "Note: transcript check skipped (not running under Claude Code or Copilot CLI): eval-report.md is not verified against a harness transcript here."
     return 0
   fi
   local d recognised=0
-  for d in "$cfg"/projects/*/*/subagents; do
-    [[ -d "$d" ]] && { recognised=1; break; }
-  done
-  if (( ! recognised )); then
-    echo "Note: transcript check skipped (no Claude Code subagent transcripts under $cfg/projects, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
-    return 0
+  if [[ "$harness" == claude ]]; then
+    for d in "$cfg"/projects/*/*/subagents; do
+      [[ -d "$d" ]] && { recognised=1; break; }
+    done
+    if (( ! recognised )); then
+      echo "Note: transcript check skipped (no Claude Code subagent transcripts under $cfg/projects, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
+      return 0
+    fi
   fi
   local run_id run_epoch run_len now start_min end_min
   run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//; s/[[:space:]]*$//')"
@@ -808,6 +852,8 @@ _gate_eval_report_transcript() {
     prefixes="$prefixes$vprefix"$'\n'
   done < <(grep -E '^(pass|fail):' "$report" | tr -d '\r')
   local needles="$run_id"$'\n'"$id"$'\n'"$prefixes"
+  # Copilot: the ticket id is matched in the task's prompt by copilot-report; the result itself must hold the run-id and the verdicts
+  if [[ "$harness" == copilot ]]; then _gate_eval_report_copilot "$id" "$run_epoch" "$run_id"$'\n'"$prefixes"; return; fi
   local f meta found=0
   local -a find_args=("$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin "-$start_min")
   (( end_min > 0 )) && find_args+=(! -mmin "-$end_min")
@@ -1670,6 +1716,7 @@ cmd_relay_report() {
   esac
   tdir="$(ticket_dir_for "$id")"
   [[ -d "$tdir" ]] || { echo "relay-report: no ticket folder for $id" >&2; exit 1; }
+  if [[ "$(_report_harness)" == copilot ]]; then _relay_report_copilot "$id" "$role" "$tdir" "$proto" "$marker" "$dest"; return; fi
   cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
   # An older board binary takes an unknown first word for a port and would start serving: ask --help first (board_helper_bin).
   local board; board="$(board_bin)"
@@ -1695,6 +1742,26 @@ cmd_relay_report() {
   wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
   printf '%s\n' "$report" > "$tdir/$dest"
   echo "relay-report: wrote $tdir/$dest from $found ($(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "${found%.jsonl}.meta.json" | head -1))"
+}
+
+# _relay_report_copilot <id> <role> <tdir> <protocol> <marker> <dest> — t-4084: relay-report under Copilot CLI. A Copilot gate has no write
+# tool, so it returns its report as its final message; Copilot keeps that message in its session record, and this copies it byte for
+# byte (board binary copilot-report: the canon gate's own task result, never the main session's text). Refuses when none matches.
+_relay_report_copilot() {
+  local id="$1" role="$2" tdir="$3" proto="$4" marker="$5" dest="$6" bin chome agent report rc=0
+  local -a extra=()
+  chome="${COPILOT_HOME:-${HOME:-}/.copilot}"
+  case "$role" in reviewer) agent=canon-reviewer ;; evaluator2) agent=canon-evaluator; extra=(--second) ;; *) agent=canon-evaluator ;; esac
+  bin="$(_copilot_report_bin)"
+  [[ -n "$bin" ]] || { echo "relay-report: the installed board binary predates copilot-report; run 'canon update' (or build the board), then retry" >&2; exit 1; }
+  report="$("$bin" copilot-report ${extra[@]+"${extra[@]}"} "$chome" "$agent" "$id" "$proto" "$marker" 2>/dev/null)" || rc=$?
+  if (( rc != 0 )); then
+    echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): a $agent task (or a general-purpose one naming $proto) in the last 3 hours whose prompt names $id and whose whole result has a line starting '$marker'. Dispatch the $role again." >&2
+    exit 1
+  fi
+  wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
+  printf '%s\n' "$report" > "$tdir/$dest"
+  echo "relay-report: wrote $tdir/$dest from Copilot's session record ($agent)"
 }
 
 # _signoff_option <plan.md> <label> — t-864c: the lowercased value of a `| <Label>: <value>` segment of the Sign-off Tier line (the label in

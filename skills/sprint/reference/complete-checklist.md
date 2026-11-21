@@ -66,6 +66,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
   that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
   `evaluator-run-id` as the very last command. Never pass a changed-files list.
 - `Plan` fallback: `sprint relay-report <id> [reviewer]` writes its report (the session never types one).
+- Copilot CLI: after every evaluator and reviewer dispatch, `sprint relay-report <id> [reviewer]` writes its report from Copilot's session record (its gates cannot write files; t-4084).
 
 ## Read the detail when
 

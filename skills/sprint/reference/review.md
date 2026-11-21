@@ -33,7 +33,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Evidence is not success
 
 ## Report-writing safety (Windows Git Bash)
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — applies here. The orchestrating agent saves to `.tickets/<id>/review-notes.md` if Bash write is refused.
+Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — applies here. The orchestrating agent saves to `.tickets/<id>/review-notes.md` if Bash write is refused. Under Copilot CLI (`COPILOT_CLI=1`) write no file: return the whole report, `# Review Notes` first, as your final message (shared-gate-protocol.md, "Under Copilot CLI"; t-4084).
 
 ## Self-serve visual verification (no Node/Playwright required)
 

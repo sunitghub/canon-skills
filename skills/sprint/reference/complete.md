@@ -406,7 +406,9 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
    `subagent_type`. If the returned text is a full report, run `sprint relay-report <id>` (add
    `reviewer` for the reviewer): it copies the report byte for byte from the harness's own transcript
    of the dispatch (t-ff14), so the main session never types a gate report (Claude Code's auto mode
-   refuses that as a bypassed gate). Never compose a report from a bare verdict. For the evaluator, never write or edit
+   refuses that as a bypassed gate). Under Copilot CLI this is the normal path: its gates have no file-write tool, so after
+   every evaluator and reviewer dispatch run `sprint relay-report <id>` (`reviewer` for the reviewer), which copies the
+   report from Copilot's own session record, and the close checks eval-report.md against that record (t-4084). Never compose a report from a bare verdict. For the evaluator, never write or edit
    `evaluator-run-id` yourself (live-reproduced on Windows/Haiku: an orchestrator wrote its own
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
    lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
