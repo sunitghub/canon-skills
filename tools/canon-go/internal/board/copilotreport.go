@@ -176,8 +176,8 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 		if t.done == nil || !copilotTaskMatches(t, q) {
 			continue
 		}
-		when, err := time.Parse(time.RFC3339Nano, t.done.Timestamp)
-		if err != nil || when.Before(q.From) || when.After(q.To) || (newest != nil && !when.After(at)) {
+		when, err := time.Parse(time.RFC3339Nano, t.done.Timestamp) // on a tie the later line in the file wins
+		if err != nil || when.Before(q.From) || when.After(q.To) || (newest != nil && when.Before(at)) {
 			continue
 		}
 		newest, at = t, when
