@@ -61,3 +61,4 @@ examples/
 # The two programs canon-go replaced (t-bdb0): fetch-daemon.sh removes them, but an older tree's leftovers must not dirty the clone.
 /tools/sprint-check-bin/
 /tools/cockpit-daemon/
+/bench/vs-plain/results/
