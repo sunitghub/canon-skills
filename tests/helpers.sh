@@ -2,15 +2,9 @@
 
 set -euo pipefail
 
-# t-fff4: a function named like the command, on purpose. macOS mktemp ignores TMPDIR for `mktemp -d` and bare `mktemp`, so a suite that
-# pins TMPDIR (hermetic runs, the evaluator's) still left folders under /var/folders/.../T. With TMPDIR set those two forms get a template
-# inside it (its trailing / dropped: a // path breaks Go path comparisons); any other arguments, or TMPDIR unset, run the real one. Only
-# this shell and its subshells see it: a tool run as a child process uses the real mktemp; a tool library a test sources gets it (as
-# GNU mktemp already behaves on Linux). A PATH builder must use `type -P`: `command -v mktemp` now prints the bare word.
-mktemp() {
-  if [[ -n "${TMPDIR:-}" && ( $# == 0 || ( $# == 1 && "$1" == -d ) ) ]]; then command mktemp "$@" "${TMPDIR%/}/canon-test.XXXXXX"
-  else command mktemp "$@"; fi
-}
+# t-fff4 / t-7ab9: the mktemp wrapper (bare `mktemp` and `mktemp -d` inside a pinned TMPDIR on macOS) lives in tools/platform-lib.sh.
+# shellcheck source=../tools/platform-lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../tools/platform-lib.sh"
 
 # -P (physical path) so this matches lsof's resolved cwd exactly — plain pwd
 # doesn't traverse a symlinked path component (t-2a71: sweep_stale_stub_processes
