@@ -29,6 +29,7 @@ cat > "$T/bin/claude" <<'EOF'
 set -euo pipefail
 echo "session in $PWD" >> "$STUB_LOG"
 echo "args: $(printf "%s " "$@" | tr "\n" " ")" >> "$STUB_LOG"
+echo "canon on PATH: $(command -v sprint tkt 2>/dev/null | tr "\n" " ")" >> "$STUB_LOG"
 if find . -name 'step-*.test.js' -o -name lib.js | grep -q .; then echo HIDDEN-SEEN >> "$STUB_LOG"; fi
 cp "$STUB_APP" ./todo.js
 enc="$(printf '%s' "$PWD" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CLAUDE_CONFIG_DIR/projects/$enc"
@@ -69,6 +70,8 @@ grep -q HIDDEN-SEEN "$STUB_LOG" && fail "a session could see the hidden tests"
 args="$(grep -m1 "^args:" "$STUB_LOG")"
 [[ "$args" == *"--permission-mode acceptEdits"* && "$args" == *'"sandbox":{"enabled":true'* && "$args" == *'"allowUnsandboxedCommands":false'* ]] || fail "sessions run sandboxed: $args"
 [[ "$args" != *bypassPermissions* && "$args" != *dangerously* ]] || fail "no bypass mode: $args"
+seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
+assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
 assert_eq "1|13" "$(awk -F'\t' 'NR==2 { print $4 "|" $18 }' "$T/r1.tsv")" "step 1 scores its 13 tests"
 [[ "$(awk -F'\t' 'NR==3 { print $18 }' "$T/r1.tsv")" == 24 ]] || fail "step 2 scores steps 1-2 (24)"
 assert_eq "$(awk -F'\t' 'NR==2 { print $11 "/" $12 "/" $13 "/" $14 "/" $16 "/" $23 }' "$T/r1.tsv")" "100/50/1000/10/7/s1" "tokens, turns and session from modelUsage"
@@ -88,6 +91,7 @@ rm -rf "$HOME/.config"
 
 # canon arm: a clone of this repo as CANON_HOME, models pinned, the sprint skill added under a scratch HOME
 row="$(bench closed canon 1)"
+[[ "$(grep -m1 "^canon on PATH:" "$STUB_LOG")" == "canon on PATH: $T/w"*"/canon/tools/sprint "* ]] || fail "canon finds its scratch clone's sprint first: $(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" "$row" "canon: closed sprint, no transcripts -> n/a split, gate runs read"
 n="$(cat "$T/n")"; w="$T/w$n"
 [[ -f "$w/proj/.claude/skills/sprint/SKILL.md" || -f "$w/proj/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
