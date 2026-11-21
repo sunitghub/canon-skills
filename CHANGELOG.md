@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-11-21
+
+- Changed: at a sprint close the advisory gates run together: the reviewer, break-it and skill-eval's test cases are sent in one message inside the reviewer's snapshot window, so the wait is the longest of them, not their sum (t-2ce8's close waited about 10 minutes for them in turn). skill-eval records its history line after the reviewer returns; the binding evaluator still runs last and alone, and break-it's fixes still get security-review and the evaluator. break-it runs are now logged with `sprint subagent-log --agent-type break-it` so their cost is measured (t-9e7a).
+- Added: `sprint complete` says why a slow close was slow, in one line from the activity log, when the close ran past its tier's target (high-risk 60 minutes, others 30) or re-ran something: `close: 48 min (high-risk target 60): test-sh stamped 3x (2 failed), evaluator refused 1x (stale_evidence), reviewer 1 run, evaluator 1 run`. `sprint close-hint <id>` prints it later. The old "most of this ticket's tokens went to the close gates" sentence is gone: it fired on nearly every close (t-bc1e).
+- Fixed: a failing full-suite log is now `covered` by `scripts/test.sh --only` re-runs as 0.70.0 intended: the check took any suite's own `FAIL:` line for a run-level failure, so a real suite failure never qualified; it now refuses only the runner's own lines (a changed project registry, a leaked server, an `--only` suite that did not run) (t-bc1e).
+
 ## [0.70.0] - 2026-11-20
 
 - Changed: a sprint close re-runs far less evidence. `sprint check-evidence` notes a stale mutation-sweep log instead of refusing it (the sweep is non-binding: re-sweeping after each fix was 20 of 39 hours of reruns in 30 days); a full-suite log stays usable after a test-only change or a failure in a suite the branch did not touch, once just those suites pass alone with the new `scripts/test.sh --only <suite>`; the close checklist stamps only after the reviewer's and security-review's fixes; a sweep can be skipped as `revert-proved by hand (N)`; and a board change confined to one panel runs that panel's spec cases, not the full spec (t-2ce8).
