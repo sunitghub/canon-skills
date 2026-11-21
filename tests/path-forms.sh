@@ -12,6 +12,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 source "$ROOT/tools/platform-lib.sh"
+use_fresh_board "$(mktemp -d)"   # t-0829: token-spend is the board binary's
 
 corpus="$ROOT/tests/fixtures/path-keys.tsv"
 

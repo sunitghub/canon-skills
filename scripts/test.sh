@@ -111,6 +111,7 @@ tests=(
   "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/sprint-gate-cost.sh"
   "$ROOT/tests/sprint-token-spend.sh"
+  "$ROOT/tests/token-spend-golden.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
   "$ROOT/tests/install-sh.sh"

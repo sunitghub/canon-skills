@@ -9,7 +9,9 @@ cfg="$(mktemp -d)"
 wt="$(mktemp -d)"
 # Its own CANON_HOME: scripts/test.sh shares one across suites, and their events would fill this one's log.
 CANON_HOME="$(mktemp -d)"; export CANON_HOME
-trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME"' EXIT
+bd="$(mktemp -d)"
+trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$bd"' EXIT
+use_fresh_board "$bd/bin"   # t-0829: the board binary under test computes token-spend and writes the events (an installed one may predate it)
 cd "$project"
 root="$(pwd -P)"
 export CLAUDE_CONFIG_DIR="$cfg"
@@ -115,8 +117,8 @@ assert_eq "t-ffff - - 0* 50 0" "$(row t-ffff)"   # no Approved: stamp and no bui
 phase() { printf '%s\n' "$out" | awk -v p="$1" -v m="$2" '$1 == p && $2 == m' | tr -s ' '; }
 # phase model turns fresh-in cache-read output
 assert_eq "overlap claude-opus-5-5 1 7 0 0" "$(phase overlap claude-opus-5-5)"
-assert_eq "gates claude-opus-5-5 2 303 0 0" "$(phase gates claude-opus-5-5)"
-assert_eq "gates claude-sonnet-5-5 4 990 0 0" "$(phase gates claude-sonnet-5-5)"
+assert_eq "close claude-opus-5-5 2 303 0 0" "$(phase close claude-opus-5-5)"
+assert_eq "close claude-sonnet-5-5 4 990 0 0" "$(phase close claude-sonnet-5-5)"
 assert_eq "implementation claude-sonnet-5-5 1 50 0 0" "$(phase implementation claude-sonnet-5-5)"
 assert_eq "planning claude-opus-5-5 1 10 1k 10" "$(phase planning claude-opus-5-5)"
 assert_eq "" "$(phase planning '<synthetic>')"
@@ -155,7 +157,7 @@ assert_eq "//host/share" "$(pk '\\\\host\\share')"       # a JSON-escaped UNC pa
 # End to end: the events' project and the turns' cwd are spelled differently from the project path: JSON-escaped backslashes after the first folder
 # (/private\\\\var\\\\...), the way a Windows cwd arrives in a transcript (C:\\\\Users\\\\...); a Mac cannot spell its path as /c/Users, but pkey must join a
 # backslash spelling to the POSIX project path in both awk stages, which a trailing slash alone does not exercise (the old code already tolerated that).
-p2="$(make_project)"; r2="$(cd "$p2" && pwd -P)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}"' EXIT
+p2="$(make_project)"; r2="$(cd "$p2" && pwd -P)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$bd" "$p2" "${p3:-}"' EXIT
 mkdir -p "$cfg/projects/$(printf '%s' "$r2" | sed 's/[^A-Za-z0-9]/-/g')"
 b2="$(printf '%s' "$r2" | sed -e 's|/|\\\\|g' -e 's|^\\\\|/|')"   # /private\\var\\folders\\...: two backslashes per separator, as JSON writes one
 { printf '{"schema":1,"ts":"2026-10-02T14:00:00.000Z","kind":"sprint.started","project":"%s","data":{"ticket":"t-wwww"}}\n' "$b2"
@@ -189,8 +191,6 @@ assert_contains "$out" "read 5 turns in $r3?[2J, $r3/x, $(printf '%s' "$r3/$long
 [[ "$out" != *"$r3/z"* ]] || fail "more than three folders were listed: $out"
 
 # t-7e26: --record writes one sprint.cost event (numbers only), prints the cost line, and writes nothing twice.
-bd="$(mktemp -d)"; trap 'rm -rf "$project" "$cfg" "$wt" "$CANON_HOME" "$p2" "${p3:-}" "$bd"' EXIT
-use_fresh_board "$bd/bin"   # canon_event writes through the board binary under test
 recspend() { CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend "$@" --record; }   # the fixtures are dated October: a real clock would prune them as older than the retention
 cost_lines() { cat "$events"/*.jsonl 2>/dev/null | grep -c '"kind":"sprint.cost"' || true; }
 assert_eq 0 "$(cost_lines)"
@@ -210,7 +210,7 @@ assert_contains "$ln" '"ticket":"t-aaaa"'
 assert_contains "$ln" '"gates":"343"'; assert_contains "$ln" '"implementation":"170"'; assert_contains "$ln" '"turns":"'
 assert_contains "$ln" '"gate_runs":"1"'; assert_contains "$ln" 'claude-sonnet-5-5:'
 [[ "$ln" != *"content"* && "$ln" != *'"text"'* ]] || fail "a sprint.cost line carries transcript text: $ln"
-assert_contains "$out" "cost: 513 tokens (gates 343, 66%), 1 gate runs"
+assert_contains "$out" "cost: 513 tokens (close 343, 66% — gate agents 40), cache reads 1k, 1 gate runs"
 # t-b6ad: the builder is the implementation phase's biggest model; only the evaluator ran on it (the reviewer's LAST row is another model, t-aaaab is another ticket)
 assert_contains "$ln" '"builder":"claude-opus-5-5"'; assert_contains "$ln" '"same_model":"evaluator"'
 assert_contains "$out" "note: the evaluator ran on claude-opus-5-5, the model that built this change, so it is not independent of it (advisory, never a block)."
@@ -227,7 +227,7 @@ assert_eq "" "$(recspend --ticket t-dddd)"; assert_eq "1" "$(cost_lines)"
 assert_eq "" "$(recspend --ticket t-zzzz)"; assert_eq "1" "$(cost_lines)"
 # the same cost under a Windows-style spelling of the project (the t-wwww fixture above): recorded, not lost to a path mismatch
 out="$(cd "$p2" && CANON_EVENTS_CLOCK=2026-10-05T00:00:00Z "$SPRINT" token-spend --ticket t-wwww --record)"
-assert_contains "$out" "cost: 120 tokens (gates 0, 0%), 0 gate runs"
+assert_contains "$out" "cost: 120 tokens (close 0, 0% — gate agents 0), cache reads 0, 0 gate runs"
 ln2="$(grep -h '"ticket":"t-wwww"' "$events"/*.jsonl | grep '"kind":"sprint.cost"')"
 assert_contains "$ln2" '"builder":"claude-sonnet-5-5"'   # no Approved: stamp: the build phase; and no .claude/subagent-runs.jsonl in this project
 [[ "$ln2" != *same_model* && "$out" != *"note:"* ]] || fail "no gate run log: no same_model and no note: $ln2 / $out"

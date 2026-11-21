@@ -212,7 +212,7 @@ for step in $(seq 1 "$steps"); do
         [[ "$status" != ok ]] || { status=incomplete; reason="$tid never reached sprint complete"; }
       fi
       ts="$(cd "$proj" && PATH="$HC/tools:$BASE_PATH" CANON_HOME="$CH" "$HC/tools/sprint" token-spend --ticket "$tid" 2>/dev/null \
-        | awk -v t="$tid" '$1 == t && $3 ~ /^[0-9]/ { print $3 "\t" $4 "\t" $5; exit }' || true)"   # not its "no transcript turns" line
+        | awk -v t="$tid" '{ gsub(/ \(spec [^)]*\)/, "") } $1 == t && $3 ~ /^[0-9]/ { print $3 "\t" $4 "\t" $5; exit }' || true)"   # not its "no transcript turns" line
       [[ -z "$ts" ]] || IFS=$'\t' read -r planning impl gates <<< "$ts"
       if [[ -f "$proj/.claude/subagent-runs.jsonl" ]]; then
         gate_runs="$(node -e '
