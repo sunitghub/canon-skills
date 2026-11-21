@@ -2271,7 +2271,8 @@ cmd_token_spend() {
 # ticket alone. A malformed line is skipped; no log or no close.started prints nothing; it never fails the close. (The gates' token
 # ratio was the first idea and was dropped: 2-10x on nearly every close, 1.4x on the 3 h t-eeb5 one.)
 _close_hint() {
-  local id="$1" root="$2" tier="${3:-}" evdir f hi lo target
+  local id="$1" root tier="${3:-}" evdir f hi lo target
+  root="$(cd "$2" 2>/dev/null && pwd -P)" || return 0   # events carry the physical path (canon_event's pwd -P); a symlinked checkout must match it
   evdir="${CANON_HOME:-${HOME:-}/.canon}/events"
   [[ -d "$evdir" ]] || return 0   # an unreadable folder globs to nothing
   local -a evfiles=()

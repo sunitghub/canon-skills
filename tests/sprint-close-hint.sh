@@ -50,6 +50,14 @@ out="$(CANON_CLOSE_TARGET_HIGH=40 hint)"; assert_contains "$out" "close: 45 min 
 sed -i.bak 's/T10:45:00/T11:05:00/' "$EV"; rm -f "$EV.bak"   # 65 min: over the default 60, so a bad override must fall back to 60, not compare as text
 out="$(CANON_CLOSE_TARGET_HIGH=abc hint)"; assert_contains "$out" "close: 65 min (high-risk target 60): "
 
+# exactly at the target is on time; a spec check (before approval) is never a close gate run
+tier normal; : > "$EV"
+ev 10:00:00 close.started; ev 10:01:00 gate.started "" '"role":"speccheck"'; ev 10:02:00 gate.started "" '"role":"evaluator"'
+ev 10:02:30 evidence.stamped "" '"name":"y","exit":"0"'; ev 10:03:00 evidence.stamped "" '"name":"y","exit":"0"'; ev 10:30:00 sprint.completed
+assert_eq "close: y stamped 2x, evaluator 1 run" "$(hint)"
+# reached through a symlinked folder (macOS /var -> /private/var, or a linked checkout), the events' physical path still matches
+ln -s "$P" "$W/link"; out="$(cd "$W/link" && bash "$SPRINT" close-hint t-abcd 2>&1)"; assert_eq "close: y stamped 2x, evaluator 1 run" "$out"
+
 # on time, no re-stamp, no rejection: nothing, gate runs alone never print
 tier normal; : > "$EV"
 ev 10:00:00 close.started; ev 10:02:00 evidence.stamped "" '"name":"test-sh","exit":"0"'; ev 10:03:00 gate.started "" '"role":"evaluator"'; ev 10:10:00 sprint.completed

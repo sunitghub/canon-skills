@@ -609,9 +609,15 @@ cc_cfg="$(mktemp -d)"; cc_root="$(pwd -P)"; mkdir -p "$cc_cfg/projects/$(printf 
 cc_start="$(event_line sprint.started "$fresh_id" | sed 's/.*"ts":"\([^"]*\)".*/\1/')"
 printf '{"type":"assistant","message":{"model":"claude-opus-5-5","id":"msg_cost1","usage":{"input_tokens":40,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":10}},"timestamp":"%s","cwd":"%s"}\n' "$cc_start" "$cc_root" \
   > "$cc_cfg/projects/$(printf '%s' "$cc_root" | sed 's/[^A-Za-z0-9]/-/g')/s.jsonl"
+# t-bc1e: a close that re-stamped a log prints the close hint after the cost line (the real `sprint complete` call, not only `close-hint`)
+ch_ts="$(date -u +%Y-%m-%dT%H:%M:%S).000Z"; ch_ev="$CANON_HOME/events/$(date -u +%Y-%m-%d).jsonl"; mkdir -p "$CANON_HOME/events"
+for ch_kind in close.started evidence.stamped evidence.stamped; do
+  printf '{"schema":1,"id":"x","ts":"%s","kind":"%s","source":"t","project":"%s","data":{"ticket":"%s","name":"suite","exit":"0"}}\n' "$ch_ts" "$ch_kind" "$cc_root" "$fresh_id" >> "$ch_ev"
+done
 sleep 1
 complete_output="$(CLAUDE_CONFIG_DIR="$cc_cfg" "$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
+assert_contains "$complete_output" "close: suite stamped 2x"
 assert_contains "$complete_output" "cost: 50 tokens (gates 0, 0%), 0 gate runs"
 assert_contains "$(event_line sprint.cost "$fresh_id")" '"implementation":"50"'
 rm -rf "$cc_cfg"
