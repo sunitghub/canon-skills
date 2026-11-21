@@ -56,6 +56,7 @@ check_zip() {
   [[ -d "$top" ]] || { echo "no canon-9.9.9/ folder"; return; }
   # 1. what is left out
   [[ ! -e "$top/tests" ]] || echo "tests/ is in the zip"
+  [[ ! -e "$top/bench" ]] || echo "bench/ is in the zip"   # t-e85f: canon's own benchmarks, run from a clone
   [[ ! -e "$top/tools/canon-go/cmd" && ! -e "$top/tools/canon-go/internal" ]] || echo "the Go source is in the zip"
   [[ ! -e "$top/tools/vendored.tsv" && ! -e "$top/tools/sprint-check-app/CLAUDE.md" && ! -e "$top/docs/research-path-and-rule-standards.md" && ! -e "$top/scripts/changelog-release.sh" && ! -e "$top/changelog.d" ]] || echo "a developer-only file is in the zip"   # t-7299; t-9915's research report (about 40 KB no tool reads: it took the zip over its 4224 KB cap)
   n="$( (cd "$top/meta" 2>/dev/null && find . -type f | wc -l | tr -d ' ') || echo 0)"
@@ -91,7 +92,7 @@ tools/sprint-check-app/app.html	the board page (its tour images are checked abov
 REQ
   # 3. everything else shipped is byte-identical to the tag, and nothing but the exclusions is missing
   local want got
-  want="$(tree_files | grep -vE '^(tests/|tools/canon-go/cmd/|tools/canon-go/internal/|tools/vendored\.tsv$|tools/sprint-check-app/CLAUDE\.md$|docs/research-path-and-rule-standards\.md$|scripts/changelog-release\.sh$|changelog\.d/)' | grep -vE '^meta/' || true)"
+  want="$(tree_files | grep -vE '^(tests/|bench/|tools/canon-go/cmd/|tools/canon-go/internal/|tools/vendored\.tsv$|tools/sprint-check-app/CLAUDE\.md$|docs/research-path-and-rule-standards\.md$|scripts/changelog-release\.sh$|changelog\.d/)' | grep -vE '^meta/' || true)"
   got="$(cd "$top" && find . -type f | sed 's#^\./##' | grep -v '^meta/' | LC_ALL=C sort)"
   [[ "$(printf '%s\n' "$want" | LC_ALL=C sort)" == "$got" ]] || echo "the files outside meta/ differ from the tag's tree minus the exclusions"
   if [[ -n "$full" ]]; then   # one git call per file: only for the zip the test expects to be good
