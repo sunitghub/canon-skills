@@ -11,6 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"
 trap 'rm -rf "$W"' EXIT
 use_fresh_board "$W/board"
+export HOME="$W/home"; mkdir -p "$HOME"   # case 6b writes the default ~/.copilot: never the user's own (built board kept its real HOME)
 export COPILOT_CLI=1 COPILOT_HOME="$W/copilot"
 cd "$(make_project)"
 mkdir -p .claude
@@ -114,6 +115,13 @@ quick="$W/old/quick"; printf '#!/bin/sh
 exit 0
 ' > "$quick"; chmod +x "$quick"   # answers every other word at once
 assert_contains "$(SPRINT_CHECK_BIN="$quick" "$SPRINT" complete 2>&1)" "predates copilot-report"
+
+# 6b. a COPILOT_HOME pointed at an empty folder does not skip the check when the default home (~/.copilot) has a record
+gate_ticket redirect; mkdir -p "$W/empty" "$HOME/.copilot"
+body "$now-6767" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
+cp -R "$COPILOT_HOME/session-state" "$HOME/.copilot/"
+out="$(COPILOT_HOME="$W/empty" run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator task result"
+[[ "$HOME" == "$W/home" ]] && rm -rf "$W/home/.copilot/session-state"; drop
 
 # 7. Claude Code wins when both are set: its transcript layout is checked, not Copilot's record
 gate_ticket both

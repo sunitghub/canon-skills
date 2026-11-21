@@ -41,7 +41,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Evidence is not success
 
 ## Report-writing safety (Windows Git Bash)
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — the full chunked-write / verify-each-append / retry-smaller protocol applies here. The orchestrating agent saves to `.tickets/<id>/eval-report.md` if Bash write is refused. Under Copilot CLI (`COPILOT_CLI=1`) write no file, steps 1 and 8 included: take the run-id with `date +%s` at step 8 as usual and return the whole report, `evaluator-run-id: …` first, as your final message (shared-gate-protocol.md, "Under Copilot CLI"; t-4084). Eval-specific delta: split the report into sections in this order — Criteria table, then Test Plan table, then Findings + Verdict — one `cat >>` per section; if a chunk still fails the retry, go down to one table row per `cat >>` call.
+Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — the full chunked-write / verify-each-append / retry-smaller protocol applies here. The orchestrating agent saves to `.tickets/<id>/eval-report.md` if Bash write is refused. Under Copilot CLI (`COPILOT_CLI=1`): write no file (steps 1 and 8 too); return the report, run-id line first, as your final message (t-4084). Eval-specific delta: split the report into sections in this order — Criteria table, then Test Plan table, then Findings + Verdict — one `cat >>` per section; if a chunk still fails the retry, go down to one table row per `cat >>` call.
 
 ## Self-serve visual verification (no Node/Playwright required)
 

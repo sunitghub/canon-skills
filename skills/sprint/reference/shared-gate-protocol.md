@@ -87,11 +87,9 @@ verbatim, in the exact format specified in the calling protocol, in your final t
 to the caller. The orchestrating agent relays it into the file with `sprint relay-report`, which copies it from the
 harness transcript (t-ff14).
 
-**Under Copilot CLI** (it sets `COPILOT_CLI=1` in your environment) this is the normal path, not a fallback: Copilot maps a gate's tools
-to read, search and execute, so a canon gate has no file-write tool, and a shell write is refused too. Write no file at all (the
-evaluator's provisional run-id included): return your full report, verbatim, first line first (`evaluator-run-id: …` or `# Review
-Notes`), as your final message. `sprint relay-report` copies it from Copilot's own session record (t-4084). Manual mode's read-only
-evaluator does the same.
+**Under Copilot CLI** (`COPILOT_CLI=1`) this is the normal path: a gate there has no write tool. Write no file (the provisional
+run-id included); return the full report, first line first, as your final message. `sprint relay-report` copies it from
+Copilot's session record (t-4084).
 
 ## Self-serve visual verification (no Node/Playwright required)
 
