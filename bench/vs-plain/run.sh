@@ -52,7 +52,10 @@ BASE_PATH="$(clean_path)"
 # The session's TMPDIR is inside the scratch folder: the sandbox does not allow the inherited /var/folders/…/T, so canon's mktemp
 # failed there and the first dry run's sprint stopped at `sprint approve`. Same for both arms.
 mkdir -p "$W/tmp"
-SANDBOX="$(node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: [process.argv[1]] } } }))' "$W")"
+# macOS's plain `mktemp` ignores TMPDIR and creates under the per-user temp folder, which canon's own scripts call (t-7ab9): until that
+# is fixed the sandbox may write that folder too. Nothing run.sh later executes outside the sandbox lives in either folder (HC below).
+USER_TMP="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$USER_TMP" ]] || USER_TMP="$(cd -P "$USER_TMP" && pwd -P)"
+SANDBOX="$(node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$W" "$USER_TMP")"
 
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {
@@ -62,12 +65,20 @@ fingerprint() {
   done
 }
 
-# Canon's install for this run: a clone at HEAD, its prebuilt canon-go copied in, every model tier pinned to Sonnet.
+# Canon's install for this run: a clone at HEAD, its prebuilt canon-go copied in, every model tier pinned to Sonnet. CH is the session's
+# CANON_HOME, writable by it (canon writes its events there). HC is a second clone the sandbox can never write, outside both of its
+# folders: every canon command run.sh itself runs (skills.sh add, token-spend) comes from HC, so a session cannot plant code in it.
 CH="$W/canon"
+HC="${BENCH_HOST_CLONE:-}"
+clone_canon() {
+  git clone -q --no-hardlinks "$REPO" "$1"
+  git -C "$1" checkout -q --detach "$commit"
+  if [[ -x "$REPO/tools/canon-go-bin/canon-go" ]]; then mkdir -p "$1/tools/canon-go-bin"; cp "$REPO/tools/canon-go-bin/canon-go" "$1/tools/canon-go-bin/"; fi
+}
 if [[ "$arm" == canon && ! -d "$CH" ]]; then
-  git clone -q --no-hardlinks "$REPO" "$CH"
-  git -C "$CH" checkout -q --detach "$commit"
-  if [[ -x "$REPO/tools/canon-go-bin/canon-go" ]]; then mkdir -p "$CH/tools/canon-go-bin"; cp "$REPO/tools/canon-go-bin/canon-go" "$CH/tools/canon-go-bin/"; fi
+  clone_canon "$CH"
+  [[ -n "$HC" ]] || HC="$(mktemp -d /tmp/canon-bench-host.XXXXXX)"
+  [[ -d "$HC/.git" ]] || clone_canon "$HC"
   mkdir -p "$CH/cockpit"
   node -e '
     const fs = require("fs"); const [seed, out, model] = process.argv.slice(1);
@@ -85,8 +96,8 @@ new_project() {
   [[ -z "$seed" ]] || cp -R "$seed"/. "$p"/
   if [[ "$arm" == canon ]]; then
     mkdir -p "$W/setup-home"
-    (cd "$p" && HOME="$W/setup-home" XDG_CONFIG_HOME="$W/setup-home/.config" CANON_HOME="$CH" PATH="$CH/tools:$BASE_PATH" \
-      "$CH/tools/skills.sh" add sprint </dev/null >"$W/skills-add.log" 2>&1) \
+    (cd "$p" && HOME="$W/setup-home" XDG_CONFIG_HOME="$W/setup-home/.config" CANON_HOME="$CH" PATH="$HC/tools:$BASE_PATH" \
+      "$HC/tools/skills.sh" add sprint </dev/null >"$W/skills-add.log" 2>&1) \
       || { echo "run.sh: skills.sh add sprint failed, see $W/skills-add.log" >&2; exit 1; }
   fi
   git -C "$p" add -A
@@ -127,7 +138,7 @@ for step in $(seq 1 "$steps"); do
   fp_before="$(fingerprint)"
   start=$(date +%s); status=ok; reason=""; rc=0
   (cd "$proj" && PATH="$env_path" CANON_HOME="$CH" TMPDIR="$W/tmp" "$CLAUDE_BIN" -p "$(prompt_for "$step")" --model "$MODEL" --setting-sources project,local \
-    --output-format json --permission-mode acceptEdits --allowedTools Agent Read Grep Glob Edit Write --settings "$SANDBOX" \
+    --output-format json --permission-mode acceptEdits --allowedTools Agent Bash Read Grep Glob Edit Write --settings "$SANDBOX" \
     --max-budget-usd "${BENCH_MAX_USD:-5}" \
     > "$W/step-$step.json" 2> "$W/step-$step.err") || rc=$?
   minutes="$(awk -v s="$start" -v e="$(date +%s)" 'BEGIN { printf "%.1f", (e - s) / 60 }')"
@@ -147,7 +158,10 @@ for step in $(seq 1 "$steps"); do
   if [[ "$kind" != OK ]]; then status=failed; reason="$cost"; cost=n/a; in_t=n/a; out_t=n/a; cr=n/a; cw=n/a; turns=n/a; session=n/a; fi
   if [[ "$rc" != 0 && "$status" == ok ]]; then status=failed; reason="claude -p exited $rc"; fi
   [[ "$status" != failed || -n "$reason" ]] || reason="claude -p exited $rc"
-  # Contamination: the user's state changed, or the session's transcript read the hidden tests.
+  # Contamination: the user's state changed, the session's transcript read the hidden tests, or it changed canon's own tracked files.
+  if [[ "$arm" == canon && -n "$(git -C "$CH" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    status=contaminated; reason="the session changed canon's own files in its CANON_HOME"
+  fi
   if [[ "$(fingerprint)" != "$fp_before" ]]; then status=contaminated; reason="the user's canon state changed during the session"; fi
   tdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$proj" | sed 's/[^A-Za-z0-9]/-/g')"
   if [[ -d "$tdir" ]] && grep -rqs "vs-plain/hidden" "$tdir"; then status=contaminated; reason="the transcript reads the hidden tests"; fi
@@ -162,7 +176,7 @@ for step in $(seq 1 "$steps"); do
       if ! grep -qE '^status: closed' "$proj/.tickets/$tid/ticket.md" 2>/dev/null; then
         [[ "$status" != ok ]] || { status=incomplete; reason="$tid never reached sprint complete"; }
       fi
-      ts="$(cd "$proj" && PATH="$CH/tools:$BASE_PATH" CANON_HOME="$CH" "$CH/tools/sprint" token-spend --ticket "$tid" 2>/dev/null \
+      ts="$(cd "$proj" && PATH="$HC/tools:$BASE_PATH" CANON_HOME="$CH" "$HC/tools/sprint" token-spend --ticket "$tid" 2>/dev/null \
         | awk -v t="$tid" '$1 == t { print $3 "\t" $4 "\t" $5; exit }' || true)"
       [[ -z "$ts" ]] || IFS=$'\t' read -r planning impl gates <<< "$ts"
       if [[ -f "$proj/.claude/subagent-runs.jsonl" ]]; then
@@ -178,4 +192,4 @@ for step in $(seq 1 "$steps"); do
   printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)	$arm	$run	$step	$status	${reason//$'\t'/ }	$commit	$MODEL	$entry	$cost	$in_t	$out_t	$cr	$cw	$minutes	$turns	$passed	$total	$planning	$impl	$gates	$gate_runs	$session" >> "$results"
   echo "run.sh: $arm run $run step $step: $status${reason:+ ($reason)}, \$$cost, ${minutes} min, $passed/$total hidden tests"
 done
-echo "run.sh: rows in $results; scratch in $W"
+echo "run.sh: rows in $results; scratch in $W${HC:+, host clone in $HC}"

@@ -43,6 +43,8 @@ case "${STUB_MODE:-ok}" in
   garbage) echo 'not json'; exit 0 ;;
   closed) mkdir -p .tickets/t-abcd .claude; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md
           echo '{"agent_type":"reviewer","tokens":1200,"minutes":2,"ticket":"t-abcd"}' >> .claude/subagent-runs.jsonl ;;
+  plant) printf '#!/usr/bin/env bash\ntouch "%s"\n' "$STUB_PLANTED" > "$CANON_HOME/tools/sprint"
+         mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md ;;
   open) mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: in_progress\n---\n' > .tickets/t-abcd/ticket.md ;;
 esac
 echo '{"is_error":false,"total_cost_usd":0.25,"num_turns":7,"session_id":"s1","modelUsage":{"claude-sonnet-5-5":{"inputTokens":100,"outputTokens":50,"cacheReadInputTokens":1000,"cacheCreationInputTokens":10}}}'
@@ -58,7 +60,7 @@ repo_before="$(git -C "$ROOT" status --porcelain)"
 echo 0 > "$T/n"
 bench() {
   local n; n=$(($(cat "$T/n") + 1)); echo "$n" > "$T/n"; : > "$STUB_LOG"
-  STUB_MODE="$1" BENCH_WORK="$T/w$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
+  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST_CLONE="$T/host$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
     || fail "run.sh $1 $2 exited non-zero: $(cat "$T/err$n")"
   tail -1 "$T/r$n.tsv" | awk -F'\t' '{ print $5 "|" $6 "|" $10 "|" $17 "|" $18 "|" $19 "|" $21 "|" $22 }'
 }
@@ -72,7 +74,9 @@ args="$(grep -m1 "^args:" "$STUB_LOG")"
 [[ "$args" == *"--permission-mode acceptEdits"* && "$args" == *'"sandbox":{"enabled":true'* && "$args" == *'"allowUnsandboxedCommands":false'* ]] || fail "sessions run sandboxed: $args"
 [[ "$args" != *bypassPermissions* && "$args" != *dangerously* ]] || fail "no bypass mode: $args"
 # the sandbox may write the run's scratch folder and nothing else, and the session's TMPDIR is inside it (the inherited one is refused)
-[[ "$args" == *'"filesystem":{"allowWrite":["'"$T/w1"'"]}'* ]] || fail "allowWrite names only the run's folder: $args"
+# plus macOS's per-user temp folder, where canon's plain mktemp writes (t-7ab9); nothing else
+ut="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$ut" ]] || ut=',"'"$(cd -P "$ut" && pwd -P)"'"'
+[[ "$args" == *'"filesystem":{"allowWrite":["'"$T/w1"'"'"$ut"']}'* ]] || fail "allowWrite names only the run's folder and the user temp folder: $args"
 assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
@@ -106,6 +110,10 @@ node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.
 [[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "canon: run.sh wrote under HOME"
 assert_eq "canon	claude-sonnet-5-5	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $8 "\t" $9 }' "$T/r$n.tsv")" "the row names arm, model, entry point"
 [[ "$(bench open canon 1)" == "incomplete|t-abcd never reached sprint complete|"* ]] || fail "an open sprint is incomplete"
+# a session may write its own CANON_HOME: code it plants there never runs outside the sandbox (run.sh's own commands use a second clone)
+export STUB_PLANTED="$T/planted"
+[[ "$(bench plant canon 1)" == "contaminated|the session changed canon's own files in its CANON_HOME|"* ]] || fail "a session that edits canon's files is contaminated"
+[[ ! -e "$T/planted" ]] || fail "run.sh ran code the session planted in its CANON_HOME"
 [[ "$(bench ok canon 1)" == "incomplete|no sprint ticket was created|"* ]] || fail "no sprint at all is incomplete"
 assert_eq "$repo_before" "$(git -C "$ROOT" status --porcelain)" "the repo's tree is unchanged after the canon runs"
 
