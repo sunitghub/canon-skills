@@ -36,7 +36,8 @@ session() {
     const lines = [
       { type: "assistant.message", timestamp: ts, data: { content: "main session text" } },
       { type: "tool.execution_start", timestamp: ts, data: { toolCallId: id, toolName: "task", arguments: { agent_type: agent, prompt, name: "gate", mode: "sync" } } },
-      { type: "subagent.started", timestamp: ts, data: { toolCallId: id, agentName: agent, agentType: agent } },
+      { type: "subagent.started", timestamp: ts, agentId: "ag-" + id, data: { toolCallId: id, agentName: agent, agentType: agent } },
+      { type: "tool.execution_start", timestamp: ts, agentId: "ag-" + id, data: { toolCallId: "own-" + id, toolName: "bash", arguments: { command: "ls .tickets" } } },
       { type: "tool.execution_complete", timestamp: ts, data: { toolCallId: id, success: ok !== "false", result: { content: result } } },
     ];
     require("fs").appendFileSync(f, lines.map(l => JSON.stringify(l)).join("\n") + "\n");' \
@@ -60,6 +61,22 @@ $(body "$rid" "pass: all criteria met")" "$now"
 sum_before="$(find "$COPILOT_HOME" -type f -exec cksum {} + | sort)"
 out="$("$SPRINT" relay-report "$gid")"; assert_contains "$out" "from Copilot's session record (canon-evaluator)"
 assert_eq "$(body "$rid" "pass: all criteria met")" "$(cat ".tickets/$gid/eval-report.md")" "relayed byte for byte from the first report line"
+assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+
+# 2b. a gate that wrote the report itself (Copilot on macOS can) and returned only a summary: no relay needed, the close checks its record
+gate_ticket wroteit; rid="$now-2525"
+mkdir -p "$COPILOT_HOME/session-state/s1b"
+node -e '
+  const [f, id, rid, gid, at] = process.argv.slice(1); const ts = new Date(at * 1000).toISOString();
+  const rep = "evaluator-run-id: " + rid + "\ngraded-head: abc\nModel: test-model\n\n## Verdict\npass: all criteria met\n";
+  const L = [
+    { type: "tool.execution_start", timestamp: ts, data: { toolCallId: id, toolName: "task", arguments: { agent_type: "canon-evaluator", prompt: "Evaluate " + gid + ". Follow skills/sprint/reference/eval.md." } } },
+    { type: "subagent.started", timestamp: ts, agentId: "ag-" + id, data: { toolCallId: id, agentType: "canon-evaluator" } },
+    { type: "tool.execution_start", timestamp: ts, agentId: "ag-" + id, data: { toolCallId: "w", toolName: "bash", arguments: { command: "cat > .tickets/" + gid + "/eval-report.md <<R\n" + rep + "R" } } },
+    { type: "tool.execution_complete", timestamp: ts, data: { toolCallId: id, success: true, result: { content: "pass: all met. The report is at .tickets/" + gid + "/eval-report.md." } } },
+  ];
+  require("fs").writeFileSync(f, L.map(l => JSON.stringify(l)).join("\n") + "\n");' "$COPILOT_HOME/session-state/s1b/events.jsonl" c1b "$rid" "$gid" "$now"
+body "$rid" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
 assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
 
 # 3. a hand-flipped report: the record says fail:, the file says pass: -> refused at close

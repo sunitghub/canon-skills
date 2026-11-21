@@ -22,7 +22,12 @@ func cpStart(id, agent, prompt string) cpEvent {
 		"data": map[string]any{"toolCallId": id, "toolName": "task", "arguments": map[string]any{"agent_type": agent, "prompt": prompt, "name": "gate", "mode": "sync"}}}
 }
 func cpSub(id, agent string) cpEvent {
-	return cpEvent{"type": "subagent.started", "timestamp": "2026-11-21T10:00:01.000Z", "data": map[string]any{"toolCallId": id, "agentName": agent, "agentType": agent}}
+	return cpEvent{"type": "subagent.started", "timestamp": "2026-11-21T10:00:01.000Z", "agentId": "ag-" + id, "data": map[string]any{"toolCallId": id, "agentName": agent, "agentType": agent}}
+}
+
+// cpOwn is an event the subagent of call id produced itself (Copilot tags each with the subagent's agentId).
+func cpOwn(id, typ string, data map[string]any) cpEvent {
+	return cpEvent{"type": typ, "timestamp": "2026-11-21T10:03:00.000Z", "agentId": "ag-" + id, "data": data}
 }
 func cpDone(id, at, content string, ok bool) cpEvent {
 	return cpEvent{"type": "tool.execution_complete", "timestamp": at, "data": map[string]any{"toolCallId": id, "success": ok, "result": map[string]any{"content": content}}}
@@ -119,6 +124,41 @@ func TestCopilotFindFallbackAndNewest(t *testing.T) {
 	got, found, _ := copilotFind(home, evalQuery())
 	if !found || got != newer {
 		t.Fatalf("want the newest result (%q), got %q", newer, got)
+	}
+}
+
+// The live run (Copilot 1.0.114 on macOS, 2026-11-21): the gate wrote eval-report.md itself through the shell and returned only a
+// summary. The relay then takes the report from the gate's own newest message that holds it, and the close check greps the gate's
+// whole record (its commands and results), never the main session's.
+func TestCopilotFindGateWroteItself(t *testing.T) {
+	home := t.TempDir()
+	writeSession(t, home, "s1",
+		cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"),
+		cpOwn("c1", "tool.execution_start", map[string]any{"toolCallId": "b1", "toolName": "bash", "arguments": map[string]any{"command": "cat > .tickets/t-abcd/eval-report.md <<'R'\n" + report + "R"}}),
+		cpOwn("c1", "tool.execution_start", map[string]any{"toolCallId": "n1", "toolName": "task", "arguments": map[string]any{"agent_type": "canon-evaluator", "prompt": evalPrompt}}), // a gate's own call is never a dispatch
+		cpOwn("c1", "assistant.message", map[string]any{"content": "Saved it.\n\n" + report}),
+		cpDone("c1", "2026-11-21T10:05:00.000Z", "pass: all met. The report is at .tickets/t-abcd/eval-report.md.", true),
+		cpEvent{"type": "assistant.message", "timestamp": "2026-11-21T10:06:00.000Z", "data": map[string]any{"content": "evaluator-run-id: 1795000000-1\nfail: the main session's own text"}})
+	got, found, _ := copilotFind(home, evalQuery())
+	if !found || got != report {
+		t.Fatalf("relay from the gate's own message: found=%v %q", found, got)
+	}
+	q := evalQuery()
+	q.Record = true
+	rec, found, _ := copilotFind(home, q)
+	if !found || !strings.Contains(rec, "1795000000-1") || !strings.Contains(rec, "pass: every criterion met") || strings.Contains(rec, "the main session's own text") {
+		t.Fatalf("record: found=%v %q", found, rec)
+	}
+	// with no message holding the report, the relay refuses, but the record still backs the file the gate wrote
+	home2 := t.TempDir()
+	writeSession(t, home2, "s1", cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"),
+		cpOwn("c1", "tool.execution_start", map[string]any{"toolCallId": "b1", "toolName": "bash", "arguments": map[string]any{"command": "printf '%s' '" + report + "' > r"}}),
+		cpDone("c1", "2026-11-21T10:05:00.000Z", "done", true))
+	if _, found, _ := copilotFind(home2, evalQuery()); found {
+		t.Fatalf("relay must refuse when no text holds the whole report")
+	}
+	if rec, found, _ := copilotFind(home2, q); !found || !strings.Contains(rec, "1795000000-1") {
+		t.Fatalf("the record backs the written report: %v %q", found, rec)
 	}
 }
 

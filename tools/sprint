@@ -767,9 +767,11 @@ _copilot_report_bin() {
   case "$("$board" --help 2>/dev/null || true)" in *copilot-report*) printf '%s\n' "$board" ;; esac
 }
 
-# _gate_eval_report_copilot <id> <run-epoch> <needles> — t-4084: the close check under Copilot CLI. The report must be the result of a real
-# canon-evaluator task (or a general-purpose one that names reference/eval.md) in Copilot's session record, from a minute before the
-# run-id to an hour after it (the result event's own time), holding the run-id, the ticket id and every verdict-line prefix. Fails
+# _gate_eval_report_copilot <id> <run-epoch> <needles> — t-4084: the close check under Copilot CLI. A real canon-evaluator task (or a
+# general-purpose one that names reference/eval.md) whose prompt names the ticket, finished from a minute before the run-id to an hour
+# after it, must hold the run-id and every verdict-line prefix in its own record: every line its agentId produced (the commands that
+# wrote the report, its messages) and its result, as the Claude Code check greps the whole transcript. A gate that could write
+# (Copilot on macOS did) and one that only returned its report both pass. Fails
 # OPEN with a Note when the board binary predates the helper or there is no session record (layout not recognised); CLOSED otherwise.
 _gate_eval_report_copilot() {
   local id="$1" epoch="$2" needles="$3" bin chome rc=0 tmp
@@ -780,12 +782,12 @@ _gate_eval_report_copilot() {
     return 0
   fi
   tmp="$(mktemp)" || return 1
-  "$bin" copilot-report --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
+  "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
   # A COPILOT_HOME pointed at an empty folder must not skip the check: with no record there, the default home is checked (and binds when
   # it has one). Like the Claude Code check, this stops a model re-creating a report, not a user who forges a whole session record.
   if (( rc == 3 )) && [[ "$chome" != "${HOME:-}/.copilot" ]]; then
     chome="${HOME:-}/.copilot"; rc=0
-    "$bin" copilot-report --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
+    "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
   fi
   if (( rc == 3 )); then
     rm -f "$tmp"
