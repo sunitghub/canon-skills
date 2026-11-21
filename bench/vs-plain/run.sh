@@ -46,10 +46,13 @@ clean_path() {
 }
 BASE_PATH="$(clean_path)"
 
-# No bypass mode: every Bash command runs in Claude Code's sandbox (writes only to the project, $TMPDIR, which holds the scratch folder, and
-# Claude's own folders; a write into HOME is refused, probed 2026-11-21), an unsandboxed retry is refused, and Edit/Write stay in the
-# project (acceptEdits). Same for both arms.
-SANDBOX='{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false}}'
+# No bypass mode: every Bash command runs in Claude Code's sandbox, which writes only to the project, Claude's own folders and the
+# allowWrite list, here the run's scratch folder alone (the canon clone used as CANON_HOME is in it); a write into HOME, or anywhere else
+# under /var/folders, is refused (probed 2026-11-21). An unsandboxed retry is refused, and Edit/Write stay in the project (acceptEdits).
+# The session's TMPDIR is inside the scratch folder: the sandbox does not allow the inherited /var/folders/…/T, so canon's mktemp
+# failed there and the first dry run's sprint stopped at `sprint approve`. Same for both arms.
+mkdir -p "$W/tmp"
+SANDBOX="$(node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: [process.argv[1]] } } }))' "$W")"
 
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {
@@ -123,7 +126,7 @@ for step in $(seq 1 "$steps"); do
   before_tickets="$(ls "$proj/.tickets" 2>/dev/null | sort || true)"
   fp_before="$(fingerprint)"
   start=$(date +%s); status=ok; reason=""; rc=0
-  (cd "$proj" && PATH="$env_path" CANON_HOME="$CH" "$CLAUDE_BIN" -p "$(prompt_for "$step")" --model "$MODEL" --setting-sources project,local \
+  (cd "$proj" && PATH="$env_path" CANON_HOME="$CH" TMPDIR="$W/tmp" "$CLAUDE_BIN" -p "$(prompt_for "$step")" --model "$MODEL" --setting-sources project,local \
     --output-format json --permission-mode acceptEdits --allowedTools Agent Read Grep Glob Edit Write --settings "$SANDBOX" \
     --max-budget-usd "${BENCH_MAX_USD:-5}" \
     > "$W/step-$step.json" 2> "$W/step-$step.err") || rc=$?

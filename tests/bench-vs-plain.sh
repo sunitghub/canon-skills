@@ -30,6 +30,7 @@ set -euo pipefail
 echo "session in $PWD" >> "$STUB_LOG"
 echo "args: $(printf "%s " "$@" | tr "\n" " ")" >> "$STUB_LOG"
 echo "canon on PATH: $(command -v sprint tkt 2>/dev/null | tr "\n" " ")" >> "$STUB_LOG"
+echo "tmpdir: $TMPDIR" >> "$STUB_LOG"
 if find . -name 'step-*.test.js' -o -name lib.js | grep -q .; then echo HIDDEN-SEEN >> "$STUB_LOG"; fi
 cp "$STUB_APP" ./todo.js
 enc="$(printf '%s' "$PWD" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CLAUDE_CONFIG_DIR/projects/$enc"
@@ -70,6 +71,9 @@ grep -q HIDDEN-SEEN "$STUB_LOG" && fail "a session could see the hidden tests"
 args="$(grep -m1 "^args:" "$STUB_LOG")"
 [[ "$args" == *"--permission-mode acceptEdits"* && "$args" == *'"sandbox":{"enabled":true'* && "$args" == *'"allowUnsandboxedCommands":false'* ]] || fail "sessions run sandboxed: $args"
 [[ "$args" != *bypassPermissions* && "$args" != *dangerously* ]] || fail "no bypass mode: $args"
+# the sandbox may write the run's scratch folder and nothing else, and the session's TMPDIR is inside it (the inherited one is refused)
+[[ "$args" == *'"filesystem":{"allowWrite":["'"$T/w1"'"]}'* ]] || fail "allowWrite names only the run's folder: $args"
+assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
 assert_eq "1|13" "$(awk -F'\t' 'NR==2 { print $4 "|" $18 }' "$T/r1.tsv")" "step 1 scores its 13 tests"
