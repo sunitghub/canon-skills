@@ -15,6 +15,9 @@ for pin in "$W/a" "$W/b/"; do   # a TMPDIR with and without the trailing slash m
 done
 t="$(TMPDIR="$W/a" mktemp -d "$W/given.XXXXXX")"; [[ "$t" == "$W/given."* && -d "$t" && "$t" != *$'\n'* ]] || fail "a template was not passed through alone: $t"
 o="$(TMPDIR="$W/a" mktemp "$W/one.XXXXXX")"; [[ "$o" == "$W/one."* && -f "$o" && "$o" != *$'\n'* ]] || fail "a one-argument template was not passed through alone: $o"
+if [[ "$(uname -s)" == Darwin ]]; then   # any other single flag runs the real one, which on macOS ignores TMPDIR (GNU honours it: nothing to tell apart)
+  q="$(TMPDIR="$W/a" mktemp -q)"; [[ -f "$q" && "$q" != "$W/a/"* ]] || fail "mktemp -q must run the real mktemp, not get a TMPDIR template: $q"; rm -f "$q"
+fi
 u="$(env -u TMPDIR bash -c 'source "$1"; mktemp -d' _ "$ROOT/tests/helpers.sh")"   # unset: the real mktemp, wherever it puts it
 [[ -d "$u" ]] || fail "mktemp -d with TMPDIR unset made nothing: $u"; rm -rf "$u"
 
