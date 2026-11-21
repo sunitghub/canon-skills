@@ -12,6 +12,8 @@
 set -euo pipefail
 
 BENCH="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+CANARY="$(sed -n 's/^\/\/ bench-canary: \([0-9a-f]\{16\}\) .*/\1/p' "$BENCH/hidden/lib.js")"   # read here, never written in this file
+[[ -n "$CANARY" ]] || { echo "run.sh: hidden/lib.js has no bench-canary line" >&2; exit 2; }
 REPO="$(git -C "$BENCH" rev-parse --show-toplevel)"
 usage() { echo "usage: bench/vs-plain/run.sh <plain|canon> <run-number> [--steps 1-3] [--results FILE]" >&2; exit 2; }
 
@@ -173,7 +175,7 @@ for step in $(seq 1 "$steps"); do
   parsed="$(node -e '
     const fs = require("fs"); let j;
     try { j = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch (e) { console.log("ERR\tunreadable claude -p output"); process.exit(0); }
-    if (j.is_error) { console.log("ERR\tclaude -p reported an error: " + String(j.result || j.subtype || "").replace(/\s+/g, " ").slice(0, 120)); process.exit(0); }
+    if (j.is_error || (j.subtype && j.subtype !== "success")) { console.log("ERR\tclaude -p reported an error: " + String(j.result || j.subtype || "").replace(/\s+/g, " ").slice(0, 120)); process.exit(0); }   // error_max_turns / error_max_budget_usd can come without is_error
     if (typeof j.total_cost_usd !== "number") { console.log("ERR\tno total_cost_usd in claude -p output"); process.exit(0); }
     let u = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     const mu = j.modelUsage && Object.values(j.modelUsage);
@@ -192,7 +194,8 @@ for step in $(seq 1 "$steps"); do
   fi
   if [[ "$(fingerprint)" != "$fp_before" ]]; then status=contaminated; reason="the user's canon state changed during the session"; fi
   tdir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/$(printf '%s' "$proj" | sed 's/[^A-Za-z0-9]/-/g')"
-  if [[ -d "$tdir" ]] && grep -rqs "vs-plain/hidden" "$tdir"; then status=contaminated; reason="the transcript reads the hidden tests"; fi
+  # The path, or the canary value the hidden files carry (read by any path, relative or absolute, its contents land in the transcript).
+  if [[ -d "$tdir" ]] && grep -rqsF -e "vs-plain/hidden" -e "$CANARY" "$tdir"; then status=contaminated; reason="the transcript reads the hidden tests"; fi
   # Canon's split: the ticket this step created, closed or not; its token-spend phases; its gate runs from the subagent log.
   planning=n/a; impl=n/a; gates=n/a; gate_runs=n/a; entry=claude-p
   if [[ "$arm" == canon ]]; then

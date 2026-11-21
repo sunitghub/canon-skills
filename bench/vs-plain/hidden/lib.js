@@ -1,3 +1,4 @@
+// bench-canary: fc8c6a891fd8a400 (run.sh marks a session contaminated if its transcript holds this line's value: a read by any path)
 // Shared helper for the hidden acceptance tests (t-e85f): runs the app under test, `node todo.js ...`, in BENCH_APP_DIR with its
 // own TODO_FILE, the way a person would. Neither bench arm ever sees this folder (run.sh copies it in only after a session ends).
 'use strict';

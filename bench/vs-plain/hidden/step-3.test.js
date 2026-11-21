@@ -1,3 +1,4 @@
+// bench-canary: fc8c6a891fd8a400 (run.sh marks a session contaminated if its transcript holds this line's value: a read by any path)
 // Hidden acceptance tests for step-3.md (t-e85f), the planted bug in baseline-3/: --overdue must leave out a to-do due today and a
 // done one. TODO_TODAY is 2026-03-10. Steps 1 and 2's tests run with it, as the regression half of the score.
 'use strict';

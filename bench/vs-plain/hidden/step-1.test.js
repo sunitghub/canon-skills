@@ -1,3 +1,4 @@
+// bench-canary: fc8c6a891fd8a400 (run.sh marks a session contaminated if its transcript holds this line's value: a read by any path)
 // Hidden acceptance tests for step-1.md (t-e85f): add, list, done, remove, storage and errors, through the CLI only.
 'use strict';
 const test = require('node:test');

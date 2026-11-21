@@ -1,3 +1,4 @@
+// bench-canary: fc8c6a891fd8a400 (run.sh marks a session contaminated if its transcript holds this line's value: a read by any path)
 // Hidden acceptance tests for step-2.md (t-e85f): due dates, --open, --done, --overdue, through the CLI only. TODO_TODAY is 2026-03-10.
 'use strict';
 const test = require('node:test');

@@ -36,9 +36,11 @@ cp "$STUB_APP" ./todo.js
 enc="$(printf '%s' "$PWD" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CLAUDE_CONFIG_DIR/projects/$enc"
 echo '{"type":"user"}' > "$CLAUDE_CONFIG_DIR/projects/$enc/s.jsonl"
 case "${STUB_MODE:-ok}" in
+  leak) (cd "$STUB_HIDDEN" && grep -h bench-canary lib.js) | sed 's/"/ /g; s/^/{"tool_result":"/; s/$/"}/' >> "$CLAUDE_CONFIG_DIR/projects/$enc/s.jsonl" ;;   # a read by a path without vs-plain/hidden
   peek) echo '{"tool":"Read","path":"/x/bench/vs-plain/hidden/step-1.test.js"}' >> "$CLAUDE_CONFIG_DIR/projects/$enc/s.jsonl" ;;
   touch) mkdir -p "$HOME/.config/canon"; echo /somewhere >> "$HOME/.config/canon/projects" ;;
   error) echo '{"is_error":true,"result":"rate limited","total_cost_usd":0}'; exit 0 ;;
+  maxed) echo '{"is_error":false,"subtype":"error_max_budget_usd","total_cost_usd":5.01}'; exit 0 ;;
   exit) echo '{"is_error":false,"total_cost_usd":0.5,"num_turns":3}'; exit 3 ;;
   garbage) echo 'not json'; exit 0 ;;
   closed) mkdir -p .tickets/t-abcd .claude; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md
@@ -68,7 +70,7 @@ repo_before="$(git -C "$ROOT" status --porcelain)"
 echo 0 > "$T/n"
 bench() {
   local n; n=$(($(cat "$T/n") + 1)); echo "$n" > "$T/n"; : > "$STUB_LOG"
-  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST="$T/host$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
+  STUB_MODE="$1" STUB_HIDDEN="$B/hidden" BENCH_WORK="$T/w$n" BENCH_HOST="$T/host$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
     || fail "run.sh $1 $2 exited non-zero: $(cat "$T/err$n")"
   tail -1 "$T/r$n.tsv" | awk -F'\t' '{ print $5 "|" $6 "|" $10 "|" $17 "|" $18 "|" $19 "|" $21 "|" $22 }'
 }
@@ -111,6 +113,8 @@ export STUB_ESCAPE="$T/escaped"
 [[ ! -e "$T/escaped" ]] || fail "scoring let the session's app write outside its folder"
 [[ ! -e "$T/escaped.exec" ]] || fail "scoring let the session's app start another program (launchctl, open, sh)"
 [[ "$(bench peek plain 1)" == "contaminated|the transcript reads the hidden tests|"* ]] || fail "a transcript reading the hidden tests is contaminated"
+[[ "$(bench leak plain 1)" == "contaminated|the transcript reads the hidden tests|"* ]] || fail "the hidden tests read by a relative path (their canary in the transcript) is contaminated"
+[[ "$(bench maxed plain 1)" == "failed|"*"error_max_budget_usd"* ]] || fail "a max-budget/max-turns result is a failed row, even without is_error"
 [[ "$(bench touch plain 1)" == "contaminated|the user's canon state changed"* ]] || fail "a change to the user's canon state is contaminated"
 rm -rf "$HOME/.config"
 
