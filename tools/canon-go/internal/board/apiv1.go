@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -288,10 +287,10 @@ func v1ScopeRoot(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return root, ok
 }
 
-// v1Resolve resolves symlinks in a root (events carry the resolved path), except a drive-form root on a non-Windows host, which
-// filepath would read as relative; eventKey matches its forms as given.
+// v1Resolve resolves symlinks in a root (events carry the resolved path) only when the root is absolute on THIS host: a drive form on
+// Unix, or a Git Bash /c/… form on Windows, would be read as relative (C:\c\… there); eventKey matches those forms as given.
 func v1Resolve(p string) string {
-	if !strings.HasPrefix(p, "/") && runtime.GOOS != "windows" {
+	if !filepath.IsAbs(p) {
 		return p
 	}
 	return resolvedOrAbs(p)

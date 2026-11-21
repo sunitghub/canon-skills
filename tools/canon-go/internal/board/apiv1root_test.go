@@ -1,9 +1,12 @@
 package board
 
 import (
+	"context"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Protects `?root=` on GET /api/v1/events, /api/v1/events/stream and /api/v1/sprint/<id> (t-9f86): `canon events` and `canon sprint` run in
@@ -43,15 +46,31 @@ func TestAPIv1RootScopesEventsToThatProject(t *testing.T) {
 }
 
 func TestAPIv1RootRefusesBadRoots(t *testing.T) {
-	newEvFix(t)
+	f := newEvFix(t)
 	for _, q := range []string{"root=", "root=relative/dir", "root=.", "root=" + url.QueryEscape("/x\x01y"), "root=" + url.QueryEscape("/x\x7fy"),
 		"root=" + url.QueryEscape("/x") + "&project=p1", "root=C:relative"} {
-		for _, route := range []string{"/api/v1/events?", "/api/v1/sprint/t-aaaa?", "/api/v1/events/stream?"} {
+		for _, route := range []string{"/api/v1/events?", "/api/v1/sprint/t-aaaa?"} {
 			w := v1Get(t, "GET", route+q, "")
 			if w.Code != 400 || !strings.Contains(w.Body.String(), "bad root") || strings.Contains(w.Body.String(), `"events"`) {
 				t.Errorf("%s%s: %d %s", route, q, w.Code, w.Body)
 			}
 		}
+		// the stream over a real connection with a short deadline: a missing guard opens a 200 stream that would never end (reviewer)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		req, _ := http.NewRequestWithContext(ctx, "GET", f.srv.URL+"/api/v1/events/stream?"+q, nil)
+		req.Host = "127.0.0.1:8423"
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil || resp.StatusCode != 400 {
+			code := 0
+			if resp != nil {
+				code = resp.StatusCode
+			}
+			t.Errorf("stream %s: status %d, %v", q, code, err)
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+		cancel()
 	}
 }
 
