@@ -196,6 +196,45 @@ git add tests && git commit -qm needs
 run "$ID"; assert_eq 0 "$code" "pre-gate-check: a skipped case never fails the check"; assert_contains "$out" "| gate cases 0/0 (1 skipped) |"
 git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
 
+# --- t-91da: a project's fast pin suites (tests/pre-gate-suites.txt), run in ONE `scripts/test.sh --only` call. No file: no field. Protects
+# the pre-gate step every close runs first: a branch's own cap or lint slip must fail here, not in the full stamp.
+reset
+printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit
+run "$ID"; assert_eq 0 "$code"; [[ "$out" != *"pins"* ]] || fail "pre-gate-check: a project with no pre-gate-suites.txt printed a pins field: $out"
+mkdir -p tests scripts
+cat > scripts/test.sh <<'RUNNER'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PG_CALLS"
+for a in "$@"; do case "$a" in --only) ;; tests/ok.sh|tests/also.sh) ;; tests/bad.sh) bad=1 ;; *) echo "test.sh: --only $a is not a suite label (scripts/test.sh --list)" >&2; exit 2 ;; esac; done
+if [[ -n "${bad:-}" ]]; then echo "FAIL: bad: an assertion failed"; echo "FAILED: tests/bad.sh (exit 1)" >&2; exit 1; fi
+echo "All tests passed."
+RUNNER
+export PG_CALLS="$WORK/pg-calls"; : > "$PG_CALLS"
+printf '# fast pins\ntests/ok.sh   # one\n\n  tests/also.sh\n' > tests/pre-gate-suites.txt
+git add tests scripts && git commit -qm pins
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: passing pin suites keep the exit code"; assert_contains "$out" "| pins 2 ok"
+assert_eq "--only tests/ok.sh --only tests/also.sh" "$(cat "$PG_CALLS")"   # one call, every label, comments and blanks dropped
+rm -rf ".tickets/$ID/evidence"
+printf 'tests/ok.sh\ntests/bad.sh\n' > tests/pre-gate-suites.txt; git commit -qam pins-bad
+run "$ID"; assert_eq 1 "$code" "pre-gate-check: a failing pin suite is non-zero"; assert_contains "$out" "| pins FAIL"
+assert_contains "$out" "FAIL: bad: an assertion failed"; [[ "$out" != *"unknown label"* ]] || fail "pre-gate-check: a failing suite was called an unknown label: $out"
+rm -rf ".tickets/$ID/evidence"
+printf 'tests/ok.sh\ntests/nope.sh\n' > tests/pre-gate-suites.txt; git commit -qam pins-unknown
+run "$ID"; assert_eq 1 "$code" "pre-gate-check: an unknown label is non-zero"; assert_contains "$out" "| pins FAIL (unknown label tests/nope.sh)"
+rm -rf ".tickets/$ID/evidence"
+printf '# nothing yet\n\n' > tests/pre-gate-suites.txt; : > "$PG_CALLS"; git commit -qam pins-empty
+run "$ID"; assert_eq 0 "$code" "pre-gate-check: an empty list is a note, never a failure"; assert_contains "$out" "| pins none listed"; assert_eq "" "$(cat "$PG_CALLS")"
+rm -rf ".tickets/$ID/evidence"
+printf 'tests/ok.sh\n' > tests/pre-gate-suites.txt; git rm -q scripts/test.sh; git commit -qam pins-norunner
+run "$ID"; assert_eq 1 "$code" "pre-gate-check: a list with no runner fails loudly"; assert_contains "$out" "| pins FAIL (no scripts/test.sh)"
+unset PG_CALLS
+git reset -q --hard "$BASE"; git clean -fdq -e .tickets; rm -rf ".tickets/$ID/evidence"
+# canon's own list names only real suites (an unknown label would fail every close)
+canon_list="$(bash "$ROOT/scripts/test.sh" --list)"
+while IFS= read -r l; do l="${l%%#*}"; l="$(printf '%s' "$l" | tr -d '[:space:]')"; [[ -z "$l" ]] && continue
+  grep -Fxq -e "$l" <<< "$canon_list" || fail "pre-gate-check: tests/pre-gate-suites.txt names $l, which scripts/test.sh --list does not"
+done < "$ROOT/tests/pre-gate-suites.txt"
+
 # --- t-835f: the advisory size field. Protects the pre-gate line every close prints (the reviewer quotes it). No plan.md: skipped, exit 0.
 reset
 printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit

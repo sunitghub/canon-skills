@@ -175,6 +175,29 @@ run_checks() {
     if ((gcrc)); then line+=" | gate cases FAIL ${gsum:-?}"; fails+="$gc"$'\n'; rc=1; else line+=" | gate cases ${gsum:-?}"; fi
   fi
 
+  # t-91da: a project's fast pin suites, listed one `scripts/test.sh --list` label per line in tests/pre-gate-suites.txt, run in ONE
+  # `scripts/test.sh --only` call before any stamp: a branch's own cap, lint or doc-parity slip fails here in seconds, not in a 7-minute
+  # full stamp (four such re-stamps on 2026-11-20). No file: no step. A list with no runner fails loudly; a list with no label is a note.
+  local plist plabels=() pl pout prc=0 punk
+  if [[ -n "$gcroot" && -f "$gcroot/tests/pre-gate-suites.txt" ]]; then
+    plist="$gcroot/tests/pre-gate-suites.txt"
+    while IFS= read -r pl || [[ -n "$pl" ]]; do
+      pl="${pl%%#*}"; pl="$(printf '%s' "$pl" | tr -d '[:space:]')"
+      [[ -n "$pl" ]] && plabels+=(--only "$pl")
+    done < "$plist"
+    if [[ ${#plabels[@]} -eq 0 ]]; then line+=" | pins none listed"
+    elif [[ ! -f "$gcroot/scripts/test.sh" ]]; then line+=" | pins FAIL (no scripts/test.sh)"; fails+="pre-gate: tests/pre-gate-suites.txt lists suites but $gcroot/scripts/test.sh does not exist"$'\n'; rc=1
+    else
+      pout="$(cd "$gcroot" && bash scripts/test.sh "${plabels[@]}" 2>&1)" || prc=$?
+      if (( prc == 0 )); then line+=" | pins $(( ${#plabels[@]} / 2 )) ok"
+      else
+        punk="$(sed -n 's/^test\.sh: --only \(.*\) is not a suite label.*/\1/p' <<<"$pout" | head -n 1)"; punk="$(printf '%s' "$punk" | LC_ALL=C tr -c 'A-Za-z0-9._/-' '?')"
+        if (( prc == 2 )) && [[ -n "$punk" ]]; then line+=" | pins FAIL (unknown label $punk)"; else line+=" | pins FAIL"; fi
+        fails+="$pout"$'\n'; rc=1
+      fi
+    fi
+  fi
+
   # Advisory: dead code in changed files (declarations from them, references from every tracked file).
   local args=() scan dead="" ns=""
   while IFS= read -r f; do [[ -n "$f" ]] && args+=(--changed "$f"); done <<<"$files"

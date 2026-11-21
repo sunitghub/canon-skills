@@ -1,0 +1,8 @@
+# t-91da: suites `sprint pre-gate-check` runs (one `scripts/test.sh --only` call, ~11 s) before any stamp, so a branch's own pin
+# slips fail in seconds instead of in the 7-minute full stamp. Only fast suites that pin a whole-repo rule belong here.
+tests/caps.sh                       # tools/caps.tsv rows match their pinned values and the files they cap
+tests/release-zip-slim.sh           # the release zip's file and size caps (t-2ce8, t-9e7a each tripped it)
+tests/pipefail-early-exit.sh        # no reader that exits early under pipefail (t-2ce8, t-bc1e each tripped it)
+tests/no-python-windows-paths.sh    # no Python in shipped scripts (t-2ce8 tripped it)
+tests/doc-mirror-parity.sh          # phrases the close docs must keep in step (t-2ce8 tripped it)
+tests/sprint-checklists.sh          # the 900-word cap on the start and close checklists

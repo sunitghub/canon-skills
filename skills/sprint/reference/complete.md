@@ -123,7 +123,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    line. A failing tool exits non-zero: fix it and re-run before dispatching anything (`sprint check-evidence` refuses the
    non-zero log). A missing tool prints `<tool> skipped | no <tool>`, never a pass. The line also lists unreferenced symbols
    in the changed files and every changed file the dead-code scan cannot read ("not scanned"); both are advisory and never
-   refuse. Re-stamp after any later tracked change.
+   refuse. Re-stamp after any later tracked change. A project that lists fast suites in `tests/pre-gate-suites.txt` (one
+   `scripts/test.sh --list` label per line, `#` comments) also gets them run in one `scripts/test.sh --only` call: `pins N ok`,
+   or `pins FAIL` (an unknown label is named; a list with no `scripts/test.sh` fails) and a non-zero exit, so a branch's own cap,
+   lint or doc-parity slip fails in seconds, not in the full stamp (t-91da: four 7-minute re-stamps on 2026-11-20).
    `shellcheck` scans each touched file whole, so old warnings in an old test file block the close: when you touch one, run the pre-gate check early and fix or scope (one `disable` per line, with the reason) its existing warnings in a separate commit (t-7e76, t-9113, t-b99b; class: touched-file-old-lint; id: P-061).
 
    **Mutation sweep (pre-evaluator, non-binding, normal+ tier, t-1fac, t-087c).** When the sprint changed shell, JS, Python
