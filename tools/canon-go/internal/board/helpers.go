@@ -15,7 +15,7 @@
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
 //	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
 //	sprint-check transcript-report <transcript> <prefix>   a gate's report from its subagent transcript (t-ff14)
-//	sprint-check copilot-report [--second] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol> <prefix>   the same from Copilot's session record (t-4084)
+//	sprint-check copilot-report [--second] [--record] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol> <prefix>   the same from Copilot's session record (t-4084)
 //	sprint-check recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events (t-2db7)
 //	sprint-check machine [--json]                  this machine's OS, chip, cores and RAM in one line, no hostname (t-c542; evidence.sh)
 //	sprint-check caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use against tools/caps.tsv (t-19bb)

@@ -179,6 +179,20 @@ func TestCopilotRecordLeavesOutToolOutputs(t *testing.T) {
 	}
 }
 
+// Evaluator (t-4084): the newest matching dispatch decides. A newer run that failed or returned only a summary is never covered by
+// an older run's report, in the same file or another.
+func TestCopilotNewestDispatchDecides(t *testing.T) {
+	stale := strings.Replace(report, "1795000000-1", "1795000000-0", 1)
+	for _, newer := range []cpEvent{cpDone("c2", "2026-11-21T10:30:00.000Z", "done: the report is in the file", true), cpDone("c2", "2026-11-21T10:30:00.000Z", report, false)} {
+		home := t.TempDir()
+		writeSession(t, home, "s1", cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", stale, true))
+		writeSession(t, home, "s2", cpStart("c2", "canon-evaluator", evalPrompt), cpSub("c2", "canon-evaluator"), newer)
+		if got, found, _ := copilotFind(home, evalQuery()); found {
+			t.Fatalf("an older run's report stood in for the newer run: %q", got)
+		}
+	}
+}
+
 // Criterion 3: an over-long line is skipped, never fatal; the lines after it still count.
 func TestCopilotLongLineSkipped(t *testing.T) {
 	old := copilotMaxLine

@@ -75,6 +75,7 @@ func copilotFind(home string, q copilotQuery) (out string, found, recognised boo
 		return "", false, false
 	}
 	var best time.Time
+	seen := false
 	for _, d := range dirs {
 		if !d.IsDir() {
 			continue
@@ -85,9 +86,14 @@ func copilotFind(home string, q copilotQuery) (out string, found, recognised boo
 			continue
 		}
 		recognised = true
-		if r, at, ok := copilotFindIn(p, q); ok && at.After(best) {
-			out, best, found = r, at, true
+		// The newest matching dispatch decides, whatever it returned: an older run's report never stands in for a newer run
+		// that failed or returned only a summary (it would overwrite a fresh report with a stale one).
+		if r, at, cand, ok := copilotFindIn(p, q); cand && (!seen || at.After(best)) {
+			out, best, found, seen = r, at, ok, true
 		}
+	}
+	if !found {
+		out = ""
 	}
 	return out, found, recognised
 }
@@ -104,10 +110,10 @@ type copilotTask struct {
 // and the call succeeded inside the window: never the main session's own messages. The report is taken from the task's result,
 // else the gate's own newest message that holds it; the record is the gate's own commands and messages (never its tool outputs) plus
 // the result line.
-func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
+func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candidate, ok bool) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", time.Time{}, false
+		return "", time.Time{}, false, false
 	}
 	defer f.Close()
 	tasks := map[string]*copilotTask{}
@@ -163,34 +169,38 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 			}
 		}
 	}
-	var out string
-	var best time.Time
-	found := false
+	// the newest matching dispatch (by its result event's time) in this file, then whether it holds a usable report or record
+	var newest *copilotTask
 	for _, id := range order {
 		t := tasks[id]
-		if t.done == nil || !copilotTaskMatches(t, q) || t.done.Data.Success == nil || !*t.done.Data.Success {
+		if t.done == nil || !copilotTaskMatches(t, q) {
 			continue
 		}
-		at, err := time.Parse(time.RFC3339Nano, t.done.Timestamp)
-		if err != nil || at.Before(q.From) || at.After(q.To) || (found && !at.After(best)) {
+		when, err := time.Parse(time.RFC3339Nano, t.done.Timestamp)
+		if err != nil || when.Before(q.From) || when.After(q.To) || (newest != nil && !when.After(at)) {
 			continue
 		}
-		if q.Record {
-			out, best, found = strings.Join(append(append([]string{}, raw[t.agentID]...), t.doneRaw), "\n")+"\n", at, true
-			continue
-		}
-		cands := []string{t.done.Data.Result.Content}
-		for i := len(msgs[t.agentID]) - 1; i >= 0; i-- {
-			cands = append(cands, msgs[t.agentID][i])
-		}
-		for _, c := range cands {
-			if i := reportStart(c, q.Prefix); i >= 0 && !strings.Contains(c, copilotTruncated) {
-				out, best, found = strings.TrimRight(c[i:], "\n")+"\n", at, true
-				break
-			}
+		newest, at = t, when
+	}
+	if newest == nil {
+		return "", time.Time{}, false, false
+	}
+	if newest.done.Data.Success == nil || !*newest.done.Data.Success {
+		return "", at, true, false
+	}
+	if q.Record {
+		return strings.Join(append(append([]string{}, raw[newest.agentID]...), newest.doneRaw), "\n") + "\n", at, true, true
+	}
+	cands := []string{newest.done.Data.Result.Content}
+	for i := len(msgs[newest.agentID]) - 1; i >= 0; i-- {
+		cands = append(cands, msgs[newest.agentID][i])
+	}
+	for _, c := range cands {
+		if i := reportStart(c, q.Prefix); i >= 0 && !strings.Contains(c, copilotTruncated) {
+			return strings.TrimRight(c[i:], "\n") + "\n", at, true, true
 		}
 	}
-	return out, best, found
+	return "", at, true, false
 }
 
 // copilotMaxLine bounds one events.jsonl line (a line holds whole tool results).
