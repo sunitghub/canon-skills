@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.73.0] - 2026-11-21
+
+- Fixed: a cloud session (Send to GitHub) is no longer nagged by claude.ai's Stop hook about HANDOFF.md and .tickets/.gitignore: `sprint import-issue` hides canon's own edits to them from `git status` in the cloud clone (tracked files with skip-worktree, others with an info/exclude line); `tkt sync-issues` and a plain `tkt import-issue` on your machine hide nothing. The issue's instructions now match the project (no "commit the reports" lines when .tickets/ is not tracked), tell the session to fix and re-run the evaluator after a fail instead of pushing a failed grade, and never to add, commit or offer to commit those two files (t-b277).
+- Fixed: `canon events` and `canon sprint <id>` show the project you run them in (its main checkout and live worktrees, from any subfolder or worktree) instead of the folder the Cockpit was launched from, which printed an empty list in any other project; `--project <folder>` names another, and a stderr line always says which project is shown and when it has no events yet. The board's read API takes `?root=<folder>` on `/api/v1/events`, its stream and `/api/v1/sprint/<id>`. The Cockpit daemon changed: restart it after updating (Admin's Restart Daemon) (t-9f86).
+
 ## [0.72.0] - 2026-11-21
 
 - Added: `sprint pre-gate-check` runs a project's fast suites from `tests/pre-gate-suites.txt` in one `scripts/test.sh --only` call before any stamp (`pins N ok`, or `pins FAIL` and a non-zero exit). canon lists its six whole-repo pins (caps, release-zip size, pipefail lint, Python lint, doc parity, checklist caps), about 11 seconds together, which on 2026-11-20 cost four 7-minute full re-stamps when they failed late (t-91da).
