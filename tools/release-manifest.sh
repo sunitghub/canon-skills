@@ -11,6 +11,8 @@
 # --latest compares releases as numbers (v0.10.0 is above v0.9.9), skips any line that is not canonical (`vN.N.N`, no leading zeros, at most six
 # digits a part, 64 and 40 hex digits), and refuses when the chosen tag has two different values: it never falls back to an older release.
 set -euo pipefail
+# shellcheck source=platform-lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/platform-lib.sh"   # t-7ab9: mktemp under TMPDIR (Claude Code's sandbox)
 
 die() { echo "release-manifest: $*" >&2; exit 1; }
 

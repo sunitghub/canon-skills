@@ -8,6 +8,17 @@ _is_windows() {
   return 1
 }
 
+# t-7ab9 (t-fff4's test wrapper, moved here): a function named like the command, on purpose. macOS mktemp ignores TMPDIR for `mktemp -d`
+# and bare `mktemp` and writes under the per-user folder (getconf DARWIN_USER_TEMP_DIR), which Claude Code's sandbox refuses, so a sandboxed
+# session could not run sprint start/approve or a gate snapshot. With TMPDIR set those two forms get a template inside it (its trailing /
+# dropped: a // path breaks Go path comparisons); any other arguments, or TMPDIR unset, run the real one. GNU mktemp (Linux, Git Bash)
+# already behaves this way. Only a shell that sources this file and its subshells see it. A PATH builder must use `type -P`.
+# shellcheck disable=SC2120  # it forwards "$@": callers pass -d or a template, or nothing
+mktemp() {
+  if [[ -n "${TMPDIR:-}" && ( $# == 0 || ( $# == 1 && "$1" == -d ) ) ]]; then command mktemp "$@" "${TMPDIR%/}/canon.XXXXXX"
+  else command mktemp "$@"; fi
+}
+
 # canon_lock_path <dir> — t-154c: the folder as the Cockpit daemon (a Windows program) reads it, for a .cockpit-cwd lock: on Git Bash
 # the Windows form C:/Users/... (cygpath -m of the symlink-resolved path, else `pwd -W`, else that path as it is); elsewhere `pwd -P`.
 # tkt wrote /c/Users/... and the daemon started the session in the main checkout instead (the VM, 2026-11-19).
