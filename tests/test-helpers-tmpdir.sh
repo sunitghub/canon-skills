@@ -28,16 +28,18 @@ grep -qE '^mktemp\(\) \{' "$ROOT/tools/platform-lib.sh" || fail "tools/platform-
 # t-7ab9: every tools/ file with a bare `mktemp` reaches the wrapper. A file reaches it when it loads platform-lib.sh, ticket-root.sh (its line 5)
 # or skills/lib.sh outside any function; a library loaded by others passes when every file that loads it reaches platform-lib.sh first.
 # canon-dev.sh is contributor tooling, run on the maintainer's host only; platform-lib.sh owns the wrapper.
-LOADS='^[[:space:]]*(source|[.])[[:space:]].*(platform-lib|ticket-root|skills/lib)[.]sh'   # [.], not \.: awk -v turns \. into .
+LOADS='(^|[|][|]|&&)[[:space:]]*(source|[.])[[:space:]].*(platform-lib|ticket-root|skills/lib)[.]sh'   # [.] and [|], not \. or \|: awk -v drops the backslash
 top_level_load() {   # <file>: a LOADS line outside every function body
   awk -v re="$LOADS" '
-    /^[A-Za-z_][A-Za-z0-9_:-]*\(\)[[:space:]]*\{/ { if ($0 !~ /\}[[:space:]]*$/) depth++; next }
-    depth > 0 && /^\}/ { depth--; next }
+    /^[[:space:]]*#/ { next }
+    /^[A-Za-z_][A-Za-z0-9_:-]*\(\)[[:space:]]*[{(]/ { if ($0 !~ /[})][[:space:]]*$/) depth++; next }   # name() { ... } and name() ( ... )
+    depth > 0 && /^[})]/ { depth--; next }
     depth == 0 && $0 ~ re { found = 1 }
     END { exit !found }' "$1"
 }
 loads_before() {   # <loader> <lib rel path>: a platform-lib-reaching line before the lib's own source line
   awk -v re="$LOADS" -v lib="$2" '
+    /^[[:space:]]*#/ { next }
     $0 ~ re { seen = 1 }
     $0 ~ /^[[:space:]]*(source|[.])[[:space:]]/ && index($0, lib) { if (!seen) bad = 1; any = 1 }
     END { exit (bad || !any) }' "$1"
