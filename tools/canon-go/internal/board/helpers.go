@@ -15,6 +15,7 @@
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
 //	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
 //	sprint-check transcript-report <transcript> <prefix>   a gate's report from its subagent transcript (t-ff14)
+//	sprint-check token-spend --project <root> [--worktree <path>]... [--last N] [--ticket <id> [--record]]   per-phase and per-gate token cost (t-0829)
 //	sprint-check copilot-report [--second] [--record] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol> <prefix>   the same from Copilot's session record (t-4084)
 //	sprint-check recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events (t-2db7)
 //	sprint-check machine [--json]                  this machine's OS, chip, cores and RAM in one line, no hostname (t-c542; evidence.sh)
@@ -132,6 +133,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return transcriptReport(args[1], args[2], stdout, stderr), true
 	case "copilot-report":
 		return copilotReportCLI(args[1:], stdout, stderr), true
+	case "token-spend": // t-0829: where a closed sprint's tokens went; --record writes sprint.cost and gate.cost
+		return tokenSpendCLI(args[1:], stdout, stderr), true
 	}
 	return 0, false
 }

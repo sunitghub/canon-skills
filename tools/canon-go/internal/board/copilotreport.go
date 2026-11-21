@@ -40,6 +40,21 @@ type copilotLine struct {
 		Result struct {
 			Content string `json:"content"`
 		} `json:"result"`
+		// t-0829 (token-spend): session.start's working folder, and one model call's tokens in session.usage_record. inputTokens
+		// is the whole prompt: it already holds the cache read and write counts.
+		Context struct {
+			CWD     string `json:"cwd"`
+			GitRoot string `json:"gitRoot"`
+		} `json:"context"`
+		Usage *struct {
+			Model            string `json:"model"`
+			ResponseModel    string `json:"responseModel"`
+			InputTokens      int64  `json:"inputTokens"`
+			OutputTokens     int64  `json:"outputTokens"`
+			CacheReadTokens  int64  `json:"cacheReadTokens"`
+			CacheWriteTokens int64  `json:"cacheWriteTokens"`
+			APICallID        string `json:"apiCallId"`
+		} `json:"usage"`
 	} `json:"data"`
 }
 
