@@ -30,7 +30,16 @@ MODEL=claude-sonnet-5-5
 command -v node >/dev/null || { echo "run.sh: needs node" >&2; exit 1; }
 command -v "$CLAUDE_BIN" >/dev/null || { echo "run.sh: no claude binary ($CLAUDE_BIN)" >&2; exit 1; }
 
-W="${BENCH_WORK:-$(mktemp -d)}"; mkdir -p "$W"; W="$(cd -P "$W" && pwd -P)"
+# Two roots. W is what sessions may write (the canon clone used as CANON_HOME, the session TMPDIR); each step's project is its own
+# fresh mktemp -d. H is the host's own: the clean canon clone run.sh runs canon from, the setup HOME, the reference app, the session
+# output and logs, the scoring folder. It sits in the bench's gitignored results folder, outside every folder a session may write,
+# so a session can neither plant code that run.sh runs nor redirect a write run.sh makes (a symlink at an output path).
+W="${BENCH_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/canon-bench.XXXXXX")}"; mkdir -p "$W"; W="$(cd -P "$W" && pwd -P)"
+mkdir -p "$BENCH/results"
+H="${BENCH_HOST:-$(mktemp -d "$BENCH/results/host.XXXXXX")}"; mkdir -p "$H"; H="$(cd -P "$H" && pwd -P)"
+# git that run.sh runs in a folder a session wrote: no fsmonitor or hook from that repo's own config can run (env config wins over it)
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null
+command -v sandbox-exec >/dev/null || { echo "run.sh: scoring runs the session's app under macOS sandbox-exec, which is missing" >&2; exit 1; }
 commit="$(git -C "$REPO" rev-parse --short=12 HEAD)"
 mkdir -p "$(dirname "$results")"
 HEADER=$'date\tarm\trun\tstep\tstatus\treason\tcommit\tmodel\tentry\tcost_usd\tinput_tokens\toutput_tokens\tcache_read\tcache_write\tminutes\tturns\tpassed\ttotal\tplanning\timplementation\tgates\tgate_runs\tsession'
@@ -47,15 +56,12 @@ clean_path() {
 BASE_PATH="$(clean_path)"
 
 # No bypass mode: every Bash command runs in Claude Code's sandbox, which writes only to the project, Claude's own folders and the
-# allowWrite list, here the run's scratch folder alone (the canon clone used as CANON_HOME is in it); a write into HOME, or anywhere else
-# under /var/folders, is refused (probed 2026-11-21). An unsandboxed retry is refused, and Edit/Write stay in the project (acceptEdits).
-# The session's TMPDIR is inside the scratch folder: the sandbox does not allow the inherited /var/folders/…/T, so canon's mktemp
-# failed there and the first dry run's sprint stopped at `sprint approve`. Same for both arms.
+# allowWrite list: W and, until t-7ab9, macOS's per-user temp folder (its plain `mktemp` ignores TMPDIR, and canon's scripts call it
+# bare; without it the dry run's sprint stopped at `sprint approve`). A write into HOME is refused (probed 2026-11-21). An unsandboxed
+# retry is refused, and Edit/Write stay in the project (acceptEdits). Same for both arms.
 mkdir -p "$W/tmp"
-# macOS's plain `mktemp` ignores TMPDIR and creates under the per-user temp folder, which canon's own scripts call (t-7ab9): until that
-# is fixed the sandbox may write that folder too. Nothing run.sh later executes outside the sandbox lives in either folder (HC below).
 USER_TMP="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$USER_TMP" ]] || USER_TMP="$(cd -P "$USER_TMP" && pwd -P)"
-SANDBOX="$(node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$W" "$USER_TMP")"
+sandbox_for() { node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$1" "$W" "$USER_TMP"; }
 
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {
@@ -66,10 +72,9 @@ fingerprint() {
 }
 
 # Canon's install for this run: a clone at HEAD, its prebuilt canon-go copied in, every model tier pinned to Sonnet. CH is the session's
-# CANON_HOME, writable by it (canon writes its events there). HC is a second clone the sandbox can never write, outside both of its
-# folders: every canon command run.sh itself runs (skills.sh add, token-spend) comes from HC, so a session cannot plant code in it.
+# CANON_HOME, writable by it (canon writes its events there). HC, in H, is the clone every canon command run.sh itself runs comes from.
 CH="$W/canon"
-HC="${BENCH_HOST_CLONE:-}"
+HC="$H/canon"
 clone_canon() {
   git clone -q --no-hardlinks "$REPO" "$1"
   git -C "$1" checkout -q --detach "$commit"
@@ -77,7 +82,6 @@ clone_canon() {
 }
 if [[ "$arm" == canon && ! -d "$CH" ]]; then
   clone_canon "$CH"
-  [[ -n "$HC" ]] || HC="$(mktemp -d /tmp/canon-bench-host.XXXXXX)"
   [[ -d "$HC/.git" ]] || clone_canon "$HC"
   mkdir -p "$CH/cockpit"
   node -e '
@@ -95,13 +99,26 @@ new_project() {
   git -C "$p" config user.name bench; git -C "$p" config user.email bench@example.invalid
   [[ -z "$seed" ]] || cp -R "$seed"/. "$p"/
   if [[ "$arm" == canon ]]; then
-    mkdir -p "$W/setup-home"
-    (cd "$p" && HOME="$W/setup-home" XDG_CONFIG_HOME="$W/setup-home/.config" CANON_HOME="$CH" PATH="$HC/tools:$BASE_PATH" \
-      "$HC/tools/skills.sh" add sprint </dev/null >"$W/skills-add.log" 2>&1) \
-      || { echo "run.sh: skills.sh add sprint failed, see $W/skills-add.log" >&2; exit 1; }
+    mkdir -p "$H/setup-home"
+    (cd "$p" && HOME="$H/setup-home" XDG_CONFIG_HOME="$H/setup-home/.config" CANON_HOME="$CH" PATH="$HC/tools:$BASE_PATH" \
+      "$HC/tools/skills.sh" add sprint </dev/null >"$H/skills-add.log" 2>&1) \
+      || { echo "run.sh: skills.sh add sprint failed, see $H/skills-add.log" >&2; exit 1; }
   fi
   git -C "$p" add -A
   git -C "$p" commit -q --allow-empty -m "chore: start"
+}
+
+# canon_changed: 0 when any file the clean clone tracks differs in CH (content, or a symlink's target), read without git in CH
+canon_changed() {
+  local f
+  while IFS= read -r -d '' f; do
+    if [[ -L "$HC/$f" ]]; then
+      [[ -L "$CH/$f" && "$(readlink "$HC/$f")" == "$(readlink "$CH/$f")" ]] || return 0
+    else
+      [[ ! -L "$CH/$f" ]] && cmp -s "$HC/$f" "$CH/$f" || return 0
+    fi
+  done < <(git -C "$HC" ls-files -z)
+  return 1
 }
 
 prompt_for() {
@@ -117,30 +134,35 @@ prompt_for() {
 }
 
 # One step's score: the hidden tests for steps 1..N run against the project from outside it. total is fixed by the reference app
-# (baseline-3 with its plant fixed), so a step whose app does not even load scores 0 of the real count, not 0 of 1.
+# (baseline-3 with its plant fixed), so a step whose app does not even load scores 0 of the real count, not 0 of 1. The session's app
+# is code an AI wrote: it runs under sandbox-exec, which refuses every file write but the scoring folder's and every network call.
 score() {
-  local app="$1" n="$2" i files=() ref out
+  local app="$1" n="$2" i files=() ref out st
   for i in $(seq 1 "$n"); do files+=("$BENCH/hidden/step-$i.test.js"); done
-  ref="$W/ref"; mkdir -p "$ref"
+  ref="$H/ref"; mkdir -p "$ref"
   sed "s/'--overdue': t => t.due \&\& t.due <= now,/'--overdue': t => !t.done \&\& t.due \&\& t.due < now,/" "$BENCH/baseline-3/todo.js" > "$ref/todo.js"
   total="$(BENCH_APP_DIR="$ref" node --test --test-reporter=tap "${files[@]}" 2>/dev/null | sed -n 's/^# tests //p')"
-  out="$(cd "$W" && BENCH_APP_DIR="$app" node --test --test-reporter=tap "${files[@]}" 2>/dev/null || true)"
+  st="$(mktemp -d "$H/score.XXXXXX")"
+  out="$(cd "$st" && TMPDIR="$st" BENCH_APP_DIR="$app" sandbox-exec -p "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath \"$st\") (literal \"/dev/null\") (regex #\"^/dev/(fd/|tty|std)\"))" \
+    node --test --test-reporter=tap "${files[@]}" 2>/dev/null || true)"
   passed="$(printf '%s\n' "$out" | sed -n 's/^# pass //p')"
   [[ -n "$passed" ]] || passed=0
 }
 
-proj="$W/proj"
+# Each project is a fresh mktemp -d, step 3's made only after step 2's session has ended, so no earlier session could plant in it.
+newdir() { local d; mkdir -p "${BENCH_PROJECTS:-${TMPDIR:-/tmp}}"; d="$(mktemp -d "${BENCH_PROJECTS:-${TMPDIR:-/tmp}}/bench-proj.XXXXXX")"; cd -P "$d" && pwd -P; }   # a template: macOS's bare mktemp ignores TMPDIR
 for step in $(seq 1 "$steps"); do
-  if [[ "$step" == 1 ]]; then new_project "$proj"; fi
-  if [[ "$step" == 3 ]]; then proj="$W/proj3"; new_project "$proj" "$BENCH/baseline-3"; fi
+  if [[ "$step" == 1 ]]; then proj="$(newdir)"; new_project "$proj"; fi
+  if [[ "$step" == 3 ]]; then proj="$(newdir)"; new_project "$proj" "$BENCH/baseline-3"; fi
+  printf '%s\n' "$proj" > "$H/proj-$step.path"
   env_path="$BASE_PATH"; [[ "$arm" == plain ]] || env_path="$CH/tools:$BASE_PATH"
   before_tickets="$(ls "$proj/.tickets" 2>/dev/null | sort || true)"
   fp_before="$(fingerprint)"
   start=$(date +%s); status=ok; reason=""; rc=0
   (cd "$proj" && PATH="$env_path" CANON_HOME="$CH" TMPDIR="$W/tmp" "$CLAUDE_BIN" -p "$(prompt_for "$step")" --model "$MODEL" --setting-sources project,local \
-    --output-format json --permission-mode acceptEdits --allowedTools Agent Bash Read Grep Glob Edit Write --settings "$SANDBOX" \
+    --output-format json --permission-mode acceptEdits --allowedTools Agent Bash Read Grep Glob Edit Write --settings "$(sandbox_for "$proj")" \
     --max-budget-usd "${BENCH_MAX_USD:-5}" \
-    > "$W/step-$step.json" 2> "$W/step-$step.err") || rc=$?
+    > "$H/step-$step.json" 2> "$H/step-$step.err") || rc=$?
   minutes="$(awk -v s="$start" -v e="$(date +%s)" 'BEGIN { printf "%.1f", (e - s) / 60 }')"
   # The session's own numbers; anything unreadable is a failed row, never a zero-cost success.
   parsed="$(node -e '
@@ -153,13 +175,14 @@ for step in $(seq 1 "$steps"); do
     if (mu && mu.length) for (const m of mu) { u.input_tokens += m.inputTokens || 0; u.output_tokens += m.outputTokens || 0; u.cache_read_input_tokens += m.cacheReadInputTokens || 0; u.cache_creation_input_tokens += m.cacheCreationInputTokens || 0; }
     else u = Object.assign(u, j.usage || {});
     console.log(["OK", j.total_cost_usd.toFixed(4), u.input_tokens, u.output_tokens, u.cache_read_input_tokens, u.cache_creation_input_tokens, j.num_turns ?? "n/a", j.session_id || "n/a"].join("\t"));
-  ' "$W/step-$step.json")"
+  ' "$H/step-$step.json")"
   IFS=$'\t' read -r kind cost in_t out_t cr cw turns session <<< "$parsed"
   if [[ "$kind" != OK ]]; then status=failed; reason="$cost"; cost=n/a; in_t=n/a; out_t=n/a; cr=n/a; cw=n/a; turns=n/a; session=n/a; fi
   if [[ "$rc" != 0 && "$status" == ok ]]; then status=failed; reason="claude -p exited $rc"; fi
   [[ "$status" != failed || -n "$reason" ]] || reason="claude -p exited $rc"
   # Contamination: the user's state changed, the session's transcript read the hidden tests, or it changed canon's own tracked files.
-  if [[ "$arm" == canon && -n "$(git -C "$CH" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+  # (compared with the clean clone's tracked files by content, so no git runs in the folder the session wrote)
+  if [[ "$arm" == canon ]] && canon_changed; then
     status=contaminated; reason="the session changed canon's own files in its CANON_HOME"
   fi
   if [[ "$(fingerprint)" != "$fp_before" ]]; then status=contaminated; reason="the user's canon state changed during the session"; fi
@@ -192,4 +215,4 @@ for step in $(seq 1 "$steps"); do
   printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)	$arm	$run	$step	$status	${reason//$'\t'/ }	$commit	$MODEL	$entry	$cost	$in_t	$out_t	$cr	$cw	$minutes	$turns	$passed	$total	$planning	$impl	$gates	$gate_runs	$session" >> "$results"
   echo "run.sh: $arm run $run step $step: $status${reason:+ ($reason)}, \$$cost, ${minutes} min, $passed/$total hidden tests"
 done
-echo "run.sh: rows in $results; scratch in $W${HC:+, host clone in $HC}"
+echo "run.sh: rows in $results; session folder $W, host folder $H (proj-<step>.path names each project)"

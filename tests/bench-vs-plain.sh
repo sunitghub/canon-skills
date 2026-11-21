@@ -43,6 +43,7 @@ case "${STUB_MODE:-ok}" in
   garbage) echo 'not json'; exit 0 ;;
   closed) mkdir -p .tickets/t-abcd .claude; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md
           echo '{"agent_type":"reviewer","tokens":1200,"minutes":2,"ticket":"t-abcd"}' >> .claude/subagent-runs.jsonl ;;
+  escape) { echo 'try { require("fs").writeFileSync(process.env.STUB_ESCAPE, "x"); } catch {}'; cat "$STUB_APP"; } | grep -v '^#!' > ./todo.js ;;
   plant) printf '#!/usr/bin/env bash\ntouch "%s"\n' "$STUB_PLANTED" > "$CANON_HOME/tools/sprint"
          mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md ;;
   open) mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: in_progress\n---\n' > .tickets/t-abcd/ticket.md ;;
@@ -60,7 +61,7 @@ repo_before="$(git -C "$ROOT" status --porcelain)"
 echo 0 > "$T/n"
 bench() {
   local n; n=$(($(cat "$T/n") + 1)); echo "$n" > "$T/n"; : > "$STUB_LOG"
-  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST_CLONE="$T/host$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
+  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST="$T/host$n" BENCH_PROJECTS="$T/projects" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
     || fail "run.sh $1 $2 exited non-zero: $(cat "$T/err$n")"
   tail -1 "$T/r$n.tsv" | awk -F'\t' '{ print $5 "|" $6 "|" $10 "|" $17 "|" $18 "|" $19 "|" $21 "|" $22 }'
 }
@@ -76,7 +77,10 @@ args="$(grep -m1 "^args:" "$STUB_LOG")"
 # the sandbox may write the run's scratch folder and nothing else, and the session's TMPDIR is inside it (the inherited one is refused)
 # plus macOS's per-user temp folder, where canon's plain mktemp writes (t-7ab9); nothing else
 ut="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$ut" ]] || ut=',"'"$(cd -P "$ut" && pwd -P)"'"'
-[[ "$args" == *'"filesystem":{"allowWrite":["'"$T/w1"'"'"$ut"']}'* ]] || fail "allowWrite names only the run's folder and the user temp folder: $args"
+p1="$(cat "$T/host1/proj-1.path")"
+[[ "$p1" == "$T/projects/bench-proj."* ]] || fail "each project is a fresh folder: $p1"
+[[ "$args" == *'"filesystem":{"allowWrite":["'"$p1"'","'"$T/w1"'"'"$ut"']}'* ]] || fail "allowWrite names only the project, the session folder and the user temp folder: $args"
+[[ "$(cat "$T/host1/proj-3.path")" != "$p1" ]] || fail "step 3 gets its own fresh project"
 assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
@@ -93,6 +97,10 @@ done
 [[ "$(bench error plain 1)" == *"rate limited"* ]] || fail "is_error keeps the session's reason"
 [[ "$(bench exit plain 1)" == *"exited 3"* ]] || fail "a non-zero exit is named"
 
+# scoring runs the session's app (code an AI wrote) under sandbox-exec: its writes outside the scoring folder are refused
+export STUB_ESCAPE="$T/escaped"
+[[ "$(bench escape plain 1)" == "ok||0.2500|13|13|"* ]] || fail "the escaping app still scores"
+[[ ! -e "$T/escaped" ]] || fail "scoring let the session's app write outside its folder"
 [[ "$(bench peek plain 1)" == "contaminated|the transcript reads the hidden tests|"* ]] || fail "a transcript reading the hidden tests is contaminated"
 [[ "$(bench touch plain 1)" == "contaminated|the user's canon state changed"* ]] || fail "a change to the user's canon state is contaminated"
 rm -rf "$HOME/.config"
@@ -102,11 +110,12 @@ row="$(bench closed canon 1)"
 [[ "$(grep -m1 "^canon on PATH:" "$STUB_LOG")" == "canon on PATH: $T/w"*"/canon/tools/sprint "* ]] || fail "canon finds its scratch clone's sprint first: $(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" "$row" "canon: closed sprint, no transcripts -> n/a split, gate runs read"
 n="$(cat "$T/n")"; w="$T/w$n"
-[[ -f "$w/proj/.claude/skills/sprint/SKILL.md" || -f "$w/proj/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
+p1="$(cat "$T/host$n/proj-1.path")"
+[[ -f "$p1/.claude/skills/sprint/SKILL.md" || -f "$p1/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
 node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.defaults)) if (v.claude && v.claude !== "claude-sonnet-5-5") { console.error(s, v.claude); process.exit(1); }' \
   "$w/canon/cockpit/model-tiers.json" || fail "canon: every model tier is pinned to Sonnet"
-# TMPDIR is moved off $T (bench above), so skills.sh registers the project: in the scratch HOME, never the real one
-[[ "$(grep -c . "$w/setup-home/.config/canon/projects" 2>/dev/null)" == 1 ]] || fail "canon: skills.sh's project list did not go to the scratch HOME"
+# projects sit outside TMPDIR (bench above), so skills.sh registers the project: in the scratch HOME, never the real one
+[[ "$(grep -c . "$T/host$n/setup-home/.config/canon/projects" 2>/dev/null)" == 1 ]] || fail "canon: skills.sh's project list did not go to the scratch HOME"
 [[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "canon: run.sh wrote under HOME"
 assert_eq "canon	claude-sonnet-5-5	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $8 "\t" $9 }' "$T/r$n.tsv")" "the row names arm, model, entry point"
 [[ "$(bench open canon 1)" == "incomplete|t-abcd never reached sprint complete|"* ]] || fail "an open sprint is incomplete"
