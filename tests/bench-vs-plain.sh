@@ -31,7 +31,7 @@ echo "session in $PWD" >> "$STUB_LOG"
 echo "args: $(printf "%s " "$@" | tr "\n" " ")" >> "$STUB_LOG"
 echo "canon on PATH: $(command -v sprint tkt 2>/dev/null | tr "\n" " ")" >> "$STUB_LOG"
 echo "tmpdir: $TMPDIR" >> "$STUB_LOG"
-if find . -name 'step-*.test.js' -o -name lib.js | grep -q .; then echo HIDDEN-SEEN >> "$STUB_LOG"; fi
+if [[ -n "$(find . \( -name 'step-*.test.js' -o -name lib.js \) -print -quit)" ]]; then echo HIDDEN-SEEN >> "$STUB_LOG"; fi
 cp "$STUB_APP" ./todo.js
 enc="$(printf '%s' "$PWD" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CLAUDE_CONFIG_DIR/projects/$enc"
 echo '{"type":"user"}' > "$CLAUDE_CONFIG_DIR/projects/$enc/s.jsonl"
@@ -86,12 +86,12 @@ assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
 # nothing run.sh writes after a session lives where the session could write (a symlink there would redirect it): outputs go to the host folder
-[[ -z "$(find "$T/w1" "$p1" -name 'step-*.json' -o -name 'step-*.err' -o -name 'skills-add.log' -o -name 'score.*' | head -1)" ]] || fail "run.sh wrote its own files into a session folder"
+[[ -z "$(find "$T/w1" "$p1" \( -name 'step-*.json' -o -name 'step-*.err' -o -name 'skills-add.log' -o -name 'score.*' \) -print -quit)" ]] || fail "run.sh wrote its own files into a session folder"
 [[ -s "$T/host1/step-1.json" ]] || fail "the session output is in the host folder"
 assert_eq "1|13" "$(awk -F'\t' 'NR==2 { print $4 "|" $18 }' "$T/r1.tsv")" "step 1 scores its 13 tests"
 [[ "$(awk -F'\t' 'NR==3 { print $18 }' "$T/r1.tsv")" == 24 ]] || fail "step 2 scores steps 1-2 (24)"
 assert_eq "$(awk -F'\t' 'NR==2 { print $11 "/" $12 "/" $13 "/" $14 "/" $16 "/" $23 }' "$T/r1.tsv")" "100/50/1000/10/7/s1" "tokens, turns and session from modelUsage"
-[[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "run.sh wrote under HOME: $(find "$HOME" -mindepth 1 | head -3)"
+[[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "run.sh wrote under HOME: $(find "$HOME" -mindepth 1 -print -quit)"
 assert_eq "$repo_before" "$(git -C "$ROOT" status --porcelain)" "the repo's tree is unchanged"
 
 for m in error exit garbage; do
