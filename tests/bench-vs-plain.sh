@@ -43,7 +43,9 @@ case "${STUB_MODE:-ok}" in
   garbage) echo 'not json'; exit 0 ;;
   closed) mkdir -p .tickets/t-abcd .claude; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md
           echo '{"agent_type":"reviewer","tokens":1200,"minutes":2,"ticket":"t-abcd"}' >> .claude/subagent-runs.jsonl ;;
-  escape) { echo 'try { require("fs").writeFileSync(process.env.STUB_ESCAPE, "x"); } catch {}'; cat "$STUB_APP"; } | grep -v '^#!' > ./todo.js ;;
+  escape) { echo 'try { require("fs").writeFileSync(process.env.STUB_ESCAPE, "x"); } catch {}'
+           echo 'try { require("child_process").execFileSync("/bin/sh", ["-c", "touch \"$STUB_ESCAPE.exec\""]); } catch {}'
+           cat "$STUB_APP"; } | grep -v '^#!' > ./todo.js ;;
   plant) printf '#!/usr/bin/env bash\ntouch "%s"\n' "$STUB_PLANTED" > "$CANON_HOME/tools/sprint"
          mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md ;;
   open) mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: in_progress\n---\n' > .tickets/t-abcd/ticket.md ;;
@@ -61,7 +63,7 @@ repo_before="$(git -C "$ROOT" status --porcelain)"
 echo 0 > "$T/n"
 bench() {
   local n; n=$(($(cat "$T/n") + 1)); echo "$n" > "$T/n"; : > "$STUB_LOG"
-  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST="$T/host$n" BENCH_PROJECTS="$T/projects" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
+  STUB_MODE="$1" BENCH_WORK="$T/w$n" BENCH_HOST="$T/host$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
     || fail "run.sh $1 $2 exited non-zero: $(cat "$T/err$n")"
   tail -1 "$T/r$n.tsv" | awk -F'\t' '{ print $5 "|" $6 "|" $10 "|" $17 "|" $18 "|" $19 "|" $21 "|" $22 }'
 }
@@ -78,12 +80,15 @@ args="$(grep -m1 "^args:" "$STUB_LOG")"
 # plus macOS's per-user temp folder, where canon's plain mktemp writes (t-7ab9); nothing else
 ut="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$ut" ]] || ut=',"'"$(cd -P "$ut" && pwd -P)"'"'
 p1="$(cat "$T/host1/proj-1.path")"
-[[ "$p1" == "$T/projects/bench-proj."* ]] || fail "each project is a fresh folder: $p1"
+[[ "$p1" == "$T/host1/projects/bench-proj."* ]] || fail "each project is a fresh folder in the host folder: $p1"
 [[ "$args" == *'"filesystem":{"allowWrite":["'"$p1"'","'"$T/w1"'"'"$ut"']}'* ]] || fail "allowWrite names only the project, the session folder and the user temp folder: $args"
 [[ "$(cat "$T/host1/proj-3.path")" != "$p1" ]] || fail "step 3 gets its own fresh project"
 assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"
 assert_eq "canon on PATH: " "$seen" "the plain arm finds no sprint or tkt"
+# nothing run.sh writes after a session lives where the session could write (a symlink there would redirect it): outputs go to the host folder
+[[ -z "$(find "$T/w1" "$p1" -name 'step-*.json' -o -name 'step-*.err' -o -name 'skills-add.log' -o -name 'score.*' | head -1)" ]] || fail "run.sh wrote its own files into a session folder"
+[[ -s "$T/host1/step-1.json" ]] || fail "the session output is in the host folder"
 assert_eq "1|13" "$(awk -F'\t' 'NR==2 { print $4 "|" $18 }' "$T/r1.tsv")" "step 1 scores its 13 tests"
 [[ "$(awk -F'\t' 'NR==3 { print $18 }' "$T/r1.tsv")" == 24 ]] || fail "step 2 scores steps 1-2 (24)"
 assert_eq "$(awk -F'\t' 'NR==2 { print $11 "/" $12 "/" $13 "/" $14 "/" $16 "/" $23 }' "$T/r1.tsv")" "100/50/1000/10/7/s1" "tokens, turns and session from modelUsage"
@@ -101,6 +106,7 @@ done
 export STUB_ESCAPE="$T/escaped"
 [[ "$(bench escape plain 1)" == "ok||0.2500|13|13|"* ]] || fail "the escaping app still scores"
 [[ ! -e "$T/escaped" ]] || fail "scoring let the session's app write outside its folder"
+[[ ! -e "$T/escaped.exec" ]] || fail "scoring let the session's app start another program (launchctl, open, sh)"
 [[ "$(bench peek plain 1)" == "contaminated|the transcript reads the hidden tests|"* ]] || fail "a transcript reading the hidden tests is contaminated"
 [[ "$(bench touch plain 1)" == "contaminated|the user's canon state changed"* ]] || fail "a change to the user's canon state is contaminated"
 rm -rf "$HOME/.config"

@@ -3,11 +3,12 @@
 # either plain (an empty git repo, no canon on PATH, no user CLAUDE.md) or canon (the sprint skill from a scratch clone of this
 # repo, all model tiers pinned to Sonnet, one `sprint start` .. `sprint complete` per step), and appends one TSV row per step.
 #   bench/vs-plain/run.sh <plain|canon> <run-number> [--steps N] [--results FILE]
-# Every run works in a fresh scratch folder (BENCH_WORK, else mktemp -d): the project, the canon clone used as CANON_HOME, and the
-# HOME that `skills.sh add` writes its project list into. The user's state is fingerprinted around each session and a change marks
-# the row `contaminated`, as does a transcript that reads the hidden tests. Step 3 starts both arms from baseline-3/. The hidden
-# tests run from outside the project after the session, so no session can see them. BENCH_CLAUDE overrides the claude binary (the
-# test's stub), BENCH_MAX_USD caps one session (default 5). It spends money: README.md says what a run costs.
+# Sessions write only a fresh project per step and the session folder (BENCH_WORK, else mktemp -d: the canon clone used as CANON_HOME
+# and its temp folder); everything run.sh itself runs or writes after a session is in the host folder (BENCH_HOST, else
+# /tmp/canon-bench-host.*, which also holds the projects), which no session can write. The user's state is fingerprinted around each session and a change marks the row
+# `contaminated`, as does a transcript that reads the hidden tests. Step 3 starts both arms from baseline-3/. The hidden tests run
+# from outside the project after the session, the app under sandbox-exec. BENCH_CLAUDE overrides the claude binary (the test's stub),
+# BENCH_PROJECTS the projects' root, BENCH_MAX_USD caps one session (default 5). It spends money: README.md says what a run costs.
 set -euo pipefail
 
 BENCH="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -32,13 +33,15 @@ command -v "$CLAUDE_BIN" >/dev/null || { echo "run.sh: no claude binary ($CLAUDE
 
 # Two roots. W is what sessions may write (the canon clone used as CANON_HOME, the session TMPDIR); each step's project is its own
 # fresh mktemp -d. H is the host's own: the clean canon clone run.sh runs canon from, the setup HOME, the reference app, the session
-# output and logs, the scoring folder. It sits in the bench's gitignored results folder, outside every folder a session may write,
+# output and logs, the scoring folder, the projects. It sits in /tmp, outside canon's repo (whose CLAUDE.md a project below it would load)
+# and every folder a session may write,
 # so a session can neither plant code that run.sh runs nor redirect a write run.sh makes (a symlink at an output path).
 W="${BENCH_WORK:-$(mktemp -d "${TMPDIR:-/tmp}/canon-bench.XXXXXX")}"; mkdir -p "$W"; W="$(cd -P "$W" && pwd -P)"
-mkdir -p "$BENCH/results"
-H="${BENCH_HOST:-$(mktemp -d "$BENCH/results/host.XXXXXX")}"; mkdir -p "$H"; H="$(cd -P "$H" && pwd -P)"
+H="${BENCH_HOST:-$(mktemp -d /tmp/canon-bench-host.XXXXXX)}"; mkdir -p "$H"; H="$(cd -P "$H" && pwd -P)"
 # git that run.sh runs in a folder a session wrote: no fsmonitor or hook from that repo's own config can run (env config wins over it)
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_COUNT=3 GIT_CONFIG_KEY_0=core.fsmonitor GIT_CONFIG_VALUE_0=false \
+  GIT_CONFIG_KEY_1=core.hooksPath GIT_CONFIG_VALUE_1=/dev/null GIT_CONFIG_KEY_2=commit.gpgsign GIT_CONFIG_VALUE_2=false
+NODE="$(node -p process.execPath)"   # the real binary: the scoring sandbox lets only it start
 command -v sandbox-exec >/dev/null || { echo "run.sh: scoring runs the session's app under macOS sandbox-exec, which is missing" >&2; exit 1; }
 commit="$(git -C "$REPO" rev-parse --short=12 HEAD)"
 mkdir -p "$(dirname "$results")"
@@ -143,14 +146,16 @@ score() {
   sed "s/'--overdue': t => t.due \&\& t.due <= now,/'--overdue': t => !t.done \&\& t.due \&\& t.due < now,/" "$BENCH/baseline-3/todo.js" > "$ref/todo.js"
   total="$(BENCH_APP_DIR="$ref" node --test --test-reporter=tap "${files[@]}" 2>/dev/null | sed -n 's/^# tests //p')"
   st="$(mktemp -d "$H/score.XXXXXX")"
-  out="$(cd "$st" && TMPDIR="$st" BENCH_APP_DIR="$app" sandbox-exec -p "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write* (subpath \"$st\") (literal \"/dev/null\") (regex #\"^/dev/(fd/|tty|std)\"))" \
-    node --test --test-reporter=tap "${files[@]}" 2>/dev/null || true)"
+  # no program but node itself may start (no launchctl, open or osascript to leave the sandbox through), and no Apple events
+  out="$(cd "$st" && TMPDIR="$st" BENCH_APP_DIR="$app" sandbox-exec -p "(version 1)(allow default)(deny network*)(deny appleevent-send)(deny process-exec)(allow process-exec (literal \"$NODE\"))(deny file-write*)(allow file-write* (subpath \"$st\") (literal \"/dev/null\") (regex #\"^/dev/(fd/|tty|std)\"))" \
+    "$NODE" --test --test-reporter=tap "${files[@]}" 2>/dev/null || true)"
   passed="$(printf '%s\n' "$out" | sed -n 's/^# pass //p')"
   [[ -n "$passed" ]] || passed=0
 }
 
 # Each project is a fresh mktemp -d, step 3's made only after step 2's session has ended, so no earlier session could plant in it.
-newdir() { local d; mkdir -p "${BENCH_PROJECTS:-${TMPDIR:-/tmp}}"; d="$(mktemp -d "${BENCH_PROJECTS:-${TMPDIR:-/tmp}}/bench-proj.XXXXXX")"; cd -P "$d" && pwd -P; }   # a template: macOS's bare mktemp ignores TMPDIR
+# They live under the host folder (BENCH_PROJECTS overrides), which only the project's own session may write, while it runs.
+newdir() { local d r="${BENCH_PROJECTS:-$H/projects}"; mkdir -p "$r"; d="$(mktemp -d "$r/bench-proj.XXXXXX")"; cd -P "$d" && pwd -P; }
 for step in $(seq 1 "$steps"); do
   if [[ "$step" == 1 ]]; then proj="$(newdir)"; new_project "$proj"; fi
   if [[ "$step" == 3 ]]; then proj="$(newdir)"; new_project "$proj" "$BENCH/baseline-3"; fi

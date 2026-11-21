@@ -31,10 +31,20 @@ bench/vs-plain/report.sh                    # the Markdown table from results/re
   - `ok`;
   - `failed`: the session errored, exited non-zero or gave unreadable output (no cost is recorded);
   - `incomplete`: canon only, no sprint was closed;
-  - `contaminated`: the session's transcript reads `vs-plain/hidden`, or your canon project list or Cockpit files changed during the session.
+  - `contaminated`: the session's transcript reads `vs-plain/hidden`, your canon project list or Cockpit files changed during the session, or (canon) the session changed a tracked file of its canon clone.
   `report.sh` averages only `ok` rows and lists the others.
 - canon only: `planning`, `implementation` and `gates` come from `sprint token-spend` (tokens, not $). `gate_runs` lists each gate's tokens and minutes from the subagent log. A value with no data reads `n/a`, never 0.
 
-## Writes outside the scratch folder
+## Safety
 
-Claude Code's own transcripts go to `~/.claude/projects` (the canon arm's `token-spend` reads them). Nothing else does: `skills.sh add` runs under a scratch `HOME`, and `tests/bench-vs-plain.sh` proves it against a stub `claude`.
+Each session runs unattended as you, so it never gets bypass mode:
+- **Bash:** it runs in Claude Code's sandbox, with no unsandboxed retry.
+- **Writes:** the sandbox may write only the step's fresh project, the session folder (the canon clone used as `CANON_HOME`, its temp folder) and, until t-7ab9, macOS's per-user temp folder.
+- **Edits:** they stay in the project.
+
+The host folder (`/tmp/canon-bench-host.*`, which also holds each step's project, outside canon's repo so no canon CLAUDE.md is above it) is one no session can write. It holds the clean canon clone that `run.sh`'s own `skills.sh add` and `token-spend` come from, the setup `HOME`, the session output, the logs and the scoring folder.
+- Git that `run.sh` runs in a session's repo has fsmonitor and hooks forced off.
+- The session's app is scored under `sandbox-exec`, which refuses every write but its scoring folder's and all network access.
+- Claude Code's own transcripts still go to `~/.claude/projects` (`token-spend` reads them).
+
+`tests/bench-vs-plain.sh` proves each of these against a stub `claude`.
