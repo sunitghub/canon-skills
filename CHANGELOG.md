@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-11-21
+
+- Fixed: a sprint closes under Copilot CLI. Copilot gives canon's gate agents no file-write tool, so the evaluator and reviewer could not save their reports and every Copilot close stalled. The gates now return their report as their final message, `sprint relay-report` copies it byte for byte from Copilot's own session record, and `sprint complete` checks eval-report.md against that record, as it does against Claude Code's transcripts. The board binary changed: run `canon update` (t-4084).
+
 ## [0.73.1] - 2026-11-21
 
 - Fixed: canon's commands work inside Claude Code's sandbox on macOS. `sprint approve`, the close's gate snapshots and other commands failed with `mktemp: mkstemp failed … Operation not permitted`, because macOS's `mktemp` writes to the per-user temp folder whatever TMPDIR says; with TMPDIR set, canon now makes its scratch files inside it, as it already does on Linux and Windows (t-7ab9).
