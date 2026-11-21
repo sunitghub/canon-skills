@@ -101,7 +101,8 @@ type copilotTask struct {
 // copilotFindIn scans one session file. A task counts only when it was a `task` dispatch of the wanted agent (or a general-purpose
 // fallback whose prompt names the protocol), subagent.started names that same agent, the prompt names the ticket and the protocol,
 // and the call succeeded inside the window: never the main session's own messages. The report is taken from the task's result,
-// else the gate's own newest message that holds it; the record is every raw line the gate's agentId produced plus the result's.
+// else the gate's own newest message that holds it; the record is the gate's own commands and messages (never its tool outputs) plus
+// the result line.
 func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -120,9 +121,16 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 			continue
 		}
 		if l.AgentID != "" && l.Type != "subagent.started" {
-			raw[l.AgentID] = append(raw[l.AgentID], sc.Text())
-			if l.Type == "assistant.message" && l.Data.Content != "" {
-				msgs[l.AgentID] = append(msgs[l.AgentID], l.Data.Content)
+			// Only what the gate authored counts: its commands (tool.execution_start arguments) and its messages. The outputs of its
+			// tool calls do not: a gate that merely read a report someone typed (cat eval-report.md) must not back that report.
+			switch l.Type {
+			case "tool.execution_start":
+				raw[l.AgentID] = append(raw[l.AgentID], sc.Text())
+			case "assistant.message":
+				raw[l.AgentID] = append(raw[l.AgentID], sc.Text())
+				if l.Data.Content != "" {
+					msgs[l.AgentID] = append(msgs[l.AgentID], l.Data.Content)
+				}
 			}
 			continue // a subagent's own tool calls are never a task dispatch of the main session
 		}
