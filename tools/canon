@@ -33,9 +33,10 @@ Usage:
   canon <port>             Use a specific port (default 8899)
   canon status [--json]    Board and daemon state, version, sessions by state
   canon sessions [--json]  Every live agent session across projects
-  canon events [--limit N] [--json]
-                           The newest N (1 to 500, default 100) activity-log events, oldest first
-  canon sprint <id> [--json]
+  canon events [--limit N] [--project DIR] [--json]
+                           The newest N (1 to 500, default 100) activity-log events of the project you are in
+                           (its main checkout and live worktrees; --project names another), oldest first
+  canon sprint <id> [--project DIR] [--json]
                            A ticket's sprint snapshot: the latest lifecycle event of each kind
   canon stop [--force]     Stop the cockpit daemon and the board (--force ends live sessions)
   canon restart [--force]  Restart the cockpit daemon (--force ends live sessions)
@@ -665,7 +666,7 @@ stop_board() {
 # sessions and changes nothing. Exit 0 on the body, 2 on bad input or no board, 1 when the board answers with an error.
 v1_read_cmd() {
   local cmd="$1"; shift
-  local limit="" has_limit=0 id="" a
+  local limit="" has_limit=0 id="" a proj="" has_proj=0
   while [[ $# -gt 0 ]]; do
     a="$1"; shift
     case "$a" in
@@ -674,24 +675,37 @@ v1_read_cmd() {
         [[ "$cmd" == events ]] || { echo "canon $cmd: unknown option: $a" >&2; exit 2; }
         [[ $# -gt 0 ]] || { echo "canon events: --limit needs a number" >&2; exit 2; }
         limit="$1"; has_limit=1; shift ;;
+      --project)
+        [[ $# -gt 0 && -n "${1:-}" ]] || { echo "canon $cmd: --project needs a folder" >&2; exit 2; }
+        proj="$1"; has_proj=1; shift ;;
       -*) echo "canon $cmd: unknown option: $a" >&2; exit 2 ;;
       *)
         [[ "$cmd" == sprint && -z "$id" ]] || { echo "canon $cmd: unexpected argument: $a" >&2; exit 2; }
         id="$a" ;;
     esac
   done
-  local route
+  # t-9f86: answer for the project this runs in (or --project), not the folder the board started in: the MAIN checkout's folder (a linked
+  # worktree's events belong to it, and the board adds the live worktrees), in the board's path form (C:/… on Windows).
+  local root=""
+  if (( has_proj )); then
+    [[ -d "$proj" ]] || { echo "canon $cmd: --project $proj is not a folder" >&2; exit 2; }
+    root="$(v1_project_root "$proj")"; [[ -n "$root" ]] || root="$(canon_lock_path "$proj")"
+  else
+    root="$(v1_project_root .)"
+  fi
+  local route q=()
+  [[ -z "$root" ]] || q=(--data-urlencode "root=$root")
   case "$cmd" in
     events)
       [[ "$has_limit" -eq 0 ]] || in_range "$limit" 500 || { echo "canon events: --limit is 1 to 500, got '$limit'" >&2; exit 2; }
-      route="/api/v1/events${limit:+?limit=$limit}" ;;
+      route="/api/v1/events"; [[ -z "$limit" ]] || q+=(--data-urlencode "limit=$limit") ;;
     sprint)
       [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "canon sprint: expected a ticket id (t-xxxx), got '${id}'" >&2; exit 2; }
       route="/api/v1/sprint/$id" ;;
   esac
   local port base out code
   require_board 2
-  out="$(board_curl -s --max-time 10 -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
+  out="$(board_curl -s --max-time 10 -G ${q[@]+"${q[@]}"} -w $'\n%{http_code}' "$base$route")" || out=$'\n000'
   code="${out##*$'\n'}"
   if [[ "$code" == 000 ]]; then echo "The board on port $port did not answer 'canon $cmd' (no reply within 10 seconds, or the connection dropped)." >&2; exit 1; fi
   if [[ "$code" != 200 ]]; then
@@ -700,6 +714,25 @@ v1_read_cmd() {
     exit 1
   fi
   printf '%s\n' "${out%$'\n'*}"
+  # t-9f86: name the project shown, on stderr (stdout stays the body), so an empty list is never silent
+  local shown note=""
+  if [[ -n "$root" ]]; then shown="$(printf '%s' "$root" | LC_ALL=C tr -c '[:print:]' '?')"; else shown="not in a project folder; showing the board's own project"; fi
+  case "$out" in *'"events":[]'*) note=" (no events recorded for it yet)" ;; esac
+  echo "canon $cmd: $shown$note" >&2
+}
+
+# v1_project_root <dir> — t-9f86: the project <dir> belongs to, as the board names it: the MAIN checkout's folder (git's common dir's
+# parent, so a linked worktree resolves to the checkout that owns it), else the folder holding .tickets/, in canon_lock_path's form
+# (C:/… on Windows). Prints nothing outside a project.
+v1_project_root() {
+  local common top
+  if common="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && [[ -n "$common" ]]; then
+    top="$(dirname "$common")"
+    [[ "${common##*/}" == .git ]] || top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)" || top=""
+    [[ -n "$top" ]] && { canon_lock_path "$top"; return 0; }
+  fi
+  top="$(cd "$1" 2>/dev/null && tickets_dir 2>/dev/null)" && [[ -d "$top" ]] && { canon_lock_path "$(dirname "$top")"; return 0; }
+  return 0
 }
 
 # t-5b80: `canon sessions` reads /api/v1/sessions only. --json prints that body unchanged; the table is canon-go's (one formatter, no JSON in bash).

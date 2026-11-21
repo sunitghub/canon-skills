@@ -104,8 +104,8 @@ done
 
 # t-ad6f: --help lists the two commands with their options
 help_out="$("$CANON" --help)"
-assert_contains "$help_out" "canon events [--limit N] [--json]"; assert_contains "$help_out" "canon sprint <id> [--json]"
-assert_contains "$help_out" "The newest N (1 to 500, default 100) activity-log events, oldest first"
+assert_contains "$help_out" "canon events [--limit N] [--project DIR] [--json]"; assert_contains "$help_out" "canon sprint <id> [--project DIR] [--json]"
+assert_contains "$help_out" "activity-log events of the project you are in"; assert_contains "$help_out" "(its main checkout and live worktrees; --project names another), oldest first"
 assert_contains "$help_out" "A ticket's sprint snapshot: the latest lifecycle event of each kind"
 # the limits of the port: 1 and 65535 pass the check (and then find no board), 0 and 65536 do not
 for okport in 1 65535; do
@@ -149,8 +149,8 @@ for c in "events" "sprint t-d9e6"; do   # t-ad6f: a board without the v1 routes
 done
 # t-ad6f (break-it): a board that answers 500 with escape bytes in the body, and one that drops the connection on the v1 routes. The first must
 # not put a raw escape on the terminal; the second must be named as not answering, not as having "answered 000".
-v1_stub() {   # v1_stub <port> <500|500long|drop|noroot|nostate|lateroot|down|flipdown>
-  python3 - "$1" "$2" <<'PY' >/dev/null 2>&1 &
+v1_stub() {   # v1_stub <port> <500|500long|drop|noroot|nostate|lateroot|down|flipdown|rec|recone> [record file]
+  python3 - "$1" "$2" "${3:-}" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
 mode = sys.argv[2]
 seen = 0
@@ -177,6 +177,10 @@ class H(http.server.BaseHTTPRequestHandler):
             hdr = "x-cockpit-daemon" if mode == "down" else "X-COCKPIT-DAEMON"
             b = b'{"schema":1,"id":"t-wt01","state":"exited"}' if self.path.endswith("/state") else b'{"schema":1,"sessions":[]}'
             self.send_response(200); self.send_header(hdr, "Down" if marked else "up"); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
+        if mode in ("rec", "recone") and (self.path.startswith("/api/v1/events") or self.path.startswith("/api/v1/sprint/")):   # t-9f86: record the query
+            open(sys.argv[3], "a").write(self.path + "\n")
+            b = b'{"schema":1,"events":[],"cursor":""}' if mode == "rec" else b'{"schema":1,"events":[{"id":"1","kind":"ticket.closed"}],"cursor":"x"}'
+            self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "nostate" and self.path.startswith("/api/v1/sessions"):   # 200 with no state in it
             b = b'{"schema":1,"error":"x"}'; self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
         if mode == "drop":
@@ -197,6 +201,24 @@ set +e; out="$(run events 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "bad ?[31mred?[0m zzz"
 [[ "$out" != *$'\x1b'* ]] || fail "canon-cli: an escape byte from the board's error body reached the terminal"
 [[ "${#out}" -lt 500 ]] || fail "canon-cli: the board's error body was echoed whole (${#out} characters)"
+# t-9f86: canon events / canon sprint send the project they run in (its MAIN checkout's folder, from a subfolder or a linked worktree too),
+# --project overrides, outside a project nothing; stderr names what is shown and says when it is empty. Protects the shipped commands.
+REC="$WORK/v1-rec"; : > "$REC"; PORT="$(free_port)"; v1_stub "$PORT" rec "$REC"
+P9="$WORK/proj9f86"; mkdir -p "$P9/sub/deep" && git -C "$P9" init -q && git -C "$P9" config user.name t && git -C "$P9" config user.email t@t && echo x > "$P9/f" && git -C "$P9" add f && git -C "$P9" commit -qm b
+P9P="$(cd "$P9" && pwd -P)"; enc() { python3 -c 'import sys,re,urllib.parse;print(re.sub(r"%[0-9A-F]{2}",lambda m:m.group(0).lower(),urllib.parse.quote(sys.argv[1],safe="")))' "$1"; }   # curl's lowercase hex
+out="$(cd "$P9/sub/deep" && run events 2>&1)"; assert_contains "$(tail -1 "$REC")" "/api/v1/events?root=$(enc "$P9P")"
+assert_contains "$out" "canon events: $P9P (no events recorded for it yet)"; assert_contains "$out" '"events":[]'
+git -C "$P9" worktree add -q "$WORK/wt9f86" -b wt9f86 2>/dev/null
+(cd "$WORK/wt9f86" && run sprint t-abcd >/dev/null 2>&1); assert_contains "$(tail -1 "$REC")" "/api/v1/sprint/t-abcd?root=$(enc "$P9P")"   # a worktree asks for its main checkout
+(cd "$P9" && run events --limit 3 >/dev/null 2>&1); assert_contains "$(tail -1 "$REC")" "root=$(enc "$P9P")"; assert_contains "$(tail -1 "$REC")" "limit=3"
+O9="$WORK/other9f86"; mkdir -p "$O9" && git -C "$O9" init -q; O9P="$(cd "$O9" && pwd -P)"
+(cd "$P9" && run events --project "$O9" >/dev/null 2>&1); assert_contains "$(tail -1 "$REC")" "root=$(enc "$O9P")"
+set +e; out="$(cd "$P9" && run events --project "$WORK/no-such-dir" 2>&1)"; code=$?; set -e; assert_eq "2" "$code"; assert_contains "$out" "is not a folder"
+NP="$WORK/notproj9f86"; mkdir -p "$NP"; out="$(cd "$NP" && HOME="$NP" run events 2>&1)"
+[[ "$(tail -1 "$REC")" == "/api/v1/events" ]] || fail "canon-cli: outside a project canon events sent a root: $(tail -1 "$REC")"
+assert_contains "$out" "canon events: not in a project folder; showing the board's own project"
+PORT="$(free_port)"; v1_stub "$PORT" recone "$REC"
+out="$(cd "$P9" && run events 2>&1)"; assert_contains "$out" "canon events: $P9P"; [[ "$out" != *"no events recorded"* ]] || fail "canon-cli: a non-empty answer was called empty: $out"
 PORT="$(free_port)"; v1_stub "$PORT" drop
 set +e; out="$(run events 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "did not answer 'canon events'"; [[ "$out" != *"answered 000"* ]] || fail "canon-cli: a dropped connection was reported as an answer"

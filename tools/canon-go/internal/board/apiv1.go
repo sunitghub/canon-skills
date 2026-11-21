@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -150,9 +151,8 @@ func handleAPIv1(w http.ResponseWriter, r *http.Request) {
 	case len(seg) == 2 && seg[0] == "events" && seg[1] == "stream":
 		v1EventsStream(w, r)
 	case len(seg) == 2 && seg[0] == "sprint":
-		root, ok := effectiveRoot(r)
+		root, ok := v1ScopeRoot(w, r)
 		if !ok {
-			v1Error(w, http.StatusBadRequest, "unknown project")
 			return
 		}
 		if !v1TicketIDRe.MatchString(seg[1]) {
@@ -234,7 +234,7 @@ func v1Signature(files []string) string {
 // v1Sprint is the latest valid event of each lifecycle kind for one ticket of one project, in log order. Lines that fail the events
 // schema are skipped by the reader; the values are text from the log, served as data. ok is false when two scans are already running.
 func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
-	root = resolvedOrAbs(root) // events carry the resolved path (emitEvent)
+	root = v1Resolve(root) // events carry the resolved path (emitEvent)
 	files := events.DayFiles(home)
 	key := root + "|" + ticketID + "|" + v1Signature(files)
 	v1SprintMu.Lock()
@@ -255,6 +255,46 @@ func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
 	v1SprintCache[key] = out
 	v1SprintMu.Unlock()
 	return out, true
+}
+
+// v1RootRe is a root the read API accepts (t-9f86): absolute, either `/…` or a drive form `X:/…` / `X:\…`, on every OS (a Windows
+// client sends C:/Users/…; a test or a Git Bash client may send /c/…); eventKey compares the forms.
+var v1RootRe = regexp.MustCompile(`^(/|[A-Za-z]:[/\\])`)
+
+// v1ScopeRoot is the project an events or sprint route answers for (t-9f86): `?root=<absolute folder>` when given (so `canon events`
+// run in any project shows that project, not the folder the board started in), else effectiveRoot (`?project=<registry id>` or the
+// board's own root). An empty, relative or control-character root, or root together with project, is 400 `bad root`; an unknown
+// project id stays 400 `unknown project`. It writes the error itself and returns false.
+func v1ScopeRoot(w http.ResponseWriter, r *http.Request) (string, bool) {
+	q := r.URL.Query()
+	if q.Has("root") {
+		raw := q.Get("root")
+		bad := q.Get("project") != "" || !v1RootRe.MatchString(raw)
+		for _, c := range raw {
+			if c < 0x20 || c == 0x7f {
+				bad = true
+			}
+		}
+		if bad {
+			v1Error(w, http.StatusBadRequest, "bad root")
+			return "", false
+		}
+		return raw, true
+	}
+	root, ok := effectiveRoot(r)
+	if !ok {
+		v1Error(w, http.StatusBadRequest, "unknown project")
+	}
+	return root, ok
+}
+
+// v1Resolve resolves symlinks in a root (events carry the resolved path), except a drive-form root on a non-Windows host, which
+// filepath would read as relative; eventKey matches its forms as given.
+func v1Resolve(p string) string {
+	if !strings.HasPrefix(p, "/") && runtime.GOOS != "windows" {
+		return p
+	}
+	return resolvedOrAbs(p)
 }
 
 // v1Scope says whether an event's project is the root or one of its live worktrees: the one filter every events route applies, so no route can

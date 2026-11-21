@@ -49,9 +49,8 @@ var v1Streams = map[string]map[string]any{
 
 // v1EventsSnapshot is GET /api/v1/events[?limit=N]: the newest limit events of the project, oldest first, and the cursor to subscribe from.
 func v1EventsSnapshot(w http.ResponseWriter, r *http.Request) {
-	root, ok := effectiveRoot(r)
+	root, ok := v1ScopeRoot(w, r)
 	if !ok {
-		v1Error(w, http.StatusBadRequest, "unknown project")
 		return
 	}
 	limit := v1EventsDefaultLimit
@@ -69,7 +68,7 @@ func v1EventsSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer v1ScanGate.release()
-	inScope := v1Scope(resolvedOrAbs(root)) // events carry the resolved path (emitEvent)
+	inScope := v1Scope(v1Resolve(root)) // events carry the resolved path (emitEvent)
 	got, end, err := events.Newest(events.Home(), limit, func(ev events.Event) bool { return inScope(ev.Project) })
 	if err != nil {
 		v1Error(w, http.StatusInternalServerError, "cannot read the event log")
@@ -106,9 +105,8 @@ func v1StartCursor(r *http.Request) (events.Cursor, error) {
 // v1EventsStream is GET /api/v1/events/stream: server-sent events from a cursor, each id the cursor after its event, so a client that drops and
 // resumes from its last id gets every event it missed once.
 func v1EventsStream(w http.ResponseWriter, r *http.Request) {
-	root, ok := effectiveRoot(r)
+	root, ok := v1ScopeRoot(w, r)
 	if !ok {
-		v1Error(w, http.StatusBadRequest, "unknown project")
 		return
 	}
 	cur, err := v1StartCursor(r)
@@ -145,7 +143,7 @@ func v1EventsStream(w http.ResponseWriter, r *http.Request) {
 	if !send(opening + "\n") {
 		return
 	}
-	inScope := v1Scope(resolvedOrAbs(root))
+	inScope := v1Scope(v1Resolve(root))
 	tick := time.NewTicker(v1StreamPoll)
 	defer tick.Stop()
 	ctx, cancel := context.WithTimeout(r.Context(), v1StreamLifetime) // the client going away and the lifetime ending are one condition
