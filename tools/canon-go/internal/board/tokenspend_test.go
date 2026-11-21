@@ -317,6 +317,13 @@ func TestTokenSpendSkipsWhatItCannotRead(t *testing.T) {
 		call("10:42:00", "msg_just_under", "m", 2, 0, 0, 1, strings.Repeat("y", 3500)),
 	)
 	os.MkdirAll(filepath.Join(claudeDir(f.root, f.cfg), "folder.jsonl"), 0o755) // a folder named like a transcript
+	locked := filepath.Join(claudeDir(f.root, f.cfg), "locked.jsonl")           // a transcript that cannot be opened, holding an in-window call
+	f.main("locked", call("10:43:00", "msg_locked", "m", 7777, 0, 0, 1, ""))
+	os.Chmod(locked, 0)
+	t.Cleanup(func() { os.Chmod(locked, 0o644) })
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with no permissions: nothing to skip")
+	}
 	out, rc := f.run("--ticket", "t-aaaa", "--record")
 	if rc != 0 || !strings.HasPrefix(out, "cost: ") {
 		t.Fatalf("rc %d out %q", rc, out)

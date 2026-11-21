@@ -27,7 +27,7 @@ import (
 // inside two sprints' windows counts once, as overlap. --record (sprint complete's call) writes the one sprint.cost event and one
 // gate.cost per subagent run, and prints the cost line. Numbers, ids and model names are kept; never transcript text.
 
-// tsUsage is one transcript call.
+// tsCall is one call: one model request, from a transcript line or a Copilot usage record.
 type tsCall struct {
 	src             *tsSrc
 	model, ts       string // ts: the first 19 characters of the timestamp, compared as text
@@ -93,7 +93,6 @@ func (s *tsStat) add(c *tsCall) {
 type tsRunStat struct {
 	src   *tsSrc
 	model string // the first call's
-	tsMin string
 	tsStat
 }
 
@@ -555,16 +554,18 @@ func (s *tsState) readClaude(path string, sub bool) {
 		src.agentID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(path), "agent-"), ".jsonl")
 		if b, err := os.ReadFile(strings.TrimSuffix(path, ".jsonl") + ".meta.json"); err == nil {
 			m := strings.ReplaceAll(string(b), "\n", "")
-			src.agentType, src.desc = rawField(m, "agentType"), rawField(m, "description")
+			src.agentType, src.desc = metaField(m, "agentType"), metaField(m, "description")
+			if src.agentType == "Plan" { // the close check's own test (tools/sprint, the Plan fallback): reference/eval.md anywhere in its transcript
+				transcript.EachLine(path, func(line []byte) {
+					src.evalDoc = src.evalDoc || bytes.Contains(line, []byte("reference/eval.md"))
+				})
+			}
 		}
 	}
 	var mine []*tsCall
 	transcript.EachLine(path, func(line []byte) {
 		if !bytes.Contains(line, []byte(`"type":"assistant"`)) {
 			return
-		}
-		if sub && !src.evalDoc && bytes.Contains(line, []byte("reference/eval.md")) {
-			src.evalDoc = true
 		}
 		a, ok := transcript.ParseAssistant(line)
 		if !ok || !strings.HasPrefix(a.ID, "msg_") || !a.HasUsage || s.seen[a.ID] {
@@ -810,7 +811,7 @@ func (s *tsState) classify() {
 		default:
 			r := runs[c.src]
 			if r == nil || !hasRun(w, r) {
-				r = &tsRunStat{src: c.src, model: c.model, tsMin: c.ts}
+				r = &tsRunStat{src: c.src, model: c.model}
 				runs[c.src] = r
 				w.runs = append(w.runs, r)
 			}
@@ -1007,4 +1008,19 @@ func (s *tsState) printContext(out io.Writer, L []int) {
 		}
 	}
 	fmt.Fprintln(out)
+}
+
+var tsMetaRe = map[string]*regexp.Regexp{}
+
+// metaField is a string field of a subagent's meta.json, with the spacing the close check's grep tolerates around the colon.
+func metaField(meta, name string) string {
+	re, ok := tsMetaRe[name]
+	if !ok {
+		re = regexp.MustCompile(`"` + name + `"\s*:\s*"([^"]*)"`)
+		tsMetaRe[name] = re
+	}
+	if m := re.FindStringSubmatch(meta); m != nil {
+		return m[1]
+	}
+	return ""
 }

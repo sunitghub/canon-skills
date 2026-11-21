@@ -34,7 +34,8 @@ mkdir -p "$tdir/s1/subagents" "$wdir"
 # The bash version from the base commit, in a scratch copy of tools/ so its `source` lines resolve.
 legacy=""
 base="$(git -C "$ROOT" merge-base HEAD main 2>/dev/null || true)"
-if [[ -n "$base" ]] && git -C "$ROOT" show "$base:tools/sprint" 2>/dev/null | grep -q 'function winpath'; then
+base_sprint="$(git -C "$ROOT" show "$base:tools/sprint" 2>/dev/null || true)"
+if [[ -n "$base" && "$base_sprint" == *"function winpath"* ]]; then
   mkdir -p "$S/base"
   git -C "$ROOT" archive "$base" -- tools/sprint tools/tkt ':(glob)tools/*.sh' | tar -x -C "$S/base"
   legacy="$S/base/tools/sprint"
@@ -182,7 +183,7 @@ if [[ -n "$legacy" ]]; then   # the old fields are what the bash version recorde
   for k in planning implementation gates cache_read turns gate_runs models builder same_model; do
     assert_eq "$(fieldof "$be" "$k")" "$(fieldof "$ge" "$k")"
   done
-  assert_eq "cost: 3k tokens (gates 2k, 48%), 2 gate runs" "$(printf '%s\n' "$bout" | head -1)"
+  assert_eq "cost: 3k tokens (gates 2k, 48%), 2 gate runs" "${bout%%$'\n'*}"
 fi
 # one gate.cost per subagent run, keyed by its agent id; never transcript text
 assert_eq "evaluator|canon-evaluator|claude-sonnet-5-5|3|16|900|510|160|512" "$(g="$(gate_ev "$hg" e1)"; for k in role agent_type model calls input cache_read cache_write output peak; do printf '%s|' "$(fieldof "$g" $k)"; done | sed 's/|$//')"
@@ -214,7 +215,11 @@ fi
 # ---- a transcript that cannot be read, a malformed line, an over-long line: skipped, never fatal ---------------------------------------------------
 mkdir "$tdir/dir.jsonl"                          # a folder named like a transcript
 printf '%s\n' 'not json at all {"type":"assistant"' '{"type":"assistant","message":{"id":"msg_bad","usage":"x"}}' > "$tdir/garbage.jsonl"
-chmod 000 "$tdir/s2.jsonl"; chmod 644 "$tdir/s2.jsonl"
+# an unreadable transcript (not for root, which reads anything) holding an in-window call: skipped, not counted, not fatal
+turn 10:41:00 msg_locked $O 5555 0 0 0 > "$tdir/locked.jsonl"; chmod 000 "$tdir/locked.jsonl"
+rc=0; out2="$("$SPRINT" token-spend 2>&1)" || rc=$?; assert_eq 0 "$rc"
+if [[ "$(id -u)" != 0 ]]; then assert_eq "$(printf '%s\n' "$out" | norm_go)" "$(printf '%s\n' "$out2" | norm_go)"; fi
+chmod 644 "$tdir/locked.jsonl"; rm -f "$tdir/locked.jsonl"
 assert_eq "$(printf '%s\n' "$out" | norm_go)" "$("$SPRINT" token-spend | norm_go)"
 
 # ---- Copilot's session record: calls by agentId, found by the session's working folder, inside the sprint window --------------------------------
