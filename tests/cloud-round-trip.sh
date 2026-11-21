@@ -93,6 +93,7 @@ assert_contains "$out" "HTTP 404: Not Found"; assert_contains "$out" "add --body
 [[ ! -e .tickets/$id ]] || fail "a failed import wrote .tickets/$id"
 "$SPRINT" import-issue 57 > "$W/import.out"
 e="$B/.tickets/$id"
+grep -qx '/HANDOFF.md' "$B/$(git -C "$B" rev-parse --git-path info/exclude)" || fail "t-b277: sprint import-issue did not pass --cloud (HANDOFF.md not hidden in the cloud clone)"
 assert_grep "^github: acme/app#57$" "$e/ticket.md"
 grep -q '^runs:' "$e/ticket.md" && fail "the cloud's ticket says runs: (t-718b: there the work is local)"
 assert_grep "^# Board burns a CPU core$" "$e/ticket.md"
@@ -174,6 +175,45 @@ assert_eq "my local plan" "$(cat ".tickets/$id/plan.md")"
 assert_grep '^1. Profile it.$' ".tickets/$id/plan.md"
 assert_eq "my local plan" "$(cat ".tickets/$id/.before-import/plan.md")"   # --force kept what it replaced
 
+# ---- t-b277: --cloud (sprint import-issue) hides canon's own HANDOFF.md and .tickets/.gitignore from git status; a plain import never does ----
+# claude.ai's Stop hook asks to commit every changed file: on ToDo-Demo, where both are TRACKED, info/exclude could not hide them.
+hide_repo() {   # hide_repo <dir> <track handoff 0|1> <track .tickets/.gitignore 0|1> <ignore .tickets/ 0|1>
+  mkdir -p "$1" && git -C "$1" init -q && git -C "$1" config user.name t && git -C "$1" config user.email t@t
+  echo x > "$1/README"; git -C "$1" add README
+  [[ "$4" == 1 ]] && { echo '.tickets/' > "$1/.gitignore"; git -C "$1" add .gitignore; }
+  [[ "$2" == 1 ]] && { echo '# Handoff' > "$1/HANDOFF.md"; git -C "$1" add HANDOFF.md; }
+  [[ "$3" == 1 ]] && { mkdir -p "$1/.tickets"; echo 'ACTIVE' > "$1/.tickets/.gitignore"; git -C "$1" add -f .tickets/.gitignore; }
+  git -C "$1" commit -qm base
+}
+hstat() { git -C "$1" status --porcelain --untracked-files=all -- HANDOFF.md .tickets/.gitignore; }
+# both tracked, .tickets/ tracked: both skip-worktree; canon's later edits never show; twice adds nothing
+H1="$W/hide1"; hide_repo "$H1" 1 1 0
+(cd "$H1" && "$TKT" import-issue 57 --cloud --body-file "$STUB_BODY" >/dev/null 2>&1) || fail "t-b277: import-issue --cloud failed"
+assert_eq "S HANDOFF.md" "$(git -C "$H1" ls-files -v HANDOFF.md)"; assert_eq "S .tickets/.gitignore" "$(git -C "$H1" ls-files -v .tickets/.gitignore)"
+echo edited >> "$H1/HANDOFF.md"; echo '*/gate-snapshot.txt' >> "$H1/.tickets/.gitignore"; assert_eq "" "$(hstat "$H1")"
+ex1="$(git -C "$H1" rev-parse --git-path info/exclude)"; (cd "$H1" && "$TKT" import-issue 57 --cloud --body-file "$STUB_BODY" --force >/dev/null 2>&1) || true
+[[ "$(grep -c '^/HANDOFF.md$' "$H1/$ex1" 2>/dev/null || true)" == 0 ]] || fail "t-b277: a tracked HANDOFF.md was also put in info/exclude"
+# neither tracked: info/exclude lines (once), and a later file never shows
+H2="$W/hide2"; hide_repo "$H2" 0 0 0
+(cd "$H2" && "$TKT" import-issue 57 --cloud --body-file "$STUB_BODY" >/dev/null 2>&1) || fail "t-b277: import-issue --cloud failed (untracked)"
+(cd "$H2" && "$TKT" import-issue 57 --cloud --body-file "$STUB_BODY" --force >/dev/null 2>&1) || true
+ex2="$H2/$(git -C "$H2" rev-parse --git-path info/exclude)"
+assert_eq "1" "$(grep -cx '/HANDOFF.md' "$ex2")"; assert_eq "1" "$(grep -cx '/.tickets/.gitignore' "$ex2")"
+echo h > "$H2/HANDOFF.md"; mkdir -p "$H2/.tickets"; echo x >> "$H2/.tickets/.gitignore"; assert_eq "" "$(hstat "$H2")"
+[[ -z "$(git -C "$H2" ls-files -v | grep '^S ' || true)" ]] || fail "t-b277: an untracked file was marked skip-worktree"
+# a tracked HANDOFF.md in a project that ignores .tickets/: still hidden
+H3="$W/hide3"; hide_repo "$H3" 1 0 1
+(cd "$H3" && "$TKT" import-issue 57 --cloud --body-file "$STUB_BODY" >/dev/null 2>&1) || fail "t-b277: import-issue --cloud failed (ignored .tickets)"
+assert_eq "S HANDOFF.md" "$(git -C "$H3" ls-files -v HANDOFF.md)"; echo e >> "$H3/HANDOFF.md"; assert_eq "" "$(hstat "$H3")"
+# without --cloud (a plain import, and sync-issues, which calls it the same way on the person's machine): nothing hidden
+H4="$W/hide4"; hide_repo "$H4" 1 1 0
+(cd "$H4" && "$TKT" import-issue 57 --body-file "$STUB_BODY" >/dev/null 2>&1) || fail "t-b277: plain import-issue failed"
+[[ -z "$(git -C "$H4" ls-files -v | grep '^S ' || true)" ]] || fail "t-b277: a plain import marked a file skip-worktree"
+ex4="$H4/$(git -C "$H4" rev-parse --git-path info/exclude)"; ! grep -qx '/HANDOFF.md' "$ex4" 2>/dev/null || fail "t-b277: a plain import excluded HANDOFF.md"
+echo edited >> "$H4/HANDOFF.md"; [[ -n "$(hstat "$H4")" ]] || fail "t-b277: a plain import hid a real HANDOFF.md edit"
+grep -qF 'cmd_import_issue "$n" --body-file' "$ROOT/tools/tkt" && ! grep -q 'cmd_import_issue "$n" .*--cloud' "$ROOT/tools/tkt" || fail "t-b277: sync-issues must call import-issue without --cloud"
+cd "$A"
+
 # ---- 2. export → import-results ----
 git init -q --bare "$W/origin.git"
 X="$W/cloud-x"; git clone -q "$W/origin.git" "$X" 2>/dev/null; cd "$X"
@@ -251,6 +291,7 @@ ldcase "printf '*/gate-snapshot.txt\n*/gate-snapshot.txt.scope\n' >> '$LD/.ticke
 ldcase "printf 'my-own-line\n' >> '$LD/.tickets/.gitignore'" 1
 ldcase "printf 'ACTIVE.beat\n++ evil\n' >> '$LD/.tickets/.gitignore'" 1   # reviewer: a content line that looks like a diff header
 ldcase "sed -i.bak '/^ACTIVE\$/d' '$LD/.tickets/.gitignore'; rm -f '$LD/.tickets/.gitignore.bak'" 1
+ldcase "sed -i.bak '/^ACTIVE\$/d' '$LD/.tickets/.gitignore'; rm -f '$LD/.tickets/.gitignore.bak'; printf '*/gate-snapshot.txt\n*/gate-snapshot.txt.scope\n' >> '$LD/.tickets/.gitignore'" 1   # t-b277: a removed line is not excused by canon's own additions
 ldcase "printf '%s' \"\$(cat '$LD/.tickets/.gitignore')\" > '$LD/.tickets/.gitignore'; git -C '$LD' add -f -A; git -C '$LD' commit -qm nonl; printf '\n*/gate-snapshot.txt\n' >> '$LD/.tickets/.gitignore'" 0
 git -C "$LD" checkout -q "$LG"; git -C "$LD" rm -q --cached .tickets/.gitignore; git -C "$LD" commit -qm "no ignore file"; LG="$(git -C "$LD" rev-parse HEAD)"
 ldcase "printf '# canon runtime files — per-machine session state, never commit (t-2f53)\n.cockpit-*\n*/gate-snapshot.txt\n' > '$LD/.tickets/.gitignore'" 0

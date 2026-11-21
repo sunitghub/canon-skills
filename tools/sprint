@@ -286,7 +286,7 @@ EOF
 # missing ones), so an approved plan stays approved.
 cmd_import_issue() {
   local id
-  id="$("$TKT_BIN" import-issue "$@" | tail -1)" || exit 1
+  id="$("$TKT_BIN" import-issue --cloud "$@" | tail -1)" || exit 1   # t-b277: the cloud session's first step hides canon's own files
   [[ -n "$id" ]] || exit 1
   cmd_start "$id"
 }

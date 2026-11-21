@@ -1487,11 +1487,17 @@ cmd_send_issue() {
     printf '   Follow .claude/skills/sprint/reference/complete-checklist.md (Codex/Pi: .agents/skills/…); write .tickets/%s/summary.md before `sprint complete`.\n' "$id"
     printf '   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and `sprint gate-snapshot post` has run.\n'
     printf '   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository.\n'
+    printf '   Never add, commit or offer to commit HANDOFF.md or .tickets/.gitignore: canon edits them itself and keeps them out of the PR.\n'
+    printf '   If the evaluator fails: fix what it names, re-stamp the evidence and dispatch a fresh evaluator (at most 3 runs in all); stop and report only if it still fails.\n'
     # t-2f07 (ToDo-Demo t-giic): claude.ai will not push a model identifier, so the gate reports stayed behind (nothing to merge); and the
     # session committed canon's .tickets/.gitignore after grading (a forced re-grade). The family names the model; the owner's approval backs it.
     printf '   When you dispatch the reviewer or the evaluator, give it the model family only (Haiku, Sonnet or Opus) as its Model designation, never a model identifier, and use the family wherever you name a model in a close file you commit (the Wrapup Gates rows, summary.md, `sprint subagent-log --model <family>`).\n'
-    printf '   Commit .tickets/%s/review-notes.md and .tickets/%s/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/%s/, because canon'"'"'s import needs these reports to verify the grade.\n' "$id" "$id" "$id"
-    printf '   After the evaluator, commit nothing outside .tickets/%s/ except your DECISIONS.md row: not .tickets/.gitignore (canon'"'"'s per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md.\n' "$id"
+    if _tickets_tracked "$root" "$id"; then   # t-b277 (t-2f07 reviewer): an ignored .tickets/ is carried by tkt export, never committed
+      printf '   Commit .tickets/%s/review-notes.md and .tickets/%s/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/%s/, because canon'"'"'s import needs these reports to verify the grade.\n' "$id" "$id" "$id"
+      printf '   After the evaluator, commit nothing outside .tickets/%s/ except your DECISIONS.md row: not .tickets/.gitignore (canon'"'"'s per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md.\n' "$id"
+    else
+      printf '   This repository does not track .tickets/: commit nothing under .tickets/ (step 6'"'"'s tkt export carries the folder), and after the evaluator commit only your DECISIONS.md row besides the code.\n'
+    fi
     # t-8a0d: this body is the one thing a cloud session reads first (its own ticket.md has no runs: github yet, import-issue sets it only once a PR exists)
     printf '   Close step 6: only ADD your DECISIONS.md row (it must name %s); do not run `sprint decisions archive` or `mark` here.\n' "$id"
     printf '   Close step 8: let `tkt learn %s` write .tickets/%s/learnings.md, but do NOT run the learnings-sweep skill and do not edit LEARNINGS.md.\n' "$id" "$id"
@@ -1568,20 +1574,21 @@ cmd_send_issue() {
   if $launch; then _si_launch "$root" "$tdir" "$id" || exit 1; fi
 }
 
-# cmd_import_issue <N> [--body-file F] [--force] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
+# cmd_import_issue <N> [--body-file F] [--force] [--cloud] — t-554c: rebuilds .tickets/<id>/ from a `tkt send-issue` body (the
 # board's tree: # Description, # Acceptance, # Plan, # Research), so a cloud session works the same ticket. Prints the id
 # last (sprint import-issue starts it). An existing ticket.md is kept; another differing file is refused without --force.
 cmd_import_issue() {
-  local n="" bodyf="" force=false
+  local n="" bodyf="" force=false cloud=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --body-file) bodyf="${2:-}"; shift 2 || { echo "Error: --body-file needs a file" >&2; exit 1; } ;;
       --force)     force=true; shift ;;
+      --cloud)     cloud=true; shift ;;   # t-b277: sprint import-issue only (the cloud session's first step); never sync-issues
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$n" ]] && n="${1#\#}"; shift ;;
     esac
   done
-  [[ "$n" =~ ^[0-9]+$ ]] || { echo "Usage: tkt import-issue <issue number> [--body-file <file>] [--force]" >&2; exit 1; }
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "Usage: tkt import-issue <issue number> [--body-file <file>] [--force] [--cloud]" >&2; exit 1; }
   local root repo="" dir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"
   repo="$(_gh_origin_repo "$root" import-issue 2>/dev/null)" || repo=""
   # t-b775: in a project that tracks .tickets/ (a cloud clone), canon's per-machine .tickets/.gitignore stays untracked, and claude.ai's
@@ -1591,6 +1598,11 @@ cmd_import_issue() {
       || { [[ -s "$ex" && "$(tail -c1 "$ex" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$ex"; echo '.tickets/.gitignore' >> "$ex"; }; } \
       || echo "import-issue: note: could not add .tickets/.gitignore to $ex" >&2
   fi
+  # t-b277: in the CLOUD clone only, canon's own edits to HANDOFF.md and .tickets/.gitignore must not show in git status: claude.ai's Stop
+  # hook asks to commit every changed file and re-prompted on both (ToDo-Demo, where both are TRACKED, so info/exclude cannot hide them).
+  # A tracked one is marked skip-worktree; an untracked or missing one gets an info/exclude line. Never on the person's machine (sync-issues
+  # and a plain import run without --cloud): there a hidden HANDOFF.md edit would be lost from view and `tkt worktree-reset` would refuse.
+  if $cloud; then _import_hide_canon_files "$root"; fi
   local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
   # shellcheck disable=SC2064  # expand now: $tmp is local
   trap "rm -rf '$tmp'" EXIT
@@ -3999,6 +4011,22 @@ cmd_take_back() {
   remove_field "$file" runs
   $close && remove_field "$file" github
   if $close; then echo "take-back: $id is back on this machine; $gh closed"; else echo "take-back: $id is back on this machine ($gh left open)"; fi
+}
+
+# _import_hide_canon_files <root> — t-b277: hide HANDOFF.md and .tickets/.gitignore from git status in a cloud clone (see cmd_import_issue).
+_import_hide_canon_files() {
+  local root="$1" f ex
+  ex="$(cd "$root" && git rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)" || ex=""
+  for f in HANDOFF.md .tickets/.gitignore; do
+    if git -C "$root" ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+      git -C "$root" update-index --skip-worktree -- "$f" 2>/dev/null || echo "import-issue: note: could not hide $f from git status" >&2
+    elif [[ -n "$ex" ]]; then
+      mkdir -p "$(dirname "$ex")" && { grep -qxF "/$f" "$ex" 2>/dev/null \
+        || { [[ -s "$ex" && "$(tail -c1 "$ex" | wc -l | tr -d ' ')" == 0 ]] && echo >> "$ex"; echo "/$f" >> "$ex"; }; } \
+        || echo "import-issue: note: could not add $f to $ex" >&2
+    fi
+  done
+  return 0
 }
 
 # _tickets_tracked <root> <id> — t-43a7: true when the project tracks this ticket's folder (it is not gitignored), so the folder goes back

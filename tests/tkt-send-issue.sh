@@ -104,12 +104,20 @@ grep -qxF "4. Build it and run the tests; tick each acceptance item only when it
 grep -qxF "5. Run \`sprint complete\`: a fresh reviewer and a fresh evaluator are dispatched, and neither is skipped or written by hand." "$STUB_BODY" \
   || fail "the issue lacks the gates line (t-67c5)"
 # t-b775 (a cloud run that ran sprint complete before summary.md, committed mid-gate and added HANDOFF.md): the three close rules
+# t-b277: the never-offer line and the evaluator-fail retry line, in every brief
+b277_lines() {
+  grep -qxF "   Never add, commit or offer to commit HANDOFF.md or .tickets/.gitignore: canon edits them itself and keeps them out of the PR." "$1" || fail "$2: the issue lacks the never-offer line (t-b277)"
+  grep -qxF "   If the evaluator fails: fix what it names, re-stamp the evidence and dispatch a fresh evaluator (at most 3 runs in all); stop and report only if it still fails." "$1" || fail "$2: the issue lacks the evaluator-fail retry line (t-b277)"
+}
 b775_lines() {
   grep -qxF "   Follow .claude/skills/sprint/reference/complete-checklist.md (Codex/Pi: .agents/skills/…); write .tickets/$id/summary.md before \`sprint complete\`." "$1" || fail "$2: the issue lacks the checklist/summary-first line (t-b775, path t-2f07)"
   # t-2f07 (t-giic: claude.ai would not push the reports' model identifier; the session committed canon's .tickets/.gitignore after grading)
   grep -qxF "   When you dispatch the reviewer or the evaluator, give it the model family only (Haiku, Sonnet or Opus) as its Model designation, never a model identifier, and use the family wherever you name a model in a close file you commit (the Wrapup Gates rows, summary.md, \`sprint subagent-log --model <family>\`)." "$1" || fail "$2: the issue lacks the model-family line (t-2f07)"
-  grep -qxF "   Commit .tickets/$id/review-notes.md and .tickets/$id/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/$id/, because canon's import needs these reports to verify the grade." "$1" || fail "$2: the issue lacks the owner-approval line (t-2f07)"
-  grep -qxF "   After the evaluator, commit nothing outside .tickets/$id/ except your DECISIONS.md row: not .tickets/.gitignore (canon's per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md." "$1" || fail "$2: the issue lacks the commit-scope line (t-2f07)"
+  # t-b277: this project ignores .tickets/, so the two "commit .tickets/<id>/" lines are not printed (step 6's export carries the folder)
+  ! grep -qF "   Commit .tickets/$id/review-notes.md" "$1" || fail "$2: an ignored-.tickets issue still tells the session to commit the reports (t-b277)"
+  ! grep -qF "commit nothing outside .tickets/$id/" "$1" || fail "$2: an ignored-.tickets issue still carries the tracked commit-scope line (t-b277)"
+  grep -qxF "   This repository does not track .tickets/: commit nothing under .tickets/ (step 6's tkt export carries the folder), and after the evaluator commit only your DECISIONS.md row besides the code." "$1" || fail "$2: an ignored-.tickets issue lacks its commit line (t-b277)"
+  b277_lines "$1" "$2"
   grep -qxF "   Commit nothing while a gate (reviewer or evaluator) runs, even if asked to: commit after its report is back and \`sprint gate-snapshot post\` has run." "$1" || fail "$2: the issue lacks the no-commit-mid-gate line (t-b775)"
   grep -qxF "   Never add or edit HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md in this repository." "$1" || fail "$2: the issue lacks the never-add line (t-b775)"
 }
@@ -655,6 +663,11 @@ grep -qxF "   (the sprint docs, reports and that log) on the PR branch and push 
 grep -qxF "   If \`sprint complete\` could not pass, still run \`tkt export $tid\` and commit .tickets/$tid/, and say in the PR which step failed and why." "$stub/tbody" \
   || fail "the tracked 'could not pass' line does not say to commit the folder"
 ! grep -q "push nothing else" "$stub/tbody" || fail "a tracked project's issue still says push nothing else"
+# t-b277: a tracked .tickets/ keeps both commit lines (the reports ride in the PR) and the shared rules
+grep -qxF "   Commit .tickets/$tid/review-notes.md and .tickets/$tid/eval-report.md exactly as written. If one still carries a model identifier, commit it anyway: the repository owner approves model identifiers in .tickets/$tid/, because canon's import needs these reports to verify the grade." "$stub/tbody" || fail "a tracked project's issue lacks the owner-approval line (t-2f07)"
+grep -qxF "   After the evaluator, commit nothing outside .tickets/$tid/ except your DECISIONS.md row: not .tickets/.gitignore (canon's per-machine file), not HANDOFF.md, LEARNINGS.md, PROMOTED.md, AGENTS.md or CLAUDE.md." "$stub/tbody" || fail "a tracked project's issue lacks the commit-scope line (t-2f07)"
+! grep -qF "does not track .tickets/" "$stub/tbody" || fail "a tracked project's issue carries the ignored-.tickets line (t-b277)"
+b277_lines "$stub/tbody" "tracked project"
 # Follow it literally, as the cloud session would: export, then commit the folder.
 git add -A >/dev/null; git -c user.name=t -c user.email=t@t commit -qm "base"
 git switch -q -c work
