@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-21-2026 07:45
+learnings-sweep last run: 11-21-2026 14:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-21 | [t-e85f](.tickets/t-e85f/learnings.md) | Price a sprint by cache reads too: canon re-read 42x plain's cached tokens (turns x context growth, ~45% of cost); fresh-token shares alone pointed at the wrong lever | UNPROMOTED |
 | 2026-11-21 | [t-7ab9](.tickets/t-7ab9/learnings.md) | `awk -v` drops a regex's backslashes (`\.` matches any character), so a reach pin passed with its guard removed: write `[.]`/`[|]` in awk regexes and revert-prove every pin | UNPROMOTED |
 | 2026-11-21 | [t-9f86](.tickets/t-9f86/learnings.md) | A `go test -run` pattern is case-sensitive and a miss passes silently ('no tests to run', exit 0): run each Test Plan command once and read its count; and give a streaming route's negative test a deadline, or a removed guard hangs instead of failing | UNPROMOTED |
 | 2026-11-21 | [t-b277](.tickets/t-b277/learnings.md) | info/exclude hides only untracked files: a tracked file canon edits needs git update-index --skip-worktree, and only in the cloud clone; on the person's machine (sync-issues shares the import path) it would hide real edits | UNPROMOTED |
