@@ -146,6 +146,7 @@ bad also-scripts 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(scripts tests #'
 bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal #tools/canon-go #'
 bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md docs/research-path-and-rule-standards\.md scripts/changelog-release\.sh changelog\.d\)#)#'
 bad forgot-tests 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(#'
+bad forgot-bench 's#^SLIM_EXCLUDE=\(tests bench #SLIM_EXCLUDE=(tests #'   # t-e85f: P-046, a revert per rule
 bad no-keep-shots 's#^  keep_shots="\$\(git .*$#  keep_shots=""#'
 # the size bound measures bytes, not disk blocks, and can fail: filler that costs blocks but no bytes leaves the reading alone, real bytes push it over the cap
 fat="$WORK/fat"; cp -R "$WORK/u1" "$fat"; ft="$fat/canon-9.9.9"; base_kb="$(unpacked_kb "$ft")"

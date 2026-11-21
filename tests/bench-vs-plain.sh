@@ -49,6 +49,10 @@ case "${STUB_MODE:-ok}" in
            cat "$STUB_APP"; } | grep -v '^#!' > ./todo.js ;;
   plant) printf '#!/usr/bin/env bash\ntouch "%s"\n' "$STUB_PLANTED" > "$CANON_HOME/tools/sprint"
          mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md ;;
+  two) mkdir -p .tickets/t-0001 .tickets/t-ffff .claude   # the closed one sorts first by id: the row must still read it
+       printf -- '---\nid: t-0001\nstatus: closed\ncreated: 2026-01-01T00:00:00Z\n---\n' > .tickets/t-0001/ticket.md
+       printf -- '---\nid: t-ffff\nstatus: in_progress\ncreated: 2026-01-02T00:00:00Z\n---\n' > .tickets/t-ffff/ticket.md
+       echo '{"agent_type":"evaluator","tokens":900,"minutes":3,"ticket":"t-0001"}' >> .claude/subagent-runs.jsonl ;;
   open) mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: in_progress\n---\n' > .tickets/t-abcd/ticket.md ;;
 esac
 echo '{"is_error":false,"total_cost_usd":0.25,"num_turns":7,"session_id":"s1","modelUsage":{"claude-sonnet-5-5":{"inputTokens":100,"outputTokens":50,"cacheReadInputTokens":1000,"cacheCreationInputTokens":10}}}'
@@ -116,6 +120,7 @@ row="$(bench closed canon 1)"
 assert_eq "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" "$row" "canon: closed sprint, no transcripts -> n/a split, gate runs read"
 n="$(cat "$T/n")"; w="$T/w$n"
 p1="$(cat "$T/host$n/proj-1.path")"
+assert_eq "ok||0.2500|13|13|n/a|n/a|evaluator=900tok/3min" "$(bench two canon 1)" "canon: of two new tickets the closed one is the step's, whatever the id order"
 [[ -f "$p1/.claude/skills/sprint/SKILL.md" || -f "$p1/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
 node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.defaults)) if (v.claude && v.claude !== "claude-sonnet-5-5") { console.error(s, v.claude); process.exit(1); }' \
   "$w/canon/cockpit/model-tiers.json" || fail "canon: every model tier is pinned to Sonnet"

@@ -197,7 +197,11 @@ for step in $(seq 1 "$steps"); do
   planning=n/a; impl=n/a; gates=n/a; gate_runs=n/a; entry=claude-p
   if [[ "$arm" == canon ]]; then
     entry="claude-p+sprint"
-    tid="$(comm -13 <(printf '%s\n' "$before_tickets") <(ls "$proj/.tickets" 2>/dev/null | sort) | grep -E '^t-' | tail -1 || true)"
+    # The ticket the step closed, else the newest by its created: line; ids are random hex, so sort order says nothing (a session can make two).
+    tid="$(comm -13 <(printf '%s\n' "$before_tickets") <(ls "$proj/.tickets" 2>/dev/null | sort) | grep -E '^t-[0-9a-z]{4,12}$' | while IFS= read -r t; do   # a session-written name never reaches a path or token-spend unless it is an id
+      f="$proj/.tickets/$t/ticket.md"; c=0; grep -qE '^status: closed' "$f" 2>/dev/null && c=1
+      printf '%s %s %s\n' "$c" "$(awk '/^created:/ { print $2; exit }' "$f" 2>/dev/null)" "$t"
+    done | sort | tail -1 | awk '{ print $NF }' || true)"
     if [[ -z "$tid" ]]; then
       [[ "$status" != ok ]] || { status=incomplete; reason="no sprint ticket was created"; }
     else
@@ -205,7 +209,7 @@ for step in $(seq 1 "$steps"); do
         [[ "$status" != ok ]] || { status=incomplete; reason="$tid never reached sprint complete"; }
       fi
       ts="$(cd "$proj" && PATH="$HC/tools:$BASE_PATH" CANON_HOME="$CH" "$HC/tools/sprint" token-spend --ticket "$tid" 2>/dev/null \
-        | awk -v t="$tid" '$1 == t { print $3 "\t" $4 "\t" $5; exit }' || true)"
+        | awk -v t="$tid" '$1 == t && $3 ~ /^[0-9]/ { print $3 "\t" $4 "\t" $5; exit }' || true)"   # not its "no transcript turns" line
       [[ -z "$ts" ]] || IFS=$'\t' read -r planning impl gates <<< "$ts"
       if [[ -f "$proj/.claude/subagent-runs.jsonl" ]]; then
         gate_runs="$(node -e '
