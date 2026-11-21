@@ -2,7 +2,7 @@ package board
 
 import (
 	"bufio"
-	"bytes"
+	"canon/internal/transcript"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -122,12 +122,12 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	msgs := map[string][]string{} // agentId -> its assistant.message texts, in order
 	br := bufio.NewReaderSize(f, 1<<20)
 	for {
-		line, more := copilotNextLine(br)
+		line, more := transcript.NextLine(br)
 		if !more {
 			break
 		}
 		if line == nil {
-			continue // longer than copilotMaxLine: skipped, never fatal
+			continue // longer than transcript.MaxLine: skipped, never fatal
 		}
 		text := string(line)
 		l, ok := parseCopilotLine(line)
@@ -201,36 +201,6 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 		}
 	}
 	return "", at, true, false
-}
-
-// copilotMaxLine bounds one events.jsonl line (a line holds whole tool results).
-var copilotMaxLine = 64 << 20 // a var: the test lowers it
-
-// copilotNextLine returns the next line without its newline; nil for a line longer than copilotMaxLine (read past and dropped);
-// more is false at the end of the file or on a read error.
-func copilotNextLine(br *bufio.Reader) (line []byte, more bool) {
-	var buf []byte
-	tooLong := false
-	for {
-		part, err := br.ReadSlice('\n')
-		if !tooLong {
-			if len(buf)+len(part) > copilotMaxLine {
-				tooLong, buf = true, nil
-			} else {
-				buf = append(buf, part...)
-			}
-		}
-		if err == bufio.ErrBufferFull {
-			continue
-		}
-		if err != nil && len(part) == 0 && len(buf) == 0 && !tooLong {
-			return nil, false
-		}
-		if tooLong {
-			return nil, true
-		}
-		return bytes.TrimRight(buf, "\r\n"), true
-	}
 }
 
 func copilotTaskMatches(t *copilotTask, q copilotQuery) bool {

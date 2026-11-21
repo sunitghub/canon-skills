@@ -2,6 +2,7 @@ package board
 
 import (
 	"bytes"
+	"canon/internal/transcript"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -195,9 +196,9 @@ func TestCopilotNewestDispatchDecides(t *testing.T) {
 
 // Criterion 3: an over-long line is skipped, never fatal; the lines after it still count.
 func TestCopilotLongLineSkipped(t *testing.T) {
-	old := copilotMaxLine
-	copilotMaxLine = 4096
-	defer func() { copilotMaxLine = old }()
+	old := transcript.MaxLine
+	transcript.MaxLine = 4096
+	defer func() { transcript.MaxLine = old }()
 	home := t.TempDir()
 	writeSession(t, home, "s1", `{"type":"assistant.message","data":{"content":"`+strings.Repeat("x", 10000)+`"}}`,
 		cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true))

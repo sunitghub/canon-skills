@@ -2,13 +2,14 @@ package daemon
 
 import (
 	"bufio"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"canon/internal/transcript"
 )
 
 // sessionMeter is the ambient per-session figures (t-d00c): derived read-only from the claude
@@ -152,39 +153,21 @@ func meterScan(path string, off int64, e *meterEntry) int64 {
 }
 
 func meterLine(raw []byte, e *meterEntry) {
-	var line struct {
-		Type    string `json:"type"`
-		Message struct {
-			ID      string `json:"id"`
-			Content []struct {
-				Type string `json:"type"`
-				ID   string `json:"id"`
-			} `json:"content"`
-			Usage struct {
-				In     int64 `json:"input_tokens"`
-				Create int64 `json:"cache_creation_input_tokens"`
-				Read   int64 `json:"cache_read_input_tokens"`
-			} `json:"usage"`
-		} `json:"message"`
-	}
-	if json.Unmarshal(raw, &line) != nil || line.Type != "assistant" {
-		return
-	}
-	id := line.Message.ID
-	if id == "" { // synthetic turns have no msg_ id
+	a, ok := transcript.ParseAssistant(raw)
+	if !ok || a.ID == "" { // synthetic turns have no msg_ id
 		return
 	}
 	// Claude Code writes each content block of one API message as its own line, all with the message's id and usage: the call
 	// and its tokens count once per message id, each tool_use once per block id (the t-d00c review: by message id, 74% were lost).
-	if !e.seen["m:"+id] {
-		e.seen["m:"+id] = true
+	if !e.seen["m:"+a.ID] {
+		e.seen["m:"+a.ID] = true
 		e.m.LLMCalls++
-		e.fresh += line.Message.Usage.In + line.Message.Usage.Create
-		e.cread += line.Message.Usage.Read
+		e.fresh += a.In + a.CacheWrite
+		e.cread += a.CacheRead
 	}
-	for _, c := range line.Message.Content {
-		if c.Type == "tool_use" && (c.ID == "" || !e.seen["t:"+c.ID]) {
-			e.seen["t:"+c.ID] = true
+	for _, id := range a.ToolUses {
+		if id == "" || !e.seen["t:"+id] {
+			e.seen["t:"+id] = true
 			e.m.ToolCalls++
 		}
 	}
