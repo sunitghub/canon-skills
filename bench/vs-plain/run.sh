@@ -59,12 +59,11 @@ clean_path() {
 BASE_PATH="$(clean_path)"
 
 # No bypass mode: every Bash command runs in Claude Code's sandbox, which writes only to the project, Claude's own folders and the
-# allowWrite list: W and, until t-7ab9, macOS's per-user temp folder (its plain `mktemp` ignores TMPDIR, and canon's scripts call it
-# bare; without it the dry run's sprint stopped at `sprint approve`). A write into HOME is refused (probed 2026-11-21). An unsandboxed
+# allowWrite list: W, which holds the session's TMPDIR (canon's mktemp stays inside it since t-7ab9, 0.73.1; before, the dry run's sprint
+# stopped at `sprint approve`). A write into HOME is refused (probed 2026-11-21). An unsandboxed
 # retry is refused, and Edit/Write stay in the project (acceptEdits). Same for both arms.
 mkdir -p "$W/tmp"
-USER_TMP="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$USER_TMP" ]] || USER_TMP="$(cd -P "$USER_TMP" && pwd -P)"
-sandbox_for() { node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$1" "$W" "$USER_TMP"; }
+sandbox_for() { node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$1" "$W"; }
 
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {

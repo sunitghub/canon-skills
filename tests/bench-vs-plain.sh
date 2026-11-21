@@ -78,11 +78,9 @@ args="$(grep -m1 "^args:" "$STUB_LOG")"
 [[ "$args" == *"--permission-mode acceptEdits"* && "$args" == *'"sandbox":{"enabled":true'* && "$args" == *'"allowUnsandboxedCommands":false'* ]] || fail "sessions run sandboxed: $args"
 [[ "$args" != *bypassPermissions* && "$args" != *dangerously* ]] || fail "no bypass mode: $args"
 # the sandbox may write the run's scratch folder and nothing else, and the session's TMPDIR is inside it (the inherited one is refused)
-# plus macOS's per-user temp folder, where canon's plain mktemp writes (t-7ab9); nothing else
-ut="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"; [[ -z "$ut" ]] || ut=',"'"$(cd -P "$ut" && pwd -P)"'"'
 p1="$(cat "$T/host1/proj-1.path")"
 [[ "$p1" == "$T/host1/projects/bench-proj."* ]] || fail "each project is a fresh folder in the host folder: $p1"
-[[ "$args" == *'"filesystem":{"allowWrite":["'"$p1"'","'"$T/w1"'"'"$ut"']}'* ]] || fail "allowWrite names only the project, the session folder and the user temp folder: $args"
+[[ "$args" == *'"filesystem":{"allowWrite":["'"$p1"'","'"$T/w1"'"]}'* ]] || fail "allowWrite names only the project and the session folder: $args"
 [[ "$(cat "$T/host1/proj-3.path")" != "$p1" ]] || fail "step 3 gets its own fresh project"
 assert_eq "tmpdir: $T/w1/tmp" "$(grep -m1 '^tmpdir:' "$STUB_LOG")"
 seen="$(grep -m1 "^canon on PATH:" "$STUB_LOG")"

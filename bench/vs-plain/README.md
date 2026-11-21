@@ -39,7 +39,7 @@ bench/vs-plain/report.sh                    # the Markdown table from results/re
 
 Each session runs unattended as you, so it never gets bypass mode:
 - **Bash:** it runs in Claude Code's sandbox, with no unsandboxed retry.
-- **Writes:** the sandbox may write only the step's fresh project, the session folder (the canon clone used as `CANON_HOME`, its temp folder) and, until t-7ab9, macOS's per-user temp folder.
+- **Writes:** the sandbox may write only the step's fresh project, the session folder (the canon clone used as `CANON_HOME`, and its temp folder, which canon's `mktemp` stays inside since 0.73.1).
 - **Edits:** they stay in the project.
 
 The host folder (`/tmp/canon-bench-host.*`, which also holds each step's project, outside canon's repo so no canon CLAUDE.md is above it) is one no session can write. It holds the clean canon clone that `run.sh`'s own `skills.sh add` and `token-spend` come from, the setup `HOME`, the session output, the logs and the scoring folder.
