@@ -23,7 +23,6 @@ cleanup() {
   rm -rf "$W"
 }
 trap cleanup EXIT
-use_fresh_board "$W/board"
 
 PROFILE="(version 1)(allow default)(deny file-write* (subpath \"$UT\"))"
 sb() { sandbox-exec -p "$PROFILE" env HOME="$W/home" XDG_CONFIG_HOME="$W/home/.config" CANON_HOME="$W/canon-home" TMPDIR="$W/tmp" "$@"; }
