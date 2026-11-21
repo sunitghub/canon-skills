@@ -191,7 +191,7 @@ run_checks() {
       pout="$(cd "$gcroot" && bash scripts/test.sh "${plabels[@]}" 2>&1)" || prc=$?
       if (( prc == 0 )); then line+=" | pins $(( ${#plabels[@]} / 2 )) ok"
       else
-        punk="$(sed -n 's/^test\.sh: --only \(.*\) is not a suite label.*/\1/p' <<<"$pout" | head -n 1)"; punk="$(printf '%s' "$punk" | LC_ALL=C tr -c 'A-Za-z0-9._/-' '?')"
+        punk="$(sed -n '/^test\.sh: --only .* is not a suite label/{s/^test\.sh: --only \(.*\) is not a suite label.*/\1/p;q;}' <<<"$pout")"; punk="$(printf '%s' "$punk" | LC_ALL=C tr -c 'A-Za-z0-9._/-' '?')"
         if (( prc == 2 )) && [[ -n "$punk" ]]; then line+=" | pins FAIL (unknown label $punk)"; else line+=" | pins FAIL"; fi
         fails+="$pout"$'\n'; rc=1
       fi
