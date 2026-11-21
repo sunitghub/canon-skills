@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.73.1] - 2026-11-21
+
+- Fixed: canon's commands work inside Claude Code's sandbox on macOS. `sprint approve`, the close's gate snapshots and other commands failed with `mktemp: mkstemp failed … Operation not permitted`, because macOS's `mktemp` writes to the per-user temp folder whatever TMPDIR says; with TMPDIR set, canon now makes its scratch files inside it, as it already does on Linux and Windows (t-7ab9).
+
 ## [0.73.0] - 2026-11-21
 
 - Fixed: a cloud session (Send to GitHub) is no longer nagged by claude.ai's Stop hook about HANDOFF.md and .tickets/.gitignore: `sprint import-issue` hides canon's own edits to them from `git status` in the cloud clone (tracked files with skip-worktree, others with an info/exclude line); `tkt sync-issues` and a plain `tkt import-issue` on your machine hide nothing. The issue's instructions now match the project (no "commit the reports" lines when .tickets/ is not tracked), tell the session to fix and re-run the evaluator after a fail instead of pushing a failed grade, and never to add, commit or offer to commit those two files (t-b277).
