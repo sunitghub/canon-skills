@@ -28,6 +28,7 @@ cat > "$T/bin/claude" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "session in $PWD" >> "$STUB_LOG"
+echo "args: $(printf "%s " "$@" | tr "\n" " ")" >> "$STUB_LOG"
 if find . -name 'step-*.test.js' -o -name lib.js | grep -q .; then echo HIDDEN-SEEN >> "$STUB_LOG"; fi
 cp "$STUB_APP" ./todo.js
 enc="$(printf '%s' "$PWD" | sed 's/[^A-Za-z0-9]/-/g')"; mkdir -p "$CLAUDE_CONFIG_DIR/projects/$enc"
@@ -64,6 +65,10 @@ row="$(bench ok plain 3)"
 assert_eq "ok||0.2500|27|27|n/a|n/a|n/a" "$row" "plain step 3: a clean row, scored on all 27 hidden tests"
 assert_eq 3 "$(grep -c '^session in' "$STUB_LOG")" "three sessions"
 grep -q HIDDEN-SEEN "$STUB_LOG" && fail "a session could see the hidden tests"
+# no bypass mode: Bash in the sandbox with no unsandboxed retry, edits kept in the project (the session runs unattended as the user)
+args="$(grep -m1 "^args:" "$STUB_LOG")"
+[[ "$args" == *"--permission-mode acceptEdits"* && "$args" == *'"sandbox":{"enabled":true'* && "$args" == *'"allowUnsandboxedCommands":false'* ]] || fail "sessions run sandboxed: $args"
+[[ "$args" != *bypassPermissions* && "$args" != *dangerously* ]] || fail "no bypass mode: $args"
 assert_eq "1|13" "$(awk -F'\t' 'NR==2 { print $4 "|" $18 }' "$T/r1.tsv")" "step 1 scores its 13 tests"
 [[ "$(awk -F'\t' 'NR==3 { print $18 }' "$T/r1.tsv")" == 24 ]] || fail "step 2 scores steps 1-2 (24)"
 assert_eq "$(awk -F'\t' 'NR==2 { print $11 "/" $12 "/" $13 "/" $14 "/" $16 "/" $23 }' "$T/r1.tsv")" "100/50/1000/10/7/s1" "tokens, turns and session from modelUsage"

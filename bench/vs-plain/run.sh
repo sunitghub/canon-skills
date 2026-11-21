@@ -46,6 +46,11 @@ clean_path() {
 }
 BASE_PATH="$(clean_path)"
 
+# No bypass mode: every Bash command runs in Claude Code's sandbox (writes only to the project, $TMPDIR, which holds the scratch folder, and
+# Claude's own folders; a write into HOME is refused, probed 2026-11-21), an unsandboxed retry is refused, and Edit/Write stay in the
+# project (acceptEdits). Same for both arms.
+SANDBOX='{"sandbox":{"enabled":true,"autoAllowBashIfSandboxed":true,"allowUnsandboxedCommands":false}}'
+
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {
   local f
@@ -119,7 +124,8 @@ for step in $(seq 1 "$steps"); do
   fp_before="$(fingerprint)"
   start=$(date +%s); status=ok; reason=""; rc=0
   (cd "$proj" && PATH="$env_path" CANON_HOME="$CH" "$CLAUDE_BIN" -p "$(prompt_for "$step")" --model "$MODEL" --setting-sources project,local \
-    --output-format json --permission-mode bypassPermissions --max-budget-usd "${BENCH_MAX_USD:-5}" \
+    --output-format json --permission-mode acceptEdits --allowedTools Agent Read Grep Glob Edit Write --settings "$SANDBOX" \
+    --max-budget-usd "${BENCH_MAX_USD:-5}" \
     > "$W/step-$step.json" 2> "$W/step-$step.err") || rc=$?
   minutes="$(awk -v s="$start" -v e="$(date +%s)" 'BEGIN { printf "%.1f", (e - s) / 60 }')"
   # The session's own numbers; anything unreadable is a failed row, never a zero-cost success.
