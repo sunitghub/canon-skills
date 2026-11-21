@@ -13,6 +13,7 @@ _is_windows() {
 # session could not run sprint start/approve or a gate snapshot. With TMPDIR set those two forms get a template inside it (its trailing /
 # dropped: a // path breaks Go path comparisons); any other arguments, or TMPDIR unset, run the real one. GNU mktemp (Linux, Git Bash)
 # already behaves this way. Only a shell that sources this file and its subshells see it. A PATH builder must use `type -P`.
+# shellcheck disable=SC2120  # it forwards "$@": callers pass -d or a template, or nothing
 mktemp() {
   if [[ -n "${TMPDIR:-}" && ( $# == 0 || ( $# == 1 && "$1" == -d ) ) ]]; then command mktemp "$@" "${TMPDIR%/}/canon.XXXXXX"
   else command mktemp "$@"; fi
