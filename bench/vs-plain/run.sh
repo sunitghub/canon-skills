@@ -147,7 +147,8 @@ score() {
   total="$(BENCH_APP_DIR="$ref" node --test --test-reporter=tap "${files[@]}" 2>/dev/null | sed -n 's/^# tests //p')"
   st="$(mktemp -d "$H/score.XXXXXX")"
   # no program but node itself may start (no launchctl, open or osascript to leave the sandbox through), and no Apple events
-  out="$(cd "$st" && TMPDIR="$st" BENCH_APP_DIR="$app" sandbox-exec -p "(version 1)(allow default)(deny network*)(deny appleevent-send)(deny process-exec)(allow process-exec (literal \"$NODE\"))(deny file-write*)(allow file-write* (subpath \"$st\") (literal \"/dev/null\") (regex #\"^/dev/(fd/|tty|std)\"))" \
+  # and no native code (--no-addons): node cannot reach mach services or register its own outside the profile's reach
+  out="$(cd "$st" && NODE_OPTIONS=--no-addons TMPDIR="$st" BENCH_APP_DIR="$app" sandbox-exec -p "(version 1)(allow default)(deny network*)(deny appleevent-send)(deny mach-register)(deny process-exec)(allow process-exec (literal \"$NODE\"))(deny file-write*)(allow file-write* (subpath \"$st\") (literal \"/dev/null\") (regex #\"^/dev/(fd/|tty|std)\"))" \
     "$NODE" --test --test-reporter=tap "${files[@]}" 2>/dev/null || true)"
   passed="$(printf '%s\n' "$out" | sed -n 's/^# pass //p')"
   [[ -n "$passed" ]] || passed=0

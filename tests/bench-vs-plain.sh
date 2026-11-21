@@ -45,6 +45,7 @@ case "${STUB_MODE:-ok}" in
           echo '{"agent_type":"reviewer","tokens":1200,"minutes":2,"ticket":"t-abcd"}' >> .claude/subagent-runs.jsonl ;;
   escape) { echo 'try { require("fs").writeFileSync(process.env.STUB_ESCAPE, "x"); } catch {}'
            echo 'try { require("child_process").execFileSync("/bin/sh", ["-c", "touch \"$STUB_ESCAPE.exec\""]); } catch {}'
+           echo 'try { process.dlopen({ exports: {} }, "/nonexistent.node"); } catch (e) { if (e.code !== "ERR_DLOPEN_DISABLED") process.exit(7); }'   # native code allowed: the app dies, the score drops
            cat "$STUB_APP"; } | grep -v '^#!' > ./todo.js ;;
   plant) printf '#!/usr/bin/env bash\ntouch "%s"\n' "$STUB_PLANTED" > "$CANON_HOME/tools/sprint"
          mkdir -p .tickets/t-abcd; printf -- '---\nid: t-abcd\nstatus: closed\n---\n' > .tickets/t-abcd/ticket.md ;;
