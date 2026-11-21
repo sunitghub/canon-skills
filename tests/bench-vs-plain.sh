@@ -48,14 +48,14 @@ chmod +x "$T/bin/claude"
 cp "$T/ref/todo.js" "$T/fixed.js"
 export STUB_APP="$T/fixed.js" STUB_LOG="$T/stub.log" BENCH_CLAUDE="$T/bin/claude"
 export HOME="$T/home" CLAUDE_CONFIG_DIR="$T/claude-config" XDG_CONFIG_HOME="$T/home/.config" CANON_HOME="$T/no-canon"
-mkdir -p "$HOME"
+mkdir -p "$HOME" "$T/tmpd"
 repo_before="$(git -C "$ROOT" status --porcelain)"
 
 # bench <mode> <arm> <steps> -> the last result row's fields: status reason cost passed total planning gates gate_runs
 echo 0 > "$T/n"
 bench() {
   local n; n=$(($(cat "$T/n") + 1)); echo "$n" > "$T/n"; : > "$STUB_LOG"
-  STUB_MODE="$1" BENCH_WORK="$T/w$n" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
+  STUB_MODE="$1" BENCH_WORK="$T/w$n" TMPDIR="$T/tmpd" "$B/run.sh" "$2" 1 --steps "$3" --results "$T/r$n.tsv" >/dev/null 2>"$T/err$n" \
     || fail "run.sh $1 $2 exited non-zero: $(cat "$T/err$n")"
   tail -1 "$T/r$n.tsv" | awk -F'\t' '{ print $5 "|" $6 "|" $10 "|" $17 "|" $18 "|" $19 "|" $21 "|" $22 }'
 }
@@ -88,6 +88,8 @@ n="$(cat "$T/n")"; w="$T/w$n"
 [[ -f "$w/proj/.claude/skills/sprint/SKILL.md" || -f "$w/proj/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
 node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.defaults)) if (v.claude && v.claude !== "claude-sonnet-5-5") { console.error(s, v.claude); process.exit(1); }' \
   "$w/canon/cockpit/model-tiers.json" || fail "canon: every model tier is pinned to Sonnet"
+# TMPDIR is moved off $T (bench above), so skills.sh registers the project: in the scratch HOME, never the real one
+[[ "$(grep -c . "$w/setup-home/.config/canon/projects" 2>/dev/null)" == 1 ]] || fail "canon: skills.sh's project list did not go to the scratch HOME"
 [[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "canon: run.sh wrote under HOME"
 assert_eq "canon	claude-sonnet-5-5	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $8 "\t" $9 }' "$T/r$n.tsv")" "the row names arm, model, entry point"
 [[ "$(bench open canon 1)" == "incomplete|t-abcd never reached sprint complete|"* ]] || fail "an open sprint is incomplete"
