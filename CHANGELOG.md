@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-11-21
+
+- Added: `sprint pre-gate-check` runs a project's fast suites from `tests/pre-gate-suites.txt` in one `scripts/test.sh --only` call before any stamp (`pins N ok`, or `pins FAIL` and a non-zero exit). canon lists its six whole-repo pins (caps, release-zip size, pipefail lint, Python lint, doc parity, checklist caps), about 11 seconds together, which on 2026-11-20 cost four 7-minute full re-stamps when they failed late (t-91da).
+
 ## [0.71.0] - 2026-11-21
 
 - Changed: at a sprint close the advisory gates run together: the reviewer, break-it and skill-eval's test cases are sent in one message inside the reviewer's snapshot window, so the wait is the longest of them, not their sum (t-2ce8's close waited about 10 minutes for them in turn). skill-eval records its history line after the reviewer returns; the binding evaluator still runs last and alone, and break-it's fixes still get security-review and the evaluator. break-it runs are now logged with `sprint subagent-log --agent-type break-it` so their cost is measured (t-9e7a).
