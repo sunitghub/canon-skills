@@ -89,6 +89,7 @@ func TestCopilotFindRefuses(t *testing.T) {
 		{"no subagent.started", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
 		{"another ticket", []any{cpStart("c1", "canon-evaluator", strings.ReplaceAll(evalPrompt, "t-abcd", "t-ffff")), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
 		{"protocol not named", []any{cpStart("c1", "canon-evaluator", "grade t-abcd"), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
+		{"general-purpose naming the protocol", []any{cpStart("c1", "general-purpose", evalPrompt), cpSub("c1", "general-purpose"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
 		{"general-purpose without the protocol", []any{cpStart("c1", "general-purpose", "grade t-abcd"), cpSub("c1", "general-purpose"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
 		{"second evaluator for the first", []any{cpStart("c1", "canon-evaluator", evalPrompt+" Write .tickets/t-abcd/eval-report-2.md"), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, nil},
 		{"first evaluator for the second", []any{cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true)}, func(q *copilotQuery) { q.Second = true }},
@@ -116,9 +117,9 @@ func TestCopilotFindFallbackAndNewest(t *testing.T) {
 	home := t.TempDir()
 	older := strings.Replace(report, "1795000000-1", "1795000000-1", 1)
 	newer := strings.Replace(report, "1795000000-1", "1795000300-2", 1)
-	// the general-purpose fallback counts when its prompt names the protocol (the Claude path's Plan rule)
-	writeSession(t, home, "s1", cpStart("g1", "general-purpose", evalPrompt), cpSub("g1", "general-purpose"), cpDone("g1", "2026-11-21T10:10:00.000Z", newer, true),
-		cpStart("c0", "canon-evaluator", evalPrompt), cpSub("c0", "canon-evaluator"), cpDone("c0", "2026-11-21T10:02:00.000Z", older, true))
+	// never a general-purpose task, even one naming the protocol: the main session writes its prompt and it has write tools (reviewer)
+	writeSession(t, home, "s1", cpStart("g1", "general-purpose", evalPrompt), cpSub("g1", "general-purpose"), cpDone("g1", "2026-11-21T10:20:00.000Z", "evaluator-run-id: 1795000999-9\npass: written by a general-purpose agent\n", true),
+		cpStart("c0", "canon-evaluator", evalPrompt), cpSub("c0", "canon-evaluator"), cpDone("c0", "2026-11-21T10:10:00.000Z", newer, true))
 	// a later-modified file holding an older result must not win: newest is the result event's own timestamp
 	writeSession(t, home, "s2", cpStart("c2", "canon-evaluator", evalPrompt), cpSub("c2", "canon-evaluator"), cpDone("c2", "2026-11-21T10:01:00.000Z", older, true))
 	got, found, _ := copilotFind(home, evalQuery())
@@ -175,6 +176,19 @@ func TestCopilotRecordLeavesOutToolOutputs(t *testing.T) {
 	rec, found, _ := copilotFind(home, q)
 	if !found || strings.Contains(rec, "forged by hand") || !strings.Contains(rec, "cat .tickets/t-abcd/eval-report.md") {
 		t.Fatalf("the record must hold the gate's command but not its tool output: found=%v %q", found, rec)
+	}
+}
+
+// Criterion 3: an over-long line is skipped, never fatal; the lines after it still count.
+func TestCopilotLongLineSkipped(t *testing.T) {
+	old := copilotMaxLine
+	copilotMaxLine = 4096
+	defer func() { copilotMaxLine = old }()
+	home := t.TempDir()
+	writeSession(t, home, "s1", `{"type":"assistant.message","data":{"content":"`+strings.Repeat("x", 10000)+`"}}`,
+		cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:05:00.000Z", report, true))
+	if got, found, _ := copilotFind(home, evalQuery()); !found || got != report {
+		t.Fatalf("a line past the cap must be skipped, not end the file: found=%v %q", found, got)
 	}
 }
 

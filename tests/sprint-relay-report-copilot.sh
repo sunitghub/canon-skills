@@ -97,7 +97,7 @@ body "$rid" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
 out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator task result"
 drop
 
-# 4. the general-purpose fallback counts only when its prompt names reference/eval.md; truncated or failed results never count
+# 4. a general-purpose task never counts; truncated or failed results never count
 gate_ticket fallback; rid="$now-4444"
 session s4 g1 general-purpose "grade $gid" "$(body "$rid" "pass: all criteria met")" "$now"
 out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator result for $gid"
@@ -107,7 +107,10 @@ out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no eval
 session s4 g3 canon-evaluator "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$now" false
 out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator result for $gid"
 [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote from a general-purpose, truncated or failed task"
+# never a general-purpose task, even one naming the protocol: the session writes its prompt and it can write files (reviewer)
 session s4 g4 general-purpose "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$now"
+out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator result for $gid"
+session s4 g5 canon-evaluator "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$now"
 assert_contains "$("$SPRINT" relay-report "$gid")" "relay-report: wrote"
 assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
 

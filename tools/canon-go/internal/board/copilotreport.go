@@ -2,6 +2,7 @@ package board
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -98,8 +99,8 @@ type copilotTask struct {
 	doneRaw           string
 }
 
-// copilotFindIn scans one session file. A task counts only when it was a `task` dispatch of the wanted agent (or a general-purpose
-// fallback whose prompt names the protocol), subagent.started names that same agent, the prompt names the ticket and the protocol,
+// copilotFindIn scans one session file. A task counts only when it was a `task` dispatch of the wanted canon agent, subagent.started
+// names that same agent, the prompt names the ticket and the protocol,
 // and the call succeeded inside the window: never the main session's own messages. The report is taken from the task's result,
 // else the gate's own newest message that holds it; the record is the gate's own commands and messages (never its tool outputs) plus
 // the result line.
@@ -113,10 +114,17 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 	var order []string
 	raw := map[string][]string{}  // agentId -> its raw lines
 	msgs := map[string][]string{} // agentId -> its assistant.message texts, in order
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 1<<20), 64<<20) // a line holds whole tool results; a longer one ends the scan of this file only
-	for sc.Scan() {
-		l, ok := parseCopilotLine(sc.Bytes())
+	br := bufio.NewReaderSize(f, 1<<20)
+	for {
+		line, more := copilotNextLine(br)
+		if !more {
+			break
+		}
+		if line == nil {
+			continue // longer than copilotMaxLine: skipped, never fatal
+		}
+		text := string(line)
+		l, ok := parseCopilotLine(line)
 		if !ok {
 			continue
 		}
@@ -125,9 +133,9 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 			// tool calls do not: a gate that merely read a report someone typed (cat eval-report.md) must not back that report.
 			switch l.Type {
 			case "tool.execution_start":
-				raw[l.AgentID] = append(raw[l.AgentID], sc.Text())
+				raw[l.AgentID] = append(raw[l.AgentID], text)
 			case "assistant.message":
-				raw[l.AgentID] = append(raw[l.AgentID], sc.Text())
+				raw[l.AgentID] = append(raw[l.AgentID], text)
 				if l.Data.Content != "" {
 					msgs[l.AgentID] = append(msgs[l.AgentID], l.Data.Content)
 				}
@@ -151,7 +159,7 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 		case "tool.execution_complete":
 			if t := tasks[id]; t != nil {
 				lc := l
-				t.done, t.doneRaw = &lc, sc.Text()
+				t.done, t.doneRaw = &lc, text
 			}
 		}
 	}
@@ -185,9 +193,40 @@ func copilotFindIn(path string, q copilotQuery) (string, time.Time, bool) {
 	return out, best, found
 }
 
+// copilotMaxLine bounds one events.jsonl line (a line holds whole tool results).
+var copilotMaxLine = 64 << 20 // a var: the test lowers it
+
+// copilotNextLine returns the next line without its newline; nil for a line longer than copilotMaxLine (read past and dropped);
+// more is false at the end of the file or on a read error.
+func copilotNextLine(br *bufio.Reader) (line []byte, more bool) {
+	var buf []byte
+	tooLong := false
+	for {
+		part, err := br.ReadSlice('\n')
+		if !tooLong {
+			if len(buf)+len(part) > copilotMaxLine {
+				tooLong, buf = true, nil
+			} else {
+				buf = append(buf, part...)
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil && len(part) == 0 && len(buf) == 0 && !tooLong {
+			return nil, false
+		}
+		if tooLong {
+			return nil, true
+		}
+		return bytes.TrimRight(buf, "\r\n"), true
+	}
+}
+
 func copilotTaskMatches(t *copilotTask, q copilotQuery) bool {
-	agentOK := t.agentType == q.Agent || (t.agentType == "general-purpose" && strings.Contains(t.prompt, q.Proto))
-	if !agentOK || t.subagent != t.agentType {
+	// Only the canon gate agent: no general-purpose fallback. The main session writes a task's prompt, and general-purpose has write
+	// tools, so accepting it would let the session produce its own report (the Claude path's only fallback, Plan, cannot write).
+	if t.agentType != q.Agent || t.subagent != t.agentType {
 		return false
 	}
 	if !strings.Contains(t.prompt, q.Ticket) || !strings.Contains(t.prompt, q.Proto) {

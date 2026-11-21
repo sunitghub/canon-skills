@@ -767,8 +767,8 @@ _copilot_report_bin() {
   case "$("$board" --help 2>/dev/null || true)" in *copilot-report*) printf '%s\n' "$board" ;; esac
 }
 
-# _gate_eval_report_copilot <id> <run-epoch> <needles> — t-4084: the close check under Copilot CLI. A real canon-evaluator task (or a
-# general-purpose one that names reference/eval.md) whose prompt names the ticket, finished from a minute before the run-id to an hour
+# _gate_eval_report_copilot <id> <run-epoch> <needles> — t-4084: the close check under Copilot CLI. A real canon-evaluator task (never a
+# general-purpose one: the session writes its prompt and it can write files) whose prompt names the ticket, finished from a minute before the run-id to an hour
 # after it, must hold the run-id and every verdict-line prefix in its own record: every line its agentId produced (the commands that
 # wrote the report, its messages) and its result, as the Claude Code check greps the whole transcript. A gate that could write
 # (Copilot on macOS did) and one that only returned its report both pass. Fails
@@ -797,7 +797,7 @@ _gate_eval_report_copilot() {
   if (( rc == 0 )) && _transcript_has_all "$tmp" "$needles"; then rm -f "$tmp"; return 0; fi
   rm -f "$tmp"
   echo "Sprint $id cannot close: no canon-evaluator task result in Copilot's session record backs eval-report.md."
-  echo "Looked in $chome/session-state/*/events.jsonl for a canon-evaluator task (or a general-purpose one naming reference/eval.md) whose prompt names $id, finished from a minute before the run-id to an hour after it, whose result holds the run-id and every verdict line. A report no real evaluator returned (typed by hand or edited after) has none: dispatch the evaluator again, then 'sprint relay-report $id evaluator'."
+  echo "Looked in $chome/session-state/*/events.jsonl for a canon-evaluator task whose prompt names $id, finished from a minute before the run-id to an hour after it, whose result holds the run-id and every verdict line. A report no real evaluator returned (typed by hand or edited after) has none: dispatch the evaluator again, then 'sprint relay-report $id evaluator'."
   _gate_dispatch_notice evaluator eval-report.md
   return 1
 }
@@ -1764,7 +1764,7 @@ _relay_report_copilot() {
   [[ -n "$bin" ]] || { echo "relay-report: the installed board binary predates copilot-report; run 'canon update' (or build the board), then retry" >&2; exit 1; }
   report="$("$bin" copilot-report ${extra[@]+"${extra[@]}"} "$chome" "$agent" "$id" "$proto" "$marker" 2>/dev/null)" || rc=$?
   if (( rc != 0 )); then
-    echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): a $agent task (or a general-purpose one naming $proto) in the last 3 hours whose prompt names $id and whose whole result has a line starting '$marker'. Dispatch the $role again." >&2
+    echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): a $agent task in the last 3 hours whose prompt names $id and whose whole result has a line starting '$marker'. Dispatch the $role again." >&2
     exit 1
   fi
   wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
