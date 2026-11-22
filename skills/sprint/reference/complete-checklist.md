@@ -27,17 +27,16 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    `sprint check-review-notes <id>` (`shape refused`: re-dispatch). Row: `verdict: YES|NO — …
    (model: <m> — <source>)`. A NO is surfaced, not blocking.
 3. **Evaluator** (binding). First `security-review` (inline) on the final diff; commit its fixes. Then,
-   after the reviewer's and security-review's fixes (never edit a tracked file while a stamp runs), once:
+   after all fixes (never edit a tracked file while a stamp runs), once:
    - **Mutation sweep** (logic files): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
-     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding (stale sweep log is not re-stamped); not skippable without a reason: `mutation-test | skipped | <reason>`.
+     `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason: `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
      `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
      (canon: `scripts/test.sh`; `--only <suite>` per complete.md).
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
-   - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch. Never
-     hand-write one.
+   - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch.
    - `sprint subagent-log --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
@@ -56,18 +55,17 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Gate dispatch inputs
 
-- **Model:** pass the model `sprint gate-snapshot pre` printed (`sprint gate-model <id> <role>`: Admin's default for this agent,
-  fail-safes applied). `ticket rule:` (a `Gate model:` line, `session` = your alias; a Lite evaluator): complete.md "Model tier for
+- **Model:** pass the model `sprint gate-snapshot pre` printed (`sprint gate-model <id> <role>` repeats
+  it). `ticket rule:` (a `Gate model:` line, `session` = your alias; a Lite evaluator): complete.md "Model tier for
   gates". `none:`: omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`. Source: `Gate model override`,
   `Admin Reviewer|Evaluator default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; follow `reference/review.md` (reviewer) or
   `reference/eval.md` (evaluator); the `Model:` designation; write
-  `pre`'s report path and return the verdict line (under Copilot CLI instead: write no file; your final message is the report,
-  first line first, nothing after the verdict); read-only except
+  `pre`'s report path and return the verdict line (Copilot: write no file, nothing after the verdict); read-only except
   that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
-  `evaluator-run-id` as the very last command. Never pass a changed-files list. Under Copilot CLI the `task` call needs `name`.
-- `Plan` fallback, Copilot gates: `sprint relay-report <id> [reviewer]` writes the report; session never types one.
-  It takes no input (it reads the harness's record: never pipe or type the report); a refusal names the check that failed.
+  `evaluator-run-id` as the very last command. Never pass a changed-files list.
+- `Plan` fallback, Copilot gates: `sprint relay-report <id> [reviewer]` writes the report (it takes no input);
+  session never types one. Copilot's `task` call needs `name`.
 
 ## Read the detail when
 

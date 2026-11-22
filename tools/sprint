@@ -790,7 +790,7 @@ _gate_eval_report_copilot() {
     chome="${HOME:-}/.copilot"; rc=0
     "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>"$terr" || rc=$?
   fi
-  why="$(sed -n 's/^copilot-report: //p' "$terr" | head -n 1)"; rm -f "$terr"
+  why="$(LC_ALL=C awk 'sub(/^copilot-report: /, "") { print; exit }' "$terr" 2>/dev/null || true)"; rm -f "$terr"
   if (( rc == 3 )); then
     rm -f "$tmp"
     echo "Note: transcript check skipped (no Copilot session record under $chome/session-state, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
@@ -1767,7 +1767,7 @@ _relay_report_copilot() {
   [[ -n "$bin" ]] || { echo "relay-report: the installed board binary predates copilot-report; run 'canon update' (or build the board), then retry" >&2; exit 1; }
   errf="$(mktemp)" || exit 1
   report="$("$bin" copilot-report ${extra[@]+"${extra[@]}"} "$chome" "$agent" "$id" "$proto" "$marker" 2>"$errf")" || rc=$?
-  why="$(sed -n 's/^copilot-report: //p' "$errf" | head -n 1)"; rm -f "$errf"
+  why="$(LC_ALL=C awk 'sub(/^copilot-report: /, "") { print; exit }' "$errf" 2>/dev/null || true)"; rm -f "$errf"
   if (( rc == 3 )); then
     echo "relay-report: no Copilot session record under $chome/session-state (set COPILOT_HOME to the home Copilot runs with). This command reads that record and takes no input." >&2
     exit 1
