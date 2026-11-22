@@ -70,6 +70,10 @@ COPILOT_CLI=1 "$SPRINT" start "$id2" >/dev/null 2>&1; end "$id2"
 signoff "$id2" "Tier: normal | Risk: x"
 out="$(COPILOT_CLI=1 "$SPRINT" approve "$id2" 2>&1)"
 assert_contains "$out" "Build model (Admin > Model tiers): claude-haiku-5.5"
+# `Plan model: default` is no override (gate-model.sh's rule): no "(ticket)"
+signoff "$id2" "Tier: normal | Risk: x | Plan model: default"
+out="$(COPILOT_CLI=1 "$SPRINT" approve "$id2" 2>&1)"
+assert_contains "$out" "Models (Economy · Copilot CLI): Plan Claude Sonnet 5.5 · Spec check"
 # the picks changed after start: approve records the preset it resolves beside the start's
 reg plan:claude=claude-sonnet-5-5 plan:copilot=claude-sonnet-5.5   # Balanced's build again, Plan on Sonnet: Custom
 signoff "$id" "Tier: normal | Risk: x"
@@ -89,7 +93,7 @@ id="$("$TKT" create "Pi run" | awk '{ print $NF }')"
 out="$(COCKPIT_AGENT=pi "$SPRINT" start "$id" 2>&1)"; end "$id"
 assert_contains "$out" "Models (Pi): this session keeps its model"
 assert_eq "pi" "$(fm "$id" run_agent)"
-assert_eq "" "$(fm "$id" run_preset)"
+! grep -q '^run_preset:' ".tickets/$id/ticket.md" || fail "Pi's ticket has a run_preset line"
 ev="$(event_line sprint.started "$id")"
 assert_contains "$ev" '"run_agent":"pi"'
 [[ "$ev" != *run_preset* ]] || fail "Pi's sprint.started carries run_preset: $ev"
@@ -106,6 +110,12 @@ mkdir -p canon-config && printf 'extends: canon-default\noff: [code-simplifier]\
 id="$("$TKT" create "Trimmed pipeline" | awk '{ print $NF }')"
 "$SPRINT" start "$id" >/dev/null 2>&1; end "$id"
 [[ "$(fm "$id" run_pipeline)" =~ ^[0-9a-f]{12}$ ]] || fail "run_pipeline with a project pipeline is '$(fm "$id" run_pipeline)', not 12 hex"
+# a pipeline file the resolver refuses: no run_pipeline, and the start still succeeds
+printf 'extends: canon-default\noff: [no-such-node]\n' > canon-config/pipeline.yaml
+id="$("$TKT" create "Bad pipeline" | awk '{ print $NF }')"
+"$SPRINT" start "$id" >/dev/null 2>&1 || fail "sprint start failed on a pipeline file the resolver refuses"
+end "$id"
+! grep -q '^run_pipeline:' ".tickets/$id/ticket.md" || fail "a refused pipeline still wrote run_pipeline: $(fm "$id" run_pipeline)"
 rm -rf canon-config
 
 # 6. a board without model-summary: no Models line, no preset, and the start still succeeds

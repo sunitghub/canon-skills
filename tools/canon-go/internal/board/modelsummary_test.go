@@ -53,9 +53,18 @@ func TestModelSummary(t *testing.T) {
 
 	// the seed's own defaults are canon's default preset; display names from the registry; Second eval Off
 	want("seed", "claude", "preset\tbalanced\tBalanced", "plan\tClaude Opus 5.5", "build\tClaude Sonnet 5.5", "evaluator2\tOff")
-	if lines := modelSummary("claude"); len(lines) != 7 || !strings.HasPrefix(lines[1], "plan\t") || !strings.HasPrefix(lines[6], "evaluator2\t") {
-		t.Errorf("seed: want the preset line then plan..evaluator2 in run order, got %q", lines)
+	steps := []string{}
+	for _, l := range modelSummary("claude")[1:] {
+		steps = append(steps, strings.SplitN(l, "\t", 2)[0])
 	}
+	if got := strings.Join(steps, " "); got != "plan speccheck build reviewer evaluator evaluator2" {
+		t.Errorf("seed: want the steps in run order, got %q", got)
+	}
+	// two presets resolving to the same picks: the first in Admin's order wins (canon's before yours)
+	save(func(doc map[string]any) {
+		doc["my_presets"] = []any{map[string]any{"id": "same", "name": "Same as Balanced", "picks": map[string]any{}}}
+	})
+	want("tie", "claude", "preset\tbalanced\tBalanced")
 
 	// Economy for Claude Code only; Copilot is not on PATH and its column is the seed's, so Admin lists Claude Code alone: Economy
 	save(func(doc map[string]any) {
@@ -105,5 +114,21 @@ func TestModelSummary(t *testing.T) {
 	modelTiersPath = filepath.Join(t.TempDir(), "missing.json")
 	if out := got("claude"); out != "" {
 		t.Errorf("no registry: want nothing, got %q", out)
+	}
+}
+
+// t-2a21 sweep: the CLI's usage and exit codes, and that it reads the seed it is given. Protects `canon-go model-summary`.
+func TestModelSummaryCLI(t *testing.T) {
+	t.Setenv("CANON_HOME", t.TempDir())
+	seed, _ := filepath.Abs("../../../sprint-check-app/model-tiers.json")
+	old := modelTiersPath
+	defer func() { modelTiersPath = old }()
+	var out, errb strings.Builder
+	if code := modelSummaryCLI([]string{"claude"}, &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage: canon-go model-summary") || out.Len() != 0 {
+		t.Errorf("one argument: code %d, stderr %q, stdout %q", code, errb.String(), out.String())
+	}
+	modelTiersPath = filepath.Join(t.TempDir(), "elsewhere.json")
+	if code := modelSummaryCLI([]string{"claude", seed}, &out, &errb); code != 0 || !strings.HasPrefix(out.String(), "preset\tbalanced\tBalanced\n") {
+		t.Errorf("claude + seed: code %d, stdout %q", code, out.String())
 	}
 }
