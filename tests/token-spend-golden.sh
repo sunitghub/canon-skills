@@ -82,9 +82,9 @@ turn 12:20:00 msg_br $N 50 0 0 0 > "$tdir/s1/subagents/agent-br.jsonl"; sub br c
 ev() { printf '{"schema":1,"ts":"2026-%sZ","kind":"%s","project":"%s","data":{"ticket":"%s"}}\n' "$1" "$2" "$root" "$3"; }
 
 # ---- refusals, before the events exist ----------------------------------------------------------------------------------------------------
-# norm_go: what the Go output holds beyond the bash one: the context section, planning's spec share; and t-e200's rename of "gates" to "close"
+# norm_go: what the Go output holds beyond the bash one: the context and per-step (t-0abe) sections, planning's spec share; and t-e200's rename of "gates" to "close"
 norm_go() {
-  awk '/^Context cost per phase/ { skip = 1 } skip { if ($0 == "") skip = 0; next } { print }' | sed -e 's/ (spec [0-9.]*[kM]*)//' -e '/^ticket /s/ close / gates /' -e 's/^close /gates /' | tr -s ' '
+  awk '/^(Context cost per phase|Cost per step)/ { skip = 1 } skip { if ($0 == "") skip = 0; next } { print }' | sed -e 's/ (spec [0-9.]*[kM]*)//' -e '/^ticket /s/ close / gates /' -e 's/^close /gates /' | tr -s ' '
 }
 same() { # same <args...>: both versions print the same text for this command
   local g b
@@ -147,7 +147,7 @@ assert_contains "$out" "t-aaaa   normal     1k (spec 262)"   # planning names it
 [[ "$out" != *"gates "*"cache-read"* ]] || fail "the table header still says gates: $out"
 
 # ---- 2. the new numbers: per phase (main session) and per subagent run, exact -----------------------------------------------------------------
-ctx() { printf '%s\n' "$out" | awk -v w="$1" -v t="$2" '/^Context cost/ { on = 1 } on && index($0, w) == 1 && index($0, " " t " ") { print }' | tr -s ' '; }
+ctx() { printf '%s\n' "$out" | awk -v w="$1" -v t="$2" '/^Context cost/ { on = 1 } on && $0 == "" { on = 0 } on && index($0, w) == 1 && index($0, " " t " ") { print }' | tr -s ' '; }
 assert_eq "plan (main) t-aaaa 2 7 7k 800 60 4k" "$(ctx 'plan (main)' t-aaaa)"
 assert_eq "plan (main) t-bbbb n/a n/a n/a n/a n/a n/a" "$(ctx 'plan (main)' t-bbbb)"   # no Approved: stamp: never a 0
 assert_eq "evaluator e1 t-aaaa 3 16 900 510 160 512" "$(ctx 'evaluator e1' t-aaaa)"
@@ -249,7 +249,7 @@ mkdir -p "$COPILOT_HOME/session-state/cp-nostart" && printf '%s\n' "$(cu 08T20:0
 cout="$("$SPRINT" token-spend --ticket t-cplt)"
 assert_contains "$cout" "from Claude Code transcripts and Copilot's session record:"
 assert_eq "t-cplt - - 31k* 21k 87k" "$(printf '%s\n' "$cout" | awk '$1 == "t-cplt"' | tr -s ' ')"
-cctx() { printf '%s\n' "$cout" | awk -v w="$1" '/^Context cost/ { on = 1 } on && index($0, w) == 1' | tr -s ' '; }
+cctx() { printf '%s\n' "$cout" | awk -v w="$1" '/^Context cost/ { on = 1 } on && $0 == "" { on = 0 } on && index($0, w) == 1' | tr -s ' '; }
 assert_eq "build (main) t-cplt 1 4 0 31k 328 31k" "$(cctx 'build (main)')"
 assert_eq "close (main) t-cplt 1 2 31k 992 659 32k" "$(cctx 'close (main)')"
 assert_eq "evaluator b28a5306 t-cplt 6 14 56k 18k 2k 18k" "$(cctx 'evaluator')"

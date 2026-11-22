@@ -30,11 +30,13 @@ import (
 // tsCall is one call: one model request, from a transcript line or a Copilot usage record.
 type tsCall struct {
 	src             *tsSrc
-	model, ts       string // ts: the first 19 characters of the timestamp, compared as text
-	cwd             string // the cwd's path key
-	in, cw, cr, out int64  // fresh input, cache written, cache read, output
-	hit             int    // the 1-based window it belongs to; 0 = overlap
-	gate            bool   // a reviewer or evaluator subagent by its meta agentType: the legacy close-gate rule
+	model, ts       string   // ts: the first 19 characters of the timestamp, compared as text
+	cwd             string   // the cwd's path key
+	in, cw, cr, out int64    // fresh input, cache written, cache read, output
+	cw5, cw1h       int64    // t-0abe: the cache write's 5-minute and 1-hour parts, when the usage splits it
+	tools           []string // t-0abe: the tool name of each distinct tool_use block of the call (its later lines included)
+	hit             int      // the 1-based window it belongs to; 0 = overlap
+	gate            bool     // a reviewer or evaluator subagent by its meta agentType: the legacy close-gate rule
 }
 
 func (c *tsCall) fresh() int64 { return c.in + c.cw } // the old table's "fresh input"
@@ -48,6 +50,15 @@ type tsSrc struct {
 	evalDoc   bool   // a Plan agent that read reference/eval.md ran the evaluator
 	agentID   string // the id gate.cost is keyed by
 	copilot   bool   // a call from Copilot's session record
+	floor     int64  // t-0abe: the context of the file's first call
+	hasFloor  bool
+}
+
+// t-0abe: setFloor keeps a source's first call's context.
+func (s *tsSrc) setFloor(c *tsCall) {
+	if !s.hasFloor {
+		s.floor, s.hasFloor = c.in+c.cr+c.cw, true
+	}
 }
 
 // role names a subagent run: speccheck, reviewer, evaluator, other, or unknown when nothing says what it was; "" for a main session.
@@ -93,7 +104,7 @@ func (s *tsStat) add(c *tsCall) {
 type tsRunStat struct {
 	src   *tsSrc
 	model string // the first call's
-	tsStat
+	tsAgg
 }
 
 // tsWin is one closed sprint's window and what was measured in it.
@@ -110,6 +121,11 @@ type tsWin struct {
 	spec, gateAgents     int64              // spec-check tokens inside planning; reviewer and evaluator tokens inside the close
 	gateFiles            map[*tsSrc]bool
 	cost                 *tsEventCost // the window's sprint.cost event, if recorded
+	// t-0abe: apprEv is the first plan.approved event (planning's end; plan.md's last stamp moves on a re-approval at close);
+	// closeStart the first close.started; revFins the reviewer's gate.finished times; secRow security-review's Wrapup Gates row
+	apprEv, closeStart, secRow string
+	revFins                    []string
+	steps                      map[string]*tsAgg // plan, build, wrapup, security-review, close: the main session's calls
 }
 
 type tsEventCost struct{ planning, implementation, gates, cacheRead int64 }
@@ -311,7 +327,8 @@ func tsReadEvents(files []string, fn func(line string)) {
 	}
 }
 
-var tsKinds = []string{`"kind":"sprint.started"`, `"kind":"gate.started"`, `"kind":"sprint.completed"`, `"kind":"sprint.cost"`, `"kind":"gate.cost"`}
+var tsKinds = []string{`"kind":"sprint.started"`, `"kind":"gate.started"`, `"kind":"sprint.completed"`, `"kind":"sprint.cost"`, `"kind":"gate.cost"`,
+	`"kind":"plan.approved"`, `"kind":"close.started"`, `"kind":"gate.finished"`, `"kind":"wrapup.gate_finished"`, `"kind":"step.cost"`} // t-0abe: step bounds
 
 // tokenSpend prints the table, or with o.rec records the cost.
 func tokenSpend(o tsOpts, out io.Writer) {
@@ -360,6 +377,7 @@ func tokenSpend(o tsOpts, out io.Writer) {
 	var wins []*tsWin
 	costs := map[string]*tsEventCost{}
 	gateCosted := map[string]bool{}
+	stepCosted := map[string]bool{} // t-0abe: ticket + project + step of each recorded step.cost
 	var dropped []string
 	droppedSeen := map[string]bool{}
 	open := map[string]*tsWin{} // key: ticket + sep + project key
@@ -395,7 +413,26 @@ func tokenSpend(o tsOpts, out io.Writer) {
 			ts = ts[:19]
 		}
 		key := t + "\x1c" + pr
+		w := open[key]
 		switch kind {
+		case "step.cost":
+			stepCosted[key+"\x1c"+rawField(line, "step")] = true
+		case "plan.approved":
+			if w != nil && w.apprEv == "" {
+				w.apprEv = ts
+			}
+		case "close.started":
+			if w != nil && w.closeStart == "" {
+				w.closeStart = ts
+			}
+		case "gate.finished":
+			if w != nil && rawField(line, "role") == "reviewer" {
+				w.revFins = append(w.revFins, ts)
+			}
+		case "wrapup.gate_finished":
+			if w != nil && rawField(line, "gate") == "security-review" && rawField(line, "result") == "ran" {
+				w.secRow = ts
+			}
 		case "sprint.cost":
 			costs[key] = &tsEventCost{rawNum(line, "planning"), rawNum(line, "implementation"), rawNum(line, "gates"), rawNum(line, "cache_read")}
 		case "sprint.started":
@@ -437,7 +474,7 @@ func tokenSpend(o tsOpts, out io.Writer) {
 	}
 	for _, w := range wins {
 		w.cost = costs[w.ticket+"\x1c"+w.project]
-		w.pf, w.main, w.gateFiles = map[string]int64{}, map[string]*tsStat{}, map[*tsSrc]bool{}
+		w.pf, w.main, w.gateFiles, w.steps = map[string]int64{}, map[string]*tsStat{}, map[*tsSrc]bool{}, map[string]*tsAgg{}
 	}
 
 	// Approval time and tier from each window ticket's plan.md (the Approved: stamp exists since 0.30.6).
@@ -460,7 +497,13 @@ func tokenSpend(o tsOpts, out io.Writer) {
 		}
 	}
 
-	st := &tsState{o: o, out: out, wins: wins, seen: map[string]bool{}, first: map[string]string{}}
+	for _, w := range wins {
+		if w.apprEv != "" { // t-0abe: the first approval event wins over plan.md's stamp, which a re-approval at close rewrites
+			w.approved = w.apprEv
+		}
+	}
+	st := &tsState{o: o, out: out, wins: wins, seen: map[string]bool{}, first: map[string]string{}, byMsg: map[string]*tsCall{},
+		toolSeen: map[string]bool{}, prices: tsLoadPrices()}
 	for _, f := range subs {
 		st.readClaude(f, true)
 	}
@@ -470,8 +513,10 @@ func tokenSpend(o tsOpts, out io.Writer) {
 	st.readCopilot()
 	st.assign()
 	st.classify()
+	st.countUsers()
 	if o.rec {
-		st.record(gateCosted)
+		st.denied = tsDenied(o.root)
+		st.record(gateCosted, stepCosted)
 		return
 	}
 	st.print(out)
@@ -530,7 +575,15 @@ type tsState struct {
 	modelTk     map[string]int64 // (hit, model) -> fresh + output
 	kept        []*tsCall
 	copilotUsed bool // a Copilot call fell inside a sprint
+	// t-0abe
+	byMsg    map[string]*tsCall // msg_ id -> its call, for the tool_use blocks on the id's later lines
+	toolSeen map[string]bool    // tool_use ids counted
+	users    []tsUser           // the person's prompts in main sessions
+	prices   tsPrices
+	denied   string
 }
+
+type tsUser struct{ ts, cwd string }
 
 func (s *tsState) winpath(c string) string {
 	best := ""
@@ -565,10 +618,29 @@ func (s *tsState) readClaude(path string, sub bool) {
 	var mine []*tsCall
 	transcript.EachLine(path, func(line []byte) {
 		if !bytes.Contains(line, []byte(`"type":"assistant"`)) {
+			if !sub && bytes.Contains(line, []byte(`"type":"user"`)) {
+				if u, ok := transcript.ParseUser(line); ok && u.Prompt && (u.UUID == "" || !s.seen["u:"+u.UUID]) { // a resumed session's copy counts once
+					s.seen["u:"+u.UUID] = u.UUID != ""
+					ts := u.TS
+					if len(ts) > 19 {
+						ts = ts[:19]
+					}
+					s.users = append(s.users, tsUser{ts, common.PathKey(u.CWD)})
+				}
+			}
 			return
 		}
 		a, ok := transcript.ParseAssistant(line)
-		if !ok || !strings.HasPrefix(a.ID, "msg_") || !a.HasUsage || s.seen[a.ID] {
+		if !ok || !strings.HasPrefix(a.ID, "msg_") {
+			return
+		}
+		if s.seen[a.ID] { // t-0abe: each content block is its own line under the same id: its tool_use blocks belong to the first line's call
+			if c := s.byMsg[a.ID]; c != nil {
+				s.addTools(c, a)
+			}
+			return
+		}
+		if !a.HasUsage {
 			return
 		}
 		s.seen[a.ID] = true
@@ -589,9 +661,26 @@ func (s *tsState) readClaude(path string, sub bool) {
 		if pr := s.winpath(cw); pr != "" && (s.first[pr] == "" || ts < s.first[pr]) {
 			s.first[pr] = ts
 		}
-		mine = append(mine, &tsCall{src: src, model: a.Model, ts: ts, cwd: cw, in: a.In, cw: a.CacheWrite, cr: a.CacheRead, out: a.Out})
+		c := &tsCall{src: src, model: a.Model, ts: ts, cwd: cw, in: a.In, cw: a.CacheWrite, cr: a.CacheRead, out: a.Out, cw5: a.CacheWrite5m, cw1h: a.CacheWrite1h}
+		src.setFloor(c)
+		s.byMsg[a.ID] = c
+		s.addTools(c, a)
+		mine = append(mine, c)
 	})
 	s.calls = append(s.calls, mine...)
+}
+
+// addTools adds a line's tool_use blocks to its call, each tool_use id once.
+func (s *tsState) addTools(c *tsCall, a transcript.Assistant) {
+	for i, id := range a.ToolUses {
+		if id != "" {
+			if s.toolSeen[id] {
+				continue
+			}
+			s.toolSeen[id] = true
+		}
+		c.tools = append(c.tools, a.ToolNames[i])
+	}
 }
 
 // readCopilot adds Copilot's calls: <COPILOT_HOME>/session-state/<sid>/events.jsonl, for the sessions whose recorded working folder is
@@ -688,7 +777,9 @@ func (s *tsState) readCopilotFile(path string) {
 		if fresh < 0 {
 			fresh = 0
 		}
-		s.calls = append(s.calls, &tsCall{src: src, model: model, ts: ts, cwd: key, in: fresh, cw: u.CacheWriteTokens, cr: u.CacheReadTokens, out: u.OutputTokens})
+		c := &tsCall{src: src, model: model, ts: ts, cwd: key, in: fresh, cw: u.CacheWriteTokens, cr: u.CacheReadTokens, out: u.OutputTokens}
+		src.setFloor(c)
+		s.calls = append(s.calls, c)
 	}
 }
 
@@ -712,18 +803,9 @@ func (s *tsState) assign() {
 			}
 		}
 		if hit == 0 {
-			n := 0
-			for i, w := range s.wins {
-				if w.project == pr && w.start <= c.ts && c.ts < w.end {
-					n++
-					hit = i + 1
-				}
-			}
-			if n == 0 {
+			var n int
+			if hit, n = s.winOf(pr, c.ts); n == 0 {
 				continue
-			}
-			if n > 1 {
-				hit = 0
 			}
 		}
 		c.hit = hit
@@ -735,6 +817,20 @@ func (s *tsState) assign() {
 			}
 		}
 	}
+}
+
+// winOf is the one window of project pr that ts falls in (n 1); n 0 for none, n > 1 (hit 0) for overlap.
+func (s *tsState) winOf(pr, ts string) (hit, n int) {
+	for i, w := range s.wins {
+		if w.project == pr && w.start <= ts && ts < w.end {
+			n++
+			hit = i + 1
+		}
+	}
+	if n > 1 {
+		hit = 0
+	}
+	return hit, n
 }
 
 // phaseOf: the old table's phases: planning, implementation, gates ("close" in the labels), build (no Approved: time), overlap.
@@ -755,8 +851,8 @@ func (s *tsState) phaseOf(c *tsCall) string {
 	if a == "" {
 		w.build = true
 	}
-	switch {
-	case c.gate || (w.gate != "" && c.ts >= w.gate):
+	switch ca := w.closeAt(); { // t-0abe: the close begins at close.started (the inline Wrapup gates are close, not build)
+	case c.gate || (ca != "" && c.ts >= ca):
 		return "gates"
 	case a == "":
 		return "build"
@@ -812,6 +908,11 @@ func (s *tsState) classify() {
 				w.main[tsMainKey[ph]] = m
 			}
 			m.add(c)
+			st := w.stepOf(ph, c.ts)
+			if w.steps[st] == nil {
+				w.steps[st] = &tsAgg{}
+			}
+			w.steps[st].add(c, s.prices)
 		default:
 			r := runs[c.src]
 			if r == nil || !hasRun(w, r) {
@@ -819,13 +920,27 @@ func (s *tsState) classify() {
 				runs[c.src] = r
 				w.runs = append(w.runs, r)
 			}
-			r.add(c)
+			r.add(c, s.prices)
 			if role == "speccheck" && ph == "planning" {
 				w.spec += c.fresh() + c.out
 			}
 			if c.gate { // the legacy rule (agentType canon-reviewer or canon-evaluator), the one gate_runs counts by
 				w.gateAgents += c.fresh() + c.out
 			}
+		}
+	}
+}
+
+// countUsers gives each prompt of a main session the step its time falls in (a step with no call keeps no prompt).
+func (s *tsState) countUsers() {
+	for _, u := range s.users {
+		hit, n := s.winOf(s.winpath(u.cwd), u.ts)
+		if n != 1 {
+			continue
+		}
+		w := s.wins[hit-1]
+		if a := w.steps[w.stepOf(s.phaseOf(&tsCall{src: &tsSrc{}, ts: u.ts, hit: hit}), u.ts)]; a != nil {
+			a.turns++
 		}
 	}
 }
@@ -974,6 +1089,7 @@ func (s *tsState) print(out io.Writer) {
 	}
 	fmt.Fprintln(out)
 	s.printContext(out, L)
+	s.printSteps(out, L)
 	fmt.Fprintln(out, "* build: no Approved: time in plan.md (before 0.30.6), so planning and implementation are one number.")
 	fmt.Fprintln(out, "^ approved before sprint start: the plan was written outside this sprint.")
 	fmt.Fprintln(out, "~ partial: the sprint began before the oldest transcript kept. overlap: a turn inside two sprints, counted once.")

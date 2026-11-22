@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -133,7 +134,7 @@ func (f *tsFix) recorded() map[string][]map[string]string {
 				continue
 			}
 			k := rawField(l, "kind")
-			if k != "sprint.cost" && k != "gate.cost" {
+			if k != "sprint.cost" && k != "gate.cost" && k != "step.cost" {
 				continue
 			}
 			// the data object's fields, by their quoted names
@@ -548,8 +549,11 @@ func TestTokenSpendCopilotVMShape(t *testing.T) {
 	if len(ev["gate.cost"]) != 1 {
 		t.Fatalf("gate.cost events: %v", ev["gate.cost"])
 	}
-	want(t, ev["gate.cost"][0], "agent_id=ag-r role=reviewer agent_type=canon-reviewer calls=2 input=110 output=5")
+	want(t, ev["gate.cost"][0], "agent_id=ag-r role=reviewer agent_type=canon-reviewer calls=2 input=110 output=5 floor=50")
 	want(t, ev["sprint.cost"][0], "build_calls=1 build_input=100 close_calls=1 close_input=200 gate_runs=1")
+	if out, _ := f.run("--ticket", "t-cvm1"); !regexp.MustCompile(`(?m)^reviewer ag-r +t-cvm1 +2 +n/a `).MatchString(out) {
+		t.Errorf("a Copilot run's tool count is n/a (it has none):\n%s", out)
+	}
 }
 
 // (c) the per-message classifier's model.* events are never a call, even when they carry the same usage fields as a usage record.
@@ -570,5 +574,327 @@ func TestTokenSpendCopilotSkipsModelEvents(t *testing.T) {
 		if base[k] != with[k] {
 			t.Errorf("%s: %q without model.* lines, %q with them", k, base[k], with[k])
 		}
+	}
+}
+
+// ev appends one event to the sprint's day file (2026-10-01): its time, kind and extra data fields as `"k":"v"` pairs.
+func (f *tsFix) ev(ticket, ts, kind string, kv ...string) {
+	f.t.Helper()
+	data := `"ticket":"` + ticket + `"`
+	for i := 0; i+1 < len(kv); i += 2 {
+		data += `,"` + kv[i] + `":"` + kv[i+1] + `"`
+	}
+	p := filepath.Join(f.home, "events", "2026-10-01.jsonl")
+	old, _ := os.ReadFile(p)
+	f.write(p, strings.TrimSuffix(string(old), "\n"), fmt.Sprintf(`{"schema":1,"ts":"2026-10-01T%s.000Z","kind":"%s","project":"%s","data":{%s}}`, ts, kind, f.root, data))
+	b, _ := os.ReadFile(p)
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	sort.SliceStable(lines, func(i, j int) bool { return rawField(lines[i], "ts") < rawField(lines[j], "ts") }) // the log is in time order
+	os.WriteFile(p, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+}
+
+// steps is the recorded step.cost events by step.
+func (f *tsFix) steps() map[string]map[string]string {
+	f.t.Helper()
+	out := map[string]map[string]string{}
+	for _, e := range f.recorded()["step.cost"] {
+		if out[e["step"]] != nil {
+			f.t.Errorf("two step.cost events for %s", e["step"])
+		}
+		out[e["step"]] = e
+	}
+	return out
+}
+
+// t-0abe. Protects `sprint complete`'s cost record: a re-approval at close (a second plan.approved, plan.md's stamp rewritten) does
+// not move planning's end: the first plan.approved event bounds it; plan.md's stamp is only the fallback (TestTokenSpendPhaseBoundaries).
+func TestTokenSpendFirstApprovalBound(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.ev("t-aaaa", "11:50:00", "plan.approved")
+	f.plan("t-aaaa", "11:50:00")
+	f.main("s1", call("10:29:00", "msg_1", "m", 1, 0, 0, 1, ""), call("10:45:00", "msg_2", "m", 2, 0, 0, 2, ""))
+	f.run("--ticket", "t-aaaa", "--record")
+	want(t, f.recorded()["sprint.cost"][0], "plan_calls=1 plan_input=1 build_calls=1 build_input=2")
+	st := f.steps()
+	want(t, st["plan"], "calls=1 minutes=30.0")
+	want(t, st["build"], "calls=1 minutes=30.0")
+}
+
+// t-0abe. Protects the stamp fallback's minutes: with no plan.approved event the plan and build steps have no wall time (absent, never 0).
+func TestTokenSpendStampFallbackNoMinutes(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("10:29:00", "msg_1", "m", 1, 0, 0, 1, ""), call("10:45:00", "msg_2", "m", 2, 0, 0, 2, ""))
+	f.run("--ticket", "t-aaaa", "--record")
+	st := f.steps()
+	for _, s := range []string{"plan", "build"} {
+		if st[s] == nil || st[s]["minutes"] != "" {
+			t.Errorf("%s: %v, want calls and no minutes", s, st[s])
+		}
+	}
+	if out, _ := f.run("--ticket", "t-aaaa"); !regexp.MustCompile(`(?m)^plan +t-aaaa +1 .* n/a +n/a$`).MatchString(out) {
+		t.Errorf("the table's minutes cell is n/a, not 0.0:\n%s", out)
+	}
+}
+
+// t-0abe. Protects the close's start: close.started, not the reviewer's dispatch, so the inline Wrapup gates count as close; and the
+// five steps' bounds, every close-phase call in exactly one of wrapup, security-review and close.
+func TestTokenSpendStepBounds(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "10:50:00", "12:00:00")
+	f.ev("t-aaaa", "10:10:00", "plan.approved")
+	f.ev("t-aaaa", "10:40:00", "close.started")
+	f.ev("t-aaaa", "11:00:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:10:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
+	f.plan("t-aaaa", "10:10:00")
+	f.main("s1",
+		call("10:05:00", "msg_1", "m", 1, 0, 0, 0, ""),   // plan
+		call("10:20:00", "msg_2", "m", 2, 0, 0, 0, ""),   // build
+		call("10:40:00", "msg_3", "m", 4, 0, 0, 0, ""),   // wrapup: close.started's second
+		call("10:49:59", "msg_4", "m", 8, 0, 0, 0, ""),   // wrapup
+		call("10:55:00", "msg_5", "m", 16, 0, 0, 0, ""),  // close (the reviewer is running)
+		call("11:00:00", "msg_6", "m", 32, 0, 0, 0, ""),  // close: the reviewer's finish second
+		call("11:05:00", "msg_7", "m", 64, 0, 0, 0, ""),  // security-review
+		call("11:10:00", "msg_8", "m", 128, 0, 0, 0, ""), // security-review: its row's second
+		call("11:30:00", "msg_9", "m", 256, 0, 0, 0, ""), // close
+	)
+	f.run("--ticket", "t-aaaa", "--record")
+	want(t, f.recorded()["sprint.cost"][0], "close_calls=7 close_input=508 build_calls=1 build_input=2")
+	st := f.steps()
+	want(t, st["plan"], "calls=1 input=1 minutes=10.0")
+	want(t, st["build"], "calls=1 input=2 minutes=30.0")
+	want(t, st["wrapup"], "calls=2 input=12 minutes=10.0")
+	want(t, st["security-review"], "calls=2 input=192 minutes=10.0")
+	want(t, st["close"], "calls=3 input=304 minutes=60.0")
+	if len(st) != 5 {
+		t.Errorf("steps %v", st)
+	}
+}
+
+// t-0abe. Protects the step bounds when events repeat: the FIRST close.started starts wrapup, the LAST reviewer gate.finished before
+// the security-review row starts security-review (a finish after the row does not), and only a `ran` row ends it.
+func TestTokenSpendRepeatedBounds(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "10:50:00", "12:00:00")
+	f.ev("t-aaaa", "10:10:00", "plan.approved")
+	f.ev("t-aaaa", "10:40:00", "close.started")
+	f.ev("t-aaaa", "10:45:00", "close.started")
+	f.ev("t-aaaa", "10:55:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:00:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:10:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
+	f.ev("t-aaaa", "11:15:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:20:00", "wrapup.gate_finished", "gate", "security-review", "result", "skipped")
+	f.ev("t-aaaa", "11:25:00", "wrapup.gate_finished", "gate", "code-reviewer", "result", "ran") // another gate's row never ends it
+	f.ev("t-zzzz", "11:00:00", "gate.finished", "role", "reviewer")                              // a ticket with no window
+	f.ev("t-zzzz", "11:00:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
+	f.plan("t-aaaa", "10:10:00")
+	f.main("s1",
+		call("10:42:00", "msg_1", "m", 1, 0, 0, 0, ""), // wrapup: after the first close.started
+		call("10:57:00", "msg_2", "m", 2, 0, 0, 0, ""), // close: before the last reviewer finish
+		call("11:05:00", "msg_3", "m", 4, 0, 0, 0, ""), // security-review
+		call("11:20:00", "msg_4", "m", 8, 0, 0, 0, ""), // close: the skipped row does not end security-review
+	)
+	f.run("--ticket", "t-aaaa", "--record")
+	st := f.steps()
+	want(t, st["wrapup"], "calls=1 input=1")
+	want(t, st["security-review"], "calls=1 input=4")
+	want(t, st["close"], "calls=2 input=10")
+	if len(st) != 3 {
+		t.Errorf("steps %v", st)
+	}
+}
+
+// tline is an assistant line of one tool_use block (a later line of the same message repeats its id and usage).
+func tline(ts, msg, toolID, name string) string {
+	return fmt.Sprintf(`{"type":"assistant","message":{"model":"m","id":"%s","content":[{"type":"tool_use","id":"%s","name":"%s","input":{}}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"timestamp":"2026-10-01T%s.000Z","cwd":"CWD"}`, msg, toolID, name, ts)
+}
+
+// t-0abe. Protects step.cost's tool and turn counts: a tool_use on a later line of a message counts (each content block is its own
+// line under one msg_ id), a repeated tool_use id counts once, a name that is not a plain id counts but is not named, and only the
+// person's prompts are user turns.
+func TestTokenSpendToolsAndTurns(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1",
+		call("10:40:00", "msg_1", "m", 1, 0, 0, 1, ""),
+		tline("10:40:00", "msg_1", "toolu_1", "Bash"),
+		tline("10:40:00", "msg_1", "toolu_2", "Read"),
+		tline("10:40:00", "msg_1", "toolu_1", "Bash"), // the same block again
+		tline("10:41:00", "msg_2", "toolu_3", "Bash"),
+		tline("10:42:00", "msg_3", "toolu_4", `we ird`),
+		tline("10:42:10", "msg_4", "toolu_5", "Write"), // Write outnumbers Bash: largest first, not by name
+		tline("10:42:10", "msg_4", "toolu_6", "Write"),
+		tline("10:42:10", "msg_4", "toolu_7", "Write"),
+		tline("10:42:20", "msg_5", "toolu_8", "Agent"), // ties Read at 1: by name
+		`{"type":"user","timestamp":"2026-10-01T10:39:00.000Z","cwd":"CWD","message":{"content":"build it"}}`,
+		`{"type":"user","timestamp":"2026-10-01T10:41:30.000Z","cwd":"CWD","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_3"}]}}`,
+		`{"type":"user","timestamp":"2026-10-01T10:43:00.000Z","cwd":"CWD","message":{"content":[{"type":"text","text":"and this"}]}}`,
+		`{"type":"user","timestamp":"2026-10-01T10:20:00.000Z","cwd":"CWD","message":{"content":"a planning prompt"}}`,
+		`{"type":"user","uuid":"u-1","timestamp":"2026-10-01T10:44:00.000Z","cwd":"CWD","message":{"content":"once"}}`,
+	)
+	f.main("s2", `{"type":"user","uuid":"u-1","timestamp":"2026-10-01T10:44:00.000Z","cwd":"CWD","message":{"content":"once"}}`) // a resumed session's copy
+	f.run("--ticket", "t-aaaa", "--record")
+	want(t, f.steps()["build"], "calls=5 tool_calls=8 tools=Write:3,Bash:2,Agent:1,Read:1 user_turns=3 models=m:5")
+}
+
+// t-0abe. Protects the floor: a step's is the first call of its session file, even one before the sprint (the session's first
+// request: system prompt + tools + always-on files); a subagent run's is its own first call; growth is peak - floor.
+func TestTokenSpendFloor(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("09:00:00", "msg_0", "m", 5, 1000, 0, 1, ""), call("10:40:00", "msg_1", "m", 1, 0, 3000, 1, ""))
+	f.sub("rv", "canon-reviewer", "t-aaaa review", call("11:10:00", "msg_rv", "m", 2, 700, 0, 1, ""), call("11:11:00", "msg_rv2", "m", 1, 0, 900, 1, ""))
+	f.run("--ticket", "t-aaaa", "--record")
+	want(t, f.steps()["build"], "floor=1005 peak=3001 growth=1996")
+	want(t, f.recorded()["gate.cost"][0], "floor=702 peak=901 growth=199 minutes=1.0")
+}
+
+// t-0abe. Protects cost_usd: priced from the Admin model registry by id, else by alias, with cache read 0.1x, a 5-minute write 1.25x,
+// a 1-hour write 2x (an unsplit write as 5-minute); a step with a model that has no price has no cost_usd (never a partial sum) and
+// names it in unpriced; a call with no tokens never unprices a step.
+func TestTokenSpendCostUSD(t *testing.T) {
+	f := newTSFix(t)
+	old := modelTiersPath
+	modelTiersPath = filepath.Join(f.home, "no-seed.json")
+	defer func() { modelTiersPath = old }()
+	f.write(filepath.Join(f.home, "cockpit", "model-tiers.json"), `{"models":{"anthropic":[{"id":"claude-x","alias":"xa","input_price":10,"output_price":20},{"id":"claude-free","input_price":0,"output_price":0}]}}`)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.ev("t-aaaa", "10:50:00", "close.started")
+	f.plan("t-aaaa", "10:30:00")
+	split := func(ts, id, model string) string {
+		return fmt.Sprintf(`{"type":"assistant","message":{"model":"%s","id":"%s","content":[],"usage":{"input_tokens":100000,"cache_creation_input_tokens":200000,"cache_read_input_tokens":1000000,"output_tokens":100000,"cache_creation":{"ephemeral_5m_input_tokens":100000,"ephemeral_1h_input_tokens":100000}}},"timestamp":"2026-10-01T%s.000Z","cwd":"CWD"}`, model, id, ts)
+	}
+	f.main("s1",
+		split("10:10:00", "msg_1", "claude-x"),                     // plan: 1 + 1 + 1.25 + 2 + 2 = $7.25
+		split("10:40:00", "msg_2", "xa"),                           // build: by alias, the same
+		call("10:41:00", "msg_3", "zz", 0, 0, 0, 0, ""),            // no tokens: priced or not, costs nothing
+		call("10:42:00", "msg_4", "claude-x", 0, 100000, 0, 0, ""), // an unsplit write: 1.25x = $1.25
+		call("10:55:00", "msg_5", "claude-x", 1, 0, 0, 1, ""),
+		call("10:56:00", "msg_6", "unknown-model", 1, 0, 0, 1, ""),  // wrapup: unpriced
+		call("10:56:30", "msg_6b", "unknown-model", 1, 0, 0, 1, ""), // named once
+		call("10:57:00", "msg_7", "claude-free", 1, 0, 0, 1, ""),    // a registry row with no price is unpriced too
+		call("10:58:00", "msg_7b", "we ird", 1, 0, 0, 1, ""),        // unpriced, not named: never an empty name in the list
+		call("11:30:00", "msg_8", "we ird", 1, 0, 0, 1, ""),         // close: unpriced, and its name is not a plain id
+	)
+	f.run("--ticket", "t-aaaa", "--record")
+	st := f.steps()
+	want(t, st["plan"], "cost_usd=7.2500")
+	want(t, st["build"], "cost_usd=8.5000")
+	if w := st["wrapup"]; w["cost_usd"] != "" || w["unpriced"] != "unknown-model,claude-free" {
+		t.Errorf("wrapup: %v, want no cost_usd and unpriced=unknown-model,claude-free", w)
+	}
+	if c := st["close"]; c == nil || c["cost_usd"] != "" || c["unpriced"] != "" {
+		t.Errorf("close: %v, want no cost_usd and no unpriced field (the only model is not a plain id)", c)
+	}
+	if st["plan"]["unpriced"] != "" {
+		t.Errorf("plan: %v", st["plan"])
+	}
+}
+
+// t-0abe. Protects denied_tools: the tool names of permissions.deny in the Claude home's, the project's and the local settings,
+// sorted and once each; a pattern's argument (a path) is never written; none when nothing is denied.
+func TestTokenSpendDeniedTools(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("10:40:00", "msg_1", "m", 1, 0, 0, 1, ""))
+	f.sub("rv", "canon-reviewer", "t-aaaa review", call("11:10:00", "msg_rv", "m", 3, 0, 0, 1, ""))
+	f.write(filepath.Join(f.cfg, "settings.json"), `{"permissions":{"deny":["Bash(rm -rf /secret-path/x)","WebFetch"]}}`)
+	f.write(filepath.Join(f.root, ".claude", "settings.json"), `{"permissions":{"deny":["Read(./secrets/**)"]}}`)
+	f.write(filepath.Join(f.root, ".claude", "settings.local.json"), `{"permissions":{"deny":["Bash","bad name(x)",7]}}`)
+	f.run("--ticket", "t-aaaa", "--record")
+	want(t, f.steps()["build"], "denied_tools=Bash,Read,WebFetch")
+	want(t, f.recorded()["gate.cost"][0], "denied_tools=Bash,Read,WebFetch")
+	b, _ := os.ReadFile(filepath.Join(f.home, "events", "2026-10-05.jsonl"))
+	if strings.Contains(string(b), "secret") {
+		t.Errorf("a deny pattern's argument reached the log: %s", b)
+	}
+}
+
+// t-0abe. Protects denied_tools' sources: none when no file denies a tool, and the default Claude home (~/.claude) when
+// CLAUDE_CONFIG_DIR is unset.
+func TestTokenSpendDeniedSources(t *testing.T) {
+	d := t.TempDir()
+	t.Setenv("HOME", d)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	if got := tsDenied(filepath.Join(d, "proj")); got != "none" {
+		t.Errorf("no settings: %q, want none", got)
+	}
+	os.MkdirAll(filepath.Join(d, ".claude"), 0o755)
+	os.WriteFile(filepath.Join(d, ".claude", "settings.json"), []byte(`{"permissions":{"deny":["Agent"]}}`), 0o644)
+	if got := tsDenied(filepath.Join(d, "proj")); got != "Agent" {
+		t.Errorf("~/.claude: %q, want Agent", got)
+	}
+	os.MkdirAll(filepath.Join(d, "proj", ".claude"), 0o755)
+	os.WriteFile(filepath.Join(d, "proj", ".claude", "settings.local.json"), []byte(`{"permissions":`), 0o644)
+	if got := tsDenied(filepath.Join(d, "proj")); got != "unknown" {
+		t.Errorf("unparsable settings: %q, want unknown (never none or a partial list)", got)
+	}
+	os.Remove(filepath.Join(d, "proj", ".claude", "settings.local.json"))
+	os.Mkdir(filepath.Join(d, "proj", ".claude", "settings.json"), 0o755) // exists, cannot be read as a file
+	if got := tsDenied(filepath.Join(d, "proj")); got != "unknown" {
+		t.Errorf("unreadable settings: %q, want unknown", got)
+	}
+}
+
+// t-0abe. Protects the record's once-guards: a re-run writes no second step.cost for a step (even when sprint.cost was lost), and a
+// ticket whose sprint.cost exists (closed before step.cost) gets none: no backfill.
+func TestTokenSpendStepCostOnce(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("10:10:00", "msg_0", "m", 1, 0, 0, 1, ""), call("10:40:00", "msg_1", "m", 1, 0, 0, 1, ""))
+	f.ev("t-aaaa", "12:00:01", "step.cost", "step", "plan") // a step recorded by a close that stopped before sprint.cost
+	f.run("--ticket", "t-aaaa", "--record")
+	f.run("--ticket", "t-aaaa", "--record")
+	st := f.recorded()["step.cost"]
+	if len(st) != 1 || st[0]["step"] != "build" {
+		t.Errorf("step.cost after two records: %v, want build only", st)
+	}
+
+	g := newTSFix(t)
+	g.events("t-bbbb", "10:00:00", "11:00:00", "12:00:00")
+	g.ev("t-bbbb", "12:00:01", "sprint.cost", "planning", "1")
+	g.main("s1", call("10:40:00", "msg_1", "m", 1, 0, 0, 1, ""))
+	g.run("--ticket", "t-bbbb", "--record")
+	if ev := g.recorded(); len(ev["step.cost"]) != 0 || len(ev["gate.cost"]) != 0 {
+		t.Errorf("a ticket closed before step.cost got %v", ev)
+	}
+}
+
+// t-0abe. Protects `sprint token-spend`'s Cost per step table: one row per step with calls and per run, est $ n/a when unpriced.
+func TestTokenSpendStepTable(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.ev("t-aaaa", "10:30:00", "plan.approved")
+	f.ev("t-aaaa", "10:50:00", "close.started")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("10:40:00", "msg_1", "nope", 1, 0, 0, 1, ""), call("10:55:00", "msg_2", "nope", 1, 0, 0, 1, ""))
+	f.sub("rv", "canon-reviewer", "t-aaaa review", call("11:10:00", "msg_rv", "nope", 3, 0, 0, 1, ""))
+	out, _ := f.run("--ticket", "t-aaaa")
+	for _, re := range []string{
+		`(?m)^Cost per step \(main session\) and per subagent run`,
+		`(?m)^step / run +ticket +calls +tools +floor +peak +growth +est \$ +minutes$`,
+		`(?m)^security-review: from the reviewer's finish to its Wrapup Gates row`,
+		`(?m)^build +t-aaaa +1 +0 +1 +1 +0 +n/a +20\.0$`,
+		`(?m)^wrapup +t-aaaa +1 +0 +1 +1 +0 +n/a +10\.0$`,
+		`(?m)^reviewer rv +t-aaaa +1 +0 +3 +3 +0 +n/a +0\.0$`,
+	} {
+		if !regexp.MustCompile(re).MatchString(out) {
+			t.Errorf("no match for %s in:\n%s", re, out)
+		}
+	}
+	if regexp.MustCompile(`(?m)^plan +t-aaaa +[0-9]`).MatchString(out) {
+		t.Errorf("a step with no calls has a row:\n%s", out)
 	}
 }

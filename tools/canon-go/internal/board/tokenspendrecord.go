@@ -13,7 +13,8 @@ import (
 	"canon/internal/transcript"
 )
 
-// t-7e26 / t-0829: `token-spend --ticket <id> --record`, sprint complete's call. It writes one gate.cost event per subagent run (keyed
+// t-7e26 / t-0829: `token-spend --ticket <id> --record`, sprint complete's call. It writes one step.cost per main-session step (t-0abe,
+// keyed by ticket + project + step), one gate.cost event per subagent run (keyed
 // by its agent id; a run that already has one is skipped, so a re-run close never writes it twice), then the ticket's one sprint.cost
 // event, then prints the cost line. Numbers, ids, role and model names only: never transcript text. Nothing is written or printed when
 // there are no calls in the sprint's window or the cost is already recorded (the sprint.cost event is the once-guard, written last).
@@ -42,7 +43,7 @@ func tsPhaseFields(data map[string]string, prefix string, st *tsStat) {
 	}
 }
 
-func (s *tsState) record(gateCosted map[string]bool) {
+func (s *tsState) record(gateCosted, stepCosted map[string]bool) {
 	L := s.shown()
 	if len(L) == 0 {
 		return
@@ -87,6 +88,16 @@ func (s *tsState) record(gateCosted map[string]bool) {
 		tsPhaseFields(data, p+"_", w.main[p])
 	}
 	home, actor := events.Home(), os.Getenv("CANON_EVENT_ACTOR")
+	// t-0abe: one step.cost per main-session step with calls, keyed by ticket + project + step, so a close that stopped before
+	// sprint.cost (the once-guard below) never writes a step twice on its re-run.
+	for _, st := range tsSteps {
+		a, key := w.steps[st], w.ticket+"\x1c"+w.project+"\x1c"+st
+		if a == nil || stepCosted[key] { // a step exists only once a call is added
+			continue
+		}
+		stepCosted[key] = true
+		events.EmitActor(home, "step.cost", "sprint", actor, s.o.root, s.stepFields(w, st, a))
+	}
 	for _, r := range w.runs {
 		// Fields read from transcripts go into the events log only as plain ids (as builder above); an id the once-guard's
 		// raw read could miss (a quote, over 64 bytes) is not recorded, so it can never be written twice.
@@ -96,7 +107,10 @@ func (s *tsState) record(gateCosted map[string]bool) {
 		}
 		gateCosted[id] = true
 		g := map[string]string{"ticket": w.ticket, "agent_id": id, "role": r.src.role(), "agent_type": tsPlainOr(r.src.agentType), "model": tsPlainOr(r.model)}
-		tsPhaseFields(g, "", &r.tsStat)
+		r.fields(g, s.denied)
+		if m, ok := r.runMinutes(); ok {
+			g["minutes"] = strconv.FormatFloat(m, 'f', 1, 64)
+		}
 		events.EmitActor(home, "gate.cost", "sprint", actor, s.o.root, g)
 	}
 	events.EmitActor(home, "sprint.cost", "sprint", actor, s.o.root, data)

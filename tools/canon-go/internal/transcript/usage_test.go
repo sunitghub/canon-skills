@@ -18,6 +18,41 @@ func TestParseAssistant(t *testing.T) {
 	}
 }
 
+// Protects: sprint token-spend's step.cost tools and cost_usd (t-0abe): each tool_use's name, and the cache write's 5m/1h split.
+func TestParseAssistantToolNamesAndCacheSplit(t *testing.T) {
+	line := `{"type":"assistant","message":{"id":"msg_1","content":[{"type":"tool_use","id":"toolu_1","name":"Bash"},{"type":"tool_use","id":"toolu_2","name":"Read"}],"usage":{"input_tokens":1,"cache_creation_input_tokens":30,"cache_creation":{"ephemeral_5m_input_tokens":10,"ephemeral_1h_input_tokens":20}}}}`
+	a, ok := ParseAssistant([]byte(line))
+	if !ok || strings.Join(a.ToolNames, ",") != "Bash,Read" || a.CacheWrite5m != 10 || a.CacheWrite1h != 20 || a.CacheWrite != 30 {
+		t.Fatalf("%+v %v", a, ok)
+	}
+	if a, _ := ParseAssistant([]byte(`{"type":"assistant","message":{"id":"msg_2","usage":{"cache_creation_input_tokens":7}}}`)); a.CacheWrite5m != 0 || a.CacheWrite1h != 0 || a.CacheWrite != 7 {
+		t.Fatalf("no split: %+v", a)
+	}
+}
+
+// Protects: sprint token-spend's step.cost user_turns (t-0abe): only what the person sent counts.
+func TestParseUser(t *testing.T) {
+	for line, want := range map[string]bool{
+		`{"type":"user","timestamp":"T","cwd":"/p","message":{"content":"sprint continue t-1"}}`:                            true,
+		`{"type":"user","message":{"content":[{"type":"text","text":"hi"}]}}`:                                               true,
+		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"x"}]}}`:              false,
+		`{"type":"user","message":{"content":[{"type":"text","text":"x"},{"type":"tool_result","tool_use_id":"toolu_1"}]}}`: false,
+		`{"type":"user","isMeta":true,"message":{"content":"<local-command-caveat>"}}`:                                      false,
+		`{"type":"user","isSidechain":true,"message":{"content":"prompt for a subagent"}}`:                                  false,
+	} {
+		u, ok := ParseUser([]byte(line))
+		if !ok || u.Prompt != want {
+			t.Errorf("%s: prompt %v ok %v, want %v", line, u.Prompt, ok, want)
+		}
+	}
+	if u, ok := ParseUser([]byte(`{"type":"user","uuid":"u-1","timestamp":"T","cwd":"/p","message":{"content":"x"}}`)); !ok || u.TS != "T" || u.CWD != "/p" || u.UUID != "u-1" {
+		t.Errorf("fields: %+v", u)
+	}
+	if _, ok := ParseUser([]byte(`{"type":"assistant","message":{"content":"x"}}`)); ok {
+		t.Error("an assistant line parsed as a user line")
+	}
+}
+
 func TestParseAssistantSkips(t *testing.T) {
 	for name, line := range map[string]string{
 		"user":      `{"type":"user","message":{"content":"{\"type\":\"assistant\"}"}}`,
