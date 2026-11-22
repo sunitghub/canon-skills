@@ -6,6 +6,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 use_fresh_board "$(mktemp -d)"   # sprint.started goes through the board binary
+unset CANON_TICKETS_DIR   # a stamp from a clone exports it (the real project's .tickets); these projects use their own
 
 W="$(cd "$(mktemp -d)" && pwd -P)"
 CFG="$W/cfg"; SID="11111111-2222-3333-4444-555555555555"
