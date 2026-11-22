@@ -60,6 +60,8 @@ assert_contains "$out" "
 Model: claude-haiku-5.5 (Admin Spec check default, copilot)"
 assert_contains "$out" "Under Copilot CLI write no file: your final message is the whole report, from its first line (\`# Spec check: $id\`) to the end, nothing after it."
 absent "$out" "Write your report to"
+absent "$out" "except that report"   # t-63c6 evaluator: "except that report" beside "write no file" is the contradiction the VM reviewer acted on
+assert_contains "$out" "You are read-only: write no file at all."
 assert_contains "$err" "Copilot's task call needs name; when the gate returns: sprint relay-report $id speccheck"
 COPILOT_CLI=1 gp reviewer
 assert_contains "$out" "from its first line (\`# Review Notes\`) to the end, nothing after it."

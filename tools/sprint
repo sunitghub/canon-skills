@@ -1946,7 +1946,9 @@ cmd_gate_prompt() {
   else
     echo "Write your report to $tdir/$name and return its verdict line."
   fi
-  echo "You are read-only except that report. Never kill a process by name or pattern. Run every test, mutant and probe only in a scratch copy, with HOME, CANON_HOME, TMPDIR and XDG_CONFIG_HOME pinned for any canon command you run there."
+  local ro="You are read-only except that report."
+  [[ "$harness" != copilot ]] || ro="You are read-only: write no file at all."   # one rule, never "except that report" beside "write no file"
+  echo "$ro Never kill a process by name or pattern. Run every test, mutant and probe only in a scratch copy, with HOME, CANON_HOME, TMPDIR and XDG_CONFIG_HOME pinned for any canon command you run there."
   if [[ "$role" == evaluator* && "$(get_field "$tdir/ticket.md" manual 2>/dev/null)" == true ]]; then   # complete.md "Manual mode"
     echo "Manual mode: the user's recorded testing is the evidence. Run and create no tests, no mutants and no command that writes; eval.md \"Manual mode\" is your rule."
   fi
