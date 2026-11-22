@@ -389,6 +389,9 @@ done
 for f in "$ROOT/skills/sprint/reference/start-checklist.md" "$ROOT/skills/sprint/reference/start.md"; do
   grep -qF -- 'sprint gate-prompt <id> speccheck' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} does not name 'sprint gate-prompt <id> speccheck' (t-63c6, Check T)"
 done
+# t-d826: the spec check is its own numbered step, so it cannot be read past inside the brief (the Windows Copilot session skipped it)
+grep -qE '^[0-9]+\. \*\*Spec check:\*\*.*sprint gate-prompt <id> speccheck' "$ROOT/skills/sprint/reference/start-checklist.md" \
+  || fail "doc-mirror-parity: start-checklist.md has no numbered 'Spec check' step naming sprint gate-prompt <id> speccheck (t-d826, Check T)"
 grep -qF -- 'sprint relay-report <id> speccheck' "$ROOT/skills/sprint/reference/start.md" || fail "doc-mirror-parity: start.md does not name the spec check's Copilot relay (t-63c6, Check T)"
 EVAL="$ROOT/skills/sprint/reference/eval.md"
 [[ "$(grep -c 'sprint run-id' "$EVAL")" -ge 2 ]] || fail "doc-mirror-parity: eval.md lost 'sprint run-id' in steps 1 and 8 (t-63c6, Check T)"

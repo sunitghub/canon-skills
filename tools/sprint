@@ -612,6 +612,34 @@ cmd_approve() {
   handoff_recent "$root"
   _handoff_mark "$(dirname "$plan")"   # t-10ac: what the Handoff narrative reads now, to notice at close that nobody refreshed it
   cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
+  # t-d826: a spec check that never ran is named here, the last point before code (advisory: approval stands). On the Windows Copilot
+  # run the session presented its brief with no spec check and said so only when asked.
+  if [[ ! -f "$root/.tickets/$id/spec-review.md" ]] && _spec_check_due "$root" "$root/.tickets/$id/ticket.md"; then
+    echo "sprint approve: warning: the spec check never ran for $id (no .tickets/$id/spec-review.md). It runs before the brief (start-checklist.md step 9): dispatch canon-spec-checker with \`sprint gate-prompt $id speccheck\`'s output. Approval stands: the spec check is advisory." >&2
+    [[ "$(_report_harness)" != copilot ]] || echo "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck" >&2
+  fi
+}
+
+# _spec_check_due <root> <ticket.md> — t-d826: true when the project's pipeline runs the spec check for this ticket (start.md step 10's
+# rule): the spec-check row of `pipeline.sh resolve --full` is on and the ticket has no option its skip_on lists (lite = demo: true,
+# manual = manual: true). Not due when the pipeline cannot be read: never a guess.
+_spec_check_due() {
+  local root="$1" tk="$2" full row on skip o
+  local -a opts=()
+  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || return 1
+  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>/dev/null)" || return 1
+  row="$(awk -F'\t' '$2 == "spec-check" && !n { print; n = 1 }' <<< "$full")"
+  [[ -n "$row" ]] || return 1
+  on="$(cut -f4 <<< "$row")"; skip="$(cut -f10 <<< "$row")"
+  [[ "$on" == on ]] || return 1
+  [[ "$skip" == - || -z "$skip" ]] || IFS=, read -r -a opts <<< "$skip"
+  for o in ${opts[@]+"${opts[@]}"}; do
+    case "$o" in
+      lite) [[ "$(get_field "$tk" demo 2>/dev/null)" != true ]] || return 1 ;;
+      manual) [[ "$(get_field "$tk" manual 2>/dev/null)" != true ]] || return 1 ;;
+    esac
+  done
+  return 0
 }
 
 _gate_plan_content() {

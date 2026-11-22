@@ -135,4 +135,32 @@ signoff "Tier: normal | Build model: --dangerously-skip-permissions"
 assert_eq "" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
 assert_grep '^- \[x\] Plan approved' "$plan"
 
+# t-d826: approve names a spec check that never ran (stderr; approval stands, exit 0): only when the pipeline runs it for this ticket
+specwarn() { set +e; err="$("$@" approve "$id" 2>&1 >/dev/null)"; code=$?; set -e; }
+nowarn() { [[ "$err" != *"spec check never ran"* ]] || fail "sprint approve warned about the spec check $1: $err"; }
+printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
+signoff "Tier: normal"; rm -f ".tickets/$id/spec-review.md"
+specwarn "$SPRINT"
+assert_eq 0 "$code"; assert_grep '^- \[x\] Plan approved' "$plan"
+assert_contains "$err" "sprint approve: warning: the spec check never ran for $id (no .tickets/$id/spec-review.md)"
+assert_contains "$err" "\`sprint gate-prompt $id speccheck\`"; assert_contains "$err" "Approval stands"
+[[ "$err" != *relay-report* ]] || fail "the warning names the Copilot relay outside Copilot: $err"
+signoff "Tier: normal"; COPILOT_CLI=1 specwarn "$SPRINT"
+assert_contains "$err" "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck"
+printf '# Spec check: %s\n' "$id" > ".tickets/$id/spec-review.md"
+signoff "Tier: normal"; specwarn "$SPRINT"; assert_eq 0 "$code"; nowarn "with a spec-review.md"
+rm -f ".tickets/$id/spec-review.md"
+"$TKT" demo "$id" on >/dev/null; signoff "Tier: normal"; specwarn "$SPRINT"; nowarn "on a Lite ticket (skip_on: lite)"
+"$TKT" demo "$id" off >/dev/null
+awk 'NR == 1 || !d && /^---$/ { if (NR > 1) { print "manual: true"; d = 1 } } { print }' ".tickets/$id/ticket.md" > "$plan.tk" && mv "$plan.tk" ".tickets/$id/ticket.md"
+signoff "Tier: normal"; specwarn "$SPRINT"; assert_contains "$err" "spec check never ran"   # canon's default skips it for Lite only
+sed -i.bak '/^manual: true$/d' ".tickets/$id/ticket.md" && rm -f ".tickets/$id/ticket.md.bak"
+mkdir -p canon-config; printf 'extends: canon-default\noff: [spec-check]\n' > canon-config/pipeline.yaml
+signoff "Tier: normal"; specwarn "$SPRINT"; assert_eq 0 "$code"; nowarn "when the project's pipeline turns it off"
+rm -rf canon-config
+# an install with no tools/pipeline.sh cannot say whether it is due: no warning, never a guess
+nopipe="$(mktemp -d)"; copy_canon_tree "$nopipe"; rm -f "$nopipe/tools/pipeline.sh"
+signoff "Tier: normal"; specwarn "$nopipe/tools/sprint"; rm -rf "$nopipe"
+assert_eq 0 "$code"; nowarn "with no tools/pipeline.sh"; assert_grep '^- \[x\] Plan approved' "$plan"
+
 echo "sprint-approve: ok"
