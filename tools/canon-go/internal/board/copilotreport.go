@@ -232,7 +232,7 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 			c := copilotMiss{why: m, rank: 1, at: when}
 			switch {
 			case m == "":
-				c.why, c.rank = fmt.Sprintf("the newest matching %s task finished at %s, outside the window %s to %s (dispatch it again)", q.Agent,
+				c.why, c.rank = fmt.Sprintf("the newest matching %s task finished at %s, outside the window %s to %s", q.Agent,
 					when.UTC().Format(time.RFC3339), q.From.UTC().Format(time.RFC3339), q.To.UTC().Format(time.RFC3339)), 3
 			case outside:
 				continue // a mismatch outside the window says nothing about this close

@@ -1775,7 +1775,7 @@ _relay_report_copilot() {
   if (( rc != 0 )); then
     # t-2986: name the failed check; on the Windows VM a bare "dispatch again" cost a second full review for a matcher miss
     echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): ${why:-copilot-report exited $rc}." >&2
-    echo "It takes a $agent task in the last 3 hours whose prompt names $id and $proto and whose whole result has a line starting '$marker'. This command reads that record and takes no input: never pipe or type the report. Dispatch the $role again only after fixing that." >&2
+    echo "It takes a $agent task in the last 3 hours whose prompt names $id and $proto and whose whole result has a line starting '$marker'. This command reads that record and takes no input: never pipe or type the report. Fix what the reason names, then dispatch the $role again." >&2
     exit 1
   fi
   wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
