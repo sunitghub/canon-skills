@@ -595,15 +595,19 @@ func (s *tsState) readClaude(path string, sub bool) {
 }
 
 // readCopilot adds Copilot's calls: <COPILOT_HOME>/session-state/<sid>/events.jsonl, for the sessions whose recorded working folder is
-// the project or one of its worktrees and that were written after the oldest sprint began. A usage_record with an agentId is that
-// subagent's call (subagent.started names its agent type); one without is the main session's. Copilot's inputTokens holds the cache
-// counts, so the fresh input is what is left.
+// the project or one of its worktrees and that were written after the oldest shown sprint began (t-4fc7: not the oldest in the whole
+// log, so a close reads only its own sprint's sessions). A usage_record with an agentId is that subagent's call (subagent.started
+// names its agent type); one without is the main session's. Copilot's inputTokens holds the cache counts, so the fresh input is what
+// is left.
 func (s *tsState) readCopilot() {
 	minStart := ""
-	for _, w := range s.wins {
-		if minStart == "" || w.start < minStart {
+	for _, i := range s.shown() {
+		if w := s.wins[i-1]; minStart == "" || w.start < minStart {
 			minStart = w.start
 		}
+	}
+	if minStart == "" {
+		return // no sprint is shown or recorded: no Copilot call can count
 	}
 	since, err := time.Parse("2006-01-02T15:04:05", minStart)
 	dirs, derr := os.ReadDir(filepath.Join(copilotHome(), "session-state"))
