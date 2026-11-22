@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -462,5 +463,27 @@ func TestTokenSpendGateCostPlainFields(t *testing.T) {
 	}
 	if got[0]["agent_type"] != "" || got[0]["model"] != "" {
 		t.Errorf("non-plain transcript fields kept: %v", got[0])
+	}
+}
+
+// t-2986: on Windows the shell passes Git Bash paths (/c/...); Claude Code names the transcript folder from C:/... . Prod path:
+// `sprint complete`'s cost line on Windows. setGOOS's stand-in maps C:/stand-in to the fixture's root.
+func TestTokenSpendGitBashProject(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.main("s1", call("10:30:00", "msg_1", "m", 7, 0, 0, 7, ""))
+	for _, c := range []struct {
+		goos string
+		want bool
+	}{{"windows", true}, {"darwin", false}, {"linux", false}} {
+		setGOOS(t, c.goos, f.root)
+		// --project alone, then the same folder as a --worktree of another project: each flag is converted on its own
+		for _, args := range [][]string{{"--project", "/c/stand-in"}, {"--project", f.home, "--worktree", "/c/stand-in"}} {
+			var out, errb bytes.Buffer
+			tokenSpendCLI(append(args, "--ticket", "t-aaaa"), &out, &errb)
+			if got := regexp.MustCompile(`build \(main\)\s+t-aaaa\s+1\s`).MatchString(out.String()); got != c.want {
+				t.Errorf("goos %s %v: the build call found=%v, want %v (out %q err %q)", c.goos, args, got, c.want, out.String(), errb.String())
+			}
+		}
 	}
 }

@@ -774,7 +774,7 @@ _copilot_report_bin() {
 # (Copilot on macOS did) and one that only returned its report both pass. Fails
 # OPEN with a Note when the board binary predates the helper or there is no session record (layout not recognised); CLOSED otherwise.
 _gate_eval_report_copilot() {
-  local id="$1" epoch="$2" needles="$3" bin chome rc=0 tmp
+  local id="$1" epoch="$2" needles="$3" bin chome rc=0 tmp terr why
   chome="${COPILOT_HOME:-${HOME:-}/.copilot}"
   bin="$(_copilot_report_bin)"
   if [[ -z "$bin" ]]; then
@@ -782,13 +782,15 @@ _gate_eval_report_copilot() {
     return 0
   fi
   tmp="$(mktemp)" || return 1
-  "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
+  terr="$(mktemp)" || { rm -f "$tmp"; return 1; }
+  "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>"$terr" || rc=$?
   # A COPILOT_HOME pointed at an empty folder must not skip the check: with no record there, the default home is checked (and binds when
   # it has one). Like the Claude Code check, this stops a model re-creating a report, not a user who forges a whole session record.
   if (( rc == 3 )) && [[ "$chome" != "${HOME:-}/.copilot" ]]; then
     chome="${HOME:-}/.copilot"; rc=0
-    "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>/dev/null || rc=$?
+    "$bin" copilot-report --record --from "$((epoch - 60))" --to "$((epoch + 3600))" "$chome" canon-evaluator "$id" reference/eval.md "evaluator-run-id:" > "$tmp" 2>"$terr" || rc=$?
   fi
+  why="$(sed -n 's/^copilot-report: //p' "$terr" | head -n 1)"; rm -f "$terr"
   if (( rc == 3 )); then
     rm -f "$tmp"
     echo "Note: transcript check skipped (no Copilot session record under $chome/session-state, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
@@ -797,6 +799,7 @@ _gate_eval_report_copilot() {
   if (( rc == 0 )) && _transcript_has_all "$tmp" "$needles"; then rm -f "$tmp"; return 0; fi
   rm -f "$tmp"
   echo "Sprint $id cannot close: no canon-evaluator task result in Copilot's session record backs eval-report.md."
+  [[ -n "$why" ]] && echo "Reason: $why."   # t-2986: the failed check (rc 0 with a missing verdict line has none)
   echo "Looked in $chome/session-state/*/events.jsonl for a canon-evaluator task whose prompt names $id, finished from a minute before the run-id to an hour after it, whose result holds the run-id and every verdict line. A report no real evaluator returned (typed by hand or edited after) has none: dispatch the evaluator again, then 'sprint relay-report $id evaluator'."
   _gate_dispatch_notice evaluator eval-report.md
   return 1
@@ -1756,15 +1759,23 @@ cmd_relay_report() {
 # tool, so it returns its report as its final message; Copilot keeps that message in its session record, and this copies it byte for
 # byte (board binary copilot-report: the canon gate's own task result, never the main session's text). Refuses when none matches.
 _relay_report_copilot() {
-  local id="$1" role="$2" tdir="$3" proto="$4" marker="$5" dest="$6" bin chome agent report rc=0
+  local id="$1" role="$2" tdir="$3" proto="$4" marker="$5" dest="$6" bin chome agent report why rc=0 errf
   local -a extra=()
   chome="${COPILOT_HOME:-${HOME:-}/.copilot}"
   case "$role" in reviewer) agent=canon-reviewer ;; evaluator2) agent=canon-evaluator; extra=(--second) ;; *) agent=canon-evaluator ;; esac
   bin="$(_copilot_report_bin)"
   [[ -n "$bin" ]] || { echo "relay-report: the installed board binary predates copilot-report; run 'canon update' (or build the board), then retry" >&2; exit 1; }
-  report="$("$bin" copilot-report ${extra[@]+"${extra[@]}"} "$chome" "$agent" "$id" "$proto" "$marker" 2>/dev/null)" || rc=$?
+  errf="$(mktemp)" || exit 1
+  report="$("$bin" copilot-report ${extra[@]+"${extra[@]}"} "$chome" "$agent" "$id" "$proto" "$marker" 2>"$errf")" || rc=$?
+  why="$(sed -n 's/^copilot-report: //p' "$errf" | head -n 1)"; rm -f "$errf"
+  if (( rc == 3 )); then
+    echo "relay-report: no Copilot session record under $chome/session-state (set COPILOT_HOME to the home Copilot runs with). This command reads that record and takes no input." >&2
+    exit 1
+  fi
   if (( rc != 0 )); then
-    echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): a $agent task in the last 3 hours whose prompt names $id and whose whole result has a line starting '$marker'. Dispatch the $role again." >&2
+    # t-2986: name the failed check; on the Windows VM a bare "dispatch again" cost a second full review for a matcher miss
+    echo "relay-report: no $role result for $id in Copilot's session record ($chome/session-state/*/events.jsonl): ${why:-copilot-report exited $rc}." >&2
+    echo "It takes a $agent task in the last 3 hours whose prompt names $id and $proto and whose whole result has a line starting '$marker'. This command reads that record and takes no input: never pipe or type the report. Dispatch the $role again only after fixing that." >&2
     exit 1
   fi
   wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6

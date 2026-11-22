@@ -154,9 +154,9 @@ func tokenSpendCLI(args []string, stdout, stderr io.Writer) int {
 			case "--ticket":
 				o.only = v
 			case "--project":
-				o.root = v
+				o.root = fromMSYS(v) // t-2986: Git Bash passes /c/...; the transcript folder is named from C:/...
 			default:
-				o.paths = append(o.paths, v)
+				o.paths = append(o.paths, fromMSYS(v))
 			}
 		case "--record":
 			o.rec = true
