@@ -60,7 +60,7 @@ run_fetch() { # [script-dir]; sets out, rc
   set +e; out="$(PATH="$STUBS:/usr/bin:/bin" bash "${1:-$R}/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
 }
 clean() { rm -rf "$E" "$D" "$B" "$H" "$R"/tools/.*-win.exe.*; unset STUB_CURL_RC || true; }
-no_leftovers() { [[ -z "$(ls -A "$R/tools" | grep -E '^\..*-win\.exe\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools")"; }
+no_leftovers() { local f; for f in "$R/tools"/.*-win.exe.*; do [[ -e "$f" ]] && fail "temp file left behind: $f"; done; return 0; }
 
 # 1. the one exe arrives at its fixed path, verified, named by key and target, never executed; no other program is fetched
 clean; manifest; run_fetch

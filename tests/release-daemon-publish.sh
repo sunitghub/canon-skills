@@ -47,7 +47,7 @@ GH
 chmod +x "$STUBS/gh"
 # A go shim: records the toolchain and go.mod of each build the script makes. It passes GOTOOLCHAIN through, except with SHIM_FORCE_LOCAL=1, where it
 # builds with the local Go whatever was asked (a script that ignored its pin, or an exported GOTOOLCHAIN=local).
-export REAL_GO="$(command -v go)" GO_LOG="$WORK/go.log"
+REAL_GO="$(command -v go)"; export REAL_GO GO_LOG="$WORK/go.log"
 cat > "$STUBS/go" <<'GO'
 #!/usr/bin/env bash
 if [ "${1:-}" = build ] && [ -f go.mod ] && grep -qE '^module canon' go.mod; then echo "GOTOOLCHAIN=${GOTOOLCHAIN:-} $(tr '\n' ' ' < go.mod)" >> "$GO_LOG"; fi

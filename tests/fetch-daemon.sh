@@ -65,7 +65,7 @@ fetch() { # env vars via caller; sets out, rc
   set +e; out="$(PATH="${FETCH_PATH:-$STUBS:$BASEPATH}" bash "$R/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
 }
 reset() { rm -rf "$R/tools/canon-go-bin" "$R/tools/cockpit-daemon" "$R/tools/sprint-check-bin"; unset STUB_ASSET STUB_CURL_RC STUB_GO_FAIL STUB_OS STUB_ARCH FETCH_PATH STUB_LDLOG 2>/dev/null || true; }
-no_leftovers() { [[ -z "$(ls -A "$R/tools/canon-go-bin" 2>/dev/null | grep '^\.canon-go\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools/canon-go-bin" 2>/dev/null)"; }
+no_leftovers() { local f; for f in "$R/tools/canon-go-bin"/.canon-go.*; do [[ -e "$f" ]] && fail "temp file left behind: $f"; done; return 0; }
 
 # 1. a download that matches is installed, named by the canon-go key and target, and never executed. Protects install, canon update
 #    and canon start on macOS/Linux (t-bdb0: one file, tools/canon-go-bin/canon-go, from release canon-go-<key>).
