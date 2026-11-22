@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-22-2026 17:55
+learnings-sweep last run: 11-22-2026 19:47
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-22 | [t-0abe](.tickets/t-0abe/learnings.md) | A boundary that picks one event among many (first `close.started`, last reviewer `gate.finished`, only the `ran` security-review row) needs a fixture with two of each plus a decoy of the neighbouring kind: with one of each, first/last swaps and dropped filters stayed green until mutants caught them. | UNPROMOTED |
 | 2026-11-22 | [t-8882](.tickets/t-8882/learnings.md) | `[[ … ]] \|\| X="$(grep …)"` under `set -e` exits the script silently when grep matches nothing (the last command of an `\|\|` list still trips errexit): add `\|\| { echo …; exit 2; }` for an empty input file. | UNPROMOTED |
 | 2026-11-22 | [t-ec24](.tickets/t-ec24/learnings.md) | A new test that runs sprint/tkt in a throwaway project must `unset CANON_TICKETS_DIR` (a full-suite stamp from a clone exports it), and a `$(grep … \| sed …)` field reader under `set -euo pipefail` needs a fixture missing the field. | UNPROMOTED |
 | 2026-11-22 | [t-bcc1](.tickets/t-bcc1/learnings.md) | A test's expected value is written out, never computed by the code under test, and an emitter check matches the emit call, not the kind's name (readers name every kind): both made t-bcc1 guards unable to fail | UNPROMOTED |
