@@ -67,7 +67,8 @@ BASE_PATH="$(clean_path)"
 # stopped at `sprint approve`). A write into HOME is refused (probed 2026-11-21). An unsandboxed
 # retry is refused, and Edit/Write stay in the project (acceptEdits). Same for both arms.
 mkdir -p "$W/tmp"
-DENY=""; [[ "$arm" != canon-lean ]] || DENY="$(grep -v '^[[:space:]]*$' "$BENCH/lean-tools.txt")"
+DENY=""; [[ "$arm" != canon-lean ]] || DENY="$(grep -v '^[[:space:]]*$' "$BENCH/lean-tools.txt")" \
+  || { echo "run.sh: $BENCH/lean-tools.txt names no tools" >&2; exit 2; }
 sandbox_for() { node -e 'const [deny, ...w] = process.argv.slice(1); const s = { sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: w.filter(Boolean) } } };
   if (deny) s.permissions = { deny: deny.split("\n") }; console.log(JSON.stringify(s))' "$DENY" "$1" "$W"; }
 
