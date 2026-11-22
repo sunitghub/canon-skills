@@ -1935,10 +1935,8 @@ _gate_admin_line() {
   echo "model: $m (Admin $label default, $agent)"
 }
 
-# sprint wrapup-row <id> <gate> ran|skipped "<notes>" — t-bcc1: writes (or replaces) one row of acceptance.md's ## Wrapup Gates table and
-# emits wrapup.gate_finished, so the progress card draws that row from its own event (hand-written rows emitted none: a skipped gate read
-# as passed). The section and its header are added when missing; a `|` in the notes is escaped. Refuses, writing nothing, a gate that is
-# not [a-z0-9-]+, another status, notes with a newline, or a ticket with no acceptance.md.
+# sprint wrapup-row <id> <gate> ran|skipped "<notes>" — t-bcc1: writes or replaces one ## Wrapup Gates row (adding the section) and
+# emits wrapup.gate_finished, which the progress card reads. Refuses, writing nothing, a bad gate, status or multi-line notes.
 cmd_wrapup_row() {
   local id="${1:-}" gate="${2:-}" status="${3:-}" notes="${4:-}" tdir acc tmp
   if [[ -z "$id" || -z "$gate" || -z "$status" || $# -ne 4 ]]; then

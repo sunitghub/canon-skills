@@ -109,21 +109,19 @@ export function sprintProgress(nodes, events, { planWritten = false, needsYou = 
   return { ...r, reached: r.cur ? '' : reached, closed: false };
 }
 
-// t-bcc1: the inline gates of the close: their rows end on `sprint wrapup-row`'s wrapup.gate_finished (gate = the node id)
+// t-bcc1: inline close gates, ended by `sprint wrapup-row`'s wrapup.gate_finished
 export const INLINE_GATES = ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'security-review', 'mutation-test'];
-// t-bcc1: the event kinds that END each row (or mark it skipped); tests/pipeline-events.sh reads this table and fails for a pipeline node
-// with no entry or a kind nothing emits. rowStates is the rule that reads them.
+// t-bcc1: the kinds that end each row; tests/pipeline-events.sh checks every node has one and that it is emitted
 export const ROW_END = {
   start: ['sprint.started'], plan: ['plan.approved'], 'spec-check': ['gate.finished'], 'approve-plan': ['plan.approved'],
   build: ['close.started', 'wrapup.gate_finished', 'gate.started', 'gate.finished'], 'your-test': ['manual_qa.recorded'],
   reviewer: ['gate.finished'], eval: ['gate.finished'], close: ['sprint.completed'],
   ...Object.fromEntries(INLINE_GATES.map(g => [g, ['wrapup.gate_finished']])),
 };
-const GATE_ROLE = { 'spec-check': 'speccheck', reviewer: 'reviewer', eval: 'evaluator' };   // a row's own role: the Second eval never counts for Evaluator
+const GATE_ROLE = { 'spec-check': 'speccheck', reviewer: 'reviewer', eval: 'evaluator' };   // evaluator2 never counts
 
-// t-bcc1: each row's state from its OWN end event, never from its place above the current row (a skipped Spec check was drawn done on
-// the Windows run, t-pnu4): node id -> { state: 'done' | 'skipped' | 'notrun' | 'failed' | '', runs }. runs counts the row's gate.started
-// events (its own role only), so a re-run reads "run N". events may repeat (the snapshot and the events window): deduplicated by id. Pure.
+// t-bcc1: each row's state from its own end event, never its position (t-pnu4): id -> { state: done|skipped|notrun|failed|'', runs:
+// its role's gate.started count }. Events may repeat (snapshot + window): deduplicated by id. Pure.
 export function rowStates(nodes, events) {
   const seen = new Set(), evs = [];
   for (const e of (Array.isArray(events) ? events : [])) {
@@ -195,7 +193,7 @@ export function progressCardHtml(nodes, mode, live) {
     const [cls, text] = note(n, mode);
     const gone = cls === 'skip' || cls === 'off';
     const cur = !!live && i === curAt;
-    // t-bcc1: done only from the row's own end event (live.rows, rowStates); the positional rule drew a skipped step done
+    // t-bcc1: done only from the row's own end event (rowStates)
     const rs = (live && live.rows && live.rows[n.id]) || { state: '', runs: 0 };
     const done = !!live && !gone && !cur && (live.closed || rs.state === 'done');
     const [ncls, ntext] = text || !live || gone ? [cls, text]
