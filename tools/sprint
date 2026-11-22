@@ -1878,7 +1878,7 @@ _gate_prompt_model() {
       fi ;;
   esac
   case "$role" in speccheck) agent=canon-spec-checker ;; *) agent="canon-$role" ;; esac
-  floor="$(sed -n 's/^model:[[:space:]]*//p' "$SCRIPT_DIR/../agents/$agent.md" 2>/dev/null | head -n 1)"
+  floor="$(LC_ALL=C awk 'sub(/^model:[[:space:]]*/, "") { print; exit }' "$SCRIPT_DIR/../agents/$agent.md" 2>/dev/null || true)"
   printf '\t%s\n' "${floor:-claude-sonnet-5} (definition floor)"
 }
 
@@ -1894,7 +1894,7 @@ cmd_gate_prompt() {
   [[ -f "$tdir/ticket.md" && -f "$tdir/plan.md" ]] || { echo "gate-prompt: no ticket $id with a plan.md here." >&2; echo "$usage" >&2; exit 1; }
   tdir="$(cd "$tdir" && pwd -P)"; root="$(cd "$(project_root)" && pwd -P)"
   branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-  title="$(sed -n 's/^# //p' "$tdir/ticket.md" | head -n 1)"
+  title="$(LC_ALL=C awk 'sub(/^# /, "") { print; exit }' "$tdir/ticket.md" 2>/dev/null || true)"
   harness="$(_report_harness)"
   case "$role" in
     speccheck) file=spec-check.md name=spec-review.md marker="# Spec check: $id" label="advisory spec checker" ;;
