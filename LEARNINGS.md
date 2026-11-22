@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-21-2026 18:25
+learnings-sweep last run: 11-21-2026 19:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-22 | [t-2986](.tickets/t-2986/learnings.md) | A Copilot reader matched paths in prompt text by literal "/": Windows writes `\`, so normalise separators through the one path rule (SlashSeparators) and make a refusal name the failed check, or a matcher miss reads as "dispatch again" | UNPROMOTED |
 | 2026-11-22 | [t-0829](.tickets/t-0829/learnings.md) | A new Go package must be added to scripts/test.sh go_board and to the release suites' fixture repos as well as tools/src-key.sh, or its tests never run and src-key fails in the fixtures | UNPROMOTED |
 | 2026-11-21 | [t-4084](.tickets/t-4084/learnings.md) | A fallback that can write is no fallback for a read-only gate: accepting general-purpose let the session author its own report; and run a harness integration live before the design settles | UNPROMOTED |
 | 2026-11-21 | [t-e85f](.tickets/t-e85f/learnings.md) | Price a sprint by cache reads too: canon re-read 42x plain's cached tokens (turns x context growth, ~45% of cost); fresh-token shares alone pointed at the wrong lever | UNPROMOTED |
