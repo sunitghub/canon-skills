@@ -164,7 +164,7 @@ mkdir -p "$leak_host/scripts"
 git -C "$leak_host" init -q
 cat > "$leak_host/scripts/test.sh" <<'EOF'
 #!/usr/bin/env bash
-env | grep -E '^GIT_(DIR|INDEX_FILE|WORK_TREE|PREFIX)=' > "$LEAK_OUT" || true
+env | grep -E '^GIT_(DIR|INDEX_FILE|WORK_TREE|PREFIX|AUTHOR_NAME|AUTHOR_EMAIL|AUTHOR_DATE)=' > "$LEAK_OUT" || true
 t="$(mktemp -d)" && cd "$t" || exit 1
 trap 'cd / && rm -rf "$t"' EXIT
 git init -q
