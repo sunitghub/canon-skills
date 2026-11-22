@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-11-22
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Added: `sprint complete` records a `step.cost` event for each Sprint progress step (plan, build, wrapup, security-review, close) with calls, tokens, tool calls by name, user turns, the step's context floor and growth, models, minutes, an estimated $ from Admin > Model tiers prices and the tools your Claude Code `permissions.deny` lists; `gate.cost` gains the same fields, and `sprint token-spend` prints a `Cost per step` table (t-0abe).
+- Fixed: `sprint token-spend` ends planning at the first plan approval and starts the close at `close.started`, so a re-approval at close no longer reads implementation as 0 and the inline Wrapup gates count as close, not build: close shares read higher than in earlier releases (t-0abe).
+
 ## [0.79.0] - 2026-11-22
 
 - Added: `sprint start` and `sprint pre-gate-check` (the close's first command) print `[sprint] Session context: <N>k tokens; every step re-reads it.` when the Claude Code session already holds over 150k tokens, with the cheaper path: `/clear`, then `sprint continue <id>`. `sprint continue` now points at the close checklist once the build is done (t-ec24).
