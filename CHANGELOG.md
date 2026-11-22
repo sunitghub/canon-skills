@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-11-22
+
+- Added: `sprint start` prints the run's preset and models in one line (`Models (<preset or Custom> · <agent>): Plan … · Second eval …`), the preset matched as Admin > Model tiers shows it (new `canon-go model-summary`); a ticket's own model lines show "(ticket)", and `sprint approve` prints it again. It records `run_preset`, `run_agent` and `run_pipeline` on the ticket and in `sprint.started` (`run_preset_build` at approve when the preset changed), so cost can be grouped by setup (t-2a21).
+- Fixed: under Copilot CLI outside the Cockpit, `sprint approve`'s Build model line named Claude Code's pick. The board binary changed: run `canon update` (t-2a21).
+
 ## [0.76.0] - 2026-11-22
 
 - Changed: under Copilot CLI, `sprint token-spend` and the close's cost line read only the Copilot sessions written since the oldest sprint they show or record, instead of every session since the oldest sprint in the whole activity log, so a close reads its own sprint's sessions. Gate runs keep their attribution by the usage record's `agentId`, and Copilot's per-message classifier events (`model.*`) are never counted. The board binary changed: run `canon update` (t-4fc7).
