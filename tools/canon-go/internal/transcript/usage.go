@@ -70,7 +70,9 @@ type Assistant struct {
 	HasUsage bool
 	// the message's usage: In is input_tokens (fresh, not cached)
 	In, CacheWrite, CacheRead, Out int64
+	CacheWrite5m, CacheWrite1h     int64    // t-0abe: the cache write's TTL split, when the usage has one (0, 0 otherwise)
 	ToolUses                       []string // the id of each tool_use block
+	ToolNames                      []string // t-0abe: each tool_use block's name, in ToolUses' order
 }
 
 // Context is the call's whole context: fresh input plus the cache tokens it wrote and read.
@@ -89,6 +91,10 @@ type assistantLine struct {
 			Create int64 `json:"cache_creation_input_tokens"`
 			Read   int64 `json:"cache_read_input_tokens"`
 			Out    int64 `json:"output_tokens"`
+			Split  struct {
+				M5 int64 `json:"ephemeral_5m_input_tokens"`
+				H1 int64 `json:"ephemeral_1h_input_tokens"`
+			} `json:"cache_creation"`
 		} `json:"usage"`
 	} `json:"message"`
 }
@@ -122,16 +128,67 @@ func ParseAssistant(raw []byte) (Assistant, bool) {
 	}
 	if u := l.Message.Usage; u != nil {
 		a.HasUsage, a.In, a.CacheWrite, a.CacheRead, a.Out = true, u.In, u.Create, u.Read, u.Out
+		a.CacheWrite5m, a.CacheWrite1h = u.Split.M5, u.Split.H1
 	}
 	var blocks []struct {
 		Type string `json:"type"`
 		ID   string `json:"id"`
+		Name string `json:"name"`
 	}
 	_ = json.Unmarshal(l.Message.Content, &blocks) // a string or absent content has no blocks
 	for _, b := range blocks {
 		if b.Type == "tool_use" {
 			a.ToolUses = append(a.ToolUses, b.ID)
+			a.ToolNames = append(a.ToolNames, b.Name)
 		}
 	}
 	return a, true
+}
+
+// User is the part of one Claude Code user line that token accounting needs (t-0abe): Prompt is true for something the person
+// sent (string content, or a text block and no tool_result); a tool result, a meta line or a sidechain line is not a prompt.
+type User struct {
+	TS, CWD string
+	Prompt  bool
+}
+
+// ParseUser decodes one transcript line; ok is false for a line that is not JSON or not a user line.
+func ParseUser(raw []byte) (User, bool) {
+	var l struct {
+		Type      string          `json:"type"`
+		Timestamp string          `json:"timestamp"`
+		CWD       json.RawMessage `json:"cwd"`
+		IsMeta    bool            `json:"isMeta"`
+		Sidechain bool            `json:"isSidechain"`
+		Message   struct {
+			Content json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(raw, &l) != nil || l.Type != "user" {
+		return User{}, false
+	}
+	u := User{TS: l.Timestamp}
+	if c := l.CWD; len(c) >= 2 && c[0] == '"' && c[len(c)-1] == '"' {
+		u.CWD = string(c[1 : len(c)-1])
+	}
+	if l.IsMeta || l.Sidechain {
+		return u, true
+	}
+	if c := bytes.TrimSpace(l.Message.Content); len(c) > 0 && c[0] == '"' {
+		u.Prompt = true
+		return u, true
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+	}
+	_ = json.Unmarshal(l.Message.Content, &blocks)
+	text := false
+	for _, b := range blocks {
+		if b.Type == "tool_result" {
+			return u, true
+		}
+		text = text || b.Type == "text"
+	}
+	u.Prompt = text
+	return u, true
 }

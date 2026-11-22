@@ -54,7 +54,15 @@ var kinds = map[string][]field{
 		{"build_calls", 8}, {"build_input", 12}, {"build_cache_read", 12}, {"build_cache_write", 12}, {"build_output", 12}, {"build_peak", 12},
 		{"close_calls", 8}, {"close_input", 12}, {"close_cache_read", 12}, {"close_cache_write", 12}, {"close_output", 12}, {"close_peak", 12}},
 	"gate.cost": {{"ticket", 64}, {"agent_id", 64}, {"role", 16}, {"agent_type", 32}, {"model", 80},
-		{"calls", 8}, {"input", 12}, {"cache_read", 12}, {"cache_write", 12}, {"output", 12}, {"peak", 12}},
+		{"calls", 8}, {"input", 12}, {"cache_read", 12}, {"cache_write", 12}, {"output", 12}, {"peak", 12},
+		{"floor", 12}, {"growth", 12}, {"tool_calls", 8}, {"tools", 200}, {"minutes", 8}, {"cost_usd", 12}, {"unpriced", 120}, {"denied_tools", 200}},
+	// t-0abe: one per main-session step with calls (plan, build, wrapup, security-review, close), written by sprint complete. floor = the
+	// context of the first call of the step's session file; growth = peak - floor; tools = Name:count pairs, most used first; models =
+	// model:calls; cost_usd from the Admin model registry's prices (absent, with unpriced naming the models, when a model has none);
+	// denied_tools = permissions.deny's tool names (or none). A field a source cannot supply is absent.
+	"step.cost": {{"ticket", 64}, {"step", 16}, {"calls", 8}, {"input", 12}, {"cache_read", 12}, {"cache_write", 12}, {"output", 12}, {"peak", 12},
+		{"floor", 12}, {"growth", 12}, {"tool_calls", 8}, {"tools", 200}, {"user_turns", 6}, {"models", 120}, {"minutes", 8}, {"cost_usd", 12},
+		{"unpriced", 120}, {"denied_tools", 200}},
 	// t-8854: close gates and Cockpit sessions
 	"gate.started":      {{"ticket", 64}, {"role", 16}, {"attempt", 4}, {"docs", 12}},
 	"gate.finished":     {{"ticket", 64}, {"role", 16}, {"verdict", 16}, {"model", 80}, {"tokens", 12}, {"minutes", 8}, {"tier", 16}, {"agent", 32}, {"act_on", 4}}, // t-ff14: agent = the transcript's agentType; t-9113: act_on = the reviewer's Act On items
