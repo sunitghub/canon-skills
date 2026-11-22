@@ -111,7 +111,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **Manual mode — the user's testing is the evidence (t-51c6).** When `ticket.md` has `manual: true` (`tkt manual <id> on`, or the board's **Manual** chip), the user tests by hand and the gates re-test nothing. It is independent of Lite and, like Lite, only skips optional gates: never `security-review`, never the binding evaluator, never a locked row of the pipeline. `sprint check-evidence` refuses it for a high-risk plan and, in canon's own checkout, for a diff that touches a gate file or gate prompt (`scripts/integrity-list.sh`'s lists), and prints why: those keep the full close (`tkt manual <id> off`).
    - **Skipped, rows read `skipped | Manual mode`:** the advisory reviewer (step 2), the mutation sweep and the clean-clone full-suite stamp (step 3). The wrapup gates (code-simplifier, code-reviewer, doc-audit, skill-eval) still run unless the ticket is also Lite.
    - **Before the evaluator,** `sprint check-evidence <id>` must be ok, and `sprint complete` itself refuses a Manual ticket the same way (a fresh record with a passing step, work Manual mode is allowed for). It refuses with "waiting for your test" until a fresh `evidence/manual-qa.md` exists: ask the user what they tested and what they saw, record it with `sprint manual-qa`, and re-run it. Logs are not required (a stale one is a note).
-   - **The evaluator is dispatched read-only.** Its prompt says it runs and creates no tests, no mutants and no command that writes, and pastes the pre-flight output; `eval.md`'s "Manual mode" is its rule. The model is the Admin Evaluator default (Haiku when the ticket is also Lite); the stale-eval and run-id rules are unchanged.
+   - **The evaluator is dispatched read-only.** Its prompt (`sprint gate-prompt`, which adds this for a Manual ticket) says it runs and creates no tests, no mutants and no command that writes, and pastes the pre-flight output; `eval.md`'s "Manual mode" is its rule. The model is the Admin Evaluator default (Haiku when the ticket is also Lite); the stale-eval and run-id rules are unchanged.
    - **The close question reads the record back:** "Ready to close sprint `<id>`? You tested N steps (P pass) at `<sha7>`, by `<who>`. Your yes is the sign-off: this closes on your testing." Only the user's yes to that question closes it; a record an agent wrote never closes by itself.
    - `summary.md` says "closed on manual sign-off by `<who>`". Headless/CI ignores `manual` (as it ignores `demo`), and `tkt send-issue` refuses a Manual ticket: a person cannot test in the cloud.
    - **Sent with `--manual-after-merge` (t-e790, t-788f):** the cloud copy runs the full close with Manual off; after Import results and Check & merge the ticket is open here, Manual, `cloud_status: closed`. `sprint complete <id>` (or the card's **Test & close**) closes it after one local gate, the user's fresh all-pass `sprint manual-qa` record, and only when the merge commit's PR head is the graded commit plus late docs, the report has a `pass:` line and nothing but `[manual]` criteria is unchecked; it ticks those criteria citing manual-qa.md and records `close.confirmed` with `tier=manual-merged`. Anything else is refused and changes nothing.
@@ -324,7 +324,7 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
   and their `tools:` list carries `execute` (Copilot's shell) next to `Bash` (Claude Code's). Verified
   live on Windows: with `Bash` alone, the Copilot evaluator had no shell and couldn't produce a real
   run id. Copilot's `task` call needs `name` (without it Copilot refuses the call: `"name": Required`). The dispatch prompt
-  itself says "under Copilot CLI write no file; your final message is the report, first line first, nothing after the verdict":
+  (`sprint gate-prompt <id> <role>`, t-63c6: pass it verbatim) itself says "under Copilot CLI write no file; your final message is the report, first line first, nothing after the verdict":
   the gate has a shell, and on the Windows VM a reviewer tried to write its report through it although review.md said not to
   (t-2986). `sprint relay-report` takes no input: it reads Copilot's own session record, so never pipe or type the report into it.
   When it refuses, its message names the check that failed; fix that before dispatching again.
@@ -379,8 +379,8 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
 4. Each subagent records its model designation in its report — the exact value applied above
    (an explicit `Gate model:` value, the gate's Admin Reviewer or Evaluator default as `<alias> (<id>)`, or the exact
    session model id, e.g. `claude-sonnet-5`), never a paraphrase — same value as the Wrapup
-   Gates table's `(model: <model> — <source>)` suffix. **The orchestrator MUST
-   state that model designation in each gate's dispatch prompt (its Inputs)**, because the
+   Gates table's `(model: <model> — <source>)` suffix. **Each gate's dispatch prompt
+   states that model designation** (`sprint gate-prompt` prints it; pass the prompt verbatim, t-63c6), because the
    report-body `Model:` line is a HARD RULE the CLI enforces at close
    (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
    `review-notes.md` exists) — t-072d.
@@ -414,7 +414,7 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
    this way (`sprint relay-report` takes no input: never pipe or type the report into it); the close checks eval-report.md against Copilot's session record (t-4084). Never compose a report from a bare verdict. For the evaluator, never write or edit
    `evaluator-run-id` yourself (live-reproduced on Windows/Haiku: an orchestrator wrote its own
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
-   lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
+   lacks a `sprint run-id`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator
    with the same `subagent_type`.
 
    **A gate that reports plan mode** (it says plan mode stopped it from running or writing; observed in a Claude
@@ -502,7 +502,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    `.claude/agents`: `sprint start` warns about those, t-ff14), re-dispatch once with
    `subagent_type: "Plan"`, which also excludes Edit, Write and Agent. It returns its report;
    `sprint relay-report <id>` (mechanics rule 6) writes it. Append `(fallback: Plan)` to that gate's
-   Wrapup Gates reason, so the missing effort setting is visible, never silent. Prompt must instruct it to:
+   Wrapup Gates reason, so the missing effort setting is visible, never silent. Prompt: `sprint gate-prompt <id> reviewer`'s
+   output, verbatim (t-63c6); it instructs it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
@@ -573,8 +574,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Pass
    `subagent_type: "canon-evaluator"` (`agents/canon-evaluator.md`), with the same `model`
-   override, rationale and `(fallback: Plan)` rule as the reviewer gate above. Prompt
-   must instruct it to:
+   override, rationale and `(fallback: Plan)` rule as the reviewer gate above. Prompt:
+   `sprint gate-prompt <id> evaluator`'s output, verbatim (t-63c6); it instructs it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Record its model designation per the shared gate mechanics above
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
@@ -604,7 +605,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
 
    **Log the subagent run.** Immediately after the evaluator subagent completes (and after `sprint gate-snapshot post`, step 7), read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
-   trusting it, verify it's genuine:** run `date +%s` yourself and diff against the run-id's
+   trusting it, verify it's genuine:** run `sprint run-id` yourself and diff its first field against the run-id's
    embedded epoch (the number before the `-`). **What this measures (t-a29b):** `eval.md` step 8
    re-stamps this id immediately before writing the rest of the report — as late in the
    evaluator's run as possible — specifically so this diff reflects time since the evaluator
@@ -670,9 +671,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    **Second evaluator (advisory, opt-in, t-864c).** After the binding evaluator passes (and its row is written), run `sprint second-eval
    <id>`. It prints `skip: <reason>` (no Second eval model in Admin > Model tiers for the agent: Off is the default; `Second eval: off` on
    the Sign-off line; not high-risk without `Second eval: on`), or the model to use: never the Evaluator's (Admin refuses that pick) and
-   never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more exactly as the binding
-   evaluator (`sprint gate-snapshot pre … --role evaluator2`, `canon-evaluator`, the same prompt and `sprint check-evidence` output, except that every mention of the report
-   file names `.tickets/<id>/eval-report-2.md` instead), on that model, telling it its report file is the absolute `eval-report-2.md` path that `pre --role evaluator2` printed (eval.md: a named report file replaces `eval-report.md`
+   never the ticket's `Gate model:`. Skipped: nothing more, and no row is needed. Otherwise dispatch once more as the binding
+   evaluator (`sprint gate-snapshot pre … --role evaluator2`, `canon-evaluator`, on that model) with `sprint gate-prompt <id> evaluator2`'s output
+   verbatim: it names `.tickets/<id>/eval-report-2.md` as the report (eval.md: a named report file replaces `eval-report.md`
    everywhere, so the binding report and its run-id are never touched); then `sprint gate-snapshot post …` and `sprint subagent-log --agent-id
    <its run-id> --agent-type evaluator2` with the cost flags. Run `sprint eval-compare <id>`: it lists each Criteria or Test Plan row whose
    grade differs (or that only one report has) and ends `Disagreements: <n>`. Show every difference to the user, who decides (fix it, or

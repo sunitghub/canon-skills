@@ -696,7 +696,7 @@ _gate_eval_report_authentic() {
     return 1
   fi
   if [[ ! "$run_epoch" =~ ^[0-9]+$ ]]; then
-    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'date +%s'/'\$RANDOM', never uuidgen/PowerShell."
+    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'sprint run-id'."
     _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
@@ -1717,13 +1717,14 @@ cmd_check_evidence() {
 # check still verifies the evaluator's report against that same transcript. Refuses when no transcript holds it.
 cmd_relay_report() {
   local id="${1:-}" role="${2:-evaluator}" tdir cfg marker proto agents dest f meta report found=""
-  [[ -n "$id" ]] || { echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer]" >&2; exit 1; }
+  [[ -n "$id" ]] || { echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]" >&2; exit 1; }
   local second=""   # t-864c: only the second evaluator's dispatch names .tickets/<id>/eval-report-2.md (eval.md names the file without a path)
   case "$role" in
     evaluator) marker="evaluator-run-id:" proto="reference/eval.md" agents="canon-evaluator|Plan" dest="eval-report.md" ;;
     evaluator2) marker="evaluator-run-id:" proto="reference/eval.md" agents="canon-evaluator|Plan" dest="eval-report-2.md" ;;
     reviewer)  marker="# Review Notes"    proto="reference/review.md" agents="canon-reviewer|Plan" dest="review-notes.md" ;;
-    *) echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer]" >&2; exit 1 ;;
+    speccheck) marker="# Spec check:"     proto="reference/spec-check.md" agents="canon-spec-checker|Plan" dest="spec-review.md" ;;   # t-63c6
+    *) echo "Usage: sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]" >&2; exit 1 ;;
   esac
   tdir="$(ticket_dir_for "$id")"
   [[ -d "$tdir" ]] || { echo "relay-report: no ticket folder for $id" >&2; exit 1; }
@@ -1762,7 +1763,7 @@ _relay_report_copilot() {
   local id="$1" role="$2" tdir="$3" proto="$4" marker="$5" dest="$6" bin chome agent report why rc=0 errf
   local -a extra=()
   chome="${COPILOT_HOME:-${HOME:-}/.copilot}"
-  case "$role" in reviewer) agent=canon-reviewer ;; evaluator2) agent=canon-evaluator; extra=(--second) ;; *) agent=canon-evaluator ;; esac
+  case "$role" in reviewer) agent=canon-reviewer ;; speccheck) agent=canon-spec-checker ;; evaluator2) agent=canon-evaluator; extra=(--second) ;; *) agent=canon-evaluator ;; esac
   bin="$(_copilot_report_bin)"
   [[ -n "$bin" ]] || { echo "relay-report: the installed board binary predates copilot-report; run 'canon update' (or build the board), then retry" >&2; exit 1; }
   errf="$(mktemp)" || exit 1
@@ -1835,6 +1836,114 @@ cmd_gate_model() {
     echo "none: omit model (Admin's $label pick $m has no alias the Agent tool takes)"; return 0
   fi
   echo "model: $m (Admin $label default, $agent)"
+}
+
+# sprint run-id — t-63c6: an evaluator run-id, `<epoch-seconds>-<number>`, the shape the close checks. One command for every harness: a
+# Copilot gate's shell on Windows is PowerShell, where `date +%s` is Get-Date and `bash -c` may be the WSL stub; `sprint` itself runs in
+# Git Bash through its .cmd shim.
+cmd_run_id() { printf '%s-%s\n' "$(date +%s)" "$RANDOM"; }
+
+# _copilot_model_id <alias> — complete.md "Copilot CLI dispatch": Copilot rejects Claude Code's aliases, so a Sign-off or Lite alias is
+# named by Copilot's id; anything else (already an id) is unchanged.
+_copilot_model_id() {
+  case "$1" in sonnet) echo claude-sonnet-5 ;; haiku) echo claude-haiku-4.5 ;; opus) echo claude-opus-5 ;; *) echo "$1" ;; esac
+}
+
+# _gate_prompt_model <id> <role> — "<model to pass, or empty>\t<Model: line text>" for the gate. Always a Model line (t-072d refuses a
+# report without one): Admin's pick; a ticket rule resolved here (the Sign-off's Gate model, or the Lite evaluator's Haiku); else the
+# agent file's floor, passed as no model. evaluator2 takes `sprint second-eval`'s model and fails when it says skip.
+_gate_prompt_model() {
+  local id="$1" role="$2" tdir plan line v agent floor
+  tdir="$(ticket_dir_for "$id")"; plan="$tdir/plan.md"; agent="$(_gate_agent)"
+  if [[ "$role" == evaluator2 ]]; then
+    line="$(cmd_second_eval "$id")" || return 1
+    [[ "$line" != skip:* ]] || { echo "gate-prompt: no second evaluator for $id (sprint second-eval: $line)" >&2; return 1; }
+    printf '%s\t%s\n' "$line" "$line (Admin Second eval default, $agent)"; return 0
+  fi
+  line="$(cmd_gate_model "$id" "$role")" || return 1
+  case "$line" in
+    "model: "*) v="${line#model: }"; printf '%s\t%s\n' "${v%% *}" "$v"; return 0 ;;
+    "ticket rule: "*)
+      v="$(signoff_model_parse "$plan" gate 2>/dev/null)"
+      if [[ -n "$v" ]]; then
+        if [[ "$v" == openai:* ]]; then v="${v#openai:}"; printf '%s\t%s\n' "$v" "$v (Gate model override, OpenAI)"; return 0; fi
+        v="$(signoff_model_resolve "$plan" gate 2>/dev/null)"
+        if [[ -n "$v" ]]; then
+          [[ "$agent" != copilot ]] || v="$(_copilot_model_id "$v")"
+          printf '%s\t%s\n' "$v" "$v (Gate model override)"; return 0
+        fi
+      else   # the Lite evaluator (gate-model's other ticket rule)
+        v=haiku; [[ "$agent" != copilot ]] || v="$(_copilot_model_id haiku)"
+        printf '%s\t%s\n' "$v" "$v (Lite evaluator)"; return 0
+      fi ;;
+  esac
+  case "$role" in speccheck) agent=canon-spec-checker ;; *) agent="canon-$role" ;; esac
+  floor="$(sed -n 's/^model:[[:space:]]*//p' "$SCRIPT_DIR/../agents/$agent.md" 2>/dev/null | head -n 1)"
+  printf '\t%s\n' "${floor:-claude-sonnet-5} (definition floor)"
+}
+
+# sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2> — t-63c6: the gate's whole dispatch prompt, printed by canon so the
+# session passes it verbatim. On the Windows Copilot run (t-pnu4) a session-written prompt lost a different protocol input each time (the
+# report heading, the verdict line, the Model line), and each loss cost a full gate run. The protocol file owns the report's shape: the
+# prompt names it and the report's first line only. stdout is the prompt; stderr is the dispatch line and the step after the gate.
+cmd_gate_prompt() {
+  local id="${1:-}" role="${2:-}" tdir root branch title harness file name marker label m mline proto ev rc=0
+  local usage="Usage: sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
+  [[ -n "$id" && "$role" =~ ^(speccheck|reviewer|evaluator|evaluator2)$ ]] || { echo "$usage" >&2; exit 1; }
+  tdir="$(ticket_dir_for "$id")"
+  [[ -f "$tdir/ticket.md" && -f "$tdir/plan.md" ]] || { echo "gate-prompt: no ticket $id with a plan.md here." >&2; echo "$usage" >&2; exit 1; }
+  tdir="$(cd "$tdir" && pwd -P)"; root="$(cd "$(project_root)" && pwd -P)"
+  branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  title="$(sed -n 's/^# //p' "$tdir/ticket.md" | head -n 1)"
+  harness="$(_report_harness)"
+  case "$role" in
+    speccheck) file=spec-check.md name=spec-review.md marker="# Spec check: $id" label="advisory spec checker" ;;
+    reviewer) file=review.md name=review-notes.md marker="# Review Notes" label="advisory reviewer" ;;
+    evaluator) file=eval.md name=eval-report.md marker="evaluator-run-id:" label="binding evaluator" ;;
+    evaluator2) file=eval.md name=eval-report-2.md marker="evaluator-run-id:" label="second evaluator" ;;
+  esac
+  if [[ -f "$root/skills/sprint/reference/$file" ]]; then proto="skills/sprint/reference/$file"
+  elif [[ "$harness" == copilot ]]; then proto=".agents/skills/sprint/reference/$file"
+  else proto=".claude/skills/sprint/reference/$file"; fi
+  m="$(_gate_prompt_model "$id" "$role")" || exit 1
+  mline="${m#*$'\t'}"; m="${m%%$'\t'*}"
+  if [[ "$role" == evaluator || "$role" == evaluator2 ]]; then
+    ev="$(cmd_check_evidence "$id" 2>&1)" || rc=$?
+    if (( rc != 0 )); then
+      echo "gate-prompt: sprint check-evidence $id refuses, so the evaluator must not run yet; fix what it names, then run gate-prompt again:" >&2
+      printf '%s\n' "$ev" >&2
+      exit 1
+    fi
+  fi
+  echo "You are canon's $label for ticket $id ($title). Repo: $root, branch $branch."
+  echo
+  echo "Follow $proto for this ticket."
+  echo "Put this Model line in your report as given:"
+  echo "Model: $mline"
+  echo
+  if [[ "$harness" == copilot ]]; then
+    [[ "$role" != evaluator2 ]] || echo "You are the second evaluator: your report is .tickets/$id/eval-report-2.md."
+    echo "Under Copilot CLI write no file: your final message is the whole report, from its first line (\`$marker\`) to the end, nothing after it."
+  else
+    echo "Write your report to $tdir/$name and return its verdict line."
+  fi
+  echo "You are read-only except that report. Never kill a process by name or pattern. Run every test, mutant and probe only in a scratch copy, with HOME, CANON_HOME, TMPDIR and XDG_CONFIG_HOME pinned for any canon command you run there."
+  if [[ "$role" == evaluator* && "$(get_field "$tdir/ticket.md" manual 2>/dev/null)" == true ]]; then   # complete.md "Manual mode"
+    echo "Manual mode: the user's recorded testing is the evidence. Run and create no tests, no mutants and no command that writes; eval.md \"Manual mode\" is your rule."
+  fi
+  if [[ -n "${ev:-}" ]]; then
+    echo
+    echo "\`sprint check-evidence $id\` output (pre-flight):"
+    echo '```'
+    printf '%s\n' "$ev"
+    echo '```'
+  fi
+  local agent=canon-$role; [[ "$role" != speccheck ]] || agent=canon-spec-checker; [[ "$role" != evaluator2 ]] || agent=canon-evaluator
+  if [[ -n "$m" ]]; then echo "gate-prompt: dispatch $agent with model: $m; pass the prompt above verbatim" >&2
+  else echo "gate-prompt: dispatch $agent with no model (its definition floor); pass the prompt above verbatim" >&2; fi
+  if [[ "$harness" == copilot ]]; then
+    echo "gate-prompt: Copilot's task call needs name; when the gate returns: sprint relay-report $id $role" >&2
+  fi
 }
 
 # sprint second-eval <id> — t-864c: the model the second evaluator runs on, or `skip: <reason>` (always exit 0). It needs Admin's Second
@@ -2418,7 +2527,10 @@ Usage:
   sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
                             eval_fail_count (internal — called by complete.md
                             step 3, not run directly)
-  sprint relay-report <id> [evaluator|reviewer]  Copy a read-only (Plan) gate's report
+  sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>  A gate's whole dispatch prompt;
+                            pass it verbatim (stderr: the model and the step after) (t-63c6)
+  sprint run-id             An evaluator run-id, <epoch-seconds>-<number> (t-63c6)
+  sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]  Copy a read-only (Plan) gate's report
                             from the harness transcript into its file, byte for byte
                             (the main session never types a gate report)
   sprint check-review-notes <id>  Check review-notes.md's shape with the same rule
@@ -2476,6 +2588,8 @@ main() {
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
     gate-model) cmd_gate_model "$@" ;;
+    gate-prompt) cmd_gate_prompt "$@" ;;
+    run-id) cmd_run_id ;;
     second-eval) cmd_second_eval "$@" ;;
     eval-compare) cmd_eval_compare "$@" ;;
     relay-report) cmd_relay_report "$@" ;;

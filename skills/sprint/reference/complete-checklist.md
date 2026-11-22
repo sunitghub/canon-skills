@@ -36,7 +36,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
      (canon: `scripts/test.sh`; `--only <suite>` per complete.md).
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
-   - Line 1 `evaluator-run-id: <epoch>-<n>`: run `date +%s`; skew over 300 s → discard, re-dispatch.
+   - Line 1 `evaluator-run-id: <epoch>-<n>`: run `sprint run-id`; skew over 300 s → discard, re-dispatch.
    - `sprint subagent-log --agent-id <run-id> --agent-type evaluator` + cost flags, `--model`, then `sprint eval-verdict <id>`.
    - `fail`, `partial` or `not-run`: surface it, stop. A tracked change after grading needs a fresh
      evaluator (`graded-head:`), except the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF).
@@ -55,15 +55,9 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Gate dispatch inputs
 
-- **Model:** pass the model `sprint gate-snapshot pre` printed (`sprint gate-model <id> <role>` repeats
-  it). `ticket rule:` (a `Gate model:` line, `session` = your alias; a Lite evaluator): complete.md "Model tier for
-  gates". `none:`: omit `model` (floor `claude-sonnet-5`). Name it `<alias> (<id>)`. Source: `Gate model override`,
-  `Admin Reviewer|Evaluator default`, `definition floor`.
-- **The prompt says:** ticket id, repo path and branch; follow `reference/review.md` (reviewer) or
-  `reference/eval.md` (evaluator); the `Model:` designation; write
-  `pre`'s report path and return the verdict line (Copilot: write no file, nothing after the verdict); read-only except
-  that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
-  `evaluator-run-id` as the very last command. Never pass a changed-files list.
+- **Prompt and model:** `sprint gate-prompt <id> <reviewer|evaluator|evaluator2>` prints the whole prompt (protocol, `Model:`
+  line, report path or Copilot's write-no-file rule, the evaluator's check-evidence output); stderr names the `model` to pass
+  (none: omit it). Pass the prompt verbatim; add no report shape, verdict line, run-id or changed-files list of your own.
 - `Plan` fallback, Copilot gates: `sprint relay-report <id> [reviewer]` writes the report (it takes no input);
   session never types one. Copilot's `task` call needs `name`.
 

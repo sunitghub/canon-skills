@@ -27,8 +27,9 @@ in a consumer project resolve it via `.claude/skills/...` (Claude Code) or `.age
 Read-only. You may read files and run read-only commands (`grep -n`, `ls`, `git log`, `git show`). Never edit `acceptance.md`,
 `plan.md` or any tracked file, never run tests or builds (no code exists yet), never install software, and never run `canon
 update`, `skills.sh`, `install.sh`, an uninstall or the daemon with the real `HOME`/`CANON_HOME`
-(`shared-gate-protocol.md`, Pin the environment). Your one write is `.tickets/<id>/spec-review.md`; when the sandbox refuses
-it, return the full report in your response and the orchestrator saves it verbatim.
+(`shared-gate-protocol.md`, Pin the environment). Your one write is `.tickets/<id>/spec-review.md`. Under Copilot CLI (`COPILOT_CLI=1`) write no file: return the
+whole review as your final message, first line first; the orchestrator relays it with `sprint relay-report <id> speccheck`
+(t-63c6). When a sandbox refuses the write elsewhere, return it the same way and the same command relays it.
 
 ## What you check
 

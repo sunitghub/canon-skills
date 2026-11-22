@@ -1605,6 +1605,13 @@ tx_cfg="$(mktemp -d)"
   "$SPRINT" relay-report "$gid" reviewer >/dev/null
   assert_eq "# Review Notes" "$(head -1 ".tickets/$gid/review-notes.md")"
   rm -f ".tickets/$gid/review-notes.md"   # this fixture's notes lack the close's required shape; the relay is what is tested
+  # t-63c6: the spec check's review relays from its own transcript into spec-review.md; the reviewer's transcript is never taken for it
+  out="$(run_fail "$SPRINT" relay-report "$gid" speccheck)"; assert_contains "$out" "no speccheck transcript for $gid"
+  printf '{"agentType": "canon-spec-checker"}\n' > "$d/agent-sc.meta.json"
+  printf '{"type":"user","message":{"content":"Read skills/sprint/reference/spec-check.md for %s"}}\n{"type":"assistant","message":{"content":[{"type":"text","text":"# Spec check: %s\\n\\n## Verdict\\nREADY"}]}}\n' "$gid" "$gid" > "$d/agent-sc.jsonl"
+  "$SPRINT" relay-report "$gid" speccheck >/dev/null
+  assert_eq "# Spec check: $gid" "$(head -1 ".tickets/$gid/spec-review.md")"
+  rm -f ".tickets/$gid/spec-review.md"
   assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
   rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
   # (j) a symlinked projects dir is searched as well as recognised

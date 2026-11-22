@@ -38,13 +38,13 @@ names for a case that applies.
      one that repeats another, is not added. Each path, variant or theme a line names is graded alone.
      Evidence lives in `.tickets/<id>/evidence/`, written with
      `sprint evidence stamp <id> <name> -- <command>` on a clean tracked tree.
-   - A new `tests/*.sh` is added to `scripts/test.sh` in the same commit (`scripts/test.sh --list` prints its label): an unregistered file never runs, and only a close gate has caught it; t-a6d9 will lint it (t-0b89, t-014f; class: new-test-not-registered; id: P-071).
+   - A new `tests/*.sh` is added to `scripts/test.sh` in the same commit (`scripts/test.sh --list` prints its label): an unregistered file never runs (t-a6d9 will lint it; t-0b89, t-014f; class: new-test-not-registered; id: P-071).
 7. **plan.md:** `## Approach` (lean, re-read after every compaction), `## Files`, `## Decisions` (answer
    each ticket open question or write `carried forward: <question>`), and the tier with a one-line reason.
    If the project registered efficiency, name the `standards/efficiency-notes.md` sections this ticket
    touches and read only those. Name the number it moves and its target, or say why there is none.
 8. **Perspective check:** one question each as user, security and architect; put any concern in the brief.
-9. **Brief:** spec check first (`start.md` step 10; not Lite); goal; tier, reason; applicable DECISIONS
+9. **Brief:** spec check first (`start.md` step 10; not Lite; `sprint gate-prompt <id> speccheck`; Copilot: `relay-report`); goal; tier, reason; applicable DECISIONS
    entries, conflicts called out; files; impact or "normal tier — no high-risk triggers"; checkpoint;
    criteria, Test Plan verbatim; spec findings; questions answered; blockers.
 10. **Wait for explicit approval.** No code before it. Then fill `## Sign-off` (`Tier: <tier> | Risk: …`)

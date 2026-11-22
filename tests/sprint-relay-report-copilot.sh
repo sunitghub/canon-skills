@@ -140,6 +140,24 @@ assert_contains "$out" "the newest canon-reviewer task names $gid but not refere
 assert_contains "$out" "takes no input"
 drop
 
+# 5c. t-63c6: the spec check's Copilot path. A canon-spec-checker task's review relays into spec-review.md; one without the protocol names why
+gate_ticket specrelay
+session s5s p1 canon-spec-checker 'Spec check '"$gid"'. Follow .agents\skills\sprint\reference\spec-check.md.' "Here is the review.
+# Spec check: $gid
+
+## Verdict
+READY" "$now"
+assert_contains "$("$SPRINT" relay-report "$gid" speccheck)" "relay-report: wrote"
+assert_eq "$(printf '# Spec check: %s\n\n## Verdict\nREADY' "$gid")" "$(cat ".tickets/$gid/spec-review.md")" "the spec check's review relayed from its first line"
+drop; gate_ticket specnoproto
+session s5t p2 canon-spec-checker "Spec check $gid. Grade the plan." "# Spec check: $gid
+## Verdict
+READY" "$now"
+out="$(run_fail "$SPRINT" relay-report "$gid" speccheck)"
+assert_contains "$out" "the newest canon-spec-checker task names $gid but not reference/spec-check.md"
+[[ ! -f ".tickets/$gid/spec-review.md" ]] || fail "relay-report wrote a spec review from a task that did not name the protocol"
+drop
+
 # 6. an older board binary: relay refuses at once (it would take the word for a port), the close check fails open
 old="$W/old/sprint-check"; mkdir -p "$W/old"
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "usage: sprint-check <port>"; exit 0; }\nsleep 30\n' > "$old"; chmod +x "$old"

@@ -373,12 +373,29 @@ done
 for f in "$SHARED" "$ROOT/skills/sprint/reference/eval.md" "$ROOT/skills/sprint/reference/review.md"; do
   grep -qF -- 'COPILOT_CLI=1' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost the Copilot rule (write no file, return the report; t-4084, Check R)"
 done
-# ── Check S: the Copilot close's three dispatch facts (t-2986, from the Windows VM run): the task call needs `name`, relay-report takes
-# no input, and the dispatch prompt itself carries the write-no-file / nothing-after-the-verdict rule (review.md alone was ignored).
-for f in "$ROOT/skills/sprint/reference/complete-checklist.md" "$COMPLETE"; do
-  # shellcheck disable=SC2016 # the backticks are literal doc text
-  for p in '`task` call needs `name`' 'takes no input' 'nothing after the verdict'; do
-    grep -qF -- "$p" "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} lost the Copilot dispatch fact '$p' (t-2986, Check S)"
-  done
+# ── Check S: the Copilot close's dispatch facts (t-2986, from the Windows VM run): the task call needs `name`, relay-report takes
+# no input, and the dispatch prompt carries the write-no-file / nothing-after-the-verdict rule. t-63c6: canon prints that prompt
+# (`sprint gate-prompt`; tests/sprint-gate-prompt.sh checks its wording), so the checklists name the command and complete.md keeps the facts.
+# shellcheck disable=SC2016 # the backticks are literal doc text
+for p in '`task` call needs `name`' 'takes no input' 'nothing after the verdict' 'sprint gate-prompt'; do
+  grep -qF -- "$p" "$COMPLETE" || fail "doc-mirror-parity: skills/sprint/reference/complete.md lost the Copilot dispatch fact '$p' (t-2986, t-63c6, Check S)"
 done
+# shellcheck disable=SC2016 # the backticks are literal doc text
+for p in '`task` call needs `name`' 'takes no input' 'sprint gate-prompt'; do
+  grep -qF -- "$p" "$ROOT/skills/sprint/reference/complete-checklist.md" || fail "doc-mirror-parity: complete-checklist.md lost the Copilot dispatch fact '$p' (t-2986, t-63c6, Check S)"
+done
+# ── Check T (t-63c6): the gates are dispatched with canon's printed prompt, the evaluator takes its run-id from `sprint run-id` (a
+# shell's own date fails in Copilot's PowerShell), and the spec check has the Copilot relay path.
+for f in "$ROOT/skills/sprint/reference/start-checklist.md" "$ROOT/skills/sprint/reference/start.md"; do
+  grep -qF -- 'sprint gate-prompt <id> speccheck' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} does not name 'sprint gate-prompt <id> speccheck' (t-63c6, Check T)"
+done
+grep -qF -- 'sprint relay-report <id> speccheck' "$ROOT/skills/sprint/reference/start.md" || fail "doc-mirror-parity: start.md does not name the spec check's Copilot relay (t-63c6, Check T)"
+EVAL="$ROOT/skills/sprint/reference/eval.md"
+[[ "$(grep -c 'sprint run-id' "$EVAL")" -ge 2 ]] || fail "doc-mirror-parity: eval.md lost 'sprint run-id' in steps 1 and 8 (t-63c6, Check T)"
+for f in "$EVAL" "$COMPLETE" "$ROOT/skills/sprint/reference/complete-checklist.md"; do
+  ! grep -qF -- 'date +%s' "$f" || fail "doc-mirror-parity: ${f#"$ROOT"/} tells a gate or the orchestrator to run 'date +%s' again; use 'sprint run-id' (t-63c6, Check T)"
+done
+SPEC="$ROOT/skills/sprint/reference/spec-check.md"
+{ grep -qF -- 'COPILOT_CLI=1' "$SPEC" && grep -qF -- 'sprint relay-report <id> speccheck' "$SPEC"; } || fail "doc-mirror-parity: spec-check.md lost its Copilot rule (write no file, relay-report speccheck; t-63c6, Check T)"
+! grep -qF -- 'saves it verbatim' "$SPEC" || fail "doc-mirror-parity: spec-check.md tells the orchestrator to save a report by hand again (t-63c6, Check T)"
 echo "doc-mirror-parity: ok (Copilot dispatch facts (name, no input, nothing after the verdict) and relay rule in the checklist, complete.md, shared-gate-protocol.md, eval.md and review.md; fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"

@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# sprint-gate-prompt — t-63c6: canon prints each gate's whole dispatch prompt, so a session never assembles one by hand. On the Windows
+# Copilot run (ToDo-Demo t-pnu4) a session-written prompt lost a different protocol input each time (the report heading, the verdict
+# line, the Model line) and each loss cost a full gate run. Protects `sprint gate-prompt` (every gate dispatch: protocol path per
+# harness, the Model line, the report rule, the evaluator's evidence and Manual mode, the second evaluator's report path), the line
+# `gate-snapshot.sh pre` prints naming it, `sprint run-id` (eval.md's run-id on every harness) and `sprint --help`.
+
+set -euo pipefail
+source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+
+W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"
+export CANON_GATE_SCOPE_DIR="$W/registry" CANON_HOME="$W/canon-home"
+project="$(make_project)"; project="$(cd "$project" && pwd -P)"
+cleanup() {
+  local f d
+  for f in "$CANON_GATE_SCOPE_DIR"/*; do
+    [[ -f "$f" ]] || continue
+    d="$(sed -n 's/^dir=//p' "$f")"; [[ "$d" == /*/* ]] && rm -rf "$d"
+  done
+  rm -rf "$W" "$project"
+}
+trap cleanup EXIT
+unset COCKPIT_AGENT COPILOT_CLI CLAUDECODE CANON_TICKETS_DIR
+cd "$project"
+git commit -q --allow-empty -m init
+id="$("$SPRINT" start "Gate prompts" | awk '/Sprint started:/ { print $3 }')"
+t=".tickets/$id"
+signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [x] Plan approved\n\n## Approach\nx\n' "$1" > "$t/plan.md"; }
+reg() { mkdir -p "$CANON_HOME/cockpit"; printf '%s' "$1" > "$CANON_HOME/cockpit/model-tiers.json"; }
+gp() { set +e; out="$("$SPRINT" gate-prompt "$id" "$1" 2>"$W/err")"; code=$?; err="$(cat "$W/err")"; set -e; }
+absent() { [[ "$1" != *"$2"* ]] || fail "gate-prompt: '$2' must not appear in: $1"; }
+MODELS='"models":{"anthropic":[{"id":"claude-sonnet-5-5","alias":"sonnet"},{"id":"claude-opus-5-5","alias":"opus"},{"id":"claude-haiku-5-5","alias":"haiku"}]}'
+signoff "Tier: normal | Risk: x"
+
+# 1. A consumer project under Claude Code: .claude/skills, the absolute report path, the agent file's floor when Admin has no pick
+gp reviewer
+assert_eq 0 "$code"
+assert_contains "$out" "You are canon's advisory reviewer for ticket $id (Gate prompts). Repo: $project, branch "
+assert_contains "$out" "Follow .claude/skills/sprint/reference/review.md for this ticket."
+assert_contains "$out" "
+Model: claude-sonnet-5 (definition floor)"
+assert_contains "$out" "Write your report to $project/$t/review-notes.md and return its verdict line."
+assert_contains "$out" "Never kill a process by name or pattern."
+assert_contains "$out" "HOME, CANON_HOME, TMPDIR and XDG_CONFIG_HOME pinned"
+assert_contains "$err" "gate-prompt: dispatch canon-reviewer with no model (its definition floor)"
+absent "$out" "Under Copilot CLI"; absent "$err" "relay-report"
+
+# 2. Admin's pick is the Model line and the model to pass; under Copilot: .agents/skills, the whole-report rule, the relay and `name`
+reg '{"defaults":{"reviewer":{"claude":"claude-opus-5-5","copilot":"claude-sonnet-5.5"},"evaluator":{"claude":"claude-sonnet-5-5","copilot":"claude-sonnet-5.5"},"speccheck":{"claude":"claude-sonnet-5-5","copilot":"claude-haiku-5.5"},"evaluator2":{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}},'"$MODELS"'}'
+gp reviewer
+assert_contains "$out" "
+Model: opus (Admin Reviewer default, claude)"
+assert_contains "$err" "gate-prompt: dispatch canon-reviewer with model: opus"
+COPILOT_CLI=1 gp speccheck
+assert_contains "$out" "You are canon's advisory spec checker for ticket $id"
+assert_contains "$out" "Follow .agents/skills/sprint/reference/spec-check.md for this ticket."
+assert_contains "$out" "
+Model: claude-haiku-5.5 (Admin Spec check default, copilot)"
+assert_contains "$out" "Under Copilot CLI write no file: your final message is the whole report, from its first line (\`# Spec check: $id\`) to the end, nothing after it."
+absent "$out" "Write your report to"
+assert_contains "$err" "Copilot's task call needs name; when the gate returns: sprint relay-report $id speccheck"
+COPILOT_CLI=1 gp reviewer
+assert_contains "$out" "from its first line (\`# Review Notes\`) to the end, nothing after it."
+
+# 3. canon's own checkout: the protocol at skills/ (whatever the harness)
+mkdir -p skills/sprint/reference && : > skills/sprint/reference/eval.md
+COPILOT_CLI=1 gp evaluator
+assert_contains "$out" "Follow skills/sprint/reference/eval.md for this ticket."
+rm -rf skills
+
+# 4. A ticket rule is resolved here, never dropped: the Sign-off's Gate model (Copilot's id under Copilot), the Lite evaluator's Haiku
+signoff "Tier: normal | Risk: x | Gate model: haiku"
+gp reviewer; assert_contains "$out" "
+Model: haiku (Gate model override)"; assert_contains "$err" "with model: haiku"
+COPILOT_CLI=1 gp evaluator; assert_contains "$out" "
+Model: claude-haiku-4.5 (Gate model override)"
+signoff "Tier: normal | Risk: x"
+"$TKT" demo "$id" on >/dev/null
+gp evaluator; assert_contains "$out" "
+Model: haiku (Lite evaluator)"
+"$TKT" demo "$id" off >/dev/null
+
+# 5. The evaluator carries check-evidence's output; a refusing check-evidence gives no prompt, exit 1 and the reason
+gp evaluator
+assert_eq 0 "$code"
+assert_contains "$out" "\`sprint check-evidence $id\` output (pre-flight):"
+assert_contains "$out" "check-evidence: no stamped logs"
+mkdir -p "$t/evidence"; printf 'HEAD %s 2026-11-22T00:00:00Z\nexit 3\n' "$(git rev-parse HEAD)" > "$t/evidence/c.log"
+gp evaluator
+assert_eq 1 "$code"; assert_eq "" "$out"
+assert_contains "$err" "gate-prompt: sprint check-evidence $id refuses"
+assert_contains "$err" "REFUSE  fresh c.log exit=3"
+rm -rf "$t/evidence"
+
+# 6. Manual mode (complete.md): the evaluator is told it is read-only; the reviewer is not
+awk 'NR == 1 || !done && /^---$/ && NR > 1 { if (NR > 1) { print "manual: true"; done = 1 } } { print }' "$t/ticket.md" > "$W/tk" && mv "$W/tk" "$t/ticket.md"
+"$SPRINT" manual-qa "$id" --by tester --step "open the app|pass" >/dev/null
+gp evaluator
+assert_eq 0 "$code"
+assert_contains "$out" "Manual mode: the user's recorded testing is the evidence. Run and create no tests, no mutants and no command that writes"
+gp reviewer; absent "$out" "Manual mode"
+sed -i.bak '/^manual: true$/d' "$t/ticket.md" && rm -f "$t/ticket.md.bak"; rm -rf "$t/evidence"
+gp evaluator; absent "$out" "Manual mode"
+
+# 7. The second evaluator: second-eval's model, eval-report-2.md named as its report (the relay tells the two apart by it); skip refuses
+signoff "Tier: normal | Risk: x | Second eval: on"
+gp evaluator2
+assert_eq 0 "$code"
+assert_contains "$out" "You are canon's second evaluator for ticket $id"
+assert_contains "$out" "
+Model: opus (Admin Second eval default, claude)"
+assert_contains "$out" "Write your report to $project/$t/eval-report-2.md"
+COPILOT_CLI=1 gp evaluator2
+assert_contains "$out" "You are the second evaluator: your report is .tickets/$id/eval-report-2.md."
+assert_contains "$out" "Under Copilot CLI write no file"
+COPILOT_CLI=1 gp evaluator; absent "$out" "eval-report-2.md"
+signoff "Tier: normal | Risk: x"
+gp evaluator2
+assert_eq 1 "$code"; assert_eq "" "$out"; assert_contains "$err" "gate-prompt: no second evaluator for $id (sprint second-eval: skip:"
+
+# 8. No prompt states a verdict line or carries a run-id value: the protocol file owns the report's shape
+for r in speccheck reviewer evaluator; do
+  for h in "" 1; do
+    COPILOT_CLI="$h" gp "$r"
+    absent "$out" "verdict:"; absent "$out" "pass:"
+    [[ ! "$out" =~ evaluator-run-id:\ *[0-9] ]] || fail "gate-prompt $r carries a run-id value: $out"
+  done
+done
+
+# 9. Refusals: an unknown role or ticket
+gp bogus; assert_eq 1 "$code"; assert_contains "$err" "Usage: sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
+set +e; out="$("$SPRINT" gate-prompt t-zzzz reviewer 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "gate-prompt: no ticket t-zzzz with a plan.md here."
+
+# 10. gate-snapshot pre names the command; sprint --help lists the new pieces; sprint run-id has the shape the close checks
+snap="$("$ROOT/tools/gate-snapshot.sh" pre "$t/gate-snapshot.txt" --role reviewer)"
+"$ROOT/tools/gate-snapshot.sh" post "$t/gate-snapshot.txt" >/dev/null
+assert_contains "$snap" "gate-snapshot: prompt: sprint gate-prompt $id reviewer (pass its output to the gate verbatim)"
+help="$("$SPRINT" --help 2>&1 || true)"
+assert_contains "$help" "sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
+assert_contains "$help" "sprint run-id"
+assert_contains "$help" "sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]"
+rid="$("$SPRINT" run-id)"
+[[ "$rid" =~ ^[0-9]{10}-[0-9]+$ ]] || fail "sprint run-id printed '$rid', not <epoch-seconds>-<number>"
+
+echo "sprint-gate-prompt: ok"

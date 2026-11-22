@@ -132,6 +132,16 @@ print_report_path() {
   echo "gate-snapshot: the gate writes its report to $tdir/$name (give the gate this absolute path)"
 }
 
+# print_gate_prompt — t-63c6: the command that prints this gate's whole dispatch prompt; the session passes its output verbatim, so no
+# protocol input (the report's first line, the Model line, the evidence) depends on the session copying it by hand.
+print_gate_prompt() {
+  local tdir
+  [[ "$role" =~ ^(reviewer|evaluator|evaluator2|speccheck)$ ]] || return 0
+  tdir="$(cd "$(dirname "$file")" 2>/dev/null && pwd -P)" || return 0
+  [[ "$(basename "$(dirname "$tdir")")" == .tickets && -f "$tdir/ticket.md" ]] || return 0
+  echo "gate-snapshot: prompt: sprint gate-prompt $(basename "$tdir") $role (pass its output to the gate verbatim)"
+}
+
 spec_docs() { cat "$(dirname "$file")/acceptance.md" "$(dirname "$file")/plan.md" 2>/dev/null | digest; }   # the two files the spec check grades
 
 if [[ "$mode" == pre ]]; then
@@ -158,6 +168,7 @@ if [[ "$mode" == pre ]]; then
   fi
   print_gate_model
   print_report_path
+  print_gate_prompt
   print_land_close_docs
   emit_gate_started
   exit 0
