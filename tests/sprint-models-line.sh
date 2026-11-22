@@ -96,7 +96,8 @@ assert_contains "$ev" '"run_agent":"pi"'
 
 # an agent name that is no plain word is never written to the ticket (it falls back to the harness read)
 id="$("$TKT" create "Odd agent" | awk '{ print $NF }')"
-COCKPIT_AGENT=$'pi\nrun_preset: x' "$SPRINT" start "$id" >/dev/null 2>&1; end "$id"
+COCKPIT_AGENT=$'pi\nrun_preset: x' "$SPRINT" start "$id" >/dev/null 2>&1 || fail "sprint start failed on a COCKPIT_AGENT with a newline"
+end "$id"
 assert_eq "claude" "$(fm "$id" run_agent)"
 grep -q '^run_preset: x' ".tickets/$id/ticket.md" && fail "COCKPIT_AGENT injected a frontmatter line"
 
