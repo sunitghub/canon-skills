@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"canon/internal/transcript"
 )
@@ -484,6 +485,90 @@ func TestTokenSpendGitBashProject(t *testing.T) {
 			if got := regexp.MustCompile(`build \(main\)\s+t-aaaa\s+1\s`).MatchString(out.String()); got != c.want {
 				t.Errorf("goos %s %v: the build call found=%v, want %v (out %q err %q)", c.goos, args, got, c.want, out.String(), errb.String())
 			}
+		}
+	}
+}
+
+// t-4fc7: Copilot's calls for the sprints token-spend shows or records. Prod path: `sprint complete`'s cost line and `sprint token-spend`
+// under Copilot. cpUse is one session.usage_record (agent "" = the main session); extra is spliced into data (the VM's accounting field).
+func cpUse(ts, agent, typ, extra string, in, out int, id string) string {
+	a := ""
+	if agent != "" {
+		a = `"agentId":"` + agent + `",`
+	}
+	return fmt.Sprintf(`{"type":"%s","data":{%s"usage":{"model":"claude-sonnet-5.5","responseModel":"claude-sonnet-5-5","inputTokens":%d,"outputTokens":%d,"cacheReadTokens":0,"cacheWriteTokens":0,"apiCallId":"%s"}},%s"timestamp":"2026-10-01T%sZ"}`, typ, extra, in, out, id, a, ts)
+}
+
+func (f *tsFix) cpSession(id string, lines ...string) string {
+	p := filepath.Join(f.cop, "session-state", id, "events.jsonl")
+	f.write(p, append([]string{fmt.Sprintf(`{"type":"session.start","data":{"context":{"cwd":"%s","gitRoot":"%s"}},"timestamp":"2026-10-01T18:00:00.000Z"}`, f.root, f.root)}, lines...)...)
+	return p
+}
+
+// (a) the scan starts at the oldest SHOWN sprint, not the oldest in the log: a session last written between an older logged sprint and
+// the shown one is not read, even with a call inside the shown window (a contrived mtime; real files are written as they grow).
+func TestTokenSpendCopilotScanWindow(t *testing.T) {
+	for _, args := range [][]string{{"--ticket", "t-cnew"}, {"--last", "1"}} {
+		for _, c := range []struct {
+			mtime string
+			want  bool
+		}{{"2026-10-01T19:30:00Z", false}, {"2026-10-01T21:00:00Z", true}} {
+			f := newTSFix(t)
+			f.events("t-cold", "18:00:00", "", "19:00:00")
+			f.events("t-cnew", "20:00:00", "", "20:30:00")
+			p := f.cpSession("s1", cpUse("20:10:00", "", "session.usage_record", "", 777, 3, "w1"))
+			at, _ := time.Parse(time.RFC3339, c.mtime)
+			if err := os.Chtimes(p, at, at); err != nil {
+				t.Fatal(err)
+			}
+			out, _ := f.run(args...)
+			if got := regexp.MustCompile(`build \(main\)\s+t-cnew\s+1\s`).MatchString(out); got != c.want {
+				t.Errorf("%v, session written %s: counted=%v want %v\n%s", args, c.mtime, got, c.want, out)
+			}
+		}
+	}
+}
+
+// (b) the shape inferred from the VM notes (Copilot 1.0.114): a subagent's usage record has a top-level agentId and
+// data.accounting.sourceSessionId. Its calls are the gate's run, never the main session's. The VM check is on t-a5fc.
+func TestTokenSpendCopilotVMShape(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-cvm1", "20:00:00", "20:06:00", "20:30:00")
+	acc := `"accounting":{"sourceSessionId":"sub-sess-1"},`
+	f.cpSession("vm",
+		`{"type":"subagent.started","data":{"toolCallId":"tc1","agentType":"canon-reviewer"},"agentId":"ag-r","timestamp":"2026-10-01T20:06:01.000Z"}`,
+		cpUse("20:05:00", "", "session.usage_record", "", 100, 1, "m1"),
+		cpUse("20:06:02", "ag-r", "session.usage_record", acc, 50, 2, "r1"),
+		cpUse("20:06:03", "ag-r", "session.usage_record", acc, 60, 3, "r2"),
+		cpUse("20:07:00", "", "session.usage_record", "", 200, 4, "m2"))
+	if _, rc := f.run("--ticket", "t-cvm1", "--record"); rc != 0 {
+		t.Fatalf("rc %d", rc)
+	}
+	ev := f.recorded()
+	if len(ev["gate.cost"]) != 1 {
+		t.Fatalf("gate.cost events: %v", ev["gate.cost"])
+	}
+	want(t, ev["gate.cost"][0], "agent_id=ag-r role=reviewer agent_type=canon-reviewer calls=2 input=110 output=5")
+	want(t, ev["sprint.cost"][0], "build_calls=1 build_input=100 close_calls=1 close_input=200 gate_runs=1")
+}
+
+// (c) the per-message classifier's model.* events are never a call, even when they carry the same usage fields as a usage record.
+func TestTokenSpendCopilotSkipsModelEvents(t *testing.T) {
+	totals := func(extra ...string) map[string]string {
+		f := newTSFix(t)
+		f.events("t-cmod", "20:00:00", "20:06:00", "20:30:00")
+		f.cpSession("s1", append([]string{cpUse("20:05:00", "", "session.usage_record", "", 100, 1, "m1")}, extra...)...)
+		if _, rc := f.run("--ticket", "t-cmod", "--record"); rc != 0 {
+			t.Fatalf("rc %d", rc)
+		}
+		return f.recorded()["sprint.cost"][0]
+	}
+	base := totals()
+	want(t, base, "build_calls=1 build_input=100") // the baseline is not empty, so the comparison below can fail
+	with := totals(cpUse("20:05:01", "", "model.call", "", 9000, 90, "x1"), cpUse("20:07:01", "", "model.classify", "", 8000, 80, "x2"))
+	for _, k := range []string{"build_calls", "build_input", "close_calls", "gate_runs", "planning", "implementation", "gates"} {
+		if base[k] != with[k] {
+			t.Errorf("%s: %q without model.* lines, %q with them", k, base[k], with[k])
 		}
 	}
 }
