@@ -5,7 +5,7 @@
 # hidden tests is contaminated, the canon arm's split reads n/a when there is no data and a sprint that never closed is incomplete,
 # and report.sh keeps only ok rows (naming the dropped ones) with $ per passing test n/a at 0 passes. Also the hidden tests against
 # baseline-3/: steps 1-2 pass and step 3 fails as shipped, and all pass once the plant is fixed. Prod path: the bench whose numbers
-# t-508e puts in the README (the cost of canon vs plain Claude Code).
+# t-508e puts in the README (the cost of canon vs plain Claude Code), and its canon-lean arm (t-8882: the lean-tools ship decision).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -124,6 +124,8 @@ row="$(bench closed canon 1)"
 assert_eq "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" "$row" "canon: closed sprint, no transcripts -> n/a split, gate runs read"
 n="$(cat "$T/n")"; w="$T/w$n"
 p1="$(cat "$T/host$n/proj-1.path")"
+norm_args() { grep -m1 "^args:" "$STUB_LOG" | sed "s|$1|PROJ|g; s|$2|WORK|g"; }
+canon_args="$(norm_args "$p1" "$w")"
 assert_eq "ok||0.2500|13|13|n/a|n/a|evaluator=900tok/3min" "$(bench two canon 1)" "canon: of two new tickets the closed one is the step's, whatever the id order"
 [[ -f "$p1/.claude/skills/sprint/SKILL.md" || -f "$p1/.agents/skills/sprint/SKILL.md" ]] || fail "canon: the sprint skill is installed in the project"
 node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.defaults)) if (v.claude && v.claude !== "claude-sonnet-5-5") { console.error(s, v.claude); process.exit(1); }' \
@@ -132,6 +134,16 @@ node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.
 [[ "$(grep -c . "$T/host$n/setup-home/.config/canon/projects" 2>/dev/null)" == 1 ]] || fail "canon: skills.sh's project list did not go to the scratch HOME"
 [[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "canon: run.sh wrote under HOME"
 assert_eq "canon	claude-sonnet-5-5	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $8 "\t" $9 }' "$T/r$n.tsv")" "the row names arm, model, entry point"
+# canon-lean (t-8882): the canon arm plus tools/lean-tools.txt's names as permissions.deny in the session settings, nothing else changed
+[[ "$(bench closed canon-lean 1)" == "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" ]] || fail "canon-lean: a closed sprint reads like canon's"
+n="$(cat "$T/n")"; lp="$(cat "$T/host$n/proj-1.path")"
+deny="$(node -e 'console.log(JSON.stringify({ permissions: { deny: require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(l => l.trim()) } }).slice(1, -1))' "$ROOT/tools/lean-tools.txt")"
+lean_args="$(norm_args "$lp" "$T/w$n")"
+[[ "$lean_args" == *",$deny}"* ]] || fail "canon-lean: the session settings deny the owner file's tools: $lean_args"
+assert_eq "$canon_args" "${lean_args/",$deny"/}" "canon-lean: the argv is canon's apart from the deny list"
+[[ "$canon_args" != *permissions* ]] || fail "canon: no deny list in the canon arm"
+[[ -f "$lp/.claude/skills/sprint/SKILL.md" || -f "$lp/.agents/skills/sprint/SKILL.md" ]] || fail "canon-lean: the sprint skill is installed"
+assert_eq "canon-lean	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $9 }' "$T/r$n.tsv")" "canon-lean: the row names its arm and canon's entry point"
 [[ "$(bench open canon 1)" == "incomplete|t-abcd never reached sprint complete|"* ]] || fail "an open sprint is incomplete"
 # a session may write its own CANON_HOME: code it plants there never runs outside the sandbox (run.sh's own commands use a second clone)
 export STUB_PLANTED="$T/planted"
@@ -146,10 +158,12 @@ assert_eq "$repo_before" "$(git -C "$ROOT" status --porcelain)" "the repo's tree
   printf 'd\tplain\t2\t1\tok\t\tc\tm\te\t1.50\t1\t1\t1\t1\t4.0\t3\t20\t24\tn/a\tn/a\tn/a\tn/a\ts\n'
   printf 'd\tplain\t3\t1\tfailed\trate limited\tc\tm\te\tn/a\tn/a\tn/a\tn/a\tn/a\t1.0\tn/a\t0\t24\tn/a\tn/a\tn/a\tn/a\tn/a\n'
   printf 'd\tcanon\t1\t1\tok\t\tc\tm\te\t2.00\t1\t1\t1\t1\t9.0\t3\t0\t24\t10k\t20k\t30k\tspeccheck=1000tok/1min;reviewer=2000tok/2min;evaluator=5000tok/3min\ts\n'
+  printf 'd\tcanon-lean\t1\t1\tok\t\tc\tm\te\t1.00\t1\t1\t1\t1\t8.0\t3\t24\t24\t5k\t6k\t7k\treviewer=4000tok/2min\ts\n'
 } > "$T/rep.tsv"
 rep="$("$B/report.sh" "$T/rep.tsv")"
 [[ "$rep" == *"| plain | 1 | 2 | 1 | 1.00 | 3.0 | 20.0 / 24 | 0.050 | n/a | n/a | n/a | n/a |"* ]] || fail "report: plain means over the 2 ok rows: $rep"
 [[ "$rep" == *"| canon | 1 | 1 | 0 | 2.00 | 9.0 | 0.0 / 24 | n/a | 10k | 20k | 30k | 3k |"* ]] || fail "report: canon split, 0 passes -> n/a: $rep"
+[[ "$rep" == *"| canon-lean | 1 | 1 | 0 | 1.00 | 8.0 | 24.0 / 24 | 0.042 | 5k | 6k | 7k | 4k |"* ]] || fail "report: canon-lean carries the canon split: $rep"
 [[ "$rep" == *"- plain run 3 step 1: failed (rate limited)"* ]] || fail "report: the dropped row is named"
 
 echo "bench-vs-plain: ok"

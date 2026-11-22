@@ -10,6 +10,7 @@ Three requests that build on each other: `step-1.md` (a Node to-do CLI), `step-2
 
 - **plain:** an empty git repo; no canon folder on PATH.
 - **canon:** the sprint skill from a scratch clone of this repo at HEAD (`CANON_HOME`), every model tier pinned to Sonnet 5.5, told to run `sprint start` through `sprint complete` with the plan approval and close confirmation given in the prompt.
+- **canon-lean** (t-8882): the canon arm with `tools/lean-tools.txt`'s tools denied in the session settings (`permissions.deny`); everything else is the same, so the gap is those tools' schemas.
 
 Both arms run `claude -p --model claude-sonnet-5-5 --setting-sources project,local`, so your own `~/.claude/CLAUDE.md` and settings stay out of both. Each session is capped at `BENCH_MAX_USD` (default 5).
 
