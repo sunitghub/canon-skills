@@ -33,6 +33,9 @@ newp; session "$(usage 0 149000 1000)"; out="$(start at)"; [[ "$out" != *"$LINE"
 newp; session "$(usage 2 60000 1500)"; out="$(start under)"; [[ "$out" != *"$LINE"* ]] || fail "printed under: $out"
 # 150001 prints (the compare is strict, not off by a thousand)
 newp; session "$(usage 1 149000 1000)"; out="$(start justover)"; assert_contains "$out" "$LINE 150k tokens"
+# a record missing a field (no cache write) still counts, and sprint start does not die on the absent field under set -e
+newp; session '{"type":"assistant","message":{"usage":{"input_tokens":5,"cache_read_input_tokens":200000}}}'
+out="$(start nofield)"; assert_contains "$out" "$LINE 200k tokens"; assert_contains "$out" "Sprint started:"
 # 3. silent with no usage record, no transcript, or outside Claude Code
 newp; session; out="$(start nousage)"; [[ "$out" != *"$LINE"* ]] || fail "printed with no assistant usage: $out"
 session "$(usage 2 400000 50000)"
