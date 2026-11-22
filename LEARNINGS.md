@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-22-2026 12:33
+learnings-sweep last run: 11-22-2026 14:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-22 | [t-bcc1](.tickets/t-bcc1/learnings.md) | A test's expected value is written out, never computed by the code under test, and an emitter check matches the emit call, not the kind's name (readers name every kind): both made t-bcc1 guards unable to fail | UNPROMOTED |
 | 2026-11-22 | [t-2a21](.tickets/t-2a21/learnings.md) | Mutants and destructive cleanup run only from a script that cds into a scratch clone and refuses any other directory: a bash one-liner run under zsh broke its chain before the cd and its `git checkout .` reverted the real tree | UNPROMOTED |
 | 2026-11-22 | [t-d826](.tickets/t-d826/learnings.md) | An advisory step a session can read past needs a mechanical reminder at the next checkpoint (approve names a skipped spec check) and its own numbered checklist step, not a clause inside another step | UNPROMOTED |
 | 2026-11-22 | [t-63c6](.tickets/t-63c6/learnings.md) | A protocol input the session must copy into a prompt by hand gets dropped (3 of 4 Copilot gate dispatches lost a heading, a verdict format or the Model line): have the tool print the whole prompt and the docs say pass it verbatim | UNPROMOTED |
