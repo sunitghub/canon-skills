@@ -266,7 +266,7 @@
     {
       "id": "economy",
       "name": "Economy",
-      "desc": "Sonnet plans, Haiku builds; the checks stay on Sonnet.",
+      "desc": "Sonnet plans, Haiku builds; the checks stay on Sonnet. Pairs with the Trimmed close pipeline (Factory > Pipeline), a separate choice.",
       "tiers": {
         "plan": "mid",
         "speccheck": "mid",

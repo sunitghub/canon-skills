@@ -18,6 +18,18 @@ The gate and step names live in one file, `skills/sprint/pipeline.yaml`, read wi
 from `complete.md`, not the wrapup pipeline, but they surface together on the board's **Wrapup Gates**
 table, so they're included here.
 
+**Pipeline templates (t-2087).** The picker in that tab's header ("Using") offers canon's default and two named templates; picking one writes its `off:` list (and canon's wrapup order) to `canon-config/pipeline.yaml`, Reset or the picker brings the default back, and any other state reads "Custom (your changes)". Neither template is the default. Each blurb says what it gives up, from canon's own closed tickets (the commands are in `.tickets/t-2087/research.md`):
+
+| Close | Spec check | Reviewer | Wrapup | Evaluator |
+|---|---|---|---|---|
+| Lite (a ticket's `demo: true`) | off | off | security-review only | kept, on Haiku |
+| Lean close (`off: [reviewer]`) | on | off | all kept | kept, its normal model |
+| Trimmed close (`off: [code-simplifier, skill-eval]`) | on | on | without code-simplifier; skill-eval off | kept, its normal model |
+| Default | on | on | all kept | kept |
+| Bugfix tier (decided from the diff at close) | on | off | kept (simplifier and doc-audit may skip) | kept |
+
+Lean close drops the gate that catches most (the reviewer said NO on 37% of its verdicts); Trimmed close drops the two that least often changed the work.
+
 **Demo mode.** When a ticket carries `demo: true` (a user-elected light-close for a live demo or a
 docs/research/UX sprint — see [`complete.md`](../skills/sprint/reference/complete.md)'s "Demo mode"),
 `sprint complete` keeps only **`security-review` + the binding `evaluator`** and skips every other

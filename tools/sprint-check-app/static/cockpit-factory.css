@@ -63,6 +63,10 @@
   .pl-head .setting-k{flex:1;min-width:200px}
   .pl-src{font-size:12px;color:var(--text-muted)}
   .pl-src b{color:var(--text)}
+  .pl-tpl-l{color:var(--text-muted)}
+  .pl-tpl{font:inherit;font-size:12px}
+  .pl-tpl-d{margin-top:4px}
+  .pl-busy .pl-tpl{pointer-events:none;opacity:.6}
   .pl-row{display:grid;grid-template-columns:54px minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;padding:7px 0;border-top:1px solid var(--border-muted)}
   .pl-row:first-child{border-top:0}
   .pl-row.sub{padding-left:22px}

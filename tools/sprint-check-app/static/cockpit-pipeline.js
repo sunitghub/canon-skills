@@ -2,7 +2,7 @@
 // the one reader) and changes it (POST /api/pipeline): switch an optional node off, move a wrapup gate with its arrows, Reset. The
 // page never builds the file: it sends an op and the board writes canon-config/pipeline.yaml from the ids the reader listed.
 // Declarations only; initPipeline() is run by cockpit-main.js with the other modules' load-time code.
-import { esc, escAttr, toast } from './cockpit-core.js';
+import { esc, escAttr, toast, cockpitConfirm } from './cockpit-core.js';
 import { getProjects } from './cockpit-projects.js';
 import { showView } from './cockpit-views.js';
 import { TAG, MODES, label, progressCardHtml, skippedBy } from './sprint-progress-card.js';
@@ -56,6 +56,7 @@ function renderEmpty() {
   $('fac-pipe-rows').innerHTML = '';
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: a card for a project that is gone must not stay
   $('fac-pipe-src').innerHTML = '';
+  $('fac-pipe-tpl-d').hidden = true;
   $('fac-pipe-reset').disabled = true;
   $('fac-pipe-yaml').textContent = '';
 }
@@ -83,6 +84,25 @@ function rowHtml(n, group) {
   return `<div class="pl-row${n.on ? '' : ' off'}${n.group === 'wrapup' ? ' sub' : ''}${sb ? ' skp' : ''}${idle ? ' idle' : ''}" data-pl-row="${escAttr(n.id)}"><span>${tag}</span><div><span class="pl-n">${esc(label(n.id))}</span>${chips}${why ? `<span class="pl-w">${esc(why)}</span>` : ''}${skipNote}${evalNote}${model}</div>${mv}${swShown}</div>`;
 }
 
+// t-2087: the header's "Using:" is the template picker. The board owns the list and what each one switches off; the page only names
+// the pick. Custom (the project's own changes) is shown, selected and disabled, only when the state matches no template.
+function tplPicker(d) {
+  const opts = (d.templates || []).map(t => `<option value="${escAttr(t.id)}"${t.id === d.template ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
+    + (d.template === '' ? '<option value="" selected disabled>Custom (your changes)</option>' : '');
+  return `<label class="pl-tpl-l" for="fac-pipe-tpl">Using</label> <select id="fac-pipe-tpl" class="pl-tpl">${opts}</select>`;
+}
+
+async function pickTemplate(sel) {
+  if (!pipeData || !pipeData.ok) return;
+  const id = sel.value, was = pipeData.template, t = (pipeData.templates || []).find(x => x.id === id);
+  if (!t || id === was) return;
+  if (was === '') {   // the project's own changes are replaced: say so first
+    const ok = await cockpitConfirm({ title: `Switch to ${t.name}?`, body: `This replaces the project's own pipeline changes in ${FILE} with ${t.name}. Reset or the picker brings canon's default back.`, okLabel: `Use ${t.name}`, focusCancel: true });
+    if (!ok) { render(pipeData); return; }   // Cancel: nothing sent, the picker shows the project's state again
+  }
+  send({ op: 'template', id }, `${t.name}: saved in ${FILE}.`, '#fac-pipe-tpl');
+}
+
 function render(d) {
   const rows = $('fac-pipe-rows'), src = $('fac-pipe-src'), reset = $('fac-pipe-reset'), yaml = $('fac-pipe-yaml'), sum = $('fac-pipe-file-sum');
   reset.disabled = !(d.can_reset && (d.changed || !d.ok));
@@ -90,17 +110,21 @@ function render(d) {
   yaml.textContent = d.exists && d.text ? d.text : 'extends: canon-default\n# a change adds only what differs, for example:\n# off: [mutation-test]\n# wrapup-order: [doc-audit, code-reviewer, code-simplifier]\n';
   sum.textContent = d.exists ? 'The file in canon-config/' : 'The file a first change would write';
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: cleared first, so an unreadable file never leaves the last project's card
+  $('fac-pipe-tpl-d').hidden = true;   // t-2087: an unreadable file shows no picker and no blurb
   if (!d.ok) {
     src.innerHTML = d.exists ? `Using: <b>${FILE}</b> (not readable)` : '';
     rows.innerHTML = `<div class="pl-row pl-err"><span></span><div><span class="pl-n">${esc(d.error || 'The pipeline could not be read.')}</span><span class="pl-w">Fix or remove ${FILE}, or press Reset to rewrite it as canon's default.</span></div><span></span><span></span></div>`;
     return;
   }
-  src.innerHTML = 'Using: ' + (d.exists ? `<b>${FILE}</b> (${d.changed ? 'your changes' : 'canon\'s default, no changes'})` : '<b>canon\'s default</b> (no project file)');
+  src.innerHTML = tplPicker(d) + (d.exists ? ` <span class="pl-file">in <b>${FILE}</b></span>` : ' <span class="pl-file">(no project file)</span>');
+  const cur = (d.templates || []).find(t => t.id === d.template);
+  $('fac-pipe-tpl-d').textContent = cur ? cur.blurb : 'Your own changes: the rows below show which gates are off and the wrapup order.';
+  $('fac-pipe-tpl-d').hidden = false;
   const group = d.nodes.filter(n => n.group === 'wrapup').map(n => n.id);
   rows.innerHTML = d.nodes.map(n => rowHtml(n, group)).join('');
   $('fac-pipe-cardprev').innerHTML = progressCardHtml(d.nodes, pipePrev);   // t-2755: the same nodes, drawn as a ticket's Sprint progress card
   if (focusAfter) {
-    const el = rows.querySelector(focusAfter);
+    const el = rows.querySelector(focusAfter) || $('fac-pipe-src').querySelector(focusAfter);   // t-2087: the picker lives in the header
     // an arrow that has reached the end is disabled now: keep focus in the row's other arrow, or the row itself
     (el && !el.disabled ? el : rows.querySelector('[data-pl-row] button:not(:disabled)'))?.focus();
     focusAfter = '';
@@ -140,6 +164,7 @@ export function initPipeline() {
   document.addEventListener('DOMContentLoaded', () => {
     $('fac-pipe-project').addEventListener('change', () => loadPipeline(false));
     $('fac-pipe-reset').addEventListener('click', () => send({ op: 'reset' }, "Reset: canon-config/pipeline.yaml now holds canon's default."));
+    $('fac-pipe-src').addEventListener('change', e => { if (e.target.id === 'fac-pipe-tpl') pickTemplate(e.target); });
     $('pipe-saved-ok').addEventListener('click', hideSaved);
     $('fac-pipe-prev').innerHTML = '<span class="pl-prev-k">Preview a ticket</span><span class="pl-prev-seg">'
       + MODES.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')

@@ -22672,6 +22672,9 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
   ];
   const wrapupIds = DEF.filter(n => n[3]).map(n => n[0]);
+  // t-2087: the board's templates (stub blurbs: the real text is pinned by the Go test); a state is a template when its off-set and order match
+  const TPL = [['canon-default', "canon's default", []], ['trimmed-close', 'Trimmed close', ['code-simplifier', 'skill-eval']], ['lean-close', 'Lean close', ['reviewer']]];
+  const tplOf = s => { if (s.wrapup.join() !== wrapupIds.join()) return ''; const off = DEF.map(n => n[0]).filter(x => s.off.has(x)).join(); const t = TPL.find(t => t[2].join() === off); return t ? t[0] : ''; };
 
   // one project's state and the routes that serve it; `log` collects every call
   function board(page, per = {}) {
@@ -22693,7 +22696,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
         return n;
       });
       const changed = s.off.size > 0 || s.wrapup.join() !== wrapupIds.join();
-      return { ok: true, file: 'canon-config/pipeline.yaml', exists: s.exists, text: s.text, can_reset: s.exists, changed, nodes, created };
+      return { ok: true, file: 'canon-config/pipeline.yaml', exists: s.exists, text: s.text, can_reset: s.exists, changed, nodes, created,
+        templates: TPL.map(([id, name]) => ({ id, name, blurb: 'blurb of ' + name })), template: tplOf(s) };
     };
     const render = s => { s.text = 'extends: canon-default\n' + (s.off.size ? `off: [${[...s.off].join(', ')}]\n` : '') + (s.wrapup.join() !== wrapupIds.join() ? `wrapup-order: [${s.wrapup.join(', ')}]\n` : ''); };
     return page.route('**/api/pipeline**', async r => {
@@ -22704,7 +22708,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
       const had = s.exists;
       if (body.op === 'toggle') { if (body.on) s.off.delete(body.id); else s.off.add(body.id); }
       else if (body.op === 'order') s.wrapup = body.wrapup;
-      else if (body.op === 'reset') { s.off = new Set(); s.wrapup = [...wrapupIds]; s.bad = ''; if (!had) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid)) }); }
+      else if (body.op === 'reset' || (body.op === 'template' && body.id === 'canon-default')) { s.off = new Set(); s.wrapup = [...wrapupIds]; s.bad = ''; if (!had) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid)) }); }
+      else if (body.op === 'template') { s.off = new Set(TPL.find(t => t[0] === body.id)[2]); s.wrapup = [...wrapupIds]; }
       s.exists = true; render(s);
       return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(view(pid, !had)) });
     }).then(() => ({ st, log, of }));
@@ -22891,7 +22896,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     const b = await board(page);
     await open(page);
     await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
-    await expect(page.locator('#fac-pipe-src')).toContainText("canon's default");
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('canon-default');
     await expect(page.locator('#fac-pipe-src')).toContainText('no project file');
     await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
     // tags
@@ -22949,7 +22954,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(dlg).toContainText('git add canon-config/pipeline.yaml');
     await expect(page.locator('#pipe-saved-ok')).toBeFocused();
     await expect(page.locator('[data-pl-row="mutation-test"]')).toHaveClass(/off/);
-    await expect(page.locator('#fac-pipe-src')).toContainText('your changes');
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('');   // t-2087: a state no template matches reads Custom
+    await expect(page.locator('#fac-pipe-tpl option:checked')).toHaveText('Custom (your changes)');
     await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
     // Escape closes it and focus goes back into the rows
     await page.keyboard.press('Escape');
@@ -23010,7 +23016,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect.poll(() => b.log[b.log.length - 1][2]).toEqual({ op: 'reset' });
     await expect(page.locator('[data-pl-row="skill-eval"]')).not.toHaveClass(/off/);
     await expect(page.locator('#fac-pipe-src')).toContainText('canon-config/pipeline.yaml');
-    await expect(page.locator('#fac-pipe-src')).toContainText('no changes');
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('canon-default');
     await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
     await expect(page.locator('#pipe-saved')).not.toHaveClass(/show/);   // Reset never opens the dialog
     await page.locator('details.pl-file summary').click();
@@ -23025,10 +23031,70 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await page.locator('#nav-factory').click(); await page.locator('#fac-tab-pipe').click();
     await expect(page.locator('#fac-pipe-rows .pl-err')).toContainText('line 2: unsupported line');
     await expect(page.locator('#fac-pipe-rows .pl-sw')).toHaveCount(0);
+    await expect(page.locator('#fac-pipe-tpl')).toHaveCount(0);   // t-2087: no picker and no blurb over a file the reader refuses
+    await expect(page.locator('#fac-pipe-tpl-d')).toBeHidden();
     await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
     await page.locator('#fac-pipe-reset').click();
     await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
     await expect(page.locator('#fac-pipe-rows .pl-err')).toHaveCount(0);
+  });
+
+  // t-2087: the header's picker. The board owns the templates; the page sends op "template" and confirms before replacing custom changes.
+  test('the template picker lists the board\'s templates and shows the chosen one\'s blurb', async ({ page }) => {
+    const b = await board(page);
+    await open(page);
+    await expect(page.locator('#fac-pipe-tpl option')).toHaveText(["canon's default", 'Trimmed close', 'Lean close']);   // no Custom on a default state
+    await expect(page.locator('#fac-pipe-tpl-d')).toHaveText("blurb of canon's default");
+    await page.locator('#fac-pipe-tpl').selectOption('lean-close');
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').map(c => c[2])).toEqual([{ op: 'template', id: 'lean-close' }]);   // from a named template: no dialog
+    await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+    await expect(page.locator('#pipe-saved')).toHaveClass(/show/);   // the first write creates the file: the saved dialog
+    await page.locator('#pipe-saved-ok').click();
+    await expect(page.locator('[data-pl-row="reviewer"]')).toHaveClass(/off/);
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('lean-close');
+    await expect(page.locator('#fac-pipe-tpl-d')).toHaveText('blurb of Lean close');
+    // the ticket preview still draws its card over the chosen template's rows
+    await page.locator('[data-pl-prev="lite"]').click();
+    await expect(page.locator('#fac-pipe-cardprev')).not.toBeEmpty();
+    await expect(page.locator('[data-pl-row="reviewer"]')).toHaveClass(/off/);
+    // back to canon's default: no dialog, op template canon-default
+    await page.locator('#fac-pipe-tpl').selectOption('canon-default');
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').length).toBe(2);
+    expect(b.log.filter(c => c[0] === 'POST')[1][2]).toEqual({ op: 'template', id: 'canon-default' });
+    await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+    await expect(page.locator('[data-pl-row="reviewer"]')).not.toHaveClass(/off/);
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('canon-default');
+  });
+
+  test('picking a template over custom changes asks first; Cancel sends nothing and puts the picker back', async ({ page }) => {
+    const b = await board(page);
+    const s = b.of('proj-a'); s.off.add('mutation-test'); s.exists = true; s.text = 'extends: canon-default\noff: [mutation-test]\n';
+    await open(page);
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('');
+    await expect(page.locator('#fac-pipe-tpl-d')).toContainText('Your own changes');
+    await page.locator('#fac-pipe-tpl').selectOption('trimmed-close');
+    await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+    await expect(page.locator('#cc-body')).toContainText("replaces the project's own pipeline changes");
+    await page.locator('#cc-cancel').click();
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('');
+    expect(b.log.filter(c => c[0] === 'POST')).toEqual([]);
+    // OK sends the template, and the rows redraw from the board's answer
+    await page.locator('#fac-pipe-tpl').selectOption('trimmed-close');
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').map(c => c[2])).toEqual([{ op: 'template', id: 'trimmed-close' }]);
+    await expect(page.locator('[data-pl-row="code-simplifier"]')).toHaveClass(/off/);
+    await expect(page.locator('[data-pl-row="skill-eval"]')).toHaveClass(/off/);
+    await expect(page.locator('[data-pl-row="mutation-test"]')).not.toHaveClass(/off/);
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('trimmed-close');
+    // from custom, canon's default asks too
+    s.off = new Set(['break-it']);
+    await page.locator('#fac-pipe-project').selectOption('proj-b'); await page.locator('#fac-pipe-project').selectOption('proj-a');
+    await expect(page.locator('#fac-pipe-tpl')).toHaveValue('');
+    await page.locator('#fac-pipe-tpl').selectOption('canon-default');
+    await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => b.log.filter(c => c[0] === 'POST').length).toBe(2);
+    expect(b.log.filter(c => c[0] === 'POST')[1][2]).toEqual({ op: 'template', id: 'canon-default' });
   });
 
   test('a refused change shows the board\'s message and redraws from the file', async ({ page }) => {
