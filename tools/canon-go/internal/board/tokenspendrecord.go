@@ -92,7 +92,7 @@ func (s *tsState) record(gateCosted, stepCosted map[string]bool) {
 	// sprint.cost (the once-guard below) never writes a step twice on its re-run.
 	for _, st := range tsSteps {
 		a, key := w.steps[st], w.ticket+"\x1c"+w.project+"\x1c"+st
-		if a == nil || a.calls == 0 || stepCosted[key] {
+		if a == nil || stepCosted[key] { // a step exists only once a call is added
 			continue
 		}
 		stepCosted[key] = true

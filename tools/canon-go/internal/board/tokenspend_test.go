@@ -549,8 +549,11 @@ func TestTokenSpendCopilotVMShape(t *testing.T) {
 	if len(ev["gate.cost"]) != 1 {
 		t.Fatalf("gate.cost events: %v", ev["gate.cost"])
 	}
-	want(t, ev["gate.cost"][0], "agent_id=ag-r role=reviewer agent_type=canon-reviewer calls=2 input=110 output=5")
+	want(t, ev["gate.cost"][0], "agent_id=ag-r role=reviewer agent_type=canon-reviewer calls=2 input=110 output=5 floor=50")
 	want(t, ev["sprint.cost"][0], "build_calls=1 build_input=100 close_calls=1 close_input=200 gate_runs=1")
+	if out, _ := f.run("--ticket", "t-cvm1"); !regexp.MustCompile(`(?m)^reviewer ag-r +t-cvm1 +2 +n/a `).MatchString(out) {
+		t.Errorf("a Copilot run's tool count is n/a (it has none):\n%s", out)
+	}
 }
 
 // (c) the per-message classifier's model.* events are never a call, even when they carry the same usage fields as a usage record.
@@ -631,6 +634,9 @@ func TestTokenSpendStampFallbackNoMinutes(t *testing.T) {
 		if st[s] == nil || st[s]["minutes"] != "" {
 			t.Errorf("%s: %v, want calls and no minutes", s, st[s])
 		}
+	}
+	if out, _ := f.run("--ticket", "t-aaaa"); !regexp.MustCompile(`(?m)^plan +t-aaaa +1 .* n/a +n/a$`).MatchString(out) {
+		t.Errorf("the table's minutes cell is n/a, not 0.0:\n%s", out)
 	}
 }
 
@@ -718,6 +724,10 @@ func TestTokenSpendToolsAndTurns(t *testing.T) {
 		tline("10:40:00", "msg_1", "toolu_1", "Bash"), // the same block again
 		tline("10:41:00", "msg_2", "toolu_3", "Bash"),
 		tline("10:42:00", "msg_3", "toolu_4", `we ird`),
+		tline("10:42:10", "msg_4", "toolu_5", "Write"), // Write outnumbers Bash: largest first, not by name
+		tline("10:42:10", "msg_4", "toolu_6", "Write"),
+		tline("10:42:10", "msg_4", "toolu_7", "Write"),
+		tline("10:42:20", "msg_5", "toolu_8", "Agent"), // ties Read at 1: by name
 		`{"type":"user","timestamp":"2026-10-01T10:39:00.000Z","cwd":"CWD","message":{"content":"build it"}}`,
 		`{"type":"user","timestamp":"2026-10-01T10:41:30.000Z","cwd":"CWD","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_3"}]}}`,
 		`{"type":"user","timestamp":"2026-10-01T10:43:00.000Z","cwd":"CWD","message":{"content":[{"type":"text","text":"and this"}]}}`,
@@ -726,7 +736,7 @@ func TestTokenSpendToolsAndTurns(t *testing.T) {
 	)
 	f.main("s2", `{"type":"user","uuid":"u-1","timestamp":"2026-10-01T10:44:00.000Z","cwd":"CWD","message":{"content":"once"}}`) // a resumed session's copy
 	f.run("--ticket", "t-aaaa", "--record")
-	want(t, f.steps()["build"], "calls=3 tool_calls=4 tools=Bash:2,Read:1 user_turns=3 models=m:3")
+	want(t, f.steps()["build"], "calls=5 tool_calls=8 tools=Write:3,Bash:2,Agent:1,Read:1 user_turns=3 models=m:5")
 }
 
 // t-0abe. Protects the floor: a step's is the first call of its session file, even one before the sprint (the session's first
@@ -766,6 +776,7 @@ func TestTokenSpendCostUSD(t *testing.T) {
 		call("10:42:00", "msg_4", "claude-x", 0, 100000, 0, 0, ""), // an unsplit write: 1.25x = $1.25
 		call("10:55:00", "msg_5", "claude-x", 1, 0, 0, 1, ""),
 		call("10:56:00", "msg_6", "unknown-model", 1, 0, 0, 1, ""), // wrapup: unpriced
+		call("10:56:30", "msg_6b", "unknown-model", 1, 0, 0, 1, ""), // named once
 		call("10:57:00", "msg_7", "claude-free", 1, 0, 0, 1, ""),   // a registry row with no price is unpriced too
 		call("10:58:00", "msg_7b", "we ird", 1, 0, 0, 1, ""),       // unpriced, not named: never an empty name in the list
 		call("11:30:00", "msg_8", "we ird", 1, 0, 0, 1, ""),        // close: unpriced, and its name is not a plain id
@@ -870,6 +881,8 @@ func TestTokenSpendStepTable(t *testing.T) {
 	out, _ := f.run("--ticket", "t-aaaa")
 	for _, re := range []string{
 		`(?m)^Cost per step \(main session\) and per subagent run`,
+		`(?m)^step / run +ticket +calls +tools +floor +peak +growth +est \$ +minutes$`,
+		`(?m)^security-review: from the reviewer's finish to its Wrapup Gates row`,
 		`(?m)^build +t-aaaa +1 +0 +1 +1 +0 +n/a +20\.0$`,
 		`(?m)^wrapup +t-aaaa +1 +0 +1 +1 +0 +n/a +10\.0$`,
 		`(?m)^reviewer rv +t-aaaa +1 +0 +3 +3 +0 +n/a +0\.0$`,
