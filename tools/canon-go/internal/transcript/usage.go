@@ -148,8 +148,8 @@ func ParseAssistant(raw []byte) (Assistant, bool) {
 // User is the part of one Claude Code user line that token accounting needs (t-0abe): Prompt is true for something the person
 // sent (string content, or a text block and no tool_result); a tool result, a meta line or a sidechain line is not a prompt.
 type User struct {
-	TS, CWD string
-	Prompt  bool
+	TS, CWD, UUID string // UUID: the line's own id, the same in a resumed session's copy of the line
+	Prompt        bool
 }
 
 // ParseUser decodes one transcript line; ok is false for a line that is not JSON or not a user line.
@@ -157,6 +157,7 @@ func ParseUser(raw []byte) (User, bool) {
 	var l struct {
 		Type      string          `json:"type"`
 		Timestamp string          `json:"timestamp"`
+		UUID      string          `json:"uuid"`
 		CWD       json.RawMessage `json:"cwd"`
 		IsMeta    bool            `json:"isMeta"`
 		Sidechain bool            `json:"isSidechain"`
@@ -167,7 +168,7 @@ func ParseUser(raw []byte) (User, bool) {
 	if json.Unmarshal(raw, &l) != nil || l.Type != "user" {
 		return User{}, false
 	}
-	u := User{TS: l.Timestamp}
+	u := User{TS: l.Timestamp, UUID: l.UUID}
 	if c := l.CWD; len(c) >= 2 && c[0] == '"' && c[len(c)-1] == '"' {
 		u.CWD = string(c[1 : len(c)-1])
 	}

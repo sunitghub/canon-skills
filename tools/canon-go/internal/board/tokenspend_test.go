@@ -692,9 +692,11 @@ func TestTokenSpendToolsAndTurns(t *testing.T) {
 		`{"type":"user","timestamp":"2026-10-01T10:41:30.000Z","cwd":"CWD","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_3"}]}}`,
 		`{"type":"user","timestamp":"2026-10-01T10:43:00.000Z","cwd":"CWD","message":{"content":[{"type":"text","text":"and this"}]}}`,
 		`{"type":"user","timestamp":"2026-10-01T10:20:00.000Z","cwd":"CWD","message":{"content":"a planning prompt"}}`,
+		`{"type":"user","uuid":"u-1","timestamp":"2026-10-01T10:44:00.000Z","cwd":"CWD","message":{"content":"once"}}`,
 	)
+	f.main("s2", `{"type":"user","uuid":"u-1","timestamp":"2026-10-01T10:44:00.000Z","cwd":"CWD","message":{"content":"once"}}`) // a resumed session's copy
 	f.run("--ticket", "t-aaaa", "--record")
-	want(t, f.steps()["build"], "calls=3 tool_calls=4 tools=Bash:2,Read:1 user_turns=2 models=m:3")
+	want(t, f.steps()["build"], "calls=3 tool_calls=4 tools=Bash:2,Read:1 user_turns=3 models=m:3")
 }
 
 // t-0abe. Protects the floor: a step's is the first call of its session file, even one before the sprint (the session's first
@@ -735,6 +737,8 @@ func TestTokenSpendCostUSD(t *testing.T) {
 		call("10:55:00", "msg_5", "claude-x", 1, 0, 0, 1, ""),
 		call("10:56:00", "msg_6", "unknown-model", 1, 0, 0, 1, ""), // wrapup: unpriced
 		call("10:57:00", "msg_7", "claude-free", 1, 0, 0, 1, ""),   // a registry row with no price is unpriced too
+		call("10:58:00", "msg_7b", "we ird", 1, 0, 0, 1, ""),       // unpriced, not named: never an empty name in the list
+		call("11:30:00", "msg_8", "we ird", 1, 0, 0, 1, ""),        // close: unpriced, and its name is not a plain id
 	)
 	f.run("--ticket", "t-aaaa", "--record")
 	st := f.steps()
@@ -742,6 +746,9 @@ func TestTokenSpendCostUSD(t *testing.T) {
 	want(t, st["build"], "cost_usd=8.5000")
 	if w := st["wrapup"]; w["cost_usd"] != "" || w["unpriced"] != "unknown-model,claude-free" {
 		t.Errorf("wrapup: %v, want no cost_usd and unpriced=unknown-model,claude-free", w)
+	}
+	if c := st["close"]; c == nil || c["cost_usd"] != "" || c["unpriced"] != "" {
+		t.Errorf("close: %v, want no cost_usd and no unpriced field (the only model is not a plain id)", c)
 	}
 	if st["plan"]["unpriced"] != "" {
 		t.Errorf("plan: %v", st["plan"])

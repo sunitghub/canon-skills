@@ -619,7 +619,8 @@ func (s *tsState) readClaude(path string, sub bool) {
 	transcript.EachLine(path, func(line []byte) {
 		if !bytes.Contains(line, []byte(`"type":"assistant"`)) {
 			if !sub && bytes.Contains(line, []byte(`"type":"user"`)) {
-				if u, ok := transcript.ParseUser(line); ok && u.Prompt {
+				if u, ok := transcript.ParseUser(line); ok && u.Prompt && (u.UUID == "" || !s.seen["u:"+u.UUID]) { // a resumed session's copy counts once
+					s.seen["u:"+u.UUID] = u.UUID != ""
 					ts := u.TS
 					if len(ts) > 19 {
 						ts = ts[:19]

@@ -33,7 +33,8 @@ type tsAgg struct {
 	floor            int64
 	firstTS, lastTS  string
 	usd              float64
-	unpriced         []string // models with tokens and no registry price: cost_usd is then absent, never a partial sum
+	noPrice          bool     // a call with tokens had a model with no registry price: cost_usd is then absent, never a partial sum
+	unpriced         []string // those models' plain ids
 	unpricedSeen     map[string]bool
 }
 
@@ -66,7 +67,8 @@ func (a *tsAgg) add(c *tsCall, p tsPrices) {
 	}
 	pr, ok := p.of(c.model)
 	if !ok {
-		if m := tsPlainOr(c.model); !a.unpricedSeen[m] {
+		a.noPrice = true
+		if m := tsPlainOr(c.model); m != "" && !a.unpricedSeen[m] {
 			a.unpricedSeen[m] = true
 			a.unpriced = append(a.unpriced, m)
 		}
@@ -79,18 +81,26 @@ func (a *tsAgg) add(c *tsCall, p tsPrices) {
 	a.usd += (float64(c.in)*pr[0] + float64(c.cr)*pr[0]*0.1 + float64(c.cw5+plain)*pr[0]*1.25 + float64(c.cw1h)*pr[0]*2 + float64(c.out)*pr[1]) / 1e6
 }
 
-// pairs is "name:n" pairs joined by commas, cut at a pair (never mid-name) to fit max bytes.
+// tsPairs is "name:n" pairs joined by commas, cut at a pair (never mid-name) to fit max bytes.
 func tsPairs(keys []string, n map[string]int64, max int) string {
+	l := make([]string, len(keys))
+	for i, k := range keys {
+		l[i] = k + ":" + strconv.FormatInt(n[k], 10)
+	}
+	return tsJoinCap(l, max)
+}
+
+// tsJoinCap joins items with commas, cut at an item to fit max bytes.
+func tsJoinCap(l []string, max int) string {
 	var b strings.Builder
-	for _, k := range keys {
-		p := k + ":" + strconv.FormatInt(n[k], 10)
+	for _, k := range l {
 		if b.Len() > 0 {
-			p = "," + p
+			k = "," + k
 		}
-		if b.Len()+len(p) > max {
+		if b.Len()+len(k) > max {
 			break
 		}
-		b.WriteString(p)
+		b.WriteString(k)
 	}
 	return b.String()
 }
@@ -128,10 +138,10 @@ func (a *tsAgg) fields(d map[string]string, denied string) {
 			d["tools"] = t
 		}
 	}
-	if len(a.unpriced) == 0 {
+	if !a.noPrice {
 		d["cost_usd"] = fmt.Sprintf("%.4f", a.usd)
-	} else {
-		d["unpriced"] = strings.Join(a.unpriced, ",")
+	} else if len(a.unpriced) > 0 {
+		d["unpriced"] = tsJoinCap(a.unpriced, 120)
 	}
 	d["denied_tools"] = denied
 }
@@ -208,22 +218,7 @@ func tsDenied(root string) string {
 		l = append(l, k)
 	}
 	sort.Strings(l)
-	return tsPairsPlain(l, 200)
-}
-
-// tsPairsPlain joins names with commas, cut at a name to fit max bytes.
-func tsPairsPlain(l []string, max int) string {
-	var b strings.Builder
-	for _, k := range l {
-		if b.Len() > 0 {
-			k = "," + k
-		}
-		if b.Len()+len(k) > max {
-			break
-		}
-		b.WriteString(k)
-	}
-	return b.String()
+	return tsJoinCap(l, 200)
 }
 
 // closeAt is where the close phase starts: the first close.started, or the first close-gate dispatch when that is earlier or there is
@@ -338,7 +333,7 @@ func (s *tsState) stepFields(w *tsWin, step string, a *tsAgg) map[string]string 
 func (a *tsAgg) runMinutes() (float64, bool) { return tsMinutes(a.firstTS, a.lastTS) }
 
 func tsUSD(a *tsAgg) string {
-	if len(a.unpriced) > 0 {
+	if a.noPrice {
 		return "n/a"
 	}
 	return fmt.Sprintf("%.2f", a.usd)

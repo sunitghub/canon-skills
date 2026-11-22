@@ -45,7 +45,7 @@ func TestParseUser(t *testing.T) {
 			t.Errorf("%s: prompt %v ok %v, want %v", line, u.Prompt, ok, want)
 		}
 	}
-	if u, ok := ParseUser([]byte(`{"type":"user","timestamp":"T","cwd":"/p","message":{"content":"x"}}`)); !ok || u.TS != "T" || u.CWD != "/p" {
+	if u, ok := ParseUser([]byte(`{"type":"user","uuid":"u-1","timestamp":"T","cwd":"/p","message":{"content":"x"}}`)); !ok || u.TS != "T" || u.CWD != "/p" || u.UUID != "u-1" {
 		t.Errorf("fields: %+v", u)
 	}
 	if _, ok := ParseUser([]byte(`{"type":"assistant","message":{"content":"x"}}`)); ok {
