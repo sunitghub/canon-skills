@@ -668,6 +668,36 @@ func TestTokenSpendStepBounds(t *testing.T) {
 	}
 }
 
+// t-0abe. Protects the step bounds when events repeat: the FIRST close.started starts wrapup, the LAST reviewer gate.finished before
+// the security-review row starts security-review (a finish after the row does not), and only a `ran` row ends it.
+func TestTokenSpendRepeatedBounds(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "10:50:00", "12:00:00")
+	f.ev("t-aaaa", "10:10:00", "plan.approved")
+	f.ev("t-aaaa", "10:40:00", "close.started")
+	f.ev("t-aaaa", "10:45:00", "close.started")
+	f.ev("t-aaaa", "10:55:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:00:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:10:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
+	f.ev("t-aaaa", "11:15:00", "gate.finished", "role", "reviewer")
+	f.ev("t-aaaa", "11:20:00", "wrapup.gate_finished", "gate", "security-review", "result", "skipped")
+	f.plan("t-aaaa", "10:10:00")
+	f.main("s1",
+		call("10:42:00", "msg_1", "m", 1, 0, 0, 0, ""), // wrapup: after the first close.started
+		call("10:57:00", "msg_2", "m", 2, 0, 0, 0, ""), // close: before the last reviewer finish
+		call("11:05:00", "msg_3", "m", 4, 0, 0, 0, ""), // security-review
+		call("11:20:00", "msg_4", "m", 8, 0, 0, 0, ""), // close: the skipped row does not end security-review
+	)
+	f.run("--ticket", "t-aaaa", "--record")
+	st := f.steps()
+	want(t, st["wrapup"], "calls=1 input=1")
+	want(t, st["security-review"], "calls=1 input=4")
+	want(t, st["close"], "calls=2 input=10")
+	if len(st) != 3 {
+		t.Errorf("steps %v", st)
+	}
+}
+
 // tline is an assistant line of one tool_use block (a later line of the same message repeats its id and usage).
 func tline(ts, msg, toolID, name string) string {
 	return fmt.Sprintf(`{"type":"assistant","message":{"model":"m","id":"%s","content":[{"type":"tool_use","id":"%s","name":"%s","input":{}}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":1}},"timestamp":"2026-10-01T%s.000Z","cwd":"CWD"}`, msg, toolID, name, ts)
@@ -789,6 +819,16 @@ func TestTokenSpendDeniedSources(t *testing.T) {
 	os.WriteFile(filepath.Join(d, ".claude", "settings.json"), []byte(`{"permissions":{"deny":["Agent"]}}`), 0o644)
 	if got := tsDenied(filepath.Join(d, "proj")); got != "Agent" {
 		t.Errorf("~/.claude: %q, want Agent", got)
+	}
+	os.MkdirAll(filepath.Join(d, "proj", ".claude"), 0o755)
+	os.WriteFile(filepath.Join(d, "proj", ".claude", "settings.local.json"), []byte(`{"permissions":`), 0o644)
+	if got := tsDenied(filepath.Join(d, "proj")); got != "unknown" {
+		t.Errorf("unparsable settings: %q, want unknown (never none or a partial list)", got)
+	}
+	os.Remove(filepath.Join(d, "proj", ".claude", "settings.local.json"))
+	os.Mkdir(filepath.Join(d, "proj", ".claude", "settings.json"), 0o755) // exists, cannot be read as a file
+	if got := tsDenied(filepath.Join(d, "proj")); got != "unknown" {
+		t.Errorf("unreadable settings: %q, want unknown", got)
 	}
 }
 

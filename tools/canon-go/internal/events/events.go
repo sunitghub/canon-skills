@@ -59,7 +59,7 @@ var kinds = map[string][]field{
 	// t-0abe: one per main-session step with calls (plan, build, wrapup, security-review, close), written by sprint complete. floor = the
 	// context of the first call of the step's session file; growth = peak - floor; tools = Name:count pairs, most used first; models =
 	// model:calls; cost_usd from the Admin model registry's prices (absent, with unpriced naming the models, when a model has none);
-	// denied_tools = permissions.deny's tool names (or none). A field a source cannot supply is absent.
+	// denied_tools = permissions.deny's tool names (none when there are none, unknown when a settings file cannot be read). A field a source cannot supply is absent.
 	"step.cost": {{"ticket", 64}, {"step", 16}, {"calls", 8}, {"input", 12}, {"cache_read", 12}, {"cache_write", 12}, {"output", 12}, {"peak", 12},
 		{"floor", 12}, {"growth", 12}, {"tool_calls", 8}, {"tools", 200}, {"user_turns", 6}, {"models", 120}, {"minutes", 8}, {"cost_usd", 12},
 		{"unpriced", 120}, {"denied_tools", 200}},

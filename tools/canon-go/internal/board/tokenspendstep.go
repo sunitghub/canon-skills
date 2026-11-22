@@ -2,8 +2,10 @@ package board
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -186,12 +188,13 @@ func tsLoadPrices() tsPrices {
 }
 
 // tsDenied is the tool names Claude Code's permissions.deny lists (user, project and local settings), read now: an approximation of
-// what the sprint's sessions ran with. Only the name before "(" is kept, as a plain id: a pattern's argument can be a path.
+// what the sprint's sessions ran with. Only the name before "(" is kept, as a plain id: a pattern's argument can be a path. A file
+// that exists but cannot be read or parsed makes it unknown: a failed read must not look like "nothing denied".
 func tsDenied(root string) string {
 	seen := map[string]bool{}
 	for _, f := range []string{filepath.Join(claudeHome(), "settings.json"), filepath.Join(root, ".claude", "settings.json"), filepath.Join(root, ".claude", "settings.local.json")} {
 		b, err := os.ReadFile(f)
-		if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		var doc struct {
@@ -199,8 +202,8 @@ func tsDenied(root string) string {
 				Deny []any `json:"deny"`
 			} `json:"permissions"`
 		}
-		if json.Unmarshal(b, &doc) != nil {
-			continue
+		if err != nil || json.Unmarshal(b, &doc) != nil {
+			return "unknown"
 		}
 		for _, v := range doc.Permissions.Deny {
 			s, _ := v.(string)
