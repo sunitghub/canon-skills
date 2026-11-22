@@ -14,7 +14,8 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 ## Steps
 
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), docs.
-   - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop.
+   - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop. A `Session context:` line: write any unrecorded deviation into
+     `plan.md`, stop, ask the user to `/clear`, then `sprint continue <id>`.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: per `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory, batched in step 2.
    - **Interim commit** (specific paths) before any gate.

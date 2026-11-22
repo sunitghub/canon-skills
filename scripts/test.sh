@@ -173,6 +173,7 @@ tests=(
   "$ROOT/tests/dead-code-scan.sh"
   "$ROOT/tests/pre-gate-check.sh"
   "$ROOT/tests/sprint-gate-agents.sh"
+  "$ROOT/tests/sprint-session-context.sh"
   "$ROOT/tests/doc-check.sh"
   "$ROOT/tests/pre-push-release.sh"
   "$ROOT/tests/secret-scan.sh"

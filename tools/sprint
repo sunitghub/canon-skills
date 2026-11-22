@@ -143,6 +143,7 @@ EOF
   fi
 
   _gate_agents_check "$root"
+  _session_context_check "$id" start
   # t-2a21: the run's setup, on the ticket and in the event, so cost can be grouped by it
   local run_agent run_summary run_preset run_pipeline
   run_agent="$(_run_agent)"
@@ -261,6 +262,29 @@ _gate_agents_check() {
   echo "  Fix: end this session and start Claude Code again in $dir$fix."
 }
 
+# _session_context_check <id> <start|close> — t-ec24: every model call re-reads the whole conversation, so a sprint run in a
+# session that already holds earlier work pays for that history on each call (t-bcc1's close: 53 calls, 22.0M cache reads
+# at a 449k peak). Over SESSION_CONTEXT_MAX tokens (the last assistant usage record's input + cache read + cache write in
+# this session's transcript, found as _gate_agents_check finds it) prints the size and the cheaper path. Advice only:
+# silent outside Claude Code, with no transcript or no usage record; never changes an exit code.
+SESSION_CONTEXT_MAX=150000
+_session_context_check() {
+  [[ -n "${CLAUDECODE:-}" && -n "${CLAUDE_CODE_SESSION_ID:-}" ]] || return 0
+  local id="$1" when="$2" cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}" t rec n=0 f v
+  t="$(find "$cfg/projects/" -maxdepth 2 -name "$CLAUDE_CODE_SESSION_ID.jsonl" -type f 2>/dev/null | head -1 || true)"
+  [[ -n "$t" ]] || return 0
+  rec="$(grep -F '"type":"assistant"' "$t" 2>/dev/null | grep -F '"usage"' | tail -1 || true)"
+  [[ -n "$rec" ]] || return 0
+  for f in input_tokens cache_read_input_tokens cache_creation_input_tokens; do
+    v="$(grep -o "\"$f\":[0-9]*" <<< "$rec" | head -1 | sed 's/.*://' || true)"
+    n=$(( n + ${v:-0} ))
+  done
+  (( n > SESSION_CONTEXT_MAX )) || return 0
+  echo "[sprint] Session context: $(( (n + 500) / 1000 ))k tokens; every step re-reads it."
+  if [[ "$when" == close ]]; then echo "  Cheaper: run /clear, then sprint continue $id, then sprint complete."
+  else echo "  Cheaper: run /clear, then sprint continue $id."; fi
+}
+
 cmd_continue() {
   local arg="${1:-}"
   [[ -z "$arg" ]] && { echo "Usage: sprint continue <ticket-id>" >&2; exit 1; }
@@ -289,6 +313,7 @@ Agent next steps:
 1. Read DECISIONS.md, HANDOFF.md, and everything in $tdir/.
 2. Find the first unchecked item in plan.md (approval) and acceptance.md.
 3. Resume from there — do not restart orientation or re-ask for plan approval already recorded.
+4. When the build is done, the next step is the close: read skills/sprint/reference/complete-checklist.md.
 EOF
 }
 
@@ -2750,7 +2775,9 @@ main() {
     token-spend) cmd_token_spend "$@" ;;
     decisions) cmd_decisions "$@" ;;
     # t-96f1: run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file association)
-    gate-snapshot|evidence|subagent-log|pre-gate-check) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
+    # t-ec24: the close's first command says when the session's history is the cost; printed here, outside the stamped log
+    pre-gate-check) [[ "${1:-}" =~ ^t-[a-z0-9]{4}$ ]] && _session_context_check "$1" close; exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
+    gate-snapshot|evidence|subagent-log) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
     base-ref) gate_base "$(worktree_root 2>/dev/null || pwd)" ;;   # t-99d2: the gates' diff base (merge-base with origin/<default branch>)
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
