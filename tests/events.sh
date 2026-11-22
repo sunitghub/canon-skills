@@ -72,7 +72,7 @@ P2="$W/proj2"; mkproj "$P2"
 (cd "$P2" && "$SPRINT" start "Sprint one" >/dev/null)
 sid="$(cd "$P2" && "$TKT" list 2>/dev/null | awk 'NR==1{print $1}')"
 assert_contains "$(events sprint.started)" "sprint.started sprint $sid"
-assert_eq "data host id kind project schema source ts | ticket | 1 16 $P2" "$(shape sprint.started sprint)"
+assert_eq "data host id kind project schema source ts | run_agent run_pipeline run_preset ticket | 1 16 $P2" "$(shape sprint.started sprint)"   # t-2a21: the run's agent, pipeline and preset
 
 # 3. the board: + New and a status move, with the same shape as tkt's
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"

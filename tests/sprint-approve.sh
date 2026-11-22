@@ -82,7 +82,7 @@ gate >/dev/null || fail "trailing spaces in Approach must not trip the plan gate
 # tools/caps.tsv); exactly 10%, no row, an absent capped file and an older board print nothing; a failed read says so.
 handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
 approve_with() { printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n\n## Files\n%s\n' "$1" > "$plan"; "$SPRINT" approve "$id"; }
-caplines() { grep -v '^Approved \|Build model' <<< "$1" || true; }   # t-3425: the Build model line is checked below
+caplines() { grep -v '^Approved \|Build model\|^Models (' <<< "$1" || true; }   # t-3425: the Build model line is checked below; t-2a21: the Models line in sprint-models-line.sh
 echo notes > notes.md
 handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
