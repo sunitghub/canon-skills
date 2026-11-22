@@ -687,6 +687,9 @@ func TestTokenSpendRepeatedBounds(t *testing.T) {
 	f.ev("t-aaaa", "11:10:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
 	f.ev("t-aaaa", "11:15:00", "gate.finished", "role", "reviewer")
 	f.ev("t-aaaa", "11:20:00", "wrapup.gate_finished", "gate", "security-review", "result", "skipped")
+	f.ev("t-aaaa", "11:25:00", "wrapup.gate_finished", "gate", "code-reviewer", "result", "ran") // another gate's row never ends it
+	f.ev("t-zzzz", "11:00:00", "gate.finished", "role", "reviewer")                              // a ticket with no window
+	f.ev("t-zzzz", "11:00:00", "wrapup.gate_finished", "gate", "security-review", "result", "ran")
 	f.plan("t-aaaa", "10:10:00")
 	f.main("s1",
 		call("10:42:00", "msg_1", "m", 1, 0, 0, 0, ""), // wrapup: after the first close.started
@@ -775,11 +778,11 @@ func TestTokenSpendCostUSD(t *testing.T) {
 		call("10:41:00", "msg_3", "zz", 0, 0, 0, 0, ""),            // no tokens: priced or not, costs nothing
 		call("10:42:00", "msg_4", "claude-x", 0, 100000, 0, 0, ""), // an unsplit write: 1.25x = $1.25
 		call("10:55:00", "msg_5", "claude-x", 1, 0, 0, 1, ""),
-		call("10:56:00", "msg_6", "unknown-model", 1, 0, 0, 1, ""), // wrapup: unpriced
+		call("10:56:00", "msg_6", "unknown-model", 1, 0, 0, 1, ""),  // wrapup: unpriced
 		call("10:56:30", "msg_6b", "unknown-model", 1, 0, 0, 1, ""), // named once
-		call("10:57:00", "msg_7", "claude-free", 1, 0, 0, 1, ""),   // a registry row with no price is unpriced too
-		call("10:58:00", "msg_7b", "we ird", 1, 0, 0, 1, ""),       // unpriced, not named: never an empty name in the list
-		call("11:30:00", "msg_8", "we ird", 1, 0, 0, 1, ""),        // close: unpriced, and its name is not a plain id
+		call("10:57:00", "msg_7", "claude-free", 1, 0, 0, 1, ""),    // a registry row with no price is unpriced too
+		call("10:58:00", "msg_7b", "we ird", 1, 0, 0, 1, ""),        // unpriced, not named: never an empty name in the list
+		call("11:30:00", "msg_8", "we ird", 1, 0, 0, 1, ""),         // close: unpriced, and its name is not a plain id
 	)
 	f.run("--ticket", "t-aaaa", "--record")
 	st := f.steps()
