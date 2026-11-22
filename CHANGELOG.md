@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-11-22
+
+- Changed: `sprint token-spend` and the close's cost record now run in the board binary, and say where the context goes. Each sprint reports, per phase (plan, build, close) for the main session and per subagent run (spec check, reviewer, evaluator), the calls, input, cache read, cache write, output and peak context, from Claude Code's transcripts and Copilot's session record. `sprint complete` writes them into the `sprint.cost` event (the old fields stay) and one new `gate.cost` event per run. The table's "gates" column is now "close", planning names its spec-check share, and the close prints `cost: <total> tokens (close <c>, <p>% — gate agents <g>), cache reads <r>, <n> gate runs`. The board binary changed: run `canon update` (t-0829, t-e200).
+- Fixed: a Copilot CLI close on Windows can finish. `sprint relay-report` and the close's report check now match a gate dispatch whose prompt names the protocol with backslashes (`.agents\skills\sprint\reference\review.md`), and read a Git Bash Copilot home (`/c/Users/...`); token-spend's paths get the same conversion. A relayed reviewer report ends at its verdict line. When no dispatch matches, the refusal names the check that failed (for example "names t-x but not reference/review.md", or "finished at …, outside the window") instead of only "dispatch again", and a missing Copilot session record is told apart. The close docs say Copilot's `task` call needs `name`, `relay-report` takes no input, and the dispatch prompt itself says to write no file. The board binary and the Cockpit daemon changed: run `canon update`, then press Admin's **Restart Daemon** (t-2986).
+
 ## [0.74.0] - 2026-11-21
 
 - Fixed: a sprint closes under Copilot CLI. Copilot gives canon's gate agents no file-write tool, so the evaluator and reviewer could not save their reports and every Copilot close stalled. The gates now return their report as their final message, `sprint relay-report` copies it byte for byte from Copilot's own session record, and `sprint complete` checks eval-report.md against that record, as it does against Claude Code's transcripts. The board binary changed: run `canon update` (t-4084).
