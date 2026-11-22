@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-21-2026 19:13
+learnings-sweep last run: 11-21-2026 19:47
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-22 | [t-4fc7](.tickets/t-4fc7/learnings.md) | A revert proof must undo every filter on the path: a byte prefilter ahead of the type check made a model.* mutant survive, so the test looked vacuous until both were widened | UNPROMOTED |
 | 2026-11-22 | [t-2986](.tickets/t-2986/learnings.md) | A Copilot reader matched paths in prompt text by literal "/": Windows writes `\`, so normalise separators through the one path rule (SlashSeparators) and make a refusal name the failed check, or a matcher miss reads as "dispatch again" | UNPROMOTED |
 | 2026-11-22 | [t-0829](.tickets/t-0829/learnings.md) | A new Go package must be added to scripts/test.sh go_board and to the release suites' fixture repos as well as tools/src-key.sh, or its tests never run and src-key fails in the fixtures | UNPROMOTED |
 | 2026-11-21 | [t-4084](.tickets/t-4084/learnings.md) | A fallback that can write is no fallback for a read-only gate: accepting general-purpose let the session author its own report; and run a harness integration live before the design settles | UNPROMOTED |
