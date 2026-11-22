@@ -174,6 +174,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
       ['gate.started', { role: 'reviewer' }], ['gate.finished', { role: 'reviewer', verdict: 'YES' }], ['gate.started', { role: 'reviewer' }]];
     h = draw(close);
     ok('a reviewer re-run after the pass leaves the Evaluator done', / done\b/.test(li(h, 'eval').slice(0, 60)), li(h, 'eval'));
+    ok('the current row is never also done, though its own end event exists (the re-run reviewer)', !/ done\b/.test(li(h, 'reviewer').slice(0, 60)), li(h, 'reviewer'));
     ok('...the Reviewer is current and says run 3', / cur\b/.test(li(h, 'reviewer').slice(0, 60)) && /title="Reviewer: Running/.test(li(h, 'reviewer')), li(h, 'reviewer'));
     ok('a wrapup row that ran is done; one skipped is "skipped", not done; one with no event is neither', / done\b/.test(li(h, 'code-simplifier').slice(0, 60))
       && !/ done\b/.test(li(h, 'doc-audit').slice(0, 60)) && li(h, 'doc-audit').includes('<span class="spc-note skip">skipped</span>')
