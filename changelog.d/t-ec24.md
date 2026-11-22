@@ -1,1 +1,0 @@
-- Added: `sprint start` and `sprint pre-gate-check` (the close's first command) print `[sprint] Session context: <N>k tokens; every step re-reads it.` when the Claude Code session already holds over 150k tokens, with the cheaper path: `/clear`, then `sprint continue <id>`. `sprint continue` now points at the close checklist once the build is done (t-ec24).

@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-11-22
+
+- Added: `sprint start` and `sprint pre-gate-check` (the close's first command) print `[sprint] Session context: <N>k tokens; every step re-reads it.` when the Claude Code session already holds over 150k tokens, with the cheaper path: `/clear`, then `sprint continue <id>`. `sprint continue` now points at the close checklist once the build is done (t-ec24).
+
 ## [0.78.0] - 2026-11-22
 
 - Fixed: the Sprint progress card ticks a step only from its own finishing event, never because a later step started. A spec check that never ran reads "not run" (it was drawn green), a skipped wrapup gate reads "skipped", a gate run more than once reads "run N", and re-running the Reviewer after the Evaluator passed no longer greys out the Evaluator (t-bcc1).
