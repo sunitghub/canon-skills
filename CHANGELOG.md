@@ -6,6 +6,14 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-11-22
+
+- Changed: under Copilot CLI, `sprint token-spend` and the close's cost line read only the Copilot sessions written since the oldest sprint they show or record, instead of every session since the oldest sprint in the whole activity log, so a close reads its own sprint's sessions. Gate runs keep their attribution by the usage record's `agentId`, and Copilot's per-message classifier events (`model.*`) are never counted. The board binary changed: run `canon update` (t-4fc7).
+- Added: `sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>` prints a gate's whole dispatch prompt (the protocol file for this harness, the `Model:` line, the report path or Copilot's write-no-file rule, the evaluator's check-evidence output, Manual mode), and on stderr the model to pass and the step after the gate. The checklists now say to pass it verbatim: on a Windows Copilot close, prompts the session wrote by hand lost the report heading, the verdict line and the Model line, and each loss cost a full gate run (t-63c6).
+- Added: `sprint run-id` prints an evaluator run-id (`<epoch-seconds>-<number>`); eval.md and the close's skew check use it, since a shell's own `date +%s` fails in Copilot's PowerShell (t-63c6).
+- Fixed: the spec check works under Copilot CLI. It returns its review as its final message and `sprint relay-report <id> speccheck` saves it into spec-review.md, as the reviewer and evaluator already did (t-63c6).
+- Changed: `sprint approve` warns on stderr when the project's pipeline runs the spec check for the ticket and `.tickets/<id>/spec-review.md` is missing, naming `sprint gate-prompt <id> speccheck` (and the Copilot relay); approval still goes through, since the spec check is advisory. The start checklist gives the spec check its own numbered step. A Windows Copilot session had presented its brief with no spec check and said so only when asked (t-d826).
+
 ## [0.75.0] - 2026-11-22
 
 - Changed: `sprint token-spend` and the close's cost record now run in the board binary, and say where the context goes. Each sprint reports, per phase (plan, build, close) for the main session and per subagent run (spec check, reviewer, evaluator), the calls, input, cache read, cache write, output and peak context, from Claude Code's transcripts and Copilot's session record. `sprint complete` writes them into the `sprint.cost` event (the old fields stay) and one new `gate.cost` event per run. The table's "gates" column is now "close", planning names its spec-check share, and the close prints `cost: <total> tokens (close <c>, <p>% — gate agents <g>), cache reads <r>, <n> gate runs`. The board binary changed: run `canon update` (t-0829, t-e200).
