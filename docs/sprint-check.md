@@ -352,10 +352,8 @@ sprint agent without leaving the browser — no second terminal.
   "continue" line did not land, a session that needs you; red pulses more slowly), green once closed, grey before the sprint
   starts; no pulse when your system asks for reduced motion. Each step that has started shows its start time on the right. A Lite
   or Manual ticket strikes through the steps its option skips. The card moves to the close when `sprint pre-gate-check` first runs.
-  A step is ticked only by its own finishing event (t-bcc1), never because a later step started: the inline wrapup gates by the
-  `sprint wrapup-row` that records their row (a skipped one reads *skipped*), a spec check that never ran reads *not run* once the plan
-  is approved, and a gate run more than once reads *run N*. `/api/v1/sprint/<id>` keeps the latest event of each kind per gate role
-  and wrapup gate, back to the ticket's newest `sprint.started`. The card is read-only: it reads only the public API (`/api/v1/pipeline`,
+  A step is ticked only by its own finishing event (t-bcc1; inline gates by `sprint wrapup-row`); it may read *skipped*, *not run*
+  or *run N*. The card is read-only: it reads only the public API (`/api/v1/pipeline`,
   `/api/v1/sprint/<id>`, `/api/v1/events`), so another tool can draw the same card, and when one of them cannot be read it says
   *Sprint progress unavailable*. It replaced the rail's STATUS box (the HANDOFF.md text): that text is in **Logbook › Handoff**.
 - **Several sessions, several agents:** one project can run more than one session at a time, and each session picks its

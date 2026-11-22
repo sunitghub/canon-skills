@@ -646,7 +646,7 @@ export async function renderCockpitProgress(t) {
   const mode = ticketMode(t);
   // t-985c: start times from the ticket's events, the snapshot's (one per kind) filling what the events window no longer holds
   const times = { ...stepStartTimes(nodes, snap, mode), ...stepStartTimes(nodes, p.events || [], mode) };
-  const rows = rowStates(nodes, [...snap, ...(p.events || [])]);   // t-bcc1: each row's own end event; the snapshot holds those the window lost
+  const rows = rowStates(nodes, [...snap, ...(p.events || [])]);   // t-bcc1
   const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times, rows };
   const html = progressCardHtml(nodes, mode, live);
   if (html !== p.html || !box.firstChild) { box.innerHTML = html; p.html = html; }   // an unchanged card is not redrawn: the pulse keeps running, a screen reader is not re-told
