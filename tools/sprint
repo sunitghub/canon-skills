@@ -276,7 +276,7 @@ _session_context_check() {
   rec="$(grep -F '"type":"assistant"' "$t" 2>/dev/null | grep -F '"usage"' | tail -1 || true)"
   [[ -n "$rec" ]] || return 0
   for f in input_tokens cache_read_input_tokens cache_creation_input_tokens; do
-    v="$(grep -o "\"$f\":[0-9]*" <<< "$rec" | head -1 | sed 's/.*://' || true)"
+    v="$(grep -o "\"$f\":[0-9]*" <<< "$rec" | sed -n '1s/.*://p' || true)"
     n=$(( n + ${v:-0} ))
   done
   (( n > SESSION_CONTEXT_MAX )) || return 0
