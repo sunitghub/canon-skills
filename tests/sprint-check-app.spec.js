@@ -8723,7 +8723,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('aria-label', /^Reviewer: Running · attempt 1/);
         await expect(card(page).locator('.spc-row.cur .spc-status')).toHaveCount(0);
         expect(await card(page).locator('.spc-row.cur').evaluate(el => getComputedStyle(el).borderTopWidth)).toBe('0px');
-        await expect(card(page).locator('.spc-row.done')).toHaveCount(SPC_NODES.filter(n => n.only !== 'manual').findIndex(n => n.id === 'reviewer'));   // every row before Reviewer
+        // t-bcc1: only rows with their own end event are done: Start (sprint.started) and Build (a close gate began), not every row above
+        expect(await card(page).locator('.spc-row.done').evaluateAll(els => els.map(e => e.dataset.spcRow))).toEqual(['start', 'build']);
         await expect(page.locator('#ck-state-section')).toHaveCount(0);
         await expect(page.locator('#ck-state')).toHaveCount(0);
         await expect(page.locator('#ck-progress-section')).not.toHaveClass(/collapsed/);
@@ -8732,6 +8733,31 @@ test.describe('cockpit in board (t-ddc8)', () => {
           return pos('ck-details', 'ck-progress-section') && pos('ck-worktree-section', 'ck-progress-section') && pos('ck-progress-section', 'ck-changes-section');
         });
         expect(order).toBe(true);
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    // t-bcc1 (Windows run t-pnu4): the snapshot alone (the events window empty) keeps the Evaluator's pass done while the Reviewer runs
+    // again; a wrapup row skipped by sprint wrapup-row reads "skipped"; the spec check that never ran reads "not run"
+    test('rows come from their own end events: a re-run reviewer keeps the evaluator done, skipped and not-run rows say so', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, 'bcc1');
+      const at = mm => `2026-11-19T10:${mm}:00.000Z`;
+      try {
+        await openRail(page, id, { sprint: [
+          ev('sprint.started', {}, at('00'), id), ev('plan.approved', {}, at('05'), id), ev('close.started', {}, at('20'), id),
+          ev('wrapup.gate_finished', { gate: 'doc-audit', result: 'skipped' }, at('21'), id), ev('wrapup.gate_finished', { gate: 'code-simplifier', result: 'ran' }, at('22'), id),
+          ev('gate.finished', { role: 'evaluator', verdict: 'pass' }, at('40'), id), ev('gate.started', { role: 'reviewer', attempt: '1' }, at('45'), id),
+        ] });
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'reviewer');
+        await expect(card(page).locator('.spc-row[data-spc-row="eval"]')).toHaveClass(/\bdone\b/);
+        await expect(card(page).locator('.spc-row[data-spc-row="code-simplifier"]')).toHaveClass(/\bdone\b/);
+        await expect(card(page).locator('.spc-row[data-spc-row="doc-audit"]')).not.toHaveClass(/\bdone\b/);
+        await expect(card(page).locator('.spc-row[data-spc-row="doc-audit"] .spc-note.skip')).toHaveText('skipped');
+        await expect(card(page).locator('.spc-row[data-spc-row="spec-check"]')).not.toHaveClass(/\bdone\b/);
+        await expect(card(page).locator('.spc-row[data-spc-row="spec-check"] .spc-note.skip')).toHaveText('not run');
+        await expect(card(page).locator('.spc-row[data-spc-row="code-reviewer"]')).not.toHaveClass(/\bdone\b/);   // no event: not done, no note
+        await expect(card(page).locator('.spc-row[data-spc-row="code-reviewer"] .spc-note')).toHaveCount(0);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
