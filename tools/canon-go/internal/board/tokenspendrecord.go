@@ -20,6 +20,14 @@ import (
 
 var tsPlainID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
+// tsPlainOr keeps a transcript-supplied name only when it is a plain id.
+func tsPlainOr(v string) string {
+	if tsPlainID.MatchString(v) {
+		return v
+	}
+	return ""
+}
+
 // tsPhaseFields are the per-phase numbers the sprint.cost event carries for the main session: <phase>_calls, _input, _cache_read,
 // _cache_write, _output, _peak. A phase with no calls has no fields (n/a, never 0).
 func tsPhaseFields(data map[string]string, prefix string, st *tsStat) {
@@ -80,12 +88,14 @@ func (s *tsState) record(gateCosted map[string]bool) {
 	}
 	home, actor := events.Home(), os.Getenv("CANON_EVENT_ACTOR")
 	for _, r := range w.runs {
+		// Fields read from transcripts go into the events log only as plain ids (as builder above); an id the once-guard's
+		// raw read could miss (a quote, over 64 bytes) is not recorded, so it can never be written twice.
 		id := r.src.agentID
-		if id == "" || gateCosted[id] {
+		if !tsPlainID.MatchString(id) || len(id) > 64 || gateCosted[id] {
 			continue
 		}
 		gateCosted[id] = true
-		g := map[string]string{"ticket": w.ticket, "agent_id": id, "role": r.src.role(), "agent_type": r.src.agentType, "model": r.model}
+		g := map[string]string{"ticket": w.ticket, "agent_id": id, "role": r.src.role(), "agent_type": tsPlainOr(r.src.agentType), "model": tsPlainOr(r.model)}
 		tsPhaseFields(g, "", &r.tsStat)
 		events.EmitActor(home, "gate.cost", "sprint", actor, s.o.root, g)
 	}

@@ -445,3 +445,22 @@ func TestOracle(t *testing.T) {
 	}
 	t.Logf("%d transcript files checked against ctx.js", checked)
 }
+
+// Protects the events log (read by the board and plugins, docs/plugins.md) from transcript-supplied text: gate.cost keeps an agent
+// type or model only as a plain id, and an agent id that is not one is not recorded (the once-guard could not see it again).
+func TestTokenSpendGateCostPlainFields(t *testing.T) {
+	f := newTSFix(t)
+	f.events("t-aaaa", "10:00:00", "11:00:00", "12:00:00")
+	f.plan("t-aaaa", "10:30:00")
+	f.main("s1", call("10:40:00", "msg_main", "m", 1, 0, 0, 1, ""))
+	f.sub("rv", "<img src=x>", "t-aaaa review", call("11:10:00", "msg_rv", "a model", 3, 0, 0, 1, ""))
+	f.sub("bad id", "canon-reviewer", "t-aaaa review", call("11:20:00", "msg_bad", "m", 4, 0, 0, 1, ""))
+	f.run("--ticket", "t-aaaa", "--record")
+	got := f.recorded()["gate.cost"]
+	if len(got) != 1 || got[0]["agent_id"] != "rv" {
+		t.Fatalf("gate.cost %v, want only agent rv", got)
+	}
+	if got[0]["agent_type"] != "" || got[0]["model"] != "" {
+		t.Errorf("non-plain transcript fields kept: %v", got[0])
+	}
+}
