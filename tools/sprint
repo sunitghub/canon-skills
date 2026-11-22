@@ -621,12 +621,11 @@ cmd_approve() {
 }
 
 # _spec_check_due <root> <ticket.md> — t-d826: true when the project's pipeline runs the spec check for this ticket (start.md step 10's
-# rule): the spec-check row of `pipeline.sh resolve --full` is on and the ticket has no option its skip_on lists (lite = demo: true,
-# manual = manual: true). Not due when the pipeline cannot be read: never a guess.
+# rule): the spec-check row of `pipeline.sh resolve --full` is on and, when its skip_on lists lite, the ticket is not Lite (demo: true;
+# canon's row lists only lite, and a project cannot change a node's skip_on). Not due when the pipeline cannot be read: never a guess.
 _spec_check_due() {
   local root="$1" tk="$2" full row on skip o
   local -a opts=()
-  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || return 1
   full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>/dev/null)" || return 1
   row="$(awk -F'\t' '$2 == "spec-check" && !n { print; n = 1 }' <<< "$full")"
   [[ -n "$row" ]] || return 1
@@ -636,7 +635,6 @@ _spec_check_due() {
   for o in ${opts[@]+"${opts[@]}"}; do
     case "$o" in
       lite) [[ "$(get_field "$tk" demo 2>/dev/null)" != true ]] || return 1 ;;
-      manual) [[ "$(get_field "$tk" manual 2>/dev/null)" != true ]] || return 1 ;;
     esac
   done
   return 0
