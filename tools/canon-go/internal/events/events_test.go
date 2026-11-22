@@ -208,7 +208,7 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"ticket.created":        {"ticket", "title", "type", "priority"},
 		"ticket.status_changed": {"ticket", "from", "to"},
 		"ticket.closed":         {"ticket"},
-		"sprint.started":        {"ticket", "gate_agents"},
+		"sprint.started":        {"ticket", "gate_agents", "run_preset", "run_agent", "run_pipeline"},
 		"sprint.completed":      {"ticket"},
 		"gate.started":          {"ticket", "role", "attempt", "docs"},
 		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier", "agent", "act_on"},

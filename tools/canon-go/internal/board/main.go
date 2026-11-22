@@ -240,6 +240,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   gate-corpus [--json]
   finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
   stage-model <step> <agent> <seed>   Admin's pick for one step and agent, as --model takes it (t-3425)
+  model-summary <agent> <seed>   the preset and the models the agent's run uses (t-2a21)
   promoted-report [--json] [--since YYYY-MM-DD]   promoted lines, recurrence and the size table
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
   sessions-table           a /api/v1/sessions body on stdin as canon's table (t-5b80)

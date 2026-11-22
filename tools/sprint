@@ -143,7 +143,17 @@ EOF
   fi
 
   _gate_agents_check "$root"
-  canon_event sprint.started sprint "$(project_root)" "ticket=$id" ${GATE_AGENTS:+"gate_agents=$GATE_AGENTS"}
+  # t-2a21: the run's preset, agent and pipeline, on the ticket (tkt-owned fields) and in the event, so cost can be grouped by them later
+  local run_agent run_summary run_preset run_pipeline
+  run_agent="$(_run_agent)"
+  run_summary="$([[ "$run_agent" == pi ]] || _model_summary "$run_agent")"
+  run_preset="$(awk -F'\t' '$1 == "preset" { print $2; exit }' <<< "$run_summary")"
+  run_pipeline="$(_run_pipeline "$root")"
+  set_or_add_field "$tdir/ticket.md" run_agent "$run_agent"
+  [[ -z "$run_preset" ]] || set_or_add_field "$tdir/ticket.md" run_preset "$run_preset"
+  [[ -z "$run_pipeline" ]] || set_or_add_field "$tdir/ticket.md" run_pipeline "$run_pipeline"
+  canon_event sprint.started sprint "$(project_root)" "ticket=$id" ${GATE_AGENTS:+"gate_agents=$GATE_AGENTS"} \
+    ${run_preset:+"run_preset=$run_preset"} "run_agent=$run_agent" ${run_pipeline:+"run_pipeline=$run_pipeline"}
   cat <<EOF
 Sprint started: $id
 Ticket: $tdir/ticket.md
@@ -157,6 +167,7 @@ else
   echo "3. Fill in plan.md — write the approach, then wait for explicit approval before coding."
 fi)
 EOF
+  _models_line "$tdir/plan.md" "$run_agent" "$run_summary"
   _unpromoted_line "$root"
   _recurrence_line "$root"
   _decisions_start_lines "$tdir/ticket.md" "$id"
@@ -562,11 +573,59 @@ _admin_stage_model() {
   "$b" stage-model "$1" "$2" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null || true
 }
 
+# _run_agent — t-2a21: the agent this run uses: the Cockpit's (COCKPIT_AGENT), else Copilot CLI when COPILOT_CLI=1 and Claude Code is
+# not the caller (CLAUDECODE unset, as _report_harness reads it), else claude.
+_run_agent() {
+  if [[ -n "${COCKPIT_AGENT:-}" ]]; then echo "$COCKPIT_AGENT"
+  elif [[ "${COPILOT_CLI:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo copilot
+  else echo claude; fi
+}
+
+# _model_summary <agent> — t-2a21: canon-go model-summary's lines (the preset Admin's dropdown shows, then each step's display name), or
+# nothing (no picks for the agent, no registry readable, or a board without the command). Never fails.
+_model_summary() {
+  local b
+  b="$(board_has 'model-summary <agent>' 2>/dev/null)" || return 0
+  "$b" model-summary "$1" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null || true
+}
+
+# _models_line <plan.md> <agent> <model-summary lines> — t-2a21: the run's one Models line; a Sign-off `Plan model:`, `Build model:` or
+# `Gate model:` (Spec check, Reviewer, Evaluator; never Second eval) shows as that step's model with "(ticket)". Pi keeps its session
+# model; nothing at all when the summary is empty (never a guess).
+_models_line() {
+  local plan="$1" agent="$2" summary="$3" k a b preset="" parts="" label lab v
+  if [[ "$agent" == pi ]]; then echo "Models (Pi): this session keeps its model"; return 0; fi
+  [[ -n "$summary" ]] || return 0
+  while IFS=$'\t' read -r k a b; do
+    case "$k" in
+      preset) preset="$b"; continue ;;
+      plan) label=Plan lab=plan ;; speccheck) label="Spec check" lab=gate ;; build) label=Build lab=build ;;
+      reviewer) label=Reviewer lab=gate ;; evaluator) label=Evaluator lab=gate ;; evaluator2) label="Second eval" lab="" ;;
+      *) continue ;;
+    esac
+    v=""; [[ -z "$lab" ]] || v="$(signoff_model_parse "$plan" "$lab" 2>/dev/null)" || v=""
+    [[ -z "$v" || "$v" == default ]] || a="$v (ticket)"
+    parts+="${parts:+ · }$label $a"
+  done <<< "$summary"
+  case "$agent" in claude) agent="Claude Code" ;; copilot) agent="Copilot CLI" ;; esac
+  echo "Models (${preset:-Custom} · $agent): $parts"
+}
+
+# _run_pipeline <project root> — t-2a21: the pipeline a run records: canon-default with no canon-config/pipeline.yaml, else the 12-hex
+# digest of the resolved order (_pipeline_state); nothing when it cannot be read.
+_run_pipeline() {
+  local state
+  if [[ ! -f "$1/canon-config/pipeline.yaml" ]]; then echo canon-default; return 0; fi
+  state="$(_pipeline_state "$1" 2>/dev/null)" || return 0
+  echo "${state%% *}"
+}
+
 # _build_model_line <plan.md> — t-3425: the model the build runs on, after approval: the ticket's `Build model:` line, else Admin's Build
 # pick for the agent (canon-go stage-model, the registry's one reader). In the Cockpit (COCKPIT_TICKET) the session switches to it when the
 # turn ends; elsewhere the person types /model. Prints nothing when there is no Build model (the session keeps its model); never fails.
 _build_model_line() {
-  local plan="$1" agent="${COCKPIT_AGENT:-claude}" m="" src="the ticket's Build model line"
+  local plan="$1" agent m="" src="the ticket's Build model line"
+  agent="$(_run_agent)"   # t-2a21: Copilot CLI outside the Cockpit too
   if [[ "$agent" == pi ]]; then
     [[ -z "${COCKPIT_TICKET:-}" ]] || echo "Build model: Pi has no /model, so this session keeps its model."
     return 0
@@ -607,6 +666,16 @@ cmd_approve() {
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
   _build_model_line "$plan"
+  # t-2a21: the Models line again, now the Sign-off's model lines are filled; a preset changed since start is recorded beside the start's
+  local run_agent run_summary run_preset ticket="$root/.tickets/$id/ticket.md" started
+  run_agent="$(_run_agent)"
+  if [[ "$run_agent" != pi ]]; then
+    run_summary="$(_model_summary "$run_agent")"
+    _models_line "$plan" "$run_agent" "$run_summary"
+    run_preset="$(awk -F'\t' '$1 == "preset" { print $2; exit }' <<< "$run_summary")"
+    started="$(get_field "$ticket" run_preset 2>/dev/null)" || started=""
+    if [[ -n "$run_preset" && -n "$started" && "$run_preset" != "$started" ]]; then set_or_add_field "$ticket" run_preset_build "$run_preset"; fi
+  fi
   local _tier; _tier="$(_signoff_tier "$plan")"
   canon_event plan.approved sprint "$root" "ticket=$id" ${_tier:+"tier=$_tier"}   # t-2db7: the kind existed with no writer
   handoff_recent "$root"

@@ -11,6 +11,7 @@
 //	sprint-check event <kind> --project <dir> --source <name> key=value...   (sources: internal/events)
 //	                                               one event line (t-f182); always exits 0, prints nothing
 //	sprint-check stage-model <step> <agent> <seed>   Admin's pick for one step and agent, as --model takes it (t-3425); prints nothing for none
+//	sprint-check model-summary <agent> <seed>   the preset and the models the agent's run uses (t-2a21); prints nothing when no registry reads
 //	sprint-check finding-classes [--last N] [--json] [--start] [--table <file>]   finding classes that repeat across tickets (t-70f2)
 //	sprint-check integrity [--json] [--gate] [--online]   do the gate files still match their release (t-2af0); --gate exits 3 only when verified and a gate file differs
 //	sprint-check gate-clusters [--days N] [--json]   repeated gate failures grouped by cause (t-b874); prints only
@@ -101,6 +102,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 			fmt.Fprintln(stdout, m)
 		}
 		return 0, true
+	case "model-summary": // t-2a21: the preset and models of a run, for sprint start's Models line and the ticket's run_preset
+		return modelSummaryCLI(args[1:], stdout, stderr), true
 	case "promoted-report": // t-1219: promoted lines and the later tickets that name their class; read-only
 		return promotedReportCLI(args[1:], stdout, stderr), true
 	case "skill-check":

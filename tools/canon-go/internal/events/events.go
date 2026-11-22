@@ -43,7 +43,7 @@ var kinds = map[string][]field{
 	"ticket.created":        {{"ticket", 64}, {"title", 200}, {"type", 16}, {"priority", 4}},
 	"ticket.status_changed": {{"ticket", 64}, {"from", 32}, {"to", 32}},
 	"ticket.closed":         {{"ticket", 64}},
-	"sprint.started":        {{"ticket", 64}, {"gate_agents", 8}}, // t-ff14: ok | missing; absent when it could not tell
+	"sprint.started":        {{"ticket", 64}, {"gate_agents", 8}, {"run_preset", 40}, {"run_agent", 8}, {"run_pipeline", 16}}, // t-ff14: gate_agents ok | missing; absent when it could not tell. t-2a21: the run's preset id (custom), agent and pipeline (canon-default or 12 hex)
 	"sprint.completed":      {{"ticket", 64}},
 	// t-7e26: one per closed ticket, written by sprint complete from Claude Code's transcripts: token counts by phase, model ids, no transcript text
 	// t-0829: plan_/build_/close_ x calls|input|cache_read|cache_write|output|peak are the main session's own numbers per phase (peak = the
