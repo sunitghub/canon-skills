@@ -109,8 +109,8 @@ awk 'NR==1 { print; print "demo: true"; next } 1' "$t/ticket.md" > "$t/ticket.tm
 assert_eq "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier for gates\"" "$(gm evaluator)"
 assert_eq "model: opus (Admin Reviewer default, claude)" "$(gm reviewer)"                           # Lite changes only the evaluator
 
-# 4. complete-checklist.md tells the agent to pass the printed model, inside its cap
-assert_contains "$(cat "$ROOT/skills/sprint/reference/complete-checklist.md")" "the model \`sprint gate-snapshot pre\` printed"
+# 4. complete-checklist.md tells the agent to dispatch with canon's printed prompt, whose stderr names the model (t-63c6), inside its cap
+assert_contains "$(cat "$ROOT/skills/sprint/reference/complete-checklist.md")" "stderr names the \`model\` to pass"
 words="$(wc -w < "$ROOT/skills/sprint/reference/complete-checklist.md" | tr -d ' ')"
 (( words <= 900 )) || fail "complete-checklist.md is $words words (cap 900)"
 

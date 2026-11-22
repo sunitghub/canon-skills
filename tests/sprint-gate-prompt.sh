@@ -7,6 +7,7 @@
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # Admin's pick comes from the board binary's stage-model (sprint gate-model)
 
 W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"
 export CANON_GATE_SCOPE_DIR="$W/registry" CANON_HOME="$W/canon-home"
@@ -43,7 +44,8 @@ assert_contains "$out" "Write your report to $project/$t/review-notes.md and ret
 assert_contains "$out" "Never kill a process by name or pattern."
 assert_contains "$out" "HOME, CANON_HOME, TMPDIR and XDG_CONFIG_HOME pinned"
 assert_contains "$err" "gate-prompt: dispatch canon-reviewer with no model (its definition floor)"
-absent "$out" "Under Copilot CLI"; absent "$err" "relay-report"
+assert_contains "$err" "gate-prompt: if the gate returns its report instead of writing it (the Plan fallback): sprint relay-report $id reviewer"
+absent "$out" "Under Copilot CLI"
 
 # 2. Admin's pick is the Model line and the model to pass; under Copilot: .agents/skills, the whole-report rule, the relay and `name`
 reg '{"defaults":{"reviewer":{"claude":"claude-opus-5-5","copilot":"claude-sonnet-5.5"},"evaluator":{"claude":"claude-sonnet-5-5","copilot":"claude-sonnet-5.5"},"speccheck":{"claude":"claude-sonnet-5-5","copilot":"claude-haiku-5.5"},"evaluator2":{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}},'"$MODELS"'}'
@@ -74,6 +76,17 @@ gp reviewer; assert_contains "$out" "
 Model: haiku (Gate model override)"; assert_contains "$err" "with model: haiku"
 COPILOT_CLI=1 gp evaluator; assert_contains "$out" "
 Model: claude-haiku-4.5 (Gate model override)"
+# Gate model: session -> the gate names its own model (only it knows it); openai:<id> -> as is under Copilot, else Admin's pick, loudly
+signoff "Tier: normal | Risk: x | Gate model: session"
+gp reviewer
+assert_contains "$out" "Put this Model line in your report, with your own model id in place of <your model id>:
+Model: <your model id> (Gate model override — session)"
+assert_contains "$err" "dispatch canon-reviewer with your own session's model (Gate model: session)"
+signoff "Tier: normal | Risk: x | Gate model: openai:gpt-6-luna"
+COPILOT_CLI=1 gp reviewer; assert_contains "$out" "
+Model: gpt-6-luna (Gate model override, OpenAI)"; assert_contains "$err" "with model: gpt-6-luna"
+gp reviewer; assert_contains "$out" "
+Model: opus (fallback: openai:gpt-6-luna needs Copilot CLI)"; assert_contains "$err" "with model: opus"
 signoff "Tier: normal | Risk: x"
 "$TKT" demo "$id" on >/dev/null
 gp evaluator; assert_contains "$out" "

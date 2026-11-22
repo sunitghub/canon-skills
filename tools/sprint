@@ -1825,7 +1825,13 @@ cmd_gate_model() {
   if [[ "$role" == evaluator && "$(get_field "$tdir/ticket.md" demo 2>/dev/null)" == true ]]; then
     echo "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier for gates\""; return 0
   fi
-  agent="$(_gate_agent)"
+  _gate_admin_line "$role" "$label" "$(_gate_agent)"
+}
+
+# _gate_admin_line <role> <label> <agent> — gate-model's Admin half (t-63c6 also reads it for an openai: pick outside Copilot): the
+# agent's Admin pick for the gate with complete.md's fail-safes, as `model: …` or `none: …`.
+_gate_admin_line() {
+  local role="$1" label="$2" agent="$3" m
   [[ "$agent" == claude || "$agent" == copilot ]] || { echo "none: omit model ($agent has no Model tiers pick)"; return 0; }
   m="$(_admin_stage_model "$role" "$agent")"
   [[ -n "$m" ]] || { echo "none: omit model (no Admin $label default for $agent)"; return 0; }
@@ -1865,8 +1871,19 @@ _gate_prompt_model() {
     "model: "*) v="${line#model: }"; printf '%s\t%s\n' "${v%% *}" "$v"; return 0 ;;
     "ticket rule: "*)
       v="$(signoff_model_parse "$plan" gate 2>/dev/null)"
+      if [[ "$v" == session ]]; then   # complete.md: the session's own model; only the gate itself can name it
+        printf '%s\t%s\n' "@session" "<your model id> (Gate model override — session)"; return 0
+      fi
       if [[ -n "$v" ]]; then
-        if [[ "$v" == openai:* ]]; then v="${v#openai:}"; printf '%s\t%s\n' "$v" "$v (Gate model override, OpenAI)"; return 0; fi
+        if [[ "$v" == openai:* ]]; then
+          v="${v#openai:}"
+          if [[ "$agent" == copilot ]]; then printf '%s\t%s\n' "$v" "$v (Gate model override, OpenAI)"; return 0; fi
+          # complete.md: an OpenAI pick needs Copilot CLI; elsewhere the gate falls back, loudly, to Admin's pick or the floor
+          line="$(_gate_admin_line "$role" x "$agent")"
+          case "$line" in "model: "*) line="${line#model: }"; printf '%s\t%s\n' "${line%% *}" "${line%% *} (fallback: openai:$v needs Copilot CLI)"; return 0 ;; esac
+          floor="$(LC_ALL=C awk 'sub(/^model:[[:space:]]*/, "") { print; exit }' "$SCRIPT_DIR/../agents/canon-${role/speccheck/spec-checker}.md" 2>/dev/null || true)"
+          printf '\t%s\n' "${floor:-claude-sonnet-5} (fallback: openai:$v needs Copilot CLI)"; return 0
+        fi
         v="$(signoff_model_resolve "$plan" gate 2>/dev/null)"
         if [[ -n "$v" ]]; then
           [[ "$agent" != copilot ]] || v="$(_copilot_model_id "$v")"
@@ -1907,6 +1924,8 @@ cmd_gate_prompt() {
   else proto=".claude/skills/sprint/reference/$file"; fi
   m="$(_gate_prompt_model "$id" "$role")" || exit 1
   mline="${m#*$'\t'}"; m="${m%%$'\t'*}"
+  local mhint="Put this Model line in your report as given:"
+  [[ "$m" != @session ]] || mhint="Put this Model line in your report, with your own model id in place of <your model id>:"
   if [[ "$role" == evaluator || "$role" == evaluator2 ]]; then
     ev="$(cmd_check_evidence "$id" 2>&1)" || rc=$?
     if (( rc != 0 )); then
@@ -1918,7 +1937,7 @@ cmd_gate_prompt() {
   echo "You are canon's $label for ticket $id ($title). Repo: $root, branch $branch."
   echo
   echo "Follow $proto for this ticket."
-  echo "Put this Model line in your report as given:"
+  echo "$mhint"
   echo "Model: $mline"
   echo
   if [[ "$harness" == copilot ]]; then
@@ -1939,10 +1958,13 @@ cmd_gate_prompt() {
     echo '```'
   fi
   local agent=canon-$role; [[ "$role" != speccheck ]] || agent=canon-spec-checker; [[ "$role" != evaluator2 ]] || agent=canon-evaluator
-  if [[ -n "$m" ]]; then echo "gate-prompt: dispatch $agent with model: $m; pass the prompt above verbatim" >&2
+  if [[ "$m" == @session ]]; then echo "gate-prompt: dispatch $agent with your own session's model (Gate model: session); pass the prompt above verbatim" >&2
+  elif [[ -n "$m" ]]; then echo "gate-prompt: dispatch $agent with model: $m; pass the prompt above verbatim" >&2
   else echo "gate-prompt: dispatch $agent with no model (its definition floor); pass the prompt above verbatim" >&2; fi
   if [[ "$harness" == copilot ]]; then
     echo "gate-prompt: Copilot's task call needs name; when the gate returns: sprint relay-report $id $role" >&2
+  else
+    echo "gate-prompt: if the gate returns its report instead of writing it (the Plan fallback): sprint relay-report $id $role" >&2
   fi
 }
 
