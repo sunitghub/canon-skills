@@ -40,7 +40,15 @@ printf '\nA note under the table.\n\n## Later\nkeep me\n' >> "$acc"
 wr "$id" break-it skipped "normal tier"
 assert_eq "| break-it | skipped | normal tier |" "$(section | tail -1)"
 assert_contains "$(cat "$acc")" $'A note under the table.\n\n## Later\nkeep me'
+# the new row sits right after the table's last row, before the note
+assert_eq "| break-it | skipped | normal tier |" "$(awk '/^\| code-simplifier /{ getline; print; exit }' "$acc")"
 [[ "$(grep -c '^## Wrapup Gates' "$acc")" == 1 ]] || fail "a second Wrapup Gates section was added"
+
+# 3b. a Wrapup Gates heading with no table yet gets the header; a same-named row in ANOTHER section's table is left alone
+id2="$("$TKT" create "Heading only" | awk '{ print $NF }')"; mkdir -p ".tickets/$id2"
+printf '# Acceptance\n\n## Notes\n| doc-audit | other | table |\n\n## Wrapup Gates\n\n## After\nx\n' > ".tickets/$id2/acceptance.md"
+"$SPRINT" wrapup-row "$id2" doc-audit ran "first" >/dev/null
+assert_eq $'# Acceptance\n\n## Notes\n| doc-audit | other | table |\n\n## Wrapup Gates\n\n| Gate | Status | Notes |\n|---|---|---|\n| doc-audit | ran | first |\n## After\nx' "$(cat ".tickets/$id2/acceptance.md")"
 
 # 4. refusals: nothing written, no event
 before="$(cat "$acc")"; n="$(cat "$CANON_HOME"/events/*.jsonl | grep -c wrapup.gate_finished)"
@@ -49,6 +57,12 @@ for args in "$id|Doc-Audit|ran|x" "$id|doc audit|ran|x" "$id|doc-audit|passed|x"
   [[ "$args" == *lines* ]] && d=$'two\nlines'
   wr "$a" "$b" "$c" "$d"
   assert_eq 1 "$code"
+  case "$args" in
+    *Doc-Audit*|*"doc audit"*) assert_contains "$out" "is not a gate name" ;;
+    *passed*) assert_contains "$out" "the status is ran or skipped" ;;
+    *lines*) assert_contains "$out" "the notes are one line" ;;
+    t-zzzz*) [[ -n "$out" ]] || fail "an unknown ticket was refused silently" ;;
+  esac
 done
 wr "$id" doc-audit ran
 assert_eq 1 "$code"; assert_contains "$out" 'Usage: sprint wrapup-row <id> <gate> ran|skipped "<notes>"'

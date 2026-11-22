@@ -180,6 +180,20 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
       && !/ done\b/.test(li(h, 'code-reviewer').slice(0, 60)) && !li(h, 'code-reviewer').includes('spc-note'), [li(h, 'doc-audit'), li(h, 'code-reviewer')]);
     ok('security-review done from its own event, after the reviewer', / done\b/.test(li(h, 'security-review').slice(0, 60)));
     const rs = rowStates(NODES, evts(close));
+    // the whole table, written out (not derived from rowStates): each row's own state after the t-pnu4 close
+    const want = { start: 'done', plan: 'done', 'spec-check': 'notrun', 'approve-plan': 'done', build: 'done', 'your-test': '', 'code-simplifier': 'done',
+      'code-reviewer': '', 'doc-audit': 'skipped', 'skill-eval': '', 'break-it': '', reviewer: 'done', 'security-review': 'done', 'mutation-test': '', eval: 'done', close: '' };
+    ok('each row\'s own state after the close, row by row', Object.entries(want).every(([id, st]) => rs[id] && rs[id].state === st), Object.fromEntries(Object.entries(rs).map(([k, v]) => [k, v.state])));
+    const before = rowStates(NODES, evts([['sprint.started']]));
+    ok('before any close event: nothing past Start is done, Spec check not yet "not run"', Object.entries(before).every(([id, v]) => v.state === (id === 'start' ? 'done' : '')), before);
+    ok('a sprint.completed closes the Close row', rowStates(NODES, evts([['sprint.completed']])).close.state === 'done');
+    ok('a started spec check that has not finished is neither done nor "not run"', rowStates(NODES, evts([['gate.started', { role: 'speccheck' }], ['plan.approved']]))['spec-check'].state === '');
+    ok('Build from each close signal alone: close.started, a reviewer gate, an evaluator2 gate; not a speccheck gate',
+      ['close.started', 'gate.started:reviewer', 'gate.finished:evaluator2'].every(k => { const [kind, r] = k.split(':'); return rowStates(NODES, evts([[kind, r ? { role: r } : {}]])).build.state === 'done'; })
+      && rowStates(NODES, evts([['gate.started', { role: 'speccheck' }]])).build.state === '');
+    ok('one run shows no "run 1"', !li(draw([['gate.started', { role: 'reviewer' }], ['gate.finished', { role: 'reviewer', verdict: 'YES' }], ['close.confirmed']]), 'reviewer').includes('run '));
+    ok('an event list with holes and no ts sorts and folds', rowStates(NODES, [null, { kind: 'plan.approved' }, { ts: 'x' }, { kind: 'gate.finished', ts: '2026-11-19T10:00:00.000Z', data: { role: 'reviewer' } }]).reviewer.state === 'done');
+    ok('the newest wrapup result for a gate wins', rowStates(NODES, evts([['wrapup.gate_finished', { gate: 'doc-audit', result: 'skipped' }], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }]]))['doc-audit'].state === 'done');
     ok('run counts per role: reviewer 3, evaluator 1, spec check 0', rs.reviewer.runs === 3 && rs.eval.runs === 1 && rs['spec-check'].runs === 0, rs);
     h = draw(close.slice(0, -1));   // the third run not started: the Reviewer row is not current, shows "run 2"
     ok('a gate row that ran twice shows "run 2"', li(h, 'reviewer').includes('<span class="spc-note ">run 2</span>'), li(h, 'reviewer'));

@@ -782,7 +782,8 @@ func TestAPIv1SprintKeepsOnePerRoleAndGateBackToTheSprintStart(t *testing.T) {
 	writeFile(t, filepath.Join(home, "events", "2026-11-01.jsonl"), ev("00000000000000a1", "2026-11-01T09:00:00.000Z", "wrapup.gate_finished", `,"gate":"doc-audit","result":"ran"`))
 	writeFile(t, filepath.Join(home, "events", "2026-11-02.jsonl"), ev("00000000000000b1", "2026-11-02T09:00:00.000Z", "sprint.started", "")+
 		ev("00000000000000b2", "2026-11-02T10:00:00.000Z", "gate.finished", `,"role":"evaluator","verdict":"pass"`)+
-		ev("00000000000000b3", "2026-11-02T10:30:00.000Z", "wrapup.gate_finished", `,"gate":"code-simplifier","result":"ran"`))
+		ev("00000000000000b3", "2026-11-02T10:30:00.000Z", "wrapup.gate_finished", `,"gate":"code-simplifier","result":"ran"`)+
+		ev("00000000000000b4", "2026-11-02T10:31:00.000Z", "wrapup.gate_started", `,"gate":"doc-audit"`))
 	writeFile(t, filepath.Join(home, "events", "2026-11-03.jsonl"), ev("00000000000000c1", "2026-11-03T09:00:00.000Z", "gate.finished", `,"role":"reviewer","verdict":"YES"`)+
 		ev("00000000000000c2", "2026-11-03T09:10:00.000Z", "wrapup.gate_finished", `,"gate":"break-it","result":"skipped"`)+
 		ev("00000000000000c3", "2026-11-03T09:20:00.000Z", "gate.finished", `,"role":"reviewer","verdict":"YES"`))
@@ -792,7 +793,7 @@ func TestAPIv1SprintKeepsOnePerRoleAndGateBackToTheSprintStart(t *testing.T) {
 	for _, e := range v1Body(t, w)["events"].([]any) {
 		ids = append(ids, e.(map[string]any)["id"].(string))
 	}
-	if got := strings.Join(ids, " "); got != "00000000000000b1 00000000000000b2 00000000000000b3 00000000000000c2 00000000000000c3" {
+	if got := strings.Join(ids, " "); got != "00000000000000b1 00000000000000b2 00000000000000b3 00000000000000b4 00000000000000c2 00000000000000c3" {
 		t.Errorf("want sprint.started, the evaluator's pass, both wrapup rows and the latest reviewer, in log order; got %s", got)
 	}
 }
