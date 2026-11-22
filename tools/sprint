@@ -1935,6 +1935,38 @@ _gate_admin_line() {
   echo "model: $m (Admin $label default, $agent)"
 }
 
+# sprint wrapup-row <id> <gate> ran|skipped "<notes>" — t-bcc1: writes (or replaces) one row of acceptance.md's ## Wrapup Gates table and
+# emits wrapup.gate_finished, so the progress card draws that row from its own event (hand-written rows emitted none: a skipped gate read
+# as passed). The section and its header are added when missing; a `|` in the notes is escaped. Refuses, writing nothing, a gate that is
+# not [a-z0-9-]+, another status, notes with a newline, or a ticket with no acceptance.md.
+cmd_wrapup_row() {
+  local id="${1:-}" gate="${2:-}" status="${3:-}" notes="${4:-}" tdir acc tmp
+  if [[ -z "$id" || -z "$gate" || -z "$status" || $# -ne 4 ]]; then
+    echo 'Usage: sprint wrapup-row <id> <gate> ran|skipped "<notes>"' >&2; exit 1
+  fi
+  [[ "$gate" =~ ^[a-z0-9][a-z0-9-]{0,39}$ ]] || { echo "sprint wrapup-row: '$gate' is not a gate name (lowercase letters, digits and '-')" >&2; exit 1; }
+  [[ "$status" == ran || "$status" == skipped ]] || { echo "sprint wrapup-row: the status is ran or skipped, not '$status'" >&2; exit 1; }
+  [[ "$notes" != *$'\n'* && "$notes" != *$'\r'* ]] || { echo "sprint wrapup-row: the notes are one line" >&2; exit 1; }
+  tdir="$(ticket_dir_for "$id")"; acc="$tdir/acceptance.md"
+  [[ -f "$acc" ]] || { echo "sprint wrapup-row: no acceptance.md for $id" >&2; exit 1; }
+  tmp="$(mktemp)"
+  WR_ROW="| $gate | $status | ${notes//|/\\|} |" WR_GATE="$gate" awk '
+    function flush() { if (!done) { if (!table) { print "| Gate | Status | Notes |"; print "|---|---|---|" } print ENVIRON["WR_ROW"]; done = 1 } }
+    /^##[[:space:]]/ { if (insec) flush(); insec = ($0 ~ /^##[[:space:]]+Wrapup Gates[[:space:]]*$/); seen = seen || insec; table = 0; print; next }
+    insec && /^\|/ {
+      table = 1; c = $0; sub(/^\|[[:space:]]*/, "", c); sub(/[[:space:]]*\|.*$/, "", c)
+      if (c == ENVIRON["WR_GATE"]) { if (!done) print ENVIRON["WR_ROW"]; done = 1; next }
+      print; next
+    }
+    insec && table && !/^\|/ { flush() }
+    { print }
+    END { if (insec) flush(); else if (!seen) { print ""; print "## Wrapup Gates"; print "| Gate | Status | Notes |"; print "|---|---|---|"; print ENVIRON["WR_ROW"] } }' "$acc" > "$tmp" \
+    && { wt_write_ok "$acc" || { rm -f "$tmp"; exit 1; }; } && cat "$tmp" > "$acc"
+  rm -f "$tmp"
+  canon_event wrapup.gate_finished sprint "$(project_root)" "ticket=$id" "gate=$gate" "result=$status"
+  echo "$id: Wrapup Gates row $gate: $status"
+}
+
 # sprint run-id — t-63c6: an evaluator run-id, `<epoch-seconds>-<number>`, the shape the close checks. One command for every harness: a
 # Copilot gate's shell on Windows is PowerShell, where `date +%s` is Get-Date and `bash -c` may be the WSL stub; `sprint` itself runs in
 # Git Bash through its .cmd shim.
@@ -2645,6 +2677,7 @@ Usage:
   sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>  A gate's whole dispatch prompt;
                             pass it verbatim (stderr: the model and the step after) (t-63c6)
   sprint run-id             An evaluator run-id, <epoch-seconds>-<number> (t-63c6)
+  sprint wrapup-row <id> <gate> ran|skipped "<notes>"  Write one Wrapup Gates row and its event (t-bcc1)
   sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]  Copy a read-only (Plan) gate's report
                             from the harness transcript into its file, byte for byte
                             (the main session never types a gate report)
@@ -2705,6 +2738,7 @@ main() {
     gate-model) cmd_gate_model "$@" ;;
     gate-prompt) cmd_gate_prompt "$@" ;;
     run-id) cmd_run_id ;;
+    wrapup-row) cmd_wrapup_row "$@" ;;
     second-eval) cmd_second_eval "$@" ;;
     eval-compare) cmd_eval_compare "$@" ;;
     relay-report) cmd_relay_report "$@" ;;

@@ -5,7 +5,7 @@ import { activateDoc, modalState, openModal } from './board-modal.js';
 import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { progressCardHtml, sprintProgress, stepStartTimes, ticketMode } from './sprint-progress-card.js';
+import { progressCardHtml, rowStates, sprintProgress, stepStartTimes, ticketMode } from './sprint-progress-card.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, sessionNeedsYou, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
 import { cockpitPathKey, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
@@ -646,7 +646,8 @@ export async function renderCockpitProgress(t) {
   const mode = ticketMode(t);
   // t-985c: start times from the ticket's events, the snapshot's (one per kind) filling what the events window no longer holds
   const times = { ...stepStartTimes(nodes, snap, mode), ...stepStartTimes(nodes, p.events || [], mode) };
-  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times };
+  const rows = rowStates(nodes, [...snap, ...(p.events || [])]);   // t-bcc1: each row's own end event; the snapshot holds those the window lost
+  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times, rows };
   const html = progressCardHtml(nodes, mode, live);
   if (html !== p.html || !box.firstChild) { box.innerHTML = html; p.html = html; }   // an unchanged card is not redrawn: the pulse keeps running, a screen reader is not re-told
 }

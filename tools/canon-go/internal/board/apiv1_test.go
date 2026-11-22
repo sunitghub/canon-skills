@@ -766,3 +766,33 @@ func TestAPIv1PipelineServesTheReadersNodes(t *testing.T) {
 		t.Errorf("cross-site: %d", cw.Code)
 	}
 }
+
+// t-bcc1: the snapshot keeps one event per kind AND per gate role / wrapup gate (a later reviewer gate.finished once hid the evaluator's,
+// so the card lost the Evaluator's pass), serves the wrapup kinds, and reads no day older than the ticket's newest sprint.started.
+// Protects GET /api/v1/sprint/<id> (the rail's Sprint progress card).
+func TestAPIv1SprintKeepsOnePerRoleAndGateBackToTheSprintStart(t *testing.T) {
+	root := setupTestProject(t)
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", home)
+	proj := resolvedOrAbs(root)
+	ev := func(id, ts, kind, extra string) string {
+		return `{"schema":1,"id":"` + id + `","ts":"` + ts + `","kind":"` + kind + `","source":"sprint","project":"` + proj + `","data":{"ticket":"t-aaaa"` + extra + `}}` + "\n"
+	}
+	// an earlier sprint of the same ticket, two days back: never served
+	writeFile(t, filepath.Join(home, "events", "2026-11-01.jsonl"), ev("00000000000000a1", "2026-11-01T09:00:00.000Z", "wrapup.gate_finished", `,"gate":"doc-audit","result":"ran"`))
+	writeFile(t, filepath.Join(home, "events", "2026-11-02.jsonl"), ev("00000000000000b1", "2026-11-02T09:00:00.000Z", "sprint.started", "")+
+		ev("00000000000000b2", "2026-11-02T10:00:00.000Z", "gate.finished", `,"role":"evaluator","verdict":"pass"`)+
+		ev("00000000000000b3", "2026-11-02T10:30:00.000Z", "wrapup.gate_finished", `,"gate":"code-simplifier","result":"ran"`))
+	writeFile(t, filepath.Join(home, "events", "2026-11-03.jsonl"), ev("00000000000000c1", "2026-11-03T09:00:00.000Z", "gate.finished", `,"role":"reviewer","verdict":"YES"`)+
+		ev("00000000000000c2", "2026-11-03T09:10:00.000Z", "wrapup.gate_finished", `,"gate":"break-it","result":"skipped"`)+
+		ev("00000000000000c3", "2026-11-03T09:20:00.000Z", "gate.finished", `,"role":"reviewer","verdict":"YES"`))
+	v1SprintCache = map[string][]map[string]any{}
+	w := v1Get(t, "GET", "/api/v1/sprint/t-aaaa", "")
+	ids := []string{}
+	for _, e := range v1Body(t, w)["events"].([]any) {
+		ids = append(ids, e.(map[string]any)["id"].(string))
+	}
+	if got := strings.Join(ids, " "); got != "00000000000000b1 00000000000000b2 00000000000000b3 00000000000000c2 00000000000000c3" {
+		t.Errorf("want sprint.started, the evaluator's pass, both wrapup rows and the latest reviewer, in log order; got %s", got)
+	}
+}

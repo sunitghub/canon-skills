@@ -40,7 +40,19 @@ var v1EventKeys = []string{"schema", "id", "ts", "kind", "source", "project", "a
 var v1PipelineNode = []string{"id", "kind", "order", "on", "skip_on", "only", "group"}
 
 // v1SprintKinds are the lifecycle kinds the sprint snapshot keeps the latest of. Folding them into steps is t-5ef8's.
-var v1SprintKinds = []string{"sprint.started", "plan.approved", "build.switch", "close.started", "gate.started", "gate.finished", "gate.rejected", "manual_qa.recorded", "close.confirmed", "sprint.completed"} // t-985c: + build.switch, close.started, manual_qa.recorded
+var v1SprintKinds = []string{"sprint.started", "plan.approved", "build.switch", "close.started", "gate.started", "gate.finished", "gate.rejected", "manual_qa.recorded", "wrapup.gate_started", "wrapup.gate_finished", "close.confirmed", "sprint.completed"} // t-985c: + build.switch, close.started, manual_qa.recorded; t-bcc1: + wrapup.*
+
+// v1SprintKey (t-bcc1): the snapshot keeps the latest event per kind and per gate role (gate.*) or wrapup gate (wrapup.*), so a later
+// reviewer event no longer hides the evaluator's and each wrapup row keeps its own result.
+func v1SprintKey(ev events.Event) string {
+	if strings.HasPrefix(ev.Kind, "gate.") {
+		return ev.Kind + "|" + fmt.Sprint(ev.Data["role"])
+	}
+	if strings.HasPrefix(ev.Kind, "wrapup.") {
+		return ev.Kind + "|" + fmt.Sprint(ev.Data["gate"])
+	}
+	return ev.Kind
+}
 
 // v1Responses are each route's top-level keys: the published response schema.
 var v1Responses = map[string][]string{
@@ -230,7 +242,7 @@ func v1Signature(files []string) string {
 	return b.String()
 }
 
-// v1Sprint is the latest valid event of each lifecycle kind for one ticket of one project, in log order. Lines that fail the events
+// v1Sprint is the latest valid event of each lifecycle kind (per gate role and wrapup gate, t-bcc1) for one ticket of one project, in log order, back to the day of its newest sprint.started. Lines that fail the events
 // schema are skipped by the reader; the values are text from the log, served as data. ok is false when two scans are already running.
 func v1Sprint(home, root, ticketID string) (out []map[string]any, ok bool) {
 	root = v1Resolve(root) // events carry the resolved path (emitEvent)
@@ -331,8 +343,8 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 		byDay[day] = append(byDay[day], path) // a day with a .gz twin lists the .gz first
 	}
 	latest := map[string]events.Event{}
-	order := map[string]string{} // kind -> "<day>/<line no>": log order across days
-	for _, day := range days {   // a kind found in a later day needs no older one
+	order := map[string]string{} // key -> "<day>/<line no>": log order across days
+	for _, day := range days {   // a key found in a later day needs no older one
 		var inDay map[string]events.Event
 		var pos map[string]string
 		for _, path := range byDay[day] { // the twin holds the same lines; when the .gz cannot be read to its end, the plain file is the day
@@ -341,8 +353,9 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 			err := events.EachIn(path, func(ev events.Event) {
 				n++
 				if want[ev.Kind] && ev.Data["ticket"] == ticketID && inScope(ev.Project) {
-					inDay[ev.Kind] = ev
-					pos[ev.Kind] = fmt.Sprintf("%s/%09d", day, n)
+					k := v1SprintKey(ev)
+					inDay[k] = ev
+					pos[k] = fmt.Sprintf("%s/%09d", day, n)
 				}
 			})
 			if err == nil {
@@ -354,7 +367,8 @@ func v1SprintScan(files []string, root, ticketID string) []map[string]any {
 				latest[k], order[k] = ev, pos[k]
 			}
 		}
-		if len(latest) == len(want) {
+		// t-bcc1: the day holding the ticket's newest sprint.started is the sprint's first: an older day belongs to an earlier sprint
+		if _, started := inDay["sprint.started"]; started {
 			break
 		}
 	}

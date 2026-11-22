@@ -18,9 +18,10 @@
 .spc-note{margin-left:auto;font-size:11px;font-weight:600;color:var(--text-muted)}
 .spc-note.skip,.spc-note.off{color:var(--amber)}
 .spc-note.wait,.spc-note.ro{color:var(--accent)}
+.spc-note.fail{color:var(--th-bad-ink, var(--col-discarded))}   /* t-bcc1: a row whose own end event failed (Evaluator, your test) */
 .spc-line{flex-basis:100%;font-size:11.5px;color:var(--text-muted)}
 .spc-status{flex-basis:100%;font-size:12px;font-weight:600;color:var(--text-body)}
-/* the live card: the row before the current one is done, the current row carries the tone; idle and later rows stay dim */
+/* the live card: a row is done from its own end event (t-bcc1), the current row carries the tone; idle and later rows stay dim */
 .spc-live{--spc-tone:var(--text-dim)}
 .spc-live[data-tone="blue"]{--spc-tone:var(--col-progress)}
 .spc-live[data-tone="amber"]{--spc-tone:var(--th-warn, var(--amber))}

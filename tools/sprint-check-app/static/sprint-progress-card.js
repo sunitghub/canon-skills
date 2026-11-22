@@ -109,6 +109,56 @@ export function sprintProgress(nodes, events, { planWritten = false, needsYou = 
   return { ...r, reached: r.cur ? '' : reached, closed: false };
 }
 
+// t-bcc1: the inline gates of the close: their rows end on `sprint wrapup-row`'s wrapup.gate_finished (gate = the node id)
+export const INLINE_GATES = ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'security-review', 'mutation-test'];
+// t-bcc1: the event kinds that END each row (or mark it skipped); tests/pipeline-events.sh reads this table and fails for a pipeline node
+// with no entry or a kind nothing emits. rowStates is the rule that reads them.
+export const ROW_END = {
+  start: ['sprint.started'], plan: ['plan.approved'], 'spec-check': ['gate.finished'], 'approve-plan': ['plan.approved'],
+  build: ['close.started', 'wrapup.gate_finished', 'gate.started', 'gate.finished'], 'your-test': ['manual_qa.recorded'],
+  reviewer: ['gate.finished'], eval: ['gate.finished'], close: ['sprint.completed'],
+  ...Object.fromEntries(INLINE_GATES.map(g => [g, ['wrapup.gate_finished']])),
+};
+const GATE_ROLE = { 'spec-check': 'speccheck', reviewer: 'reviewer', eval: 'evaluator' };   // a row's own role: the Second eval never counts for Evaluator
+
+// t-bcc1: each row's state from its OWN end event, never from its place above the current row (a skipped Spec check was drawn done on
+// the Windows run, t-pnu4): node id -> { state: 'done' | 'skipped' | 'notrun' | 'failed' | '', runs }. runs counts the row's gate.started
+// events (its own role only), so a re-run reads "run N". events may repeat (the snapshot and the events window): deduplicated by id. Pure.
+export function rowStates(nodes, events) {
+  const seen = new Set(), evs = [];
+  for (const e of (Array.isArray(events) ? events : [])) {
+    if (!e || typeof e.kind !== 'string') continue;
+    const k = e.id || `${e.kind}|${e.ts}|${JSON.stringify(e.data || {})}`;
+    if (!seen.has(k)) { seen.add(k); evs.push(e); }
+  }
+  evs.sort((a, b) => tsOf(a) - tsOf(b));
+  const d = e => (e && e.data) || {};
+  const last = (kind, ok = () => true) => { for (let i = evs.length - 1; i >= 0; i--) if (evs[i].kind === kind && ok(d(evs[i]))) return evs[i]; return null; };
+  const count = (kind, ok) => evs.filter(e => e.kind === kind && ok(d(e))).length;
+  const role = r => x => String(x.role || '') === r;
+  const closeBegan = !!(last('close.started') || evs.some(e => e.kind.startsWith('wrapup.') || (e.kind.startsWith('gate.') && ['reviewer', 'evaluator', 'evaluator2'].includes(String(d(e).role || '')))));
+  const out = {};
+  for (const n of (nodes || [])) {
+    const id = n.id;
+    let state = '';
+    if (id === 'start') state = last('sprint.started') ? 'done' : '';
+    else if (id === 'plan' || id === 'approve-plan') state = last('plan.approved') ? 'done' : '';
+    else if (id === 'spec-check') state = last('gate.finished', role('speccheck')) ? 'done' : (last('plan.approved') && !last('gate.started', role('speccheck')) ? 'notrun' : '');
+    else if (id === 'build') state = closeBegan ? 'done' : '';
+    else if (id === 'your-test') { const e = last('manual_qa.recorded'); state = !e ? '' : d(e).result === 'fail' ? 'failed' : 'done'; }
+    else if (id === 'reviewer') state = last('gate.finished', role('reviewer')) ? 'done' : '';
+    else if (id === 'eval') { const e = last('gate.finished', role('evaluator')); state = !e ? '' : d(e).verdict === 'pass' ? 'done' : 'failed'; }
+    else if (id === 'close') state = last('sprint.completed') ? 'done' : '';
+    else if (INLINE_GATES.includes(id)) {
+      const e = last('wrapup.gate_finished', x => String(x.gate || '') === id);
+      const r = e ? String(d(e).result || '') : '';
+      state = r === 'ran' ? 'done' : r === 'skipped' ? 'skipped' : '';
+    }
+    out[id] = { state, runs: GATE_ROLE[id] ? count('gate.started', role(GATE_ROLE[id])) : 0 };
+  }
+  return out;
+}
+
 // t-985c (user: "only event_start"): each step's start time, epoch ms by node id, from the ticket's events (the newest of each source).
 export function stepStartTimes(nodes, events, mode = 'normal') {
   const out = {}, put = (id, e) => { const t = tsOf(e); if (id && Number.isFinite(t) && !(out[id] >= t)) out[id] = t; };
@@ -134,26 +184,30 @@ export function stepStartTimes(nodes, events, mode = 'normal') {
 
 const hm = t => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-// live (t-5ef8, the rail's card): { cur, reached, tone, status, closed, times (node id → epoch ms, t-985c) }. Without it the card is the
+// live (t-5ef8, the rail's card): { cur, reached, tone, status, closed, times (node id → epoch ms, t-985c), rows (rowStates, t-bcc1) }. Without it the card is the
 // Pipeline tab's preview, unchanged.
 export function progressCardHtml(nodes, mode, live) {
   const title = (MODES.find(m => m[0] === mode) || MODES[0])[1];
   const shown = (nodes || []).filter(n => !(n.only === 'manual' && !isManual(mode)));
   const curAt = live ? shown.findIndex(n => n.id === live.cur) : -1;
-  const reachedAt = live && curAt < 0 ? shown.findIndex(n => n.id === live.reached) : -1;   // t-985c: rows passed stay done under a head status
   const times = (live && live.times) || {};
   const rows = shown.map((n, i) => {
     const [cls, text] = note(n, mode);
     const gone = cls === 'skip' || cls === 'off';
-    const done = !!live && !gone && (live.closed || (curAt >= 0 && i < curAt) || (reachedAt >= 0 && i <= reachedAt));
     const cur = !!live && i === curAt;
+    // t-bcc1: done only from the row's own end event (live.rows, rowStates); the positional rule drew a skipped step done
+    const rs = (live && live.rows && live.rows[n.id]) || { state: '', runs: 0 };
+    const done = !!live && !gone && !cur && (live.closed || rs.state === 'done');
+    const [ncls, ntext] = text || !live || gone ? [cls, text]
+      : rs.state === 'skipped' ? ['skip', 'skipped'] : rs.state === 'notrun' && !cur ? ['skip', 'not run'] : rs.state === 'failed' && !cur ? ['fail', 'failed']
+      : rs.runs > 1 ? ['', `run ${rs.runs}`] : ['', ''];
     const at = live && !gone && Number.isFinite(times[n.id]) ? hm(times[n.id]) : '';
     // t-985c: the current step's status is its tooltip and accessible name, not a line under it (user: pulse only, no box)
     const say = cur ? esc(`${label(n.id)}: ${live.status}${at ? ' · started ' + at : ''}`) : '';
     const tip = cur ? ` title="${say}" aria-label="${say}"` : '';
     return `<li class="spc-row${gone ? ' gone' : ''}${done ? ' done' : ''}${cur ? ' cur' : ''}" data-spc-row="${esc(n.id)}"${tip}><span class="spc-dot" aria-hidden="true"></span>`
       + `<span class="spc-n">${esc(label(n.id))}</span><span class="spc-k ${n.kind === 'you' ? 'you' : n.kind === 'agent' ? 'agent' : ''}">${esc(TAG[n.kind] || n.kind)}</span>`
-      + (text ? `<span class="spc-note ${cls}">${esc(text)}</span>` : '')
+      + (ntext ? `<span class="spc-note ${ncls}">${esc(ntext)}</span>` : '')
       + (at ? `<span class="spc-t">${esc(at)}</span>` : '')
       + (n.id === 'close' && isManual(mode) ? '<span class="spc-line">Your sign-off closes: the question reads your record back.</span>' : '')
       + '</li>';

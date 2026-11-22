@@ -7,7 +7,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const CARD = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static', 'sprint-progress-card.js');
-import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticketMode, stepStartTimes, firstClosing }) => {
+import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticketMode, stepStartTimes, firstClosing, rowStates, ROW_END, INLINE_GATES }) => {
   let fails = 0;
   function ok(name, cond, detail) {
     if (cond) console.log('  ok   ' + name);
@@ -52,11 +52,13 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
   ];
   for (const [name, evs, opts, cur, tone, words] of STATES) {
     const st = sprintProgress(NODES, events(evs), opts);
-    const html = progressCardHtml(NODES, 'normal', { ...st, events: [] });
+    const own = rowStates(NODES, events(evs));
+    const html = progressCardHtml(NODES, 'normal', { ...st, rows: own });
     const r = rows(html), curRows = r.filter(x => / cur\b/.test(x.cls)).map(x => x.id);
     const done = r.filter(x => / done\b/.test(x.cls)).map(x => x.id);
     const status = statusOf(html);
-    const wantDone = tone === 'green' ? IDS : cur ? IDS.slice(0, IDS.indexOf(cur)) : [];
+    // t-bcc1: done = the rows whose own end event exists (never the rows above the current one), the current row excepted
+    const wantDone = tone === 'green' ? IDS : IDS.filter(id => own[id].state === 'done' && id !== cur);
     ok(`${name}: current ${cur || '(none)'}`, (cur ? curRows.length === 1 && curRows[0] === cur : curRows.length === 0) && st.cur === cur, { st, curRows });
     ok(`${name}: tone ${tone}`, st.tone === tone && html.includes(`data-tone="${tone}"`), st.tone);
     ok(`${name}: status says ${words.join(' + ')}`, words.every(w => status.includes(w)), status);
@@ -96,7 +98,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const lite = progressCardHtml(NODES, 'lite', { ...sprintProgress(NODES, events([['gate.started', { role: 'evaluator' }]])), events: [] });
     const r = rows(lite);
     ok('Lite: a skipped node before the current one stays gone, not done', r.find(x => x.id === 'reviewer').cls.includes('gone') && !r.find(x => x.id === 'reviewer').cls.includes('done'));
-    ok('Lite: a kept node before the current one is done', r.find(x => x.id === 'security-review').cls.includes('done'));
+    ok('Lite: a kept node before the current one with no end event of its own is NOT done (t-bcc1)', !r.find(x => x.id === 'security-review').cls.includes('done'));
     ok('Lite: the head names the option', lite.includes('<div class="spc-head">a Lite ticket</div><ol class="spc-rail">'));
     ok('Manual + Lite head', progressCardHtml(NODES, 'both', { ...sprintProgress(NODES, []), events: [] }).includes('a Manual + Lite ticket'));
     ok('Normal: no head', !progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, []), events: [] }).includes('spc-head'));
@@ -107,7 +109,8 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const ref = sprintProgress(NODES, events([['plan.approved'], ['gate.started', { role: 'evaluator' }], ['gate.rejected', { role: 'sprint', reason: 'manual_qa' }]]));
     const h = progressCardHtml(NODES, 'normal', ref);
     ok('a role=sprint refusal is on no row, red, says what to do', ref.cur === '' && ref.tone === 'red' && statusOf(h) === 'Waiting on you: record your manual check', ref);
-    ok('under it the rows passed stay done, through the evaluator', rows(h).filter(x => / done\b/.test(x.cls)).map(x => x.id).join() === IDS.slice(0, IDS.indexOf('eval') + 1).join(), rows(h));
+    const hr = progressCardHtml(NODES, 'normal', { ...ref, rows: rowStates(NODES, events([['plan.approved'], ['gate.started', { role: 'evaluator' }], ['gate.rejected', { role: 'sprint', reason: 'manual_qa' }]])) });
+    ok('under it only the rows with their own end event are done (t-bcc1): plan, approve plan, build', rows(hr).filter(x => / done\b/.test(x.cls)).map(x => x.id).join() === 'plan,approve-plan,build', rows(hr));
     const ev = sprintProgress(NODES, events([['gate.started', { role: 'evaluator' }], ['gate.rejected', { role: 'evaluator', reason: 'manual_qa' }]]));
     ok('check-evidence\'s manual_qa (role evaluator, the VM case): on the Evaluator row, the person\'s step', ev.cur === 'eval' && ev.status === 'Waiting on you: record your manual check', ev);
     const cleared = sprintProgress(NODES, events([['gate.rejected', { role: 'evaluator', reason: 'manual_qa' }], ['manual_qa.recorded', { result: 'pass' }]]));
@@ -146,6 +149,48 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('a step not started shows no time', !li('close').includes('spc-t'));
     ok('the current row\'s tooltip adds its start time', /title="Evaluator: Running · attempt 2 · started [^"]+"/.test(html), li('eval'));
     ok('no finish times, no event strip', (html.match(/spc-t"/g) || []).length === Object.keys(stepStartTimes(NODES, evs, 'lite')).filter(k => !['spec-check', 'reviewer'].includes(k)).length /* Lite skips these two rows: their note, no time */ && !html.includes('spc-ev'), html.match(/spc-t">[^<]*/g));
+  }
+
+  // t-bcc1: each row's state from its own end event (the Windows run, t-pnu4: a skipped Spec check drawn done; a reviewer re-run after the
+  // Evaluator passed took the Evaluator's done away; skipped wrapup rows drawn green)
+  {
+    const li = (html, id) => { const m = new RegExp(`<li class="spc-row([^"]*)" data-spc-row="${id}"[^]*?</li>`).exec(html); return m ? m[0] : ''; };
+    // events() numbers seconds 0-9 only: this block's lists are longer, so it gives each its own minute
+    const evts = list => list.map(([kind, data], i) => ({ kind, ts: `2026-11-19T10:${String(i).padStart(2, '0')}:00.000Z`, data: { ticket: 't-1', ...(data || {}) } }));
+    const draw = list => { const ev = evts(list); return progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, ev), rows: rowStates(NODES, ev) }); };
+    // the spec check never ran, the plan was approved: "not run", not done
+    let h = draw([['sprint.started'], ['plan.approved']]);
+    ok('spec check skipped: not done, "not run"', !/ done\b/.test(li(h, 'spec-check').slice(0, 60)) && li(h, 'spec-check').includes('<span class="spc-note skip">not run</span>'), li(h, 'spec-check'));
+    ok('...while Start, Plan and Approve plan are done from their own events', ['start', 'plan', 'approve-plan'].every(id => / done\b/.test(li(h, id).slice(0, 60))), h);
+    // a spec check that ran is done and never "not run"
+    h = draw([['sprint.started'], ['gate.started', { role: 'speccheck' }], ['gate.finished', { role: 'speccheck', verdict: 'READY' }], ['plan.approved']]);
+    ok('spec check ran: done', / done\b/.test(li(h, 'spec-check').slice(0, 60)) && !li(h, 'spec-check').includes('not run'), li(h, 'spec-check'));
+    // the t-pnu4 close: evaluator passed, then a third reviewer run; wrapup rows ran or skipped
+    const close = [['sprint.started'], ['plan.approved'], ['close.started'],
+      ['wrapup.gate_finished', { gate: 'code-simplifier', result: 'ran' }], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'skipped' }],
+      ['gate.started', { role: 'reviewer' }], ['gate.finished', { role: 'reviewer', verdict: 'YES' }],
+      ['wrapup.gate_finished', { gate: 'security-review', result: 'ran' }],
+      ['gate.started', { role: 'evaluator' }], ['gate.finished', { role: 'evaluator', verdict: 'pass' }],
+      ['gate.started', { role: 'reviewer' }], ['gate.finished', { role: 'reviewer', verdict: 'YES' }], ['gate.started', { role: 'reviewer' }]];
+    h = draw(close);
+    ok('a reviewer re-run after the pass leaves the Evaluator done', / done\b/.test(li(h, 'eval').slice(0, 60)), li(h, 'eval'));
+    ok('...the Reviewer is current and says run 3', / cur\b/.test(li(h, 'reviewer').slice(0, 60)) && /title="Reviewer: Running/.test(li(h, 'reviewer')), li(h, 'reviewer'));
+    ok('a wrapup row that ran is done; one skipped is "skipped", not done; one with no event is neither', / done\b/.test(li(h, 'code-simplifier').slice(0, 60))
+      && !/ done\b/.test(li(h, 'doc-audit').slice(0, 60)) && li(h, 'doc-audit').includes('<span class="spc-note skip">skipped</span>')
+      && !/ done\b/.test(li(h, 'code-reviewer').slice(0, 60)) && !li(h, 'code-reviewer').includes('spc-note'), [li(h, 'doc-audit'), li(h, 'code-reviewer')]);
+    ok('security-review done from its own event, after the reviewer', / done\b/.test(li(h, 'security-review').slice(0, 60)));
+    const rs = rowStates(NODES, evts(close));
+    ok('run counts per role: reviewer 3, evaluator 1, spec check 0', rs.reviewer.runs === 3 && rs.eval.runs === 1 && rs['spec-check'].runs === 0, rs);
+    h = draw(close.slice(0, -1));   // the third run not started: the Reviewer row is not current, shows "run 2"
+    ok('a gate row that ran twice shows "run 2"', li(h, 'reviewer').includes('<span class="spc-note ">run 2</span>'), li(h, 'reviewer'));
+    ok('the Second eval never counts as an Evaluator run', rowStates(NODES, events([['gate.started', { role: 'evaluator' }], ['gate.started', { role: 'evaluator2' }]])).eval.runs === 1);
+    ok('a failed evaluator: not done, "failed" once it is not current', (() => { const x = draw([['gate.finished', { role: 'evaluator', verdict: 'fail' }], ['gate.started', { role: 'reviewer' }]]); return !/ done\b/.test(li(x, 'eval').slice(0, 60)) && li(x, 'eval').includes('<span class="spc-note fail">failed</span>'); })());
+    ok('Build is done once the close began, not before', rowStates(NODES, events([['plan.approved']])).build.state === '' && rowStates(NODES, events([['plan.approved'], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }]])).build.state === 'done');
+    ok('your test: a passing record is done, a failing one failed', rowStates(NODES, events([['manual_qa.recorded', { result: 'pass' }]]))['your-test'].state === 'done' && rowStates(NODES, events([['manual_qa.recorded', { result: 'fail' }]]))['your-test'].state === 'failed');
+    // the snapshot and the events window both hold an event: counted once
+    const dup = events([['gate.started', { role: 'reviewer' }]]).map(e => ({ ...e, id: 'x1' }));
+    ok('an event in both the snapshot and the window counts once', rowStates(NODES, [...dup, ...dup]).reviewer.runs === 1);
+    ok('every inline gate is a pipeline node with an end kind', INLINE_GATES.every(g => NODES.some(n => n.id === g) && ROW_END[g]));
   }
 
   // a status or reason from the log is escaped too

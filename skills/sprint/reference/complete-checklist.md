@@ -18,7 +18,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    - **Skill eval** if `tools/skill-eval-scope.sh` lists a changed skill or gate agent: per `run <skill>`
      follow `skills/skill-eval/SKILL.md`; advisory, batched in step 2.
    - **Interim commit** (specific paths) before any gate.
-   - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence); `reviewer` and
+   - `## Wrapup Gates` in `acceptance.md`: a row per gate (`ran`/`skipped` + evidence; inline gates: `sprint wrapup-row <id> <gate> ran|skipped "<evidence>"`, which the progress card reads); `reviewer` and
      `code-reviewer` are separate.
    - Push `origin/main` after the gates.
 2. **Reviewer** (advisory). `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role reviewer`;
