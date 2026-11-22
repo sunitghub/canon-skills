@@ -575,7 +575,7 @@ _admin_stage_model() {
 
 # _run_agent — t-2a21: the run's agent: COCKPIT_AGENT, else copilot (COPILOT_CLI=1, CLAUDECODE unset), else claude.
 _run_agent() {
-  if [[ -n "${COCKPIT_AGENT:-}" ]]; then echo "$COCKPIT_AGENT"
+  if [[ "${COCKPIT_AGENT:-}" =~ ^[a-z][a-z0-9-]{0,15}$ ]]; then echo "$COCKPIT_AGENT"   # a plain word only: it is written to ticket.md
   elif [[ "${COPILOT_CLI:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo copilot
   else echo claude; fi
 }

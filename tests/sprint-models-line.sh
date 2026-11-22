@@ -94,6 +94,12 @@ ev="$(event_line sprint.started "$id")"
 assert_contains "$ev" '"run_agent":"pi"'
 [[ "$ev" != *run_preset* ]] || fail "Pi's sprint.started carries run_preset: $ev"
 
+# an agent name that is no plain word is never written to the ticket (it falls back to the harness read)
+id="$("$TKT" create "Odd agent" | awk '{ print $NF }')"
+COCKPIT_AGENT=$'pi\nrun_preset: x' "$SPRINT" start "$id" >/dev/null 2>&1; end "$id"
+assert_eq "claude" "$(fm "$id" run_agent)"
+grep -q '^run_preset: x' ".tickets/$id/ticket.md" && fail "COCKPIT_AGENT injected a frontmatter line"
+
 # 5. a project pipeline override: run_pipeline is the resolved order's 12-hex digest
 mkdir -p canon-config && printf 'extends: canon-default\noff: [code-simplifier]\n' > canon-config/pipeline.yaml
 id="$("$TKT" create "Trimmed pipeline" | awk '{ print $NF }')"
