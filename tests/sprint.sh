@@ -618,7 +618,7 @@ sleep 1
 complete_output="$(CLAUDE_CONFIG_DIR="$cc_cfg" "$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
 assert_contains "$complete_output" "close: suite stamped 2x"
-assert_contains "$complete_output" "cost: 50 tokens (gates 0, 0%), 0 gate runs"
+assert_contains "$complete_output" "cost: 50 tokens (close 0, 0% — gate agents 0), cache reads 0, 0 gate runs"
 assert_contains "$(event_line sprint.cost "$fresh_id")" '"implementation":"50"'
 rm -rf "$cc_cfg"
 cc="$(event_line close.confirmed "$fresh_id")"   # t-4c09: the audit line of a real close: the plan's tier, no actor (a command cannot know)

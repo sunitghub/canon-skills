@@ -323,7 +323,11 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
   gate's Wrapup Gates row. The definitions' own `model: claude-sonnet-5` floor is valid in both harnesses,
   and their `tools:` list carries `execute` (Copilot's shell) next to `Bash` (Claude Code's). Verified
   live on Windows: with `Bash` alone, the Copilot evaluator had no shell and couldn't produce a real
-  run id.
+  run id. Copilot's `task` call needs `name` (without it Copilot refuses the call: `"name": Required`). The dispatch prompt
+  itself says "under Copilot CLI write no file; your final message is the report, first line first, nothing after the verdict":
+  the gate has a shell, and on the Windows VM a reviewer tried to write its report through it although review.md said not to
+  (t-2986). `sprint relay-report` takes no input: it reads Copilot's own session record, so never pipe or type the report into it.
+  When it refuses, its message names the check that failed; fix that before dispatching again.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
@@ -407,7 +411,7 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
    `reviewer` for the reviewer): it copies the report byte for byte from the harness's own transcript
    of the dispatch (t-ff14), so the main session never types a gate report (Claude Code's auto mode
    refuses that as a bypassed gate). Copilot CLI gates have no write tool: relay every evaluator and reviewer report
-   this way; the close checks eval-report.md against Copilot's session record (t-4084). Never compose a report from a bare verdict. For the evaluator, never write or edit
+   this way (`sprint relay-report` takes no input: never pipe or type the report into it); the close checks eval-report.md against Copilot's session record (t-4084). Never compose a report from a bare verdict. For the evaluator, never write or edit
    `evaluator-run-id` yourself (live-reproduced on Windows/Haiku: an orchestrator wrote its own
    report with `haiku-eval-2026-09-23`); if the returned text is only a verdict, or its line 1
    lacks a `date +%s`-style `<epoch>-<n>` run-id, discard it and re-dispatch a fresh evaluator

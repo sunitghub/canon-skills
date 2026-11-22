@@ -111,6 +111,7 @@ tests=(
   "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/sprint-gate-cost.sh"
   "$ROOT/tests/sprint-token-spend.sh"
+  "$ROOT/tests/token-spend-golden.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
   "$ROOT/tests/install-sh.sh"
@@ -265,7 +266,7 @@ skipped() {
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
-go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term); }   # t-8020: one module
+go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term ./internal/transcript); }   # t-8020: one module
 go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {

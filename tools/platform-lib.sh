@@ -321,7 +321,7 @@ v1_get() {
 }
 v1_daemon_down() { local h; h="$(printf '%s' "${V1_HDR:-}" | tr 'A-Z' 'a-z')"; [[ "$h" =~ x-cockpit-daemon:[[:space:]]*down ]]; }
 
-# canon_awk_pkey — t-134b: the awk source of pkey(p), ONE definition of "the same folder" for awk programs that compare paths (sprint token-spend).
+# canon_awk_pkey — t-134b: the awk source of pkey(p), ONE definition of "the same folder" for awk programs that compare paths (sprint close-hint; token-spend now uses the Go twin common.PathKey).
 # A folder has several spellings on Windows: C:\x and the JSON-escaped C:\\x (native tools, Claude Code transcripts), C:/x (git and native
 # programs: Git Bash converts a /c/x argument for a native exe, so canon-go stores it so) and /c/x (Git Bash): all become /c/x. A trailing slash is dropped
 # (the root / stays), a run of slashes is one (a UNC prefix keeps its two), a UNC path stays //host/share, a POSIX path is otherwise unchanged. Only the drive letter is lower-cased: Windows paths are

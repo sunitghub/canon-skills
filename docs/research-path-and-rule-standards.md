@@ -30,7 +30,7 @@ canon has four definitions of "the same path", with three different output forms
 
 | Where | What it does | `C:\x` and `/c/x` become |
 |---|---|---|
-| `canon_awk_pkey` in `tools/platform-lib.sh` (awk, used by `sprint token-spend`) | backslashes to `/`, drive letter lower-cased, trailing slash dropped, UNC kept as `//host/share`; nothing else folded | both `/c/x` |
+| `canon_awk_pkey` in `tools/platform-lib.sh` (awk, used by `sprint close-hint`; `sprint token-spend` uses the Go twin `common.PathKey`) | backslashes to `/`, drive letter lower-cased, trailing slash dropped, UNC kept as `//host/share`; nothing else folded | both `/c/x` |
 | `pathKey` in `tools/canon-go/internal/board/main.go` | resolves symlinks, then lower-cases the **whole path on every OS**, backslashes to `/` | `c:/x` and `/c/x` (still different) |
 | `samePath` in `tools/canon-go/internal/board/skilleval.go` | `strings.EqualFold` on Windows only (by `runtime.GOOS`), `filepath.Clean` | no `/c/x` handling |
 | `normPath` in `tools/canon-go/internal/board/machine.go` | `/c/x` to `C:/x`, drive-letter paths lower-cased, trailing slash trimmed, no symlink resolution | both `c:/x` |

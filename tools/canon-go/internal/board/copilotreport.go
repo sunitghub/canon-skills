@@ -2,13 +2,16 @@ package board
 
 import (
 	"bufio"
-	"bytes"
+	"canon/internal/common"
+	"canon/internal/transcript"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +43,21 @@ type copilotLine struct {
 		Result struct {
 			Content string `json:"content"`
 		} `json:"result"`
+		// t-0829 (token-spend): session.start's working folder, and one model call's tokens in session.usage_record. inputTokens
+		// is the whole prompt: it already holds the cache read and write counts.
+		Context struct {
+			CWD     string `json:"cwd"`
+			GitRoot string `json:"gitRoot"`
+		} `json:"context"`
+		Usage *struct {
+			Model            string `json:"model"`
+			ResponseModel    string `json:"responseModel"`
+			InputTokens      int64  `json:"inputTokens"`
+			OutputTokens     int64  `json:"outputTokens"`
+			CacheReadTokens  int64  `json:"cacheReadTokens"`
+			CacheWriteTokens int64  `json:"cacheWriteTokens"`
+			APICallID        string `json:"apiCallId"`
+		} `json:"usage"`
 	} `json:"data"`
 }
 
@@ -69,13 +87,15 @@ const copilotTruncated = "Output too large"
 
 // copilotFind returns the report (or, with Record, the gate's raw record) from the newest matching task (by its result event's own
 // timestamp) in every session file under home/session-state. recognised is false when no session-state folder holds an events.jsonl.
-func copilotFind(home string, q copilotQuery) (out string, found, recognised bool) {
+// When nothing is found, why says which check failed (t-2986): the newest matching task's, else the closest miss (copilotMiss).
+func copilotFind(home string, q copilotQuery) (out string, found, recognised bool, why string) {
 	dirs, err := os.ReadDir(filepath.Join(home, "session-state"))
 	if err != nil {
-		return "", false, false
+		return "", false, false, ""
 	}
 	var best time.Time
 	seen := false
+	miss := copilotMiss{why: fmt.Sprintf("no finished %s task in the window", q.Agent)}
 	for _, d := range dirs {
 		if !d.IsDir() {
 			continue
@@ -88,14 +108,37 @@ func copilotFind(home string, q copilotQuery) (out string, found, recognised boo
 		recognised = true
 		// The newest matching dispatch decides, whatever it returned: an older run's report never stands in for a newer run
 		// that failed or returned only a summary (it would overwrite a fresh report with a stale one).
-		if r, at, cand, ok := copilotFindIn(p, q); cand && (!seen || at.After(best)) {
+		r, at, cand, ok, m := copilotFindIn(p, q)
+		if cand && (!seen || at.After(best)) {
 			out, best, found, seen = r, at, ok, true
+			if !ok {
+				why = m.why
+			}
+		}
+		if !cand && m.closer(miss) {
+			miss = m
 		}
 	}
-	if !found {
-		out = ""
+	if found {
+		return out, true, recognised, ""
 	}
-	return out, found, recognised
+	if !seen {
+		why = miss.why
+	}
+	return "", false, recognised, why
+}
+
+// copilotMiss is why a task of the wanted agent was not taken. The closest miss names the reason: a task that matches but finished
+// outside the window (rank 3), then one that names the ticket (2), then any other (1); on a tie, the newest. So a session holding
+// other tickets' gates still names the check this ticket's own task failed.
+type copilotMiss struct {
+	why  string
+	rank int
+	at   time.Time
+}
+
+func (m copilotMiss) closer(o copilotMiss) bool {
+	return m.rank > o.rank || (m.rank == o.rank && m.rank > 0 && !m.at.Before(o.at))
 }
 
 type copilotTask struct {
@@ -110,10 +153,11 @@ type copilotTask struct {
 // and the call succeeded inside the window: never the main session's own messages. The report is taken from the task's result,
 // else the gate's own newest message that holds it; the record is the gate's own commands and messages (never its tool outputs) plus
 // the result line.
-func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candidate, ok bool) {
+// miss is set when ok is false: the candidate's failure, else this file's closest miss.
+func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candidate, ok bool, miss copilotMiss) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", time.Time{}, false, false
+		return "", time.Time{}, false, false, miss
 	}
 	defer f.Close()
 	tasks := map[string]*copilotTask{}
@@ -122,12 +166,12 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	msgs := map[string][]string{} // agentId -> its assistant.message texts, in order
 	br := bufio.NewReaderSize(f, 1<<20)
 	for {
-		line, more := copilotNextLine(br)
+		line, more := transcript.NextLine(br)
 		if !more {
 			break
 		}
 		if line == nil {
-			continue // longer than copilotMaxLine: skipped, never fatal
+			continue // longer than transcript.MaxLine: skipped, never fatal
 		}
 		text := string(line)
 		l, ok := parseCopilotLine(line)
@@ -173,23 +217,46 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	var newest *copilotTask
 	for _, id := range order {
 		t := tasks[id]
-		if t.done == nil || !copilotTaskMatches(t, q) {
+		// Only the canon gate agent: no general-purpose fallback. The main session writes a task's prompt, and general-purpose has
+		// write tools, so accepting it would let the session produce its own report (the Claude path's only fallback, Plan, cannot write).
+		if t.done == nil || t.agentType != q.Agent {
 			continue
 		}
 		when, err := time.Parse(time.RFC3339Nano, t.done.Timestamp) // on a tie the later line in the file wins
-		if err != nil || when.Before(q.From) || when.After(q.To) || (newest != nil && when.Before(at)) {
+		if err != nil {
+			continue
+		}
+		m, namesTicket := copilotMismatch(t, q)
+		outside := when.Before(q.From) || when.After(q.To)
+		if m != "" || outside {
+			c := copilotMiss{why: m, rank: 1, at: when}
+			switch {
+			case m == "":
+				c.why, c.rank = fmt.Sprintf("the newest matching %s task finished at %s, outside the window %s to %s", q.Agent,
+					when.UTC().Format(time.RFC3339), q.From.UTC().Format(time.RFC3339), q.To.UTC().Format(time.RFC3339)), 3
+			case outside:
+				continue // a mismatch outside the window says nothing about this close
+			case namesTicket:
+				c.rank = 2
+			}
+			if c.closer(miss) {
+				miss = c
+			}
+			continue
+		}
+		if newest != nil && when.Before(at) {
 			continue
 		}
 		newest, at = t, when
 	}
 	if newest == nil {
-		return "", time.Time{}, false, false
+		return "", time.Time{}, false, false, miss
 	}
 	if newest.done.Data.Success == nil || !*newest.done.Data.Success {
-		return "", at, true, false
+		return "", at, true, false, copilotMiss{why: fmt.Sprintf("the newest matching %s task failed", q.Agent)}
 	}
 	if q.Record {
-		return strings.Join(append(append([]string{}, raw[newest.agentID]...), newest.doneRaw), "\n") + "\n", at, true, true
+		return strings.Join(append(append([]string{}, raw[newest.agentID]...), newest.doneRaw), "\n") + "\n", at, true, true, copilotMiss{}
 	}
 	cands := []string{newest.done.Data.Result.Content}
 	for i := len(msgs[newest.agentID]) - 1; i >= 0; i-- {
@@ -197,54 +264,68 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	}
 	for _, c := range cands {
 		if i := reportStart(c, q.Prefix); i >= 0 && !strings.Contains(c, copilotTruncated) {
-			return strings.TrimRight(c[i:], "\n") + "\n", at, true, true
-		}
-	}
-	return "", at, true, false
-}
-
-// copilotMaxLine bounds one events.jsonl line (a line holds whole tool results).
-var copilotMaxLine = 64 << 20 // a var: the test lowers it
-
-// copilotNextLine returns the next line without its newline; nil for a line longer than copilotMaxLine (read past and dropped);
-// more is false at the end of the file or on a read error.
-func copilotNextLine(br *bufio.Reader) (line []byte, more bool) {
-	var buf []byte
-	tooLong := false
-	for {
-		part, err := br.ReadSlice('\n')
-		if !tooLong {
-			if len(buf)+len(part) > copilotMaxLine {
-				tooLong, buf = true, nil
-			} else {
-				buf = append(buf, part...)
+			r := c[i:]
+			if q.Agent == "canon-reviewer" {
+				r = cutAfterVerdict(r)
 			}
+			return strings.TrimRight(r, "\n") + "\n", at, true, true, copilotMiss{}
 		}
-		if err == bufio.ErrBufferFull {
-			continue
-		}
-		if err != nil && len(part) == 0 && len(buf) == 0 && !tooLong {
-			return nil, false
-		}
-		if tooLong {
-			return nil, true
-		}
-		return bytes.TrimRight(buf, "\r\n"), true
 	}
+	return "", at, true, false, copilotMiss{why: fmt.Sprintf("the newest matching %s task's result has no whole line starting %q", q.Agent, q.Prefix)}
 }
 
-func copilotTaskMatches(t *copilotTask, q copilotQuery) bool {
-	// Only the canon gate agent: no general-purpose fallback. The main session writes a task's prompt, and general-purpose has write
-	// tools, so accepting it would let the session produce its own report (the Claude path's only fallback, Plan, cannot write).
-	if t.agentType != q.Agent || t.subagent != t.agentType {
-		return false
+// cutAfterVerdict ends a review at its verdict line (t-2986: a Copilot reviewer appended commentary after YES, which a relay would have
+// written into review-notes.md). The verdict line is the one the close reads (tools/sprint's review check): the first non-blank line
+// under ## Verdict, bold stripped, its first word YES or NO in any case. A report with no such line is returned unchanged.
+func cutAfterVerdict(r string) string {
+	inVerdict := false
+	for i := 0; i < len(r); {
+		end := len(r)
+		if j := strings.IndexByte(r[i:], '\n'); j >= 0 {
+			end = i + j
+		}
+		line := strings.TrimRight(r[i:end], "\r")
+		if inVerdict && strings.TrimSpace(line) != "" {
+			if f := strings.Fields(strings.ReplaceAll(line, "*", "")); len(f) > 0 && (strings.ToUpper(f[0]) == "YES" || strings.ToUpper(f[0]) == "NO") {
+				return r[:end]
+			}
+			return r
+		}
+		if verdictHeadRe.MatchString(line) {
+			inVerdict = true
+		}
+		i = end + 1
 	}
-	if !strings.Contains(t.prompt, q.Ticket) || !strings.Contains(t.prompt, q.Proto) {
-		return false
-	}
-	second := strings.Contains(t.prompt, ".tickets/"+q.Ticket+"/eval-report-2.md")
-	return second == q.Second // the first evaluator's report is never taken for the second's, or the other way
+	return r
 }
+
+var verdictHeadRe = regexp.MustCompile(`^##[[:space:]]+Verdict`)
+
+// copilotMismatch says which check a task of the wanted agent fails, or "" when it matches, and whether its prompt names the ticket.
+// The prompt is read with its backslashes as / (common.SlashSeparators, t-2986): a Copilot session on Windows names
+// .agents\skills\sprint\reference\review.md.
+func copilotMismatch(t *copilotTask, q copilotQuery) (string, bool) {
+	prompt := common.SlashSeparators(t.prompt)
+	names := strings.Contains(prompt, q.Ticket)
+	if t.subagent != t.agentType {
+		return fmt.Sprintf("the newest %s task never started as %s (no subagent.started names it)", q.Agent, q.Agent), names
+	}
+	if !names {
+		return fmt.Sprintf("the newest %s task names a different ticket than %s", q.Agent, q.Ticket), false
+	}
+	if !strings.Contains(prompt, q.Proto) {
+		return fmt.Sprintf("the newest %s task names %s but not %s", q.Agent, q.Ticket, q.Proto), true
+	}
+	second := strings.Contains(prompt, ".tickets/"+q.Ticket+"/eval-report-2.md")
+	if second != q.Second { // the first evaluator's report is never taken for the second's, or the other way
+		return fmt.Sprintf("the newest %s task is the other evaluator's (eval-report-2.md named: %t)", q.Agent, second), true
+	}
+	return "", true
+}
+
+// fromMSYS (t-2986) maps a Git Bash path the shell passes (/c/Users/x/.copilot) to the form a Windows program opens; a variable so a
+// test can take the Windows branch on any OS (the daemon's pattern, daemon/main.go fromMSYS).
+var fromMSYS = func(p string) string { return common.FromMSYS(p, runtime.GOOS) }
 
 // copilotReportCLI: copilot-report [--second] [--record] [--from <unix>] [--to <unix>] <copilot-home> <agent> <ticket> <protocol-file> <prefix>
 // --record prints the gate's raw record instead of the report (the close check greps it, as it greps Claude Code's transcripts).
@@ -277,11 +358,12 @@ func copilotReportCLI(args []string, stdout, stderr io.Writer) int {
 		}
 		*t.dst = time.Unix(n, 0)
 	}
-	report, found, recognised := copilotFind(fs.Arg(0), q)
+	report, found, recognised, why := copilotFind(fromMSYS(fs.Arg(0)), q)
 	switch {
 	case !recognised:
 		return 3
 	case !found:
+		fmt.Fprintln(stderr, "copilot-report: "+why)
 		return 1
 	}
 	fmt.Fprint(stdout, report)

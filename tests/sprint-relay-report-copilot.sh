@@ -48,7 +48,7 @@ body() { printf 'evaluator-run-id: %s\ngraded-head: abc\nModel: test-model\n\n##
 
 # 1. no Copilot session record: relay refuses and writes nothing; the close check fails open with a Note
 gate_ticket none; rid="$now-1111"
-out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no evaluator result for $gid in Copilot's session record"
+out="$(run_fail "$SPRINT" relay-report "$gid")"; assert_contains "$out" "no Copilot session record under $COPILOT_HOME/session-state"   # t-2986: exit 3 apart from exit 1
 [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report with no Copilot record"
 body "$rid" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
 assert_contains "$("$SPRINT" complete 2>&1)" "no Copilot session record under"
@@ -95,6 +95,7 @@ gate_ticket window; rid="$now-3535"
 session s3 c3 canon-evaluator "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$((now + 7200))"
 body "$rid" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
 out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator task result"
+assert_contains "$out" "Reason: the newest matching canon-evaluator task finished at"; assert_contains "$out" "outside the window"   # t-2986: the failed check is named
 drop
 
 # 4. a general-purpose task never counts; truncated or failed results never count
@@ -121,6 +122,22 @@ session s5 r1 canon-reviewer "Review $gid. Follow skills/sprint/reference/review
 Verdict: YES" "$now"
 "$SPRINT" relay-report "$gid" reviewer >/dev/null
 assert_eq "$(printf '# Review Notes\nVerdict: YES')" "$(cat ".tickets/$gid/review-notes.md")" "the reviewer's report relayed"
+# 5b. t-2986, the Windows VM shape: a backslash protocol path relays (cut at the verdict); a prompt without the protocol names why
+session s5 r2 canon-reviewer 'Review '"$gid"'. Follow .agents\skills\sprint\reference\review.md.' "# Review Notes
+
+## Verdict
+
+YES
+
+The report file was not written." "$((now + 1))"
+"$SPRINT" relay-report "$gid" reviewer >/dev/null
+assert_eq "$(printf '# Review Notes\n\n## Verdict\n\nYES')" "$(cat ".tickets/$gid/review-notes.md")" "a backslash prompt relays, cut at its verdict"
+drop; gate_ticket noproto   # its own ticket: r2 above still matches the first one
+session s5 r3 canon-reviewer 'Review '"$gid"'. Follow .agents\skills\sprint\reference\guide.md.' "# Review Notes
+Verdict: YES" "$((now + 2))"
+out="$(run_fail "$SPRINT" relay-report "$gid" reviewer)"
+assert_contains "$out" "the newest canon-reviewer task names $gid but not reference/review.md"
+assert_contains "$out" "takes no input"
 drop
 
 # 6. an older board binary: relay refuses at once (it would take the word for a port), the close check fails open

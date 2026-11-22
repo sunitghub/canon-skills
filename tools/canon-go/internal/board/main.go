@@ -233,6 +233,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   log verify | seal        the activity log's day seals (canon log)
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
   copilot-report [--second] [--record] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol-file> <first-line-prefix>
+  token-spend --project <root> [--worktree <path>]... [--last N] [--ticket <id> [--record]]   per-phase and per-gate token cost (t-0829)
   integrity [--json] [--gate] [--online]
   gate-clusters [--days N] [--json]
   gate-insights [--days N] [--json]

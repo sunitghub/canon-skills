@@ -178,7 +178,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "branch.merged budget.exceeded budget.warned build.switch close.confirmed close.started context.threshold eval.compared evidence.stamped gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen manual_qa.recorded plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
+	want := "branch.merged budget.exceeded budget.warned build.switch close.confirmed close.started context.threshold eval.compared evidence.stamped gate.cost gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen manual_qa.recorded plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -212,14 +212,18 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"sprint.completed":      {"ticket"},
 		"gate.started":          {"ticket", "role", "attempt", "docs"},
 		"gate.finished":         {"ticket", "role", "verdict", "model", "tokens", "minutes", "tier", "agent", "act_on"},
-		"evidence.stamped":      {"ticket", "name", "exit", "seconds"},                                                                                    // t-9113
-		"sprint.cost":           {"ticket", "planning", "implementation", "gates", "cache_read", "turns", "gate_runs", "models", "builder", "same_model"}, // t-7e26, t-b6ad
-		"gate.rejected":         {"ticket", "role", "reason"},
-		"budget.warned":         {"ticket", "cap", "used", "limit", "unit", "stage"}, // t-c990
-		"budget.exceeded":       {"ticket", "cap", "used", "limit", "unit", "stage"},
-		"session.needs_you":     {"session", "ticket", "agent"},
-		"session.exited":        {"session", "ticket", "agent", "reason", "models", "peak_context_pct", "tokens_new", "turns"},
-		"session.saved":         {"session", "ticket", "agent", "by"},
+		"evidence.stamped":      {"ticket", "name", "exit", "seconds"}, // t-9113
+		"sprint.cost": {"ticket", "planning", "implementation", "gates", "cache_read", "turns", "gate_runs", "models", "builder", "same_model", // t-7e26, t-b6ad
+			"plan_calls", "plan_input", "plan_cache_read", "plan_cache_write", "plan_output", "plan_peak", // t-0829: the main session per phase
+			"build_calls", "build_input", "build_cache_read", "build_cache_write", "build_output", "build_peak",
+			"close_calls", "close_input", "close_cache_read", "close_cache_write", "close_output", "close_peak"},
+		"gate.cost":         {"ticket", "agent_id", "role", "agent_type", "model", "calls", "input", "cache_read", "cache_write", "output", "peak"}, // t-0829
+		"gate.rejected":     {"ticket", "role", "reason"},
+		"budget.warned":     {"ticket", "cap", "used", "limit", "unit", "stage"}, // t-c990
+		"budget.exceeded":   {"ticket", "cap", "used", "limit", "unit", "stage"},
+		"session.needs_you": {"session", "ticket", "agent"},
+		"session.exited":    {"session", "ticket", "agent", "reason", "models", "peak_context_pct", "tokens_new", "turns"},
+		"session.saved":     {"session", "ticket", "agent", "by"},
 		// t-4c09 audit kinds
 		"plan.approved":           {"ticket", "tier"},
 		"close.confirmed":         {"ticket", "tier"},

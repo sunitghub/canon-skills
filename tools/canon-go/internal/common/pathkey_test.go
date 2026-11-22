@@ -128,3 +128,17 @@ func TestFromMSYS(t *testing.T) {
 		}
 	}
 }
+
+// t-2986: the separator rule PathKey uses, on a path inside prose (a Copilot task prompt on Windows). Prod path: copilot-report's match.
+func TestSlashSeparators(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{`Follow .agents\skills\sprint\reference\review.md for t-x`, `Follow .agents/skills/sprint/reference/review.md for t-x`},
+		{`.tickets\\t-x\eval-report-2.md`, `.tickets/t-x/eval-report-2.md`},
+		{`a/b//c`, `a/b//c`},
+		{``, ``},
+	} {
+		if got := SlashSeparators(c.in); got != c.want {
+			t.Errorf("SlashSeparators(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

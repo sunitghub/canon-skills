@@ -13,10 +13,10 @@ refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain
 
 # A throwaway checkout: the script under test (+ tools/src-key.sh, which names the key), a manifest, the Go module's sources, VERSION.
 # t-bdb0: one program, canon-go (cmd/canon-go), holds the board and the daemon: one asset, one hash, one destination per platform.
-R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$M/cmd/canon-go" "$M/internal/daemon" "$M/internal/board" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings"
+R="$WORK/repo"; M="$R/tools/canon-go"; mkdir -p "$M/cmd/canon-go" "$M/internal/daemon" "$M/internal/board" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings" "$M/internal/transcript"
 cp "$ROOT/tools/fetch-daemon.sh" "$ROOT/tools/src-key.sh" "$R/tools/"; cp "$ROOT/.gitignore" "$R/"   # canon's ignore rules: the binary and its temp files never show in git status
 printf 'module x\n\ngo 1.26.5\n' > "$M/go.mod"; : > "$M/go.sum"; echo 0.3.0 > "$R/VERSION"
-for d in cmd/canon-go internal/daemon internal/board internal/common internal/events internal/machine internal/term internal/settings; do printf 'package x // %s\n' "$d" > "$M/$d/x.go"; done
+for d in cmd/canon-go internal/daemon internal/board internal/common internal/events internal/machine internal/term internal/settings internal/transcript; do printf 'package x // %s\n' "$d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 srckey() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2"' _ "$1" "$2"; }
 full="$(srckey "$R" canon-go)"; key="${full:0:12}"; stamp="${full:0:8}"; dkey="$(srckey "$R" daemon)"
@@ -65,7 +65,7 @@ fetch() { # env vars via caller; sets out, rc
   set +e; out="$(PATH="${FETCH_PATH:-$STUBS:$BASEPATH}" bash "$R/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
 }
 reset() { rm -rf "$R/tools/canon-go-bin" "$R/tools/cockpit-daemon" "$R/tools/sprint-check-bin"; unset STUB_ASSET STUB_CURL_RC STUB_GO_FAIL STUB_OS STUB_ARCH FETCH_PATH STUB_LDLOG 2>/dev/null || true; }
-no_leftovers() { [[ -z "$(ls -A "$R/tools/canon-go-bin" 2>/dev/null | grep '^\.canon-go\.' || true)" ]] || fail "temp file left behind: $(ls -A "$R/tools/canon-go-bin" 2>/dev/null)"; }
+no_leftovers() { local f; for f in "$R/tools/canon-go-bin"/.canon-go.*; do [[ -e "$f" ]] && fail "temp file left behind: $f"; done; return 0; }
 
 # 1. a download that matches is installed, named by the canon-go key and target, and never executed. Protects install, canon update
 #    and canon start on macOS/Linux (t-bdb0: one file, tools/canon-go-bin/canon-go, from release canon-go-<key>).
@@ -230,11 +230,11 @@ done
 [[ "$vend" -ge 3 ]] || fail "expected the three vendored xterm files, saw $vend"
 
 # 11. release-daemon.sh --dry-run: builds canon-go for five targets, prints the manifest lines, publishes and writes nothing; refuses a dirty source
-RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RM/cmd/canon-go" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common" "$RM/internal/events" "$RM/internal/machine" "$RM/internal/term" "$RM/internal/settings"
+RR="$WORK/rel"; RM="$RR/tools/canon-go"; mkdir -p "$RR/scripts" "$RM/cmd/canon-go" "$RM/internal/daemon" "$RM/internal/board" "$RM/internal/common" "$RM/internal/events" "$RM/internal/machine" "$RM/internal/term" "$RM/internal/settings" "$RM/internal/transcript"
 cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/tools/src-key.sh" "$RR/tools/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf 'module x\n\ngo 1.26.5\n\ntoolchain %s\n' "$(go env GOVERSION)" > "$RM/go.mod"; : > "$RM/go.sum"   # t-7efe: the release script builds with the go.mod toolchain line and refuses without one
 printf 'package main\n\nvar version, commit, daemonKey string\n\nfunc main() {}\n' > "$RM/cmd/canon-go/main.go"
-for d in internal/daemon internal/board internal/common internal/events internal/machine internal/term internal/settings; do printf 'package x\n' > "$RM/$d/x.go"; done
+for d in internal/daemon internal/board internal/common internal/events internal/machine internal/term internal/settings internal/transcript; do printf 'package x\n' > "$RM/$d/x.go"; done
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
 rkey="$(srckey "$RR" canon-go | cut -c1-12)"
