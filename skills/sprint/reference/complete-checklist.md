@@ -62,10 +62,12 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
   `Admin Reviewer|Evaluator default`, `definition floor`.
 - **The prompt says:** ticket id, repo path and branch; follow `reference/review.md` (reviewer) or
   `reference/eval.md` (evaluator); the `Model:` designation; write
-  `pre`'s report path and return the verdict line; read-only except
+  `pre`'s report path and return the verdict line (under Copilot CLI instead: write no file; your final message is the report,
+  first line first, nothing after the verdict); read-only except
   that report; never kill by name or pattern; evaluator only: paste `sprint check-evidence`'s output, take the
-  `evaluator-run-id` as the very last command. Never pass a changed-files list.
+  `evaluator-run-id` as the very last command. Never pass a changed-files list. Under Copilot CLI the `task` call needs `name`.
 - `Plan` fallback, Copilot gates: `sprint relay-report <id> [reviewer]` writes the report; session never types one.
+  It takes no input (it reads the harness's record: never pipe or type the report); a refusal names the check that failed.
 
 ## Read the detail when
 
