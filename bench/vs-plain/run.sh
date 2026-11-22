@@ -2,7 +2,8 @@
 # run.sh — t-e85f: one run of the canon-vs-plain bench. Builds the to-do app of step-1.md .. step-3.md with `claude -p` (Sonnet 5.5),
 # either plain (an empty git repo, no canon on PATH, no user CLAUDE.md) or canon (the sprint skill from a scratch clone of this
 # repo, all model tiers pinned to Sonnet, one `sprint start` .. `sprint complete` per step), and appends one TSV row per step.
-#   bench/vs-plain/run.sh <plain|canon> <run-number> [--steps N] [--results FILE]
+#   bench/vs-plain/run.sh <plain|canon|canon-lean> <run-number> [--steps N] [--results FILE]
+# canon-lean (t-8882) is the canon arm with bench/vs-plain/lean-tools.txt's names in the session settings' permissions.deny, nothing else changed.
 # Sessions write only a fresh project per step and the session folder (BENCH_WORK, else mktemp -d: the canon clone used as CANON_HOME
 # and its temp folder); everything run.sh itself runs or writes after a session is in the host folder (BENCH_HOST, else
 # /tmp/canon-bench-host.*, which also holds the projects), which no session can write. The user's state is fingerprinted around each session and a change marks the row
@@ -15,10 +16,11 @@ BENCH="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CANARY="$(sed -n 's/^\/\/ bench-canary: \([0-9a-f]\{16\}\) .*/\1/p' "$BENCH/hidden/lib.js")"   # read here, never written in this file
 [[ -n "$CANARY" ]] || { echo "run.sh: hidden/lib.js has no bench-canary line" >&2; exit 2; }
 REPO="$(git -C "$BENCH" rev-parse --show-toplevel)"
-usage() { echo "usage: bench/vs-plain/run.sh <plain|canon> <run-number> [--steps 1-3] [--results FILE]" >&2; exit 2; }
+usage() { echo "usage: bench/vs-plain/run.sh <plain|canon|canon-lean> <run-number> [--steps 1-3] [--results FILE]" >&2; exit 2; }
 
 arm="${1:-}"; run="${2:-}"; shift 2 2>/dev/null || usage
-[[ "$arm" == plain || "$arm" == canon ]] || usage
+[[ "$arm" == plain || "$arm" == canon || "$arm" == canon-lean ]] || usage
+canon_like() { [[ "$arm" != plain ]]; }
 [[ "$run" =~ ^[0-9]+$ ]] || usage
 steps=3; results="$BENCH/results/results.tsv"
 while [[ $# -gt 0 ]]; do
@@ -65,7 +67,10 @@ BASE_PATH="$(clean_path)"
 # stopped at `sprint approve`). A write into HOME is refused (probed 2026-11-21). An unsandboxed
 # retry is refused, and Edit/Write stay in the project (acceptEdits). Same for both arms.
 mkdir -p "$W/tmp"
-sandbox_for() { node -e 'console.log(JSON.stringify({ sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: process.argv.slice(1).filter(Boolean) } } }))' "$1" "$W"; }
+DENY=""; [[ "$arm" != canon-lean ]] || DENY="$(grep -v '^[[:space:]]*$' "$BENCH/lean-tools.txt")" \
+  || { echo "run.sh: $BENCH/lean-tools.txt names no tools" >&2; exit 2; }
+sandbox_for() { node -e 'const [deny, ...w] = process.argv.slice(1); const s = { sandbox: { enabled: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false, filesystem: { allowWrite: w.filter(Boolean) } } };
+  if (deny) s.permissions = { deny: deny.split("\n") }; console.log(JSON.stringify(s))' "$DENY" "$1" "$W"; }
 
 # The user's state a session must not touch: canon's project list and Cockpit files under the real HOME.
 fingerprint() {
@@ -84,7 +89,7 @@ clone_canon() {
   git -C "$1" checkout -q --detach "$commit"
   if [[ -x "$REPO/tools/canon-go-bin/canon-go" ]]; then mkdir -p "$1/tools/canon-go-bin"; cp "$REPO/tools/canon-go-bin/canon-go" "$1/tools/canon-go-bin/"; fi
 }
-if [[ "$arm" == canon && ! -d "$CH" ]]; then
+if canon_like && [[ ! -d "$CH" ]]; then
   clone_canon "$CH"
   [[ -d "$HC/.git" ]] || clone_canon "$HC"
   mkdir -p "$CH/cockpit"
@@ -102,7 +107,7 @@ new_project() {
   git -C "$p" init -q -b main
   git -C "$p" config user.name bench; git -C "$p" config user.email bench@example.invalid
   [[ -z "$seed" ]] || cp -R "$seed"/. "$p"/
-  if [[ "$arm" == canon ]]; then
+  if canon_like; then
     mkdir -p "$H/setup-home"
     (cd "$p" && HOME="$H/setup-home" XDG_CONFIG_HOME="$H/setup-home/.config" CANON_HOME="$CH" PATH="$HC/tools:$BASE_PATH" \
       "$HC/tools/skills.sh" add sprint </dev/null >"$H/skills-add.log" 2>&1) \
@@ -189,7 +194,7 @@ for step in $(seq 1 "$steps"); do
   [[ "$status" != failed || -n "$reason" ]] || reason="claude -p exited $rc"
   # Contamination: the user's state changed, the session's transcript read the hidden tests, or it changed canon's own tracked files.
   # (compared with the clean clone's tracked files by content, so no git runs in the folder the session wrote)
-  if [[ "$arm" == canon ]] && canon_changed; then
+  if canon_like && canon_changed; then
     status=contaminated; reason="the session changed canon's own files in its CANON_HOME"
   fi
   if [[ "$(fingerprint)" != "$fp_before" ]]; then status=contaminated; reason="the user's canon state changed during the session"; fi
@@ -198,7 +203,7 @@ for step in $(seq 1 "$steps"); do
   if [[ -d "$tdir" ]] && grep -rqsF -e "vs-plain/hidden" -e "$CANARY" "$tdir"; then status=contaminated; reason="the transcript reads the hidden tests"; fi
   # Canon's split: the ticket this step created, closed or not; its token-spend phases; its gate runs from the subagent log.
   planning=n/a; impl=n/a; gates=n/a; gate_runs=n/a; entry=claude-p
-  if [[ "$arm" == canon ]]; then
+  if canon_like; then
     entry="claude-p+sprint"
     # The ticket the step closed, else the newest by its created: line; ids are random hex, so sort order says nothing (a session can make two).
     tid="$(comm -13 <(printf '%s\n' "$before_tickets") <(ls "$proj/.tickets" 2>/dev/null | sort) | grep -E '^t-[0-9a-z]{4,12}$' | while IFS= read -r t; do   # a session-written name never reaches a path or token-spend unless it is an id

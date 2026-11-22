@@ -29,7 +29,7 @@ for (const k of [...groups.keys()].sort()) {
   for (const r of dropped) notes.push(`- ${r.arm} run ${r.run} step ${r.step}: ${r.status} (${r.reason || 'no reason'})`);
   const [arm, step] = k.split('\t');
   const sumCost = kept.reduce((a, r) => a + (num(r.cost_usd) || 0), 0), sumPass = kept.reduce((a, r) => a + (num(r.passed) || 0), 0);
-  const canon = arm === 'canon';
+  const canon = arm !== 'plain';   // canon and canon-lean (t-8882) carry the split
   out.push(`| ${arm} | ${step} | ${kept.length} | ${dropped.length} | ${fmt(mean(kept.map(r => num(r.cost_usd))))} | ${fmt(mean(kept.map(r => num(r.minutes))), 1)} | ` +
     `${fmt(mean(kept.map(r => num(r.passed))), 1)} / ${kept[0] ? kept[0].total : 'n/a'} | ${kept.length && sumPass > 0 ? (sumCost / sumPass).toFixed(3) : 'n/a'} | ` +
     (canon ? `${tok(mean(kept.map(r => num(r.planning))))} | ${tok(mean(kept.map(r => num(r.implementation))))} | ${tok(mean(kept.map(r => num(r.gates))))} | ${tok(mean(kept.map(r => gateTok(r, ['speccheck', 'reviewer']))))} |`
