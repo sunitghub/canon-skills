@@ -62,3 +62,8 @@ examples/
 /tools/sprint-check-bin/
 /tools/cockpit-daemon/
 /bench/vs-plain/results/
+/.claude/skills
+/.agents/skills
+/.claude/subagent-runs.jsonl
+/.tickets/*/gate-snapshot.txt*
+/.claude/settings.local.json
