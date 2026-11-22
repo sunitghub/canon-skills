@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-11-22
+
+- Fixed: the Sprint progress card ticks a step only from its own finishing event, never because a later step started. A spec check that never ran reads "not run" (it was drawn green), a skipped wrapup gate reads "skipped", a gate run more than once reads "run N", and re-running the Reviewer after the Evaluator passed no longer greys out the Evaluator (t-bcc1).
+- Added: `sprint wrapup-row <id> <gate> ran|skipped "<notes>"` writes one Wrapup Gates row in acceptance.md and emits `wrapup.gate_finished`, which the card reads; the close checklist uses it for the inline gates. `GET /api/v1/sprint/<id>` keeps the latest event per kind and per gate role or wrapup gate. The board binary changed: run `canon update` (t-bcc1).
+
 ## [0.77.0] - 2026-11-22
 
 - Added: `sprint start` prints the run's preset and models in one line (`Models (<preset or Custom> · <agent>): Plan … · Second eval …`), the preset matched as Admin > Model tiers shows it (new `canon-go model-summary`); a ticket's own model lines show "(ticket)", and `sprint approve` prints it again. It records `run_preset`, `run_agent` and `run_pipeline` on the ticket and in `sprint.started` (`run_preset_build` at approve when the preset changed), so cost can be grouped by setup (t-2a21).
