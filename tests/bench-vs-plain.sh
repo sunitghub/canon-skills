@@ -134,10 +134,10 @@ node -e 'const d=require(process.argv[1]); for (const [s,v] of Object.entries(d.
 [[ "$(grep -c . "$T/host$n/setup-home/.config/canon/projects" 2>/dev/null)" == 1 ]] || fail "canon: skills.sh's project list did not go to the scratch HOME"
 [[ -z "$(find "$HOME" -mindepth 1 -print -quit)" ]] || fail "canon: run.sh wrote under HOME"
 assert_eq "canon	claude-sonnet-5-5	claude-p+sprint" "$(awk -F'\t' 'NR==2 { print $2 "\t" $8 "\t" $9 }' "$T/r$n.tsv")" "the row names arm, model, entry point"
-# canon-lean (t-8882): the canon arm plus tools/lean-tools.txt's names as permissions.deny in the session settings, nothing else changed
+# canon-lean (t-8882): the canon arm plus bench/vs-plain/lean-tools.txt's names as permissions.deny in the session settings, nothing else changed
 [[ "$(bench closed canon-lean 1)" == "ok||0.2500|13|13|n/a|n/a|reviewer=1200tok/2min" ]] || fail "canon-lean: a closed sprint reads like canon's"
 n="$(cat "$T/n")"; lp="$(cat "$T/host$n/proj-1.path")"
-deny="$(node -e 'console.log(JSON.stringify({ permissions: { deny: require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(l => l.trim()) } }).slice(1, -1))' "$ROOT/tools/lean-tools.txt")"
+deny="$(node -e 'console.log(JSON.stringify({ permissions: { deny: require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(l => l.trim()) } }).slice(1, -1))' "$B/lean-tools.txt")"
 lean_args="$(norm_args "$lp" "$T/w$n")"
 [[ "$lean_args" == *",$deny}"* ]] || fail "canon-lean: the session settings deny the owner file's tools: $lean_args"
 assert_eq "$canon_args" "${lean_args/",$deny"/}" "canon-lean: the argv is canon's apart from the deny list"
