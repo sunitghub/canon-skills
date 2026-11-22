@@ -61,8 +61,9 @@ func modelSummary(agent string) []string {
 	out := []string{"preset\tcustom\tCustom"}
 	for _, p := range presetsView(doc, agents) {
 		picks, _ := p["picks"].(map[string]map[string]string)
-		if presetMatches(picks, defaults, ids) {
-			out[0] = fmt.Sprintf("preset\t%v\t%v", p["id"], p["name"])
+		// a hand-edited my_presets id is shape-checked only on save: one that is no plain id never reaches the ticket (Custom instead)
+		if id, _ := p["id"].(string); presetMatches(picks, defaults, ids) && common.ModelIDRe.MatchString(id) && len(id) <= 40 {
+			out[0] = fmt.Sprintf("preset\t%s\t%v", id, p["name"])
 			break
 		}
 	}

@@ -85,6 +85,12 @@ func TestModelSummary(t *testing.T) {
 		doc["my_presets"] = []any{map[string]any{"id": "mine", "name": "My gates", "picks": map[string]any{"evaluator": map[string]any{"claude": "claude-opus-5-5"}}}}
 	})
 	want("my preset", "claude", "preset\tmine\tMy gates", "evaluator\tClaude Opus 5.5")
+	// t-2a21 reviewer: a hand-edited id that is no plain id (a newline would reach ticket.md's frontmatter) reads as Custom
+	save(func(doc map[string]any) {
+		pick(doc, "evaluator", "claude", "claude-opus-5-5")
+		doc["my_presets"] = []any{map[string]any{"id": "mine\nrun_agent: x", "name": "My gates", "picks": map[string]any{"evaluator": map[string]any{"claude": "claude-opus-5-5"}}}}
+	})
+	want("bad preset id", "claude", "preset\tcustom\tCustom")
 
 	// a saved pick outside the option list shows as its id, and is Custom
 	save(func(doc map[string]any) { pick(doc, "build", "claude", "claude-mystery-9") })
