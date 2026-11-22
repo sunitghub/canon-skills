@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-21-2026 21:24
+learnings-sweep last run: 11-21-2026 22:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-22 | [t-d826](.tickets/t-d826/learnings.md) | An advisory step a session can read past needs a mechanical reminder at the next checkpoint (approve names a skipped spec check) and its own numbered checklist step, not a clause inside another step | UNPROMOTED |
 | 2026-11-22 | [t-63c6](.tickets/t-63c6/learnings.md) | A protocol input the session must copy into a prompt by hand gets dropped (3 of 4 Copilot gate dispatches lost a heading, a verdict format or the Model line): have the tool print the whole prompt and the docs say pass it verbatim | UNPROMOTED |
 | 2026-11-22 | [t-4fc7](.tickets/t-4fc7/learnings.md) | A revert proof must undo every filter on the path: a byte prefilter ahead of the type check made a model.* mutant survive, so the test looked vacuous until both were widened | UNPROMOTED |
 | 2026-11-22 | [t-2986](.tickets/t-2986/learnings.md) | A Copilot reader matched paths in prompt text by literal "/": Windows writes `\`, so normalise separators through the one path rule (SlashSeparators) and make a refusal name the failed check, or a matcher miss reads as "dispatch again" | UNPROMOTED |
