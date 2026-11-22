@@ -143,7 +143,7 @@ EOF
   fi
 
   _gate_agents_check "$root"
-  # t-2a21: the run's preset, agent and pipeline, on the ticket (tkt-owned fields) and in the event, so cost can be grouped by them later
+  # t-2a21: the run's setup, on the ticket and in the event, so cost can be grouped by it
   local run_agent run_summary run_preset run_pipeline
   run_agent="$(_run_agent)"
   run_summary="$([[ "$run_agent" == pi ]] || _model_summary "$run_agent")"
@@ -573,25 +573,22 @@ _admin_stage_model() {
   "$b" stage-model "$1" "$2" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null || true
 }
 
-# _run_agent — t-2a21: the agent this run uses: the Cockpit's (COCKPIT_AGENT), else Copilot CLI when COPILOT_CLI=1 and Claude Code is
-# not the caller (CLAUDECODE unset, as _report_harness reads it), else claude.
+# _run_agent — t-2a21: the run's agent: COCKPIT_AGENT, else copilot (COPILOT_CLI=1, CLAUDECODE unset), else claude.
 _run_agent() {
   if [[ -n "${COCKPIT_AGENT:-}" ]]; then echo "$COCKPIT_AGENT"
   elif [[ "${COPILOT_CLI:-}" == 1 && -z "${CLAUDECODE:-}" ]]; then echo copilot
   else echo claude; fi
 }
 
-# _model_summary <agent> — t-2a21: canon-go model-summary's lines (the preset Admin's dropdown shows, then each step's display name), or
-# nothing (no picks for the agent, no registry readable, or a board without the command). Never fails.
+# _model_summary <agent> — t-2a21: canon-go model-summary's lines (preset, then each step's model), or nothing. Never fails.
 _model_summary() {
   local b
   b="$(board_has 'model-summary <agent>' 2>/dev/null)" || return 0
   "$b" model-summary "$1" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null || true
 }
 
-# _models_line <plan.md> <agent> <model-summary lines> — t-2a21: the run's one Models line; a Sign-off `Plan model:`, `Build model:` or
-# `Gate model:` (Spec check, Reviewer, Evaluator; never Second eval) shows as that step's model with "(ticket)". Pi keeps its session
-# model; nothing at all when the summary is empty (never a guess).
+# _models_line <plan.md> <agent> <summary> — t-2a21: the Models line; a Sign-off Plan/Build/Gate model shows with "(ticket)" (Gate: the
+# three gates, never Second eval). Nothing for an empty summary (never a guess).
 _models_line() {
   local plan="$1" agent="$2" summary="$3" k a b preset="" parts="" label lab v
   if [[ "$agent" == pi ]]; then echo "Models (Pi): this session keeps its model"; return 0; fi
@@ -611,8 +608,7 @@ _models_line() {
   echo "Models (${preset:-Custom} · $agent): $parts"
 }
 
-# _run_pipeline <project root> — t-2a21: the pipeline a run records: canon-default with no canon-config/pipeline.yaml, else the 12-hex
-# digest of the resolved order (_pipeline_state); nothing when it cannot be read.
+# _run_pipeline <root> — t-2a21: canon-default, else the project pipeline's 12-hex digest; nothing when unreadable.
 _run_pipeline() {
   local state
   if [[ ! -f "$1/canon-config/pipeline.yaml" ]]; then echo canon-default; return 0; fi
@@ -625,7 +621,7 @@ _run_pipeline() {
 # turn ends; elsewhere the person types /model. Prints nothing when there is no Build model (the session keeps its model); never fails.
 _build_model_line() {
   local plan="$1" agent m="" src="the ticket's Build model line"
-  agent="$(_run_agent)"   # t-2a21: Copilot CLI outside the Cockpit too
+  agent="$(_run_agent)"
   if [[ "$agent" == pi ]]; then
     [[ -z "${COCKPIT_TICKET:-}" ]] || echo "Build model: Pi has no /model, so this session keeps its model."
     return 0
@@ -666,7 +662,7 @@ cmd_approve() {
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
   _build_model_line "$plan"
-  # t-2a21: the Models line again, now the Sign-off's model lines are filled; a preset changed since start is recorded beside the start's
+  # t-2a21: the Models line again (the Sign-off is filled now); a preset changed since start is recorded
   local run_agent run_summary run_preset ticket="$root/.tickets/$id/ticket.md" started
   run_agent="$(_run_agent)"
   if [[ "$run_agent" != pi ]]; then
