@@ -25,7 +25,7 @@ var (
 func PathKey(p string) string {
 	p = strings.ReplaceAll(p, "\n", "%0A")
 	unc := pkUNCRe.MatchString(p)
-	p = pkBackRe.ReplaceAllString(p, "/")
+	p = SlashSeparators(p)
 	if unc {
 		p = "/" + p
 	}
@@ -42,6 +42,10 @@ func PathKey(p string) string {
 	}
 	return p
 }
+
+// SlashSeparators is PathKey's separator rule on its own: every run of backslashes is one /. It is for a path inside other text (t-2986:
+// a Copilot task prompt on Windows names .agents\skills\sprint\reference\review.md), where the rest of PathKey would not apply.
+func SlashSeparators(s string) string { return pkBackRe.ReplaceAllString(s, "/") }
 
 // ResolvedKey is PathKey of the path with its links resolved when it exists (filepath.EvalSymlinks; on Windows that also gives the
 // on-disk case), else of the path as given: the form for a map key, where identity cannot be asked.
