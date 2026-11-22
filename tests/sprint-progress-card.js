@@ -186,6 +186,9 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('the Second eval never counts as an Evaluator run', rowStates(NODES, events([['gate.started', { role: 'evaluator' }], ['gate.started', { role: 'evaluator2' }]])).eval.runs === 1);
     ok('a failed evaluator: not done, "failed" once it is not current', (() => { const x = draw([['gate.finished', { role: 'evaluator', verdict: 'fail' }], ['gate.started', { role: 'reviewer' }]]); return !/ done\b/.test(li(x, 'eval').slice(0, 60)) && li(x, 'eval').includes('<span class="spc-note fail">failed</span>'); })());
     ok('Build is done once the close began, not before', rowStates(NODES, events([['plan.approved']])).build.state === '' && rowStates(NODES, events([['plan.approved'], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }]])).build.state === 'done');
+    { const ev = evts([['plan.approved'], ['manual_qa.recorded', { result: 'pass' }], ['close.started']]);
+      const m = progressCardHtml(NODES, 'manual', { ...sprintProgress(NODES, ev, { mode: 'manual' }), rows: rowStates(NODES, ev) });
+      ok('a Your test row done from its record drops "waiting for your test" (t-bcc1 reviewer)', / done\b/.test(li(m, 'your-test').slice(0, 60)) && !li(m, 'your-test').includes('waiting for your test'), li(m, 'your-test')); }
     ok('your test: a passing record is done, a failing one failed', rowStates(NODES, events([['manual_qa.recorded', { result: 'pass' }]]))['your-test'].state === 'done' && rowStates(NODES, events([['manual_qa.recorded', { result: 'fail' }]]))['your-test'].state === 'failed');
     // the snapshot and the events window both hold an event: counted once
     const dup = events([['gate.started', { role: 'reviewer' }]]).map(e => ({ ...e, id: 'x1' }));

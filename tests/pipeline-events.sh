@@ -17,12 +17,13 @@ table="$(node --input-type=module -e "
 nodes="$("$ROOT/tools/pipeline.sh" resolve --full | awk -F'\t' '{ print $2 }')"
 [[ -n "$nodes" ]] || fail "pipeline-events: tools/pipeline.sh resolve --full listed no node"
 
-# emitted <kind>: a `canon_event <kind>` call in a shell tool, or the kind as a Go string outside the event declarations and the tests
+# emitted <kind>: a `canon_event <kind>` call in a shell tool, or a Go emit call naming it (`.emit("<kind>"` / `Emit("<kind>"`), outside
+# the tests. A bare string is not enough: the board's readers name every kind too (t-bcc1 reviewer: the check could not fail).
 emitted() {
   local k="$1" re
   re="${k//./\\.}"
   grep -rqE "canon_event[[:space:]]+$re([[:space:]]|$)" "$ROOT/tools" "$ROOT/scripts" --exclude-dir=canon-go --exclude-dir=node_modules 2>/dev/null && return 0
-  grep -rqE "\"$re\"" "$ROOT/tools/canon-go" --include='*.go' --exclude='*_test.go' --exclude-dir=events 2>/dev/null
+  grep -rqE "[.]?[Ee]mit[A-Za-z]*\\(\"$re\"" "$ROOT/tools/canon-go" --include='*.go' --exclude='*_test.go' 2>/dev/null
 }
 
 missing=""
@@ -36,5 +37,7 @@ done <<< "$nodes"
 # the check has teeth: a node with no entry and a kind nothing emits are both reported
 emitted "no.such_kind" && fail "pipeline-events: emitted() found an emitter for a kind nobody writes"
 emitted "sprint.started" || fail "pipeline-events: emitted() missed sprint start's emitter"
+emitted "implement.started" || fail "pipeline-events: emitted() missed the daemon's Go emit of implement.started"
+emitted "plan.written" && fail "pipeline-events: emitted() counted plan.written, which is only declared and read"
 
 echo "pipeline-events: ok ($(wc -l <<< "$nodes" | tr -d ' ') nodes)"

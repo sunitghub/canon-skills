@@ -196,7 +196,7 @@ export function progressCardHtml(nodes, mode, live) {
     // t-bcc1: done only from the row's own end event (rowStates)
     const rs = (live && live.rows && live.rows[n.id]) || { state: '', runs: 0 };
     const done = !!live && !gone && !cur && (live.closed || rs.state === 'done');
-    const [ncls, ntext] = text || !live || gone ? [cls, text]
+    const [ncls, ntext] = cls === 'wait' && rs.state === 'done' ? ['', ''] : text || !live || gone ? [cls, text]
       : rs.state === 'skipped' ? ['skip', 'skipped'] : rs.state === 'notrun' && !cur ? ['skip', 'not run'] : rs.state === 'failed' && !cur ? ['fail', 'failed']
       : rs.runs > 1 ? ['', `run ${rs.runs}`] : ['', ''];
     const at = live && !gone && Number.isFinite(times[n.id]) ? hm(times[n.id]) : '';

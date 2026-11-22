@@ -5,6 +5,7 @@
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # canon_event writes through the board binary: build it, never the installed one (t-bcc1 reviewer)
 
 W="$(mktemp -d)"; W="$(cd "$W" && pwd -P)"
 export CANON_HOME="$W/canon-home"
