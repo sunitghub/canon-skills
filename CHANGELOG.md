@@ -6,6 +6,15 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-11-23
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Feature: a Cockpit session moves to its own Close model when the close begins. Admin > Model tiers gains a Close step: Sonnet in Balanced, Economy and Checker≠builder, Opus in Max. A registry saved before this copies the Reviewer's picks. When the first `sprint pre-gate-check` records `close.started`, the turn ends, and the Cockpit types `/model <close>` and a line that continues the close, as it does for Build at approval. A ticket's `| Close model:` overrides Admin, and the gates keep their own models (t-3e06).
+- The Sprint progress card names the model each row ran on, on a second muted line under the name: the agent rows from their gate event or report, Build and Close from the session switch, plus "Run N" from run 2. A row that has not run shows no model. The Cockpit pane header drops its Model field (t-3df9).
+- Fix: the card no longer prints a raw event kind (a stray `wrapup.gate_finished` line). A gate whose report holds a verdict (relayed under Copilot with no event) reads done or failed, and a hand-typed Wrapup Gates row turns its inline gate green (t-e371).
+- Under Copilot CLI, `sprint subagent-log` fills a gate's missing tokens and minutes from Copilot's session record. `sprint gate-usage <id> <role>` prints them (t-46df). The Copilot CLI mark now reads `>C` and fills its box like Claude's.
+
 ## [0.81.2] - 2026-11-23
 
 - Fix: under Copilot CLI the gates no longer look for their protocol at canon's own repo path: the spec checker, reviewer and evaluator agent files follow the path `sprint gate-prompt` names (`.agents/skills/…` under Copilot), and say so in the report instead of searching the disk when it cannot be read. The Copilot gate prompt now lists the report lines the close parses (evaluator: run-id, `graded-head:` from `git rev-parse HEAD` run by the gate, Model, `pass:`/`fail:`; spec check: `## Verdict` READY|GAPS), so a gate that cannot read its protocol still returns a closeable report. A short `graded-head` is refused as "not a full commit hash" instead of "not a commit" (t-2dc4).
