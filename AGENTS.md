@@ -36,7 +36,7 @@ Gate models, effort and the Codex/pi caveats: `skills/sprint/reference/complete.
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
 > Managed by `skills.sh` — use `add`/`remove` to change.
-> Platforms: run canon's commands (sprint, tkt, skills, canon) exactly as written, never piped into head, Select-Object, a pager or a filter, never with output dropped: their output is your next step. On Windows they run from any shell through their .cmd shims, which start Git Bash; .sh scripts need Git Bash. Details: standards/efficiency-notes.md › Platforms (canon install).
+> Platforms: run canon's commands (sprint, tkt, skills, canon) exactly as written, never piped into head, Select-Object, a pager or a filter, never with output dropped: their output is your next step. One command per shell call, no ';', '&&' or '|' chains: Copilot CLI cannot approve a chained line. On Windows they run from any shell through their .cmd shims, which start Git Bash; .sh scripts need Git Bash. Details: standards/efficiency-notes.md › Platforms (canon install).
 
 | Skill | Category | Source |
 |-------|----------|--------|

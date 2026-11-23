@@ -44,7 +44,7 @@ names for a case that applies.
    If the project registered efficiency, name the `standards/efficiency-notes.md` sections this ticket
    touches and read only those. Name the number it moves and its target, or say why there is none.
 8. **Perspective check:** one question each as user, security and architect; put any concern in the brief.
-9. **Spec check:** before the brief (`start.md` step 10; not Lite): `sprint gate-prompt <id> speccheck`; Copilot: `relay-report`.
+9. **Spec check:** before the brief (not Lite): `sprint gate-prompt <id> speccheck`; Copilot: `sprint relay-report <id> speccheck`.
 10. **Brief:** goal; tier, reason; applicable DECISIONS
    entries, conflicts called out; files; impact or "normal tier — no high-risk triggers"; checkpoint;
    criteria, Test Plan verbatim; spec findings; questions answered; blockers.
