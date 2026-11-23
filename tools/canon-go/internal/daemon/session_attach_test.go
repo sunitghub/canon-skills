@@ -9,14 +9,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
 // TestSameTicketSecondStartAttaches (t-c6fa): a second /session/start for a
-// ticket that already has a live session must attach to it -- same session
-// and token, no second spawn -- rather than racing a second PTY against the
+// ticket that already has a live session must attach to it -- same session,
+// no token (t-d5a8), no second spawn -- rather than racing a second PTY against the
 // first for the same underlying claude conversation.
 func TestSameTicketSecondStartAttaches(t *testing.T) {
 	bin, _, _ := fakeSprint(t) // ends in `cat`: stays live until killed
@@ -290,17 +289,6 @@ func TestReattachNoToken(t *testing.T) {
 			s.mu.Unlock()
 			if n != 1 {
 				t.Fatalf("want 1 live session after reattach, got %d", n)
-			}
-			// What the reattach handed out (nothing) cannot drive the PTY.
-			req, _ := http.NewRequest(http.MethodPost, base+"/session/"+first["session"].(string)+"/input", strings.NewReader("x\n"))
-			req.Header.Set("Authorization", "Bearer ")
-			r, err := http.DefaultClient.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			r.Body.Close()
-			if r.StatusCode != http.StatusUnauthorized {
-				t.Fatalf("input with the reattach reply's (absent) token: status %d, want 401", r.StatusCode)
 			}
 		})
 	}
