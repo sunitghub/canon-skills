@@ -13973,7 +13973,12 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   // one), and both windows are told once two are attached.
   test('a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice @webkit', async ({ page, context }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
-    const { addr, proc } = await startDaemon();
+    // t-d5a8: the agent records what it is sent, so the attached window is proven to drive the PTY with the token
+    // the first window stored (the daemon no longer repeats it on reattach).
+    const typed = path.join(work, 'typed-attach.txt');
+    const stub = path.join(work, 'stub-typed.sh');
+    fs.writeFileSync(stub, `#!/usr/bin/env bash\nexec cat > '${typed}'\n`, { mode: 0o755 });
+    const { addr, proc } = await startDaemon(stub);
     try {
       await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
       await expect(page.locator('#startBtn')).toHaveText(/Run sprint/);
@@ -13996,7 +14001,46 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       expect(rows.filter(r => r.ticket === 't-bnr1')).toHaveLength(1);
       await expect(b.locator('#agentHint')).toContainText('Also open in another window', { timeout: 30_000 });
       await expect(page.locator('#agentHint')).toContainText('Also open in another window', { timeout: 30_000 });
+      await b.locator('.xterm-helper-textarea').focus();
+      await b.keyboard.type('from-window-b');
+      await b.keyboard.press('Enter');
+      await expect.poll(() => { try { return fs.readFileSync(typed, 'utf8'); } catch { return ''; } }, { timeout: 15_000 }).toContain('from-window-b');
     } finally { proc.kill('SIGKILL'); }
+  });
+
+  // t-d5a8: another browser (its own storage) attaching to a live session gets no token from the daemon: it says so,
+  // offers End, and after End a Start spawns a fresh session it can drive.
+  test('a live session open in another browser is refused with End, and End then Start spawns fresh', async ({ page, browser }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const { addr, proc } = await startDaemon();
+    const other = await browser.newContext();
+    try {
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await page.locator('#startBtn').click();
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 30_000 });
+      const live = async () => (await (await fetch(`http://${addr}/sessions`)).json()).filter(r => r.ticket === 't-bnr1');
+      await expect.poll(async () => (await live()).length, { timeout: 15_000 }).toBe(1);   // the dot is "running" from "starting…" on
+      const first = await live();
+
+      const b = await other.newPage();
+      await b.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await expect(b.locator('#startBtn')).toHaveText(/Attach/, { timeout: 30_000 });
+      await b.locator('#startBtn').click();
+      await expect(b.locator('.xterm-rows')).toContainText('This session is open in another browser', { timeout: 15_000 });
+      await expect(b.locator('#endHereBtn')).toBeVisible();
+      await expect(b.locator('#dot')).not.toHaveClass(/running/);
+      await b.screenshot({ path: test.info().outputPath('another-browser.png') });
+
+      await b.locator('#endHereBtn').click();
+      await expect(b.locator('#endHereBtn')).toBeHidden({ timeout: 15_000 });
+      await expect.poll(async () => (await live()).filter(r => r.session === first[0].session).length, { timeout: 15_000 }).toBe(0);
+
+      await expect(b.locator('#startBtn')).not.toHaveText(/Attach/, { timeout: 15_000 });
+      await b.locator('#startBtn').click();
+      await expect.poll(async () => (await live()).length, { timeout: 15_000 }).toBe(1);
+      const fresh = await live();
+      expect(fresh[0].session).not.toBe(first[0].session);
+    } finally { await other.close(); proc.kill('SIGKILL'); }
   });
 
   // t-5283: a session that turned on mouse tracking must not leave it on for the next one (or after it

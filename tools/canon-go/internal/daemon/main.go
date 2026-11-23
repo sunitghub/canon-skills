@@ -5,7 +5,8 @@
 //
 // Security: binds loopback only; every endpoint (except /healthz) checks Host
 // and Origin are loopback; /session/start requires the daemon boot token;
-// per-session endpoints require that session's own token. Ticket ids are
+// per-session endpoints require that session's own token, which only the
+// reply that spawned the session carries (t-d5a8: a reattach never repeats it). Ticket ids are
 // validated against ^t-[a-z0-9]{4}$ before they reach exec, and are never
 // interpolated into a shell — the command is exec'd as an argv slice. No token
 // is ever passed via argv. The needs-you hook reads a STATUS-ONLY token from a
@@ -575,7 +576,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing := s.liveSessionForTicket(projectRoot, body.Ticket); existing != nil {
 		existing.debugf("start attached to live session sid=%s cwd=%s requested=%s", existing.sid, existing.cwd, s.resolveRequestedEcho(body.Cwd))
-		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
+		// t-d5a8: never the live session's token or previewToken. The boot token can't tell the board's page from any
+		// other process of this user (curl /cockpit), so handing the token here let anyone type into a live PTY: an
+		// elevated su shell on Windows, or an agent's own permission prompt. The page that spawned the session stored
+		// the pair in its origin's localStorage; another browser gets "attached" and must End to start again.
+		writeJSON(w, map[string]any{"session": existing.sid, "attached": true, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
 		return
 	}
 	var wt *scratchWorktree
@@ -5234,7 +5239,7 @@ func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
 	if err := rotateInterrupted(s.cfg.stateDir, time.Now()); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: interrupted sessions:", err)
 	}
-	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
+	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String()); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
 	fmt.Fprintf(os.Stderr, "cockpit-daemon %s listening on %s\n", canonVersion(), ln.Addr().String())
@@ -5259,16 +5264,17 @@ func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
 	return 0
 }
 
-// writeStateFile hands the board the daemon's addr + boot token via a 0600
-// file (never argv). The board reads it to authorize /session/start.
-func writeStateFile(dir, addr, token string) error {
+// writeStateFile hands the board the daemon's addr and pid via a 0600 file. Never the boot token (t-d5a8): no reader
+// needs it (the board reads addr and pid; the page gets the token from /cockpit), and 0600 keeps out other users, not
+// the agents this daemon spawns.
+func writeStateFile(dir, addr string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	f := filepath.Join(dir, "daemon.json")
 	// t-44d9: include the daemon's pid so the board can force-restart it (kill +
 	// relaunch) cross-platform without holding the boot token (t-ddc8 preserved).
-	data, _ := json.Marshal(map[string]string{"addr": addr, "token": token, "pid": strconv.Itoa(os.Getpid())})
+	data, _ := json.Marshal(map[string]string{"addr": addr, "pid": strconv.Itoa(os.Getpid())})
 	return os.WriteFile(f, data, 0o600)
 }
 

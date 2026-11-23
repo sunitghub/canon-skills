@@ -4,16 +4,18 @@ package daemon
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
 
 // TestSameTicketSecondStartAttaches (t-c6fa): a second /session/start for a
-// ticket that already has a live session must attach to it -- same session
-// and token, no second spawn -- rather than racing a second PTY against the
+// ticket that already has a live session must attach to it -- same session,
+// no token (t-d5a8), no second spawn -- rather than racing a second PTY against the
 // first for the same underlying claude conversation.
 func TestSameTicketSecondStartAttaches(t *testing.T) {
 	bin, _, _ := fakeSprint(t) // ends in `cat`: stays live until killed
@@ -47,9 +49,10 @@ func TestSameTicketSecondStartAttaches(t *testing.T) {
 	}
 	resp2.Body.Close()
 
-	if out2.Session != out1.Session || out2.Token != out1.Token {
-		t.Fatalf("second start: want attach to existing session %q/%q, got %q/%q",
-			out1.Session, out1.Token, out2.Session, out2.Token)
+	// t-d5a8: same session, but its token is never repeated (TestReattachNoToken).
+	if out2.Session != out1.Session || out2.Token != "" {
+		t.Fatalf("second start: want attach to existing session %q with no token, got %q/%q",
+			out1.Session, out2.Session, out2.Token)
 	}
 
 	s.mu.Lock()
@@ -180,8 +183,8 @@ func TestStartForLiveIDIgnoresPickedAgent(t *testing.T) {
 			before, _ := os.ReadFile(argvFile)
 
 			sid2, tok2, st := startSessionWithAgentBody(t, ts.URL, id, "claude", bootTok)
-			if st != http.StatusOK || sid2 != sid1 || tok2 != tok1 {
-				t.Fatalf("second start (agent claude): want the same session %q, got %q (status %d)", sid1, sid2, st)
+			if st != http.StatusOK || sid2 != sid1 || tok1 == "" || tok2 != "" { // t-d5a8: the attach carries no token
+				t.Fatalf("second start (agent claude): want the same session %q and no token, got %q token %q (status %d)", sid1, sid2, tok2, st)
 			}
 			s.mu.Lock()
 			n := len(s.sessions)
@@ -230,4 +233,67 @@ func TestSessionsReportsAttached(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("attached never reached 1: %+v", listSessions(t, ts.URL))
+}
+
+// TestReattachNoToken (t-d5a8): a session's token and previewToken are in exactly one reply, the start that spawned it.
+// A second start for the same live id (a ticket, a scratch agent, a scratch Terminal) answers the session id and
+// attached:true and no token, so a process that fetched the boot token (curl /cockpit) cannot type into a live PTY:
+// an elevated su shell on Windows, or an agent's own permission prompt.
+func TestReattachNoToken(t *testing.T) {
+	dir := t.TempDir()
+	fakeTerm := filepath.Join(dir, "fake-term")
+	if err := os.WriteFile(fakeTerm, []byte("#!/bin/sh\nexec cat\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := termProgram
+	termProgram = func() (string, error) { return fakeTerm, nil }
+	t.Cleanup(func() { termProgram = old })
+
+	for _, c := range []struct{ name, id, agent string }{
+		{"ticket", "t-ab12", "claude"},
+		{"scratch agent", "s-ab12", "claude"},
+		{"scratch terminal", "s-cd34", "term"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			bin, _, _ := fakeSprint(t)
+			_, base, s := newTestServerWithAddr(t, bin)
+			start := func() map[string]any {
+				resp := startSessionWithAgent(t, base, c.id, c.agent, bootTok)
+				defer resp.Body.Close()
+				raw, _ := io.ReadAll(resp.Body)
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("start %s: status %d: %s", c.id, resp.StatusCode, raw)
+				}
+				var m map[string]any
+				if err := json.Unmarshal(raw, &m); err != nil {
+					t.Fatalf("start %s: %v: %s", c.id, err, raw)
+				}
+				return m
+			}
+			first := start()
+			tok, _ := first["token"].(string)
+			if len(tok) != 64 || first["previewToken"] == nil || first["attached"] != nil {
+				t.Fatalf("first start must carry the token pair and no attached flag: %v", first)
+			}
+			again := start()
+			if again["session"] != first["session"] || again["attached"] != true {
+				t.Fatalf("second start must attach to %v: %v", first["session"], again)
+			}
+			// The page relays cwd and requested to the board's "Working in:" line (t-7590, t-eed3).
+			if _, ok := again["requested"]; !ok || first["cwd"] == "" || again["cwd"] != first["cwd"] {
+				t.Fatalf("reattach reply must keep cwd %v and a requested key: %v", first["cwd"], again)
+			}
+			for _, k := range []string{"token", "previewToken"} {
+				if _, ok := again[k]; ok {
+					t.Fatalf("reattach reply carries %q: %v", k, again)
+				}
+			}
+			s.mu.Lock()
+			n := len(s.sessions)
+			s.mu.Unlock()
+			if n != 1 {
+				t.Fatalf("want 1 live session after reattach, got %d", n)
+			}
+		})
+	}
 }
