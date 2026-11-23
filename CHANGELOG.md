@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.81.2] - 2026-11-23
+
+- Fix: under Copilot CLI the gates no longer look for their protocol at canon's own repo path: the spec checker, reviewer and evaluator agent files follow the path `sprint gate-prompt` names (`.agents/skills/…` under Copilot), and say so in the report instead of searching the disk when it cannot be read. The Copilot gate prompt now lists the report lines the close parses (evaluator: run-id, `graded-head:` from `git rev-parse HEAD` run by the gate, Model, `pass:`/`fail:`; spec check: `## Verdict` READY|GAPS), so a gate that cannot read its protocol still returns a closeable report. A short `graded-head` is refused as "not a full commit hash" instead of "not a commit" (t-2dc4).
+
 ## [0.81.1] - 2026-11-23
 
 The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
