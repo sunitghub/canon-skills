@@ -255,6 +255,16 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('shortModel', shortModel('claude-sonnet-5-5') === 'Sonnet 5.5' && shortModel('claude-haiku-4-5-20251001') === 'Haiku 4.5' && shortModel('claude-opus-5.5') === 'Opus 5.5' && shortModel('gpt-6-luna') === 'GPT-6 Luna'
       && shortModel('sonnet') === 'Sonnet' && shortModel('Claude Sonnet 5.5') === 'Sonnet 5.5' && shortModel('') === '', ['claude-sonnet-5-5', 'gpt-6-luna', 'Claude Sonnet 5.5'].map(shortModel));
     ok('a model from the log is escaped', draw2([['gate.finished', { role: 'reviewer', verdict: 'YES', model: '<img src=x>' }]]).includes('&lt;img'));
+    // mutation survivors (t-3e06 sweep): each pins one rule the fold or a reader holds
+    ok('a Close switch is never the Build row', sprintProgress(NODES, events([['plan.approved'], ['close.started'], ['build.switch', { stage: 'close', outcome: 'started' }]])).cur !== 'build'
+      && sprintProgress(NODES, events([['plan.approved'], ['build.switch', { outcome: 'started' }]])).cur === 'build');
+    ok('wrapup.gate_started makes its gate the current row; an unknown gate none', sprintProgress(NODES, events([['plan.approved'], ['close.started'], ['wrapup.gate_started', { gate: 'doc-audit' }]])).cur === 'doc-audit'
+      && sprintProgress(NODES, events([['plan.approved'], ['close.started'], ['wrapup.gate_started', { gate: 'nope' }]])).cur === '');
+    ok('only a started Close switch names the Close model', rowStates(NODES, events([['build.switch', { outcome: 'started', model: 'haiku' }], ['build.switch', { stage: 'close', outcome: 'not_taken', model: 'opus' }]])).close.model === '');
+    ok('a gate event with no model falls back to its report\'s', rowStates(NODES, events([['gate.finished', { role: 'reviewer', verdict: 'YES' }]]), { reports: { reviewer: { verdict: 'yes', model: 'sonnet' } } }).reviewer.model === 'sonnet');
+    ok('a report without a verdict does not mark its row done', rowStates(NODES, events([['plan.approved'], ['close.started']]), { reports: { reviewer: { verdict: '', model: 'sonnet' } } }).reviewer.state === '');
+    ok('wrapupRows stops at the next heading and needs ran/skipped first', JSON.stringify(wrapupRows('## Wrapup Gates\n| doc-audit | was ran | x |\n| security-review | ran | x |\n## Later\n| mutation-test | ran | x |\n')) === JSON.stringify({ 'security-review': 'ran' }));
+    ok('reportFacts: a heading right under Verdict is no verdict; Model must start its line', reportFacts('## Verdict\n## Next\nYES').verdict === '' && reportFacts('Gate Model: opus\n').model === '');
   }
 
   // a status or reason from the log is escaped too

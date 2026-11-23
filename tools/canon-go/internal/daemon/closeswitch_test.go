@@ -96,7 +96,7 @@ func TestSwitchToCloseAtCloseStarted(t *testing.T) {
 		t.Errorf("/model opus shows %d times, want 2 (typed once)", n)
 	}
 	ev := todaysEvents(t)
-	if !strings.Contains(ev, `"stage":"close"`) || !strings.Contains(ev, `"model":"opus"`) || !strings.Contains(ev, `"outcome":"started"`) {
+	if !hasEventLine(ev, `"kind":"build.switch"`, `"stage":"close"`, `"model":"opus"`, `"outcome":"started"`, `"line":"continue"`) {
 		t.Errorf("no build.switch stage=close outcome=started model=opus: %s", ev)
 	}
 	if n := strings.Count(ev, `"kind":"implement.started"`); n != implements {
@@ -220,7 +220,7 @@ func TestSpawnOnCloseStartsOnCloseModel(t *testing.T) {
 		t.Fatalf("session = %+v, want stage close on opus", se)
 	}
 	ev := todaysEvents(t)
-	if !strings.Contains(ev, `"line":"spawn"`) || !strings.Contains(ev, `"stage":"close"`) || !strings.Contains(ev, `"model":"opus"`) {
+	if !hasEventLine(ev, `"kind":"build.switch"`, `"line":"spawn"`, `"stage":"close"`, `"model":"opus"`, `"outcome":"started"`) {
 		t.Errorf("no build.switch stage=close line=spawn model=opus: %s", ev)
 	}
 	if strings.Contains(ev, `"kind":"implement.started"`) {
@@ -265,4 +265,18 @@ func TestCloseBeganInBoundWorktree(t *testing.T) {
 	if !s.closeBeganIn(root, "t-ab12") {
 		t.Fatal("the worktree's close.started did not count")
 	}
+}
+
+// hasEventLine: one line of the log holds every part (a field matched anywhere in the day's log proves nothing about one event).
+func hasEventLine(log string, parts ...string) bool {
+	for _, l := range strings.Split(log, "\n") {
+		all := true
+		for _, p := range parts {
+			all = all && strings.Contains(l, p)
+		}
+		if all {
+			return true
+		}
+	}
+	return false
 }
