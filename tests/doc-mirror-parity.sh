@@ -313,6 +313,17 @@ for file in "${GATE_AGENT_FILES[@]}"; do
   grep -qF -- 'Return only when nothing you started is still running: run every long command in the foreground with a timeout, and start no background process you cannot stop' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'leave nothing running' sentence (t-85dc, Check M)"
 done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
+# t-2dc4: these files reach every project through the .claude/agents link, where canon's skills/ path does not exist, so none names a
+# protocol path as its own: each follows the one `sprint gate-prompt` resolves (ToDo-Demo t-6x4z under Copilot: the gates searched for
+# their protocol, the evaluator never read eval.md, 4 runs). Read with lines joined: the .md files wrap the sentence across lines.
+for file in "${GATE_AGENT_FILES[@]}"; do
+  joined="$(tr '\n' ' ' < "$file" | tr -d '`')"
+  label="${file#"$ROOT"/}"
+  [[ "$joined" != *"Follow skills/sprint/reference"* ]] || fail "doc-mirror-parity: $label names canon's repo path as the protocol to follow; follow the one the dispatch prompt names (t-2dc4, Check M)"
+  for frag in 'Follow the protocol file your dispatch prompt names' 'skills/sprint/reference/' '.agents/skills/sprint/reference/' '.claude/skills/sprint/reference/' 'never search the disk for it'; do
+    [[ "$joined" == *"$frag"* ]] || fail "doc-mirror-parity: $label is missing '$frag' (t-2dc4, Check M)"
+  done
+done
 
 # ── Check N: the repo-check gate is gone (t-0a7c); its checks live elsewhere. The wrapup pipeline no longer names it, the gate file is
 # deleted, doc-audit hands its mechanical checks to tools/doc-check, and code-reviewer holds the syntax check and the canon-checkout-only

@@ -1776,10 +1776,12 @@ STUB
   rm -rf "$wgit"; unset REAL_GIT
 
   # graded-head must be a full hex commit sha: an abbreviation or a ref name is refused (HEAD would hide committed changes)
+  # t-2dc4: and says so, never "not a commit" (a short hash resolves in git; ToDo-Demo t-6x4z reran the evaluator on that message)
   fr_ticket refs; fr_report "$(git rev-parse --short HEAD)"
-  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a full commit hash: record the 40-character output of \`git rev-parse HEAD\`"
+  [[ "$out" != *"is not a commit in this repository"* ]] || fail "a short graded-head must not read as 'not a commit in this repository': $out"
   fr_report "HEAD"
-  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "graded-head 'HEAD' is not a full commit hash"
 
   # a tracked .tickets/ (consumer projects), AGENTS.md and any CLAUDE.md are written after grading by complete.md steps 6-7: allowed
   fr_report "$(git rev-parse HEAD)"
