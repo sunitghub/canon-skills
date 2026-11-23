@@ -94,6 +94,7 @@ function tplPicker(d) {
 
 async function pickTemplate(sel) {
   if (!pipeData || !pipeData.ok) return;
+  if (pipeBusy) { render(pipeData); return; }   // a keyboard pick during a save is dropped: show the saved state again
   const id = sel.value, was = pipeData.template, t = (pipeData.templates || []).find(x => x.id === id);
   if (!t || id === was) return;
   if (was === '') {   // the project's own changes are replaced: say so first
