@@ -56,7 +56,7 @@ function renderEmpty() {
   $('fac-pipe-rows').innerHTML = '';
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: a card for a project that is gone must not stay
   $('fac-pipe-src').innerHTML = '';
-  $('fac-pipe-tpl-d').hidden = true;
+  $('fac-pipe-tpl').innerHTML = ''; $('fac-pipe-tpl-d').hidden = true;
   $('fac-pipe-reset').disabled = true;
   $('fac-pipe-yaml').textContent = '';
 }
@@ -84,24 +84,29 @@ function rowHtml(n, group) {
   return `<div class="pl-row${n.on ? '' : ' off'}${n.group === 'wrapup' ? ' sub' : ''}${sb ? ' skp' : ''}${idle ? ' idle' : ''}" data-pl-row="${escAttr(n.id)}"><span>${tag}</span><div><span class="pl-n">${esc(label(n.id))}</span>${chips}${why ? `<span class="pl-w">${esc(why)}</span>` : ''}${skipNote}${evalNote}${model}</div>${mv}${swShown}</div>`;
 }
 
-// t-2087: the header's "Using:" is the template picker. The board owns the list and what each one switches off; the page only names
-// the pick. Custom (the project's own changes) is shown, selected and disabled, only when the state matches no template.
+// t-2087: the templates are a row of choices under the heading, each with its blurb. The board owns the list and what each one
+// switches off; the page only names the pick. No choice is checked when the state matches no template (custom).
 function tplPicker(d) {
-  const opts = (d.templates || []).map(t => `<option value="${escAttr(t.id)}"${t.id === d.template ? ' selected' : ''}>${esc(t.name)}</option>`).join('')
-    + (d.template === '' ? '<option value="" selected disabled>Custom (your changes)</option>' : '');
-  return `<label class="pl-tpl-l" for="fac-pipe-tpl">Using</label> <select id="fac-pipe-tpl" class="pl-tpl">${opts}</select>`;
+  return (d.templates || []).map(t => `<label class="pl-tpl-o"><input type="radio" name="fac-pipe-tpl" value="${escAttr(t.id)}"${t.id === d.template ? ' checked' : ''}>`
+    + `<span class="pl-tpl-n">${esc(t.name)}</span><span class="pl-tpl-b">${esc(t.blurb)}</span></label>`).join('');
 }
 
 async function pickTemplate(sel) {
   if (!pipeData || !pipeData.ok) return;
   if (pipeBusy) { render(pipeData); return; }   // a keyboard pick during a save is dropped: show the saved state again
-  const id = sel.value, was = pipeData.template, t = (pipeData.templates || []).find(x => x.id === id);
-  if (!t || id === was) return;
-  if (was === '') {   // the project's own changes are replaced: say so first
-    const ok = await cockpitConfirm({ title: `Switch to ${t.name}?`, body: `This replaces the project's own pipeline changes in ${FILE} with ${t.name}. Reset or the picker brings canon's default back.`, okLabel: `Use ${t.name}`, focusCancel: true });
-    if (!ok) { render(pipeData); return; }   // Cancel: nothing sent, the picker shows the project's state again
-  }
-  send({ op: 'template', id }, `${t.name}: saved in ${FILE}.`, '#fac-pipe-tpl');
+  const id = sel.value, t = (pipeData.templates || []).find(x => x.id === id);
+  if (!t || id === pipeData.template) return;
+  send({ op: 'template', id }, `${t.name}: saved in ${FILE}.`, '[name="fac-pipe-tpl"]:checked', t);
+}
+
+// t-2087: nothing is saved straight away when the change picks a template or would create the file: a confirm says what is
+// written and how to share it; Cancel sends nothing and redraws the project's state (the switch, arrow or choice goes back).
+function confirmWrite(body, t) {
+  const share = `It is saved in ${FILE}; commit it so teammates and cloud sessions use it.`;
+  if (t) return cockpitConfirm({ title: `Use ${t.name}?`, okLabel: `Use ${t.name}`, focusCancel: true, code: `git add ${FILE}`,
+    body: (pipeData.template === '' ? `This replaces the project's own pipeline changes with ${t.name}. ` : '') + share });
+  if (pipeData.exists || body.op === 'reset') return Promise.resolve(true);
+  return cockpitConfirm({ title: 'Save the pipeline?', okLabel: 'Save', code: `git add ${FILE}`, body: `This change creates ${FILE}. ${share}` });
 }
 
 function render(d) {
@@ -111,29 +116,30 @@ function render(d) {
   yaml.textContent = d.exists && d.text ? d.text : 'extends: canon-default\n# a change adds only what differs, for example:\n# off: [mutation-test]\n# wrapup-order: [doc-audit, code-reviewer, code-simplifier]\n';
   sum.textContent = d.exists ? 'The file in canon-config/' : 'The file a first change would write';
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: cleared first, so an unreadable file never leaves the last project's card
-  $('fac-pipe-tpl-d').hidden = true;   // t-2087: an unreadable file shows no picker and no blurb
+  $('fac-pipe-tpl').innerHTML = ''; $('fac-pipe-tpl-d').hidden = true;   // t-2087: an unreadable file shows no choices
   if (!d.ok) {
     src.innerHTML = d.exists ? `Using: <b>${FILE}</b> (not readable)` : '';
     rows.innerHTML = `<div class="pl-row pl-err"><span></span><div><span class="pl-n">${esc(d.error || 'The pipeline could not be read.')}</span><span class="pl-w">Fix or remove ${FILE}, or press Reset to rewrite it as canon's default.</span></div><span></span><span></span></div>`;
     return;
   }
-  src.innerHTML = tplPicker(d) + (d.exists ? ` <span class="pl-file">in <b>${FILE}</b></span>` : ' <span class="pl-file">(no project file)</span>');
-  const cur = (d.templates || []).find(t => t.id === d.template);
-  $('fac-pipe-tpl-d').textContent = cur ? cur.blurb : 'Your own changes: the rows below show which gates are off and the wrapup order.';
-  $('fac-pipe-tpl-d').hidden = false;
+  src.innerHTML = d.exists ? `Saved in <b>${FILE}</b>` : '(no project file)';
+  $('fac-pipe-tpl').innerHTML = tplPicker(d);
+  $('fac-pipe-tpl-d').hidden = d.template !== '';   // custom: no choice is checked, this line says why
   const group = d.nodes.filter(n => n.group === 'wrapup').map(n => n.id);
   rows.innerHTML = d.nodes.map(n => rowHtml(n, group)).join('');
   $('fac-pipe-cardprev').innerHTML = progressCardHtml(d.nodes, pipePrev);   // t-2755: the same nodes, drawn as a ticket's Sprint progress card
   if (focusAfter) {
-    const el = rows.querySelector(focusAfter) || $('fac-pipe-src').querySelector(focusAfter);   // t-2087: the picker lives in the header
+    const el = rows.querySelector(focusAfter) || $('fac-pipe-tpl').querySelector(focusAfter);   // t-2087: the template choices
     // an arrow that has reached the end is disabled now: keep focus in the row's other arrow, or the row itself
     (el && !el.disabled ? el : rows.querySelector('[data-pl-row] button:not(:disabled)'))?.focus();
     focusAfter = '';
   }
 }
 
-async function send(body, okMsg, focusSel) {
+async function send(body, okMsg, focusSel, tpl) {
   if (pipeBusy || !pipePid) return;
+  if (!(await confirmWrite(body, tpl))) { render(pipeData); return; }
+  if (pipeBusy || !pipePid) return;   // the confirm waited: another change may have started, or the project gone
   pipeBusy = true; $('fac-pipe-card').classList.add('pl-busy'); focusAfter = focusSel || '';
   const pid = pipePid;
   let res = null;
@@ -146,27 +152,17 @@ async function send(body, okMsg, focusSel) {
   if (pid !== pipePid) return;   // the project changed meanwhile
   if (res.ok) {
     pipeData = res; render(res); toast(okMsg);
-    if (res.created) showSaved();
   } else {
     toast(res.error || 'The change was refused.');
     focusAfter = ''; loadPipeline(true);   // show what is really on disk
   }
 }
 
-function showSaved() { $('pipe-saved').classList.add('show'); $('pipe-saved-ok').focus(); }
-function hideSaved() {
-  const s = $('pipe-saved'); if (!s.classList.contains('show')) return false;
-  s.classList.remove('show');
-  const back = $('fac-pipe-rows').querySelector('[data-pl-tg], [data-pl-mv]:not(:disabled)'); if (back) back.focus();
-  return true;
-}
-
 export function initPipeline() {
   document.addEventListener('DOMContentLoaded', () => {
     $('fac-pipe-project').addEventListener('change', () => loadPipeline(false));
     $('fac-pipe-reset').addEventListener('click', () => send({ op: 'reset' }, "Reset: canon-config/pipeline.yaml now holds canon's default."));
-    $('fac-pipe-src').addEventListener('change', e => { if (e.target.id === 'fac-pipe-tpl') pickTemplate(e.target); });
-    $('pipe-saved-ok').addEventListener('click', hideSaved);
+    $('fac-pipe-tpl').addEventListener('change', e => { if (e.target.name === 'fac-pipe-tpl') pickTemplate(e.target); });
     $('fac-pipe-prev').innerHTML = '<span class="pl-prev-k">Preview a ticket</span><span class="pl-prev-seg">'
       + MODES.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')
       + '</span><span class="pl-prev-h">Lite and Manual are set per ticket (New Ticket, Options). They only skip optional gates: a gate this project switched off stays off, and locked rows always run. Nothing here saves the preview.</span>';
@@ -176,8 +172,6 @@ export function initPipeline() {
       $('fac-pipe-prev').querySelectorAll('[data-pl-prev]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
       if (pipeData && pipeData.ok) render(pipeData);
     });
-    $('pipe-saved').addEventListener('click', e => { if (e.target === $('pipe-saved')) hideSaved(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && hideSaved()) e.stopPropagation(); }, true);
     $('fac-pipe-rows').addEventListener('click', e => {
       if (e.target.closest('[data-pl-admin]')) { showView('admin'); return; }   // the models are Admin's: this page only shows them
       const tg = e.target.closest('[data-pl-tg]');

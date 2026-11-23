@@ -18,7 +18,7 @@ The gate and step names live in one file, `skills/sprint/pipeline.yaml`, read wi
 from `complete.md`, not the wrapup pipeline, but they surface together on the board's **Wrapup Gates**
 table, so they're included here.
 
-**Pipeline templates (t-2087).** The picker in that tab's header ("Using") offers canon's default and two named templates; picking one writes its `off:` list (and canon's wrapup order) to `canon-config/pipeline.yaml`, Reset or the picker brings the default back, and any other state reads "Custom (your changes)". Neither template is the default. Each blurb says what it gives up, from canon's own closed tickets (the commands are in `.tickets/t-2087/research.md`):
+**Pipeline templates (t-2087).** Under that tab's heading, three choices (canon's default and two named templates) each show what they switch off and what that gives up, from canon's own closed tickets. Picking one asks first, then writes its `off:` list (and canon's wrapup order) to `canon-config/pipeline.yaml`; it is the same file as switching those rows off by hand, and a state that matches no template reads "Custom (your changes)". A switch or arrow that would create the file asks first too; later changes save at once. Neither template is the default:
 
 | Close | Spec check | Reviewer | Wrapup | Evaluator |
 |---|---|---|---|---|
