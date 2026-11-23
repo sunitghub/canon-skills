@@ -14,7 +14,7 @@ import (
 // applied" tie-break is page state and is not reproduced.
 
 // modelSummarySteps are the steps the Models line names, in the order a sprint runs them (Simple / Light work is not one run step).
-var modelSummarySteps = []string{"plan", "speccheck", "build", "reviewer", "evaluator", "evaluator2"}
+var modelSummarySteps = []string{"plan", "speccheck", "build", "close", "reviewer", "evaluator", "evaluator2"}
 
 // presetMatches is mtPresetMatches: for every listed agent, every step the preset's picks name for that agent equals the saved pick.
 func presetMatches(picks map[string]map[string]string, defaults map[string]any, agents []string) bool {

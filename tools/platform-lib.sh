@@ -174,6 +174,16 @@ headless_parse() {
   RESULT_TEXT="$(printf '%s\n' "$parsed" | cut -f3- | tr '\002' '\n')"
 }
 
+# close_started_since_start <id> — t-985c: true when the activity log holds a close.started for <id> after its newest sprint.started (the
+# daemon's closeBeganIn is the Go reader of the same rule, t-3e06). pre-gate-check.sh records the close once per sprint by it; `sprint
+# pre-gate-check` prints the Close model line when that run recorded it.
+close_started_since_start() {
+  local d="${CANON_HOME:-${HOME:-}/.canon}/events" f files=()
+  for f in "$d"/*.jsonl; do [[ -f "$f" ]] && files+=("$f"); done
+  (( ${#files[@]} )) || return 1
+  awk -v t="\"ticket\":\"$1\"" 'index($0, t) { if (index($0, "\"kind\":\"sprint.started\"")) s = 0; else if (index($0, "\"kind\":\"close.started\"")) s = 1 } END { exit !s }' "${files[@]}"
+}
+
 # The gate roles (t-864c: one list, read by gate-snapshot.sh --role and subagent-log.sh --agent-type): each writes one report under
 # .tickets/<id>/ (gate_report) whose verdict gate.finished carries (gate_verdict).
 GATE_ROLES="reviewer evaluator speccheck evaluator2"

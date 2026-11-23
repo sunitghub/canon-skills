@@ -98,7 +98,7 @@ func TestModelTiersWritesLeaveOneAuditLine(t *testing.T) {
 	}
 	// t-8f6d: a reset logs one line per default it changed back: the retire moved sonnet out of the two Claude Code gate slots
 	got = settingEvents(t, dir)
-	want := []string{"model-tiers.reset.evaluator.claude", "model-tiers.reset.reviewer.claude", "model-tiers.reset.speccheck.claude"} // t-aba6: a retire moves only Claude Code picks; t-9b13: the spec check holds sonnet too
+	want := []string{"model-tiers.reset.close.claude", "model-tiers.reset.evaluator.claude", "model-tiers.reset.reviewer.claude", "model-tiers.reset.speccheck.claude"} // t-aba6: a retire moves only Claude Code picks; t-9b13: the spec check holds sonnet too; t-3e06: and the Close step
 	if len(got) != 1+len(want) {
 		t.Fatalf("a reset should add one line per changed default: %v", got)
 	}

@@ -232,6 +232,7 @@ func TestMigrateTierDefaults(t *testing.T) {
 		"light":      {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-5.5"},
 		"speccheck":  {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-9b13: from the old Review & Eval pick, as the reviewer
 		"evaluator2": {},                                                          // t-864c: Off (no pick) until one is chosen
+		"close":      {"claude": "claude-opus-5-5", "copilot": "claude-opus-5.5"}, // t-3e06: from the old Review & Eval pick, as the reviewer
 	}
 	got, _ := json.Marshal(old["defaults"])
 	wantRaw, _ := json.Marshal(want)
@@ -478,10 +479,10 @@ func TestTierOptionsViewNamesChecks(t *testing.T) {
 		got[st["id"]], roles[st["id"]] = st["checks"], st["role"]
 	}
 	// the role Admin shows after each label: the spec check is advisory like the reviewer (t-9b13)
-	if want := map[string]string{"plan": "", "build": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
+	if want := map[string]string{"plan": "", "build": "", "close": "", "speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory", "light": ""}; fmt.Sprint(roles) != fmt.Sprint(want) {
 		t.Errorf("steps[].role = %v, want %v", roles, want)
 	}
-	want := map[string]string{"plan": "", "build": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "evaluator2": "", "light": ""} // t-9b13: the spec check is compared with Plan
+	want := map[string]string{"plan": "", "build": "", "close": "", "speccheck": "plan", "reviewer": "build", "evaluator": "build", "evaluator2": "", "light": ""} // t-9b13: the spec check is compared with Plan
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("steps[].checks = %v, want %v", got, want)
 	}
@@ -511,6 +512,10 @@ func TestFillNewStepsFromReviewer(t *testing.T) {
 	got, _ := json.Marshal(doc["defaults"].(map[string]any)["speccheck"])
 	if string(got) != `{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}` {
 		t.Errorf("speccheck = %s, want the reviewer's picks", got)
+	}
+	// t-3e06: the Close step too (the session's model from close.started), from the Reviewer's: a saved Economy file gets no Haiku close
+	if got, _ := json.Marshal(doc["defaults"].(map[string]any)["close"]); string(got) != `{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}` {
+		t.Errorf("close = %s, want the reviewer's picks", got)
 	}
 	doc["defaults"].(map[string]any)["speccheck"] = map[string]any{"claude": "claude-haiku-5-5"}
 	if common.FillNewSteps(doc) {
@@ -666,7 +671,7 @@ func TestTierStepsNumberedInRunOrder(t *testing.T) {
 	for _, st := range tierOptionsView()["steps"].([]map[string]string) {
 		got = append(got, st["seq"]+":"+st["id"])
 	}
-	if want := "1:plan 2:speccheck 3:build 4:reviewer 5:evaluator 6:evaluator2 :light"; strings.Join(got, " ") != want {
+	if want := "1:plan 2:speccheck 3:build 4:close 5:reviewer 6:evaluator 7:evaluator2 :light"; strings.Join(got, " ") != want {
 		t.Errorf("steps = %q, want %q", strings.Join(got, " "), want)
 	}
 }

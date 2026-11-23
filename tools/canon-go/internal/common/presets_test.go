@@ -13,7 +13,7 @@ func presetDoc() map[string]any {
 	var doc map[string]any
 	_ = json.Unmarshal([]byte(`{
 	 "defaults": {"plan": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "speccheck": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"},
-	  "build": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "reviewer": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"},
+	  "build": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "close": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "reviewer": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"},
 	  "evaluator": {"claude": "claude-sonnet-5", "copilot": "claude-sonnet-5"}, "evaluator2": {}, "light": {"claude": "claude-haiku-5-5", "copilot": "claude-haiku-4.5"}},
 	 "models": {"anthropic": [{"id": "claude-haiku-4-5-20251001", "alias": "haiku"}, {"id": "claude-sonnet-5", "alias": "sonnet"}, {"id": "claude-opus-6-0", "legacy": true},
 	  {"id": "claude-haiku-5-5"}, {"id": "claude-opus-5-5", "alias": "opus"}, {"id": "claude-sonnet-5-5"}]}}`), &doc)

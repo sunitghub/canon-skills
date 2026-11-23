@@ -8,6 +8,10 @@
       "claude": "claude-sonnet-5-5",
       "copilot": "claude-sonnet-5.5"
     },
+    "close": {
+      "claude": "claude-sonnet-5-5",
+      "copilot": "claude-sonnet-5.5"
+    },
     "speccheck": {
       "claude": "claude-sonnet-5-5",
       "copilot": "claude-sonnet-5.5"
@@ -252,11 +256,12 @@
       "id": "balanced",
       "default": true,
       "name": "Balanced",
-      "desc": "Opus plans, Sonnet builds and checks, Haiku for light work.",
+      "desc": "Opus plans, Sonnet builds, closes and checks, Haiku for light work.",
       "tiers": {
         "plan": "top",
         "speccheck": "mid",
         "build": "mid",
+        "close": "mid",
         "reviewer": "mid",
         "evaluator": "mid",
         "evaluator2": "off",
@@ -266,11 +271,12 @@
     {
       "id": "economy",
       "name": "Economy",
-      "desc": "Sonnet plans, Haiku builds; the checks stay on Sonnet. Pairs with the Trimmed close pipeline (Factory > Pipeline), a separate choice.",
+      "desc": "Sonnet plans and closes, Haiku builds; the checks stay on Sonnet. Pairs with the Trimmed close pipeline (Factory > Pipeline), a separate choice.",
       "tiers": {
         "plan": "mid",
         "speccheck": "mid",
         "build": "cheap",
+        "close": "mid",
         "reviewer": "mid",
         "evaluator": "mid",
         "evaluator2": "off",
@@ -285,6 +291,7 @@
         "plan": "top",
         "speccheck": "top",
         "build": "top",
+        "close": "top",
         "reviewer": "top",
         "evaluator": "top",
         "evaluator2": "off",
@@ -299,6 +306,7 @@
         "plan": "top",
         "speccheck": "top",
         "build": "mid",
+        "close": "mid",
         "reviewer": "top",
         "evaluator": "top",
         "evaluator2": "mid",

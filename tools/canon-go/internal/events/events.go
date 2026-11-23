@@ -96,9 +96,9 @@ var kinds = map[string][]field{
 	// t-864c: sprint eval-compare: the binding and second evaluators' grades compared; model = the second report's Model line
 	"eval.compared":     {{"ticket", 64}, {"model", 80}, {"disagreements", 6}},
 	"implement.started": {{"ticket", 64}, {"session", 32}, {"agent", 32}, {"model", 80}, {"tier", 16}, {"source", 48}},
-	// t-d2ab: every end of the Build switch. line model|continue; outcome started|not_taken|not_at_rest|write_error; reason and
+	// t-d2ab: every end of the Build switch (t-3e06: and the Close switch, stage close; line spawn: a session started on Close). line model|continue|spawn; outcome started|not_taken|not_at_rest|write_error; reason and
 	// quiet_ms only with not_at_rest (status:<s>, menu, exited, reaping, not_quiet); attempts only with not_taken.
-	"build.switch":         {{"ticket", 64}, {"session", 32}, {"agent", 32}, {"line", 16}, {"outcome", 16}, {"reason", 32}, {"attempts", 2}, {"quiet_ms", 8}},
+	"build.switch":         {{"ticket", 64}, {"session", 32}, {"agent", 32}, {"line", 16}, {"outcome", 16}, {"reason", 32}, {"attempts", 2}, {"quiet_ms", 8}, {"stage", 8}, {"model", 80}}, // t-3e06: stage build|close; model on a started close
 	"wrapup.gate_started":  {{"ticket", 64}, {"gate", 32}},
 	"wrapup.gate_finished": {{"ticket", 64}, {"gate", 32}, {"result", 16}},
 	// t-57ab: the board's restricted terminal. "ticket" is the scratch id; no typed text, word or path is ever logged.

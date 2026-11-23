@@ -612,7 +612,7 @@ _model_summary() {
   "$b" model-summary "$1" "$SCRIPT_DIR/sprint-check-app/model-tiers.json" 2>/dev/null </dev/null || true
 }
 
-# _models_line <plan.md> <agent> <summary> — t-2a21: the Models line; a Sign-off Plan/Build/Gate model shows with "(ticket)" (Gate: the
+# _models_line <plan.md> <agent> <summary> — t-2a21: the Models line; a Sign-off Plan/Build/Close (t-3e06)/Gate model shows with "(ticket)" (Gate: the
 # three gates, never Second eval). Nothing for an empty summary (never a guess).
 _models_line() {
   local plan="$1" agent="$2" summary="$3" k a b preset="" parts="" label lab v
@@ -621,7 +621,7 @@ _models_line() {
   while IFS=$'\t' read -r k a b; do
     case "$k" in
       preset) preset="$b"; continue ;;
-      plan) label=Plan lab=plan ;; speccheck) label="Spec check" lab=gate ;; build) label=Build lab=build ;;
+      plan) label=Plan lab=plan ;; speccheck) label="Spec check" lab=gate ;; build) label=Build lab=build ;; close) label=Close lab=close ;;
       reviewer) label=Reviewer lab=gate ;; evaluator) label=Evaluator lab=gate ;; evaluator2) label="Second eval" lab="" ;;
       *) continue ;;
     esac
@@ -641,24 +641,42 @@ _run_pipeline() {
   echo "${state%% *}"
 }
 
-# _build_model_line <plan.md> — t-3425: the model the build runs on, after approval: the ticket's `Build model:` line, else Admin's Build
-# pick for the agent (canon-go stage-model, the registry's one reader). In the Cockpit (COCKPIT_TICKET) the session switches to it when the
-# turn ends; elsewhere the person types /model. Prints nothing when there is no Build model (the session keeps its model); never fails.
-_build_model_line() {
-  local plan="$1" agent m="" src="the ticket's Build model line"
+# _stage_model_line <build|close> <plan.md> — t-3425: the model the build runs on, after approval (t-3e06: the close, once pre-gate-check
+# records close.started): the ticket's `Build model:` / `Close model:` line, else Admin's pick for the step and agent (canon-go stage-model,
+# the registry's one reader). In the Cockpit (COCKPIT_TICKET) the session switches to it when the turn ends; elsewhere the person types
+# /model. Prints nothing when there is no model for the stage (the session keeps its model); never fails.
+_stage_model_line() {
+  local stage="$1" plan="$2" agent m="" Stage src
+  Stage="$(tr '[:lower:]' '[:upper:]' <<< "${stage:0:1}")${stage:1}"
+  src="the ticket's $Stage model line"
   agent="$(_run_agent)"
   if [[ "$agent" == pi ]]; then
-    [[ -z "${COCKPIT_TICKET:-}" ]] || echo "Build model: Pi has no /model, so this session keeps its model."
+    [[ -z "${COCKPIT_TICKET:-}" ]] || echo "$Stage model: Pi has no /model, so this session keeps its model."
     return 0
   fi
-  m="$(signoff_model_resolve "$plan" build 2>/dev/null)" || m=""
-  if [[ -z "$m" ]]; then m="$(_admin_stage_model build "$agent")"; src="Admin > Model tiers"; fi
+  m="$(signoff_model_resolve "$plan" "$stage" 2>/dev/null)" || m=""
+  if [[ -z "$m" ]]; then m="$(_admin_stage_model "$stage" "$agent")"; src="Admin > Model tiers"; fi
   [[ -n "$m" ]] || return 0
   if [[ -n "${COCKPIT_TICKET:-}" ]]; then
-    echo "This session switches to the Build model ($m, from $src) when this turn ends: end your turn now."
+    echo "This session switches to the $Stage model ($m, from $src) when this turn ends: end your turn now."
   else
-    echo "Build model ($src): $m: switch with /model $m"
+    echo "$Stage model ($src): $m: switch with /model $m"
   fi
+}
+
+# cmd_pre_gate_check <id> — runs pre-gate-check.sh (its exit is this command's). t-3e06: when that run recorded the ticket's first
+# close.started of this sprint, the Close model line follows (the Cockpit switches the session when the turn ends); a re-run prints none.
+cmd_pre_gate_check() {
+  local id="${1:-}" before=1 rc=0 plan
+  if [[ ! "$id" =~ ^t-[a-z0-9]{4}$ ]]; then exec bash "$SCRIPT_DIR/pre-gate-check.sh" "$@"; fi
+  _session_context_check "$id" close
+  close_started_since_start "$id" || before=0
+  bash "$SCRIPT_DIR/pre-gate-check.sh" "$@" || rc=$?
+  if (( before == 0 )) && close_started_since_start "$id"; then
+    plan="$(project_root)/.tickets/$id/plan.md"
+    _stage_model_line close "$plan"
+  fi
+  return "$rc"
 }
 
 cmd_approve() {
@@ -686,7 +704,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && { wt_write_ok "$plan" || { rm -f "$tmp"; exit 1; }; } && cat "$tmp" > "$plan"   # t-f7e6
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
-  _build_model_line "$plan"
+  _stage_model_line build "$plan"
   # t-2a21: the Models line again (the Sign-off is filled now); a preset changed since start is recorded
   local run_agent run_summary run_preset ticket="$root/.tickets/$id/ticket.md" started
   run_agent="$(_run_agent)"
@@ -2793,7 +2811,7 @@ main() {
     decisions) cmd_decisions "$@" ;;
     # t-96f1: run through sprint so PowerShell reaches them via sprint.cmd (it opens a bare .sh by file association)
     # t-ec24: the close's first command says when the session's history is the cost; printed here, outside the stamped log
-    pre-gate-check) [[ "${1:-}" =~ ^t-[a-z0-9]{4}$ ]] && _session_context_check "$1" close; exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
+    pre-gate-check) cmd_pre_gate_check "$@" ;;
     gate-snapshot|evidence|subagent-log) exec bash "$SCRIPT_DIR/$cmd.sh" "$@" ;;
     base-ref) gate_base "$(worktree_root 2>/dev/null || pwd)" ;;   # t-99d2: the gates' diff base (merge-base with origin/<default branch>)
     help|--help|-h) cmd_help ;;

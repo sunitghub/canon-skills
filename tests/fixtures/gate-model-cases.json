@@ -163,6 +163,28 @@
       "status": 0
     },
     {
+      "name": "t-3e06 Close model on the Tier line, beside Build model",
+      "label": "close",
+      "plan": "## Sign-off\nTier: normal | Build model: haiku | close model: Sonnet | Gate model: opus\n",
+      "parse": "sonnet",
+      "expect": "sonnet"
+    },
+    {
+      "name": "t-3e06 Close model absent while Build model is set",
+      "label": "close",
+      "plan": "## Sign-off\nTier: normal | Build model: haiku\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "t-3e06 Close model with a leading dash is refused",
+      "label": "close",
+      "plan": "## Sign-off\nTier: normal | Close model: -x\n",
+      "parse": "-x",
+      "expect": "",
+      "status": 2
+    },
+    {
       "name": "t-3425 Build model on the Tier line",
       "label": "build",
       "plan": "## Sign-off\nTier: normal | Gate model: opus | Build model: sonnet\n",

@@ -339,9 +339,33 @@ assert_eq 1 "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"close.started
 "$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$C" "ticket=$cid" </dev/null >/dev/null   # a new sprint of the same ticket
 (cd "$C" && "$ROOT/tools/pre-gate-check.sh" "$cid" >/dev/null 2>&1) || true
 assert_eq 2 "$(cat "$CANON_HOME"/events/*.jsonl | grep -F '"kind":"close.started"' | grep -cF "\"ticket\":\"$cid\"")"   # its first close counts again
+# 9b. t-3e06: `sprint pre-gate-check` names the Close model when its run recorded the sprint's first close.started (the Cockpit then
+# switches the session at the turn end), and prints nothing on a re-run, under pi, or with no Close pick. Protects the close's switch.
+pgc() { local rc=0; out="$(cd "$C" && env "$@" "$SPRINT" pre-gate-check "$cid" 2>&1)" || rc=$?; }
+newsprint() { "$SPRINT_CHECK_BIN" event sprint.started --source sprint --project "$C" "ticket=$cid" </dev/null >/dev/null; }
+printf '# Plan\n\n## Sign-off\nTier: normal | Close model: opus\n\n## Approach\nx\n' > "$C/.tickets/$cid/plan.md"
+newsprint; pgc COCKPIT_TICKET="$cid" COCKPIT_AGENT=claude
+assert_contains "$out" "This session switches to the Close model (opus, from the ticket's Close model line) when this turn ends: end your turn now."
+pgc COCKPIT_TICKET="$cid" COCKPIT_AGENT=claude
+[[ "$out" != *"Close model"* ]] || fail "a re-run of pre-gate-check named the Close model again: $out"
+newsprint; pgc COCKPIT_TICKET= COCKPIT_AGENT=claude
+assert_contains "$out" "Close model (the ticket's Close model line): opus: switch with /model opus"
+newsprint; pgc COCKPIT_TICKET= COCKPIT_AGENT=pi
+[[ "$out" != *"Close model"* ]] || fail "pre-gate-check named a Close model outside the Cockpit under pi: $out"
+printf '# Plan\n\n## Sign-off\nTier: normal\n\n## Approach\nx\n' > "$C/.tickets/$cid/plan.md"
+newsprint; pgc COCKPIT_TICKET="$cid" COCKPIT_AGENT=claude
+assert_contains "$out" "This session switches to the Close model (claude-sonnet-5-5, from Admin > Model tiers)"
+mkdir -p "$CANON_HOME/cockpit"; python3 - "$ROOT/tools/sprint-check-app/model-tiers.json" "$CANON_HOME/cockpit/model-tiers.json" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1])); doc["defaults"]["close"] = {}
+json.dump(doc, open(sys.argv[2], "w"))
+PY
+newsprint; pgc COCKPIT_TICKET="$cid" COCKPIT_AGENT=claude
+[[ "$out" != *"Close model"* ]] || fail "pre-gate-check named a Close model with no pick: $out"
+rm -f "$CANON_HOME/cockpit/model-tiers.json"
 (cd "$C" && "$ROOT/tools/sprint" manual-qa "$cid" --by tester --step "looks right|pass" --step "n/a bit|n/a" >/dev/null)
 assert_contains "$(event_line manual_qa.recorded "$cid")" '"data":{"result":"pass","ticket":"'"$cid"'"}'
 (cd "$C" && "$ROOT/tools/sprint" manual-qa "$cid" --by tester --step "looks right|pass" --step "broke|fail" >/dev/null)
 assert_contains "$(event_line manual_qa.recorded "$cid")" '"result":"fail"'
 
-echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files; close.started once per sprint, manual_qa.recorded)"
+echo "events: ok (tkt, sprint and board writers; parity; 60 KB body kept out; observer-only; 16 writers; day files; close.started once per sprint, the Close model line, manual_qa.recorded)"

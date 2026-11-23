@@ -25,9 +25,9 @@ var ModelValueRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // (validation, the migration, retire/remove, the Refresh flag, the audit names and the Pipeline rows read it; static/cockpit-admin.js
 // mirrors it for the cards). A claude pick is an Anthropic model; a copilot pick is an Anthropic or an OpenAI model (Copilot CLI runs both).
 var (
-	TierSteps     = []string{"plan", "speccheck", "build", "reviewer", "evaluator", "evaluator2", "light"} // the order a sprint runs them (Admin numbers them so)
+	TierSteps     = []string{"plan", "speccheck", "build", "close", "reviewer", "evaluator", "evaluator2", "light"} // the order a sprint runs them (Admin numbers them so)
 	TierAgents    = []string{"claude", "copilot"}
-	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "speccheck": "Spec check", "reviewer": "Reviewer", "evaluator": "Evaluator", "evaluator2": "Second eval", "light": "Simple / Light work"}
+	TierStepLabel = map[string]string{"plan": "Plan", "build": "Build", "close": "Close", "speccheck": "Spec check", "reviewer": "Reviewer", "evaluator": "Evaluator", "evaluator2": "Second eval", "light": "Simple / Light work"}
 	TierStepRole  = map[string]string{"speccheck": "advisory", "reviewer": "advisory", "evaluator": "binding", "evaluator2": "advisory"} // shown after the label in Admin
 	// TierStepChecks: the step whose work this one checks (t-3425): Admin notes a checker picked the same as the maker (never blocks).
 	// t-9b13: the spec check grades the plan, so it is compared with Plan.
@@ -35,7 +35,9 @@ var (
 	// GateAgentStep: the Admin step that picks each gate agent's model (t-9b13), so a page never guesses it from the agent's role
 	GateAgentStep = map[string]string{"canon-spec-checker": "speccheck", "canon-reviewer": "reviewer", "canon-evaluator": "evaluator"}
 	// TierStepFrom: a step added after a registry was saved starts from this step's picks (t-9b13: the spec check from the Reviewer's)
-	TierStepFrom   = map[string]string{"speccheck": "reviewer"}
+	// t-3e06: the Close step (the session's model from close.started) from the Reviewer's: a judgment model in every preset, where Build's
+	// would put an Economy close on Haiku (the t-c3gi failure)
+	TierStepFrom   = map[string]string{"speccheck": "reviewer", "close": "reviewer"}
 	TierAgentLabel = map[string]string{"claude": "Claude Code", "copilot": "Copilot CLI"}
 	// TierStepAnytime: a step used throughout a sprint, not at one point in it: Admin gives it no number (t-864c, user)
 	TierStepAnytime = map[string]bool{"light": true}
@@ -294,7 +296,7 @@ func FillNewSteps(doc map[string]any) bool {
 // key existed gets the seed's (sources, copilot_models), and an old shape is read migrated (written so on its next save). Read-only.
 func LoadModelTiers(userFile, seedFile string) map[string]any {
 	empty := map[string]any{
-		"defaults": map[string]any{"plan": map[string]any{}, "build": map[string]any{}, "reviewer": map[string]any{}, "evaluator": map[string]any{}, "light": map[string]any{}},
+		"defaults": map[string]any{"plan": map[string]any{}, "build": map[string]any{}, "close": map[string]any{}, "reviewer": map[string]any{}, "evaluator": map[string]any{}, "light": map[string]any{}},
 		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
 	}
 	var found []map[string]any

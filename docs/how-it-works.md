@@ -227,11 +227,14 @@ a pick, a high-risk close (or any ticket whose Sign-off says `| Second eval: on`
 model after the binding one passes, writing `eval-report-2.md`; `sprint eval-compare <id>` lists each criterion the two graded differently.
 You decide each difference; it never fails a close, and the binding gate still reads only `eval-report.md`.
 
-**Plan and Build (t-3425).** A Cockpit session runs on Admin's Plan pick until the plan is approved, then on its Build pick: when the
-turn that ran `sprint approve` ends, the Cockpit types `/model <build>` and a line that continues the build. A ticket's own
-`| Plan model:` or `| Build model:` on the Sign-off line wins over Admin; `Gate model:` sets only the gates. Admin notes a Reviewer or
-Evaluator picked the same as Build (the check would run on the builder's model) and never blocks it. Outside the Cockpit, `sprint approve`
-prints the `/model` line to type. Pi has no `/model`, so a Pi session keeps its model.
+**Plan, Build and Close (t-3425, t-3e06).** A Cockpit session runs on Admin's Plan pick until the plan is approved, then on its Build
+pick: when the turn that ran `sprint approve` ends, the Cockpit types `/model <build>` and a line that continues the build. When the close
+begins (the first `sprint pre-gate-check` records `close.started`), the turn ends and the session moves to the Close pick the same way, so
+the close's judgment work (wrapup, security-review, relays, records) never runs on a cheap build model; the gates keep their own models.
+A ticket's own `| Plan model:`, `| Build model:` or `| Close model:` on the Sign-off line wins over Admin; `Gate model:` sets only the
+gates. Admin notes a Reviewer or Evaluator picked the same as Build (the check would run on the builder's model) and never blocks it.
+Outside the Cockpit, `sprint approve` and `sprint pre-gate-check` print the `/model` line to type. Pi has no `/model`, so a Pi session
+keeps its model.
 
 ## What It Actually Caught
 

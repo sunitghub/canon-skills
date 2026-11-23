@@ -52,12 +52,12 @@ func TestModelSummary(t *testing.T) {
 	}
 
 	// the seed's own defaults are canon's default preset; display names from the registry; Second eval Off
-	want("seed", "claude", "preset\tbalanced\tBalanced", "plan\tClaude Opus 5.5", "build\tClaude Sonnet 5.5", "evaluator2\tOff")
+	want("seed", "claude", "preset\tbalanced\tBalanced", "plan\tClaude Opus 5.5", "build\tClaude Sonnet 5.5", "close\tClaude Sonnet 5.5", "evaluator2\tOff") // t-3e06: Close is mid in Balanced
 	steps := []string{}
 	for _, l := range modelSummary("claude")[1:] {
 		steps = append(steps, strings.SplitN(l, "\t", 2)[0])
 	}
-	if got := strings.Join(steps, " "); got != "plan speccheck build reviewer evaluator evaluator2" {
+	if got := strings.Join(steps, " "); got != "plan speccheck build close reviewer evaluator evaluator2" {
 		t.Errorf("seed: want the steps in run order, got %q", got)
 	}
 	// two presets resolving to the same picks: the first in Admin's order wins (canon's before yours)

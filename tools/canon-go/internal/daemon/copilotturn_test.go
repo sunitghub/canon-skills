@@ -62,7 +62,7 @@ func readAll(t *testing.T, tr *copilotTurn, path string) []string {
 }
 
 // t-c723 (the Build switch every Copilot Cockpit session takes): which events.jsonl lines end a response. Protects the turn-end
-// signal switchToBuild runs on for copilot.
+// signal switchStage runs on for copilot.
 func TestCopilotTurnStatuses(t *testing.T) {
 	cases := []struct {
 		name  string

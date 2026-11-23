@@ -121,6 +121,7 @@ const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
 const MT_STEP_UI={
   plan:{runs:'your session',used:'Used by: a Cockpit session until its plan is approved (research, acceptance criteria, the plan).'},
   build:{runs:'your session',used:'Used by: a Cockpit session after sprint approve (it switches with /model when the turn ends).'},
+  close:{runs:'your session',used:'Used by: a Cockpit session once the close begins (sprint pre-gate-check records close.started; it switches with /model when the turn ends): wrapup, security-review, the gate relays and the close records. Never the gates\' own model.'},
   speccheck:{runs:'fresh subagent',used:'Used by: sprint start, before you approve: a fresh agent grades acceptance.md and plan.md. Advisory: it never blocks.'},
   reviewer:{runs:'fresh subagent',used:'Used by: sprint complete step 2, the fresh reviewer.'},
   evaluator:{runs:'fresh subagent',used:'Used by: sprint complete step 3, the binding evaluator. Never a Haiku model; a Lite ticket still runs it on Haiku.'},

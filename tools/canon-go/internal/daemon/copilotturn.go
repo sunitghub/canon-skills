@@ -178,7 +178,7 @@ func (s *server) watchCopilotTurns(se *session, path string, from int64) {
 		for _, st := range sts {
 			se.setStatus(st)
 			if st == "awaiting-input" {
-				go s.switchToBuild(se)
+				go s.switchStage(se)
 			}
 		}
 	}

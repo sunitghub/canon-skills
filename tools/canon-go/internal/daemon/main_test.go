@@ -9204,7 +9204,7 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	typed := func() string { se.mu.Lock(); defer se.mu.Unlock(); return string(se.buf) }
 	// not approved yet: nothing typed at the prompt
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if strings.Contains(typed(), "/model") {
 		t.Fatalf("typed /model before approval: %q", typed())
 	}
@@ -9214,7 +9214,7 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	}
 	// approved but the agent is still working: nothing typed
 	se.setStatus("running")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if strings.Contains(typed(), "/model") {
 		t.Fatalf("typed /model while the agent worked: %q", typed())
 	}
@@ -9224,7 +9224,7 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	se.buf = append(append([]byte(nil), saved...), []byte("\r\n❯ Yes, I trust this folder\r\nEnter to confirm · Esc to cancel\r\n")...)
 	se.mu.Unlock()
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if strings.Contains(typed(), "/model") || se.stage != "plan" {
 		t.Fatalf("typed /model with a menu open (stage %q): %q", se.stage, typed())
 	}
@@ -9234,7 +9234,7 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	// at the prompt: one /model and one continue line
 	se.setStatus("running")
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && !strings.Contains(typed(), "continue the build") {
 		time.Sleep(50 * time.Millisecond)
@@ -9253,7 +9253,7 @@ func TestSwitchToBuildAtApproval(t *testing.T) {
 	// never twice
 	se.setStatus("running")
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	time.Sleep(500 * time.Millisecond)
 	if n, c := strings.Count(typed(), "/model sonnet"), strings.Count(typed(), "continue the build"); n != 2 || c != 2 { // once typed = echo + cat
 		t.Errorf("/model shows %d times and the continue line %d, want 2 each (typed once)", n, c)
@@ -9382,7 +9382,7 @@ func TestSwitchToBuildRetriesADroppedLine(t *testing.T) {
   printf 'took: %s\n' "$l"`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	line := "Plan approved: continue the build (t-ab12) on sonnet."
 	if got := countLines(t, recv, line); got != 2 {
 		t.Fatalf("continue line reached the agent %d times, want 2 (dropped, then retyped): %q", got, readOr(recv))
@@ -9406,7 +9406,7 @@ func TestSwitchToBuildGivesUpWhenNeverTaken(t *testing.T) {
 	bin, argv, recv := fakeTakeAgent(t, `  :`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 2 {
 		t.Fatalf("continue line typed %d times, want at most 2 (here exactly 2): %q", got, readOr(recv))
 	}
@@ -9418,7 +9418,7 @@ func TestSwitchToBuildGivesUpWhenNeverTaken(t *testing.T) {
 	}
 	// a later turn end types nothing more
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 2 {
 		t.Fatalf("a later turn end typed the line again: %d", got)
 	}
@@ -9433,7 +9433,7 @@ func TestSwitchToBuildIgnoredModelLine(t *testing.T) {
   printf 'took: %s\n' "$l"`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := countLines(t, recv, "/model sonnet"); got != 2 {
 		t.Fatalf("/model typed %d times, want 2: %q", got, readOr(recv))
 	}
@@ -9457,7 +9457,7 @@ func TestSwitchToBuildSlowButTaken(t *testing.T) {
   printf 'took: %s\n' "$l"`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 1 || countLines(t, recv, "") != 0 {
 		t.Fatalf("a slow but taken line was retried: %q", readOr(recv))
 	}
@@ -9511,7 +9511,7 @@ func TestSwitchToBuildRecordsEachOutcome(t *testing.T) {
 			bin, argv, _ := fakeTakeAgent(t, c.body)
 			s, se, _, _ := buildSwitchSessionBin(t, c.tier, "", bin, argv)
 			se.setStatus("awaiting-input")
-			s.switchToBuild(se)
+			s.switchStage(se)
 			if got := buildSwitchEvents(home); len(got) != 1 || got[0] != c.want {
 				t.Fatalf("build.switch events %q, want [%q]", got, c.want)
 			}
@@ -9523,7 +9523,7 @@ func TestSwitchToBuildRecordsEachOutcome(t *testing.T) {
 	bin, argv, _ := fakeTakeAgent(t, `  :`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
 	se.setStatus("running")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	se.mu.Lock()
 	stage, st := se.stage, se.status
 	se.mu.Unlock()
@@ -9555,7 +9555,7 @@ func TestSwitchToBuildWriteError(t *testing.T) {
 			bin, argv, _ := fakeTakeAgent(t, `  printf 'took: %s\n' "$l"`)
 			s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
 			se.setStatus("awaiting-input")
-			s.switchToBuild(se)
+			s.switchStage(se)
 			se.mu.Lock()
 			stage, st, model := se.stage, se.status, se.model
 			se.mu.Unlock()
@@ -9578,7 +9578,7 @@ func TestSwitchToBuildNotAtRestAfterModelGivesUp(t *testing.T) {
   case "$l" in /model*) ( while :; do printf '.'; sleep 0.1; done ) & ;; esac`)
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: haiku | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	se.mu.Lock()
 	stage, st, model := se.stage, se.status, se.model
 	se.mu.Unlock()
@@ -9614,7 +9614,7 @@ func TestSwitchToBuildPromptHookIsTheTakenSignal(t *testing.T) {
 				}
 			}()
 		}
-		s.switchToBuild(se)
+		s.switchStage(se)
 		return se, home, buildSwitchEvents(home)
 	}
 	t.Run("output without a ping is not taken", func(t *testing.T) {
@@ -9679,7 +9679,7 @@ func TestSwitchToBuildHumanInputCountsAsTaken(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}()
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := countLines(t, recv, "Plan approved: continue the build (t-ab12) on sonnet."); got != 1 || countLines(t, recv, "") != 0 {
 		t.Fatalf("typed again after the person's input: %q", readOr(recv))
 	}
@@ -9713,7 +9713,7 @@ func TestSwitchToBuildEchoAloneDoesNotConfirm(t *testing.T) {
 	}
 	s, se, _, _ := buildSwitchSessionBin(t, "Tier: normal | Plan model: sonnet | Build model: sonnet", "", bin, argv)
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	se.mu.Lock()
 	out, st := string(se.buf), se.status
 	se.mu.Unlock()
@@ -9732,7 +9732,7 @@ func TestSwitchToBuildSameModelStillContinues(t *testing.T) {
 	restQuietWait(t, 200*time.Millisecond, 2*time.Second)
 	s, se, _ := buildSwitchSession(t, "Tier: normal | Plan model: sonnet | Build model: sonnet")
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	se.mu.Lock()
 	out, stage := string(se.buf), se.stage
 	se.mu.Unlock()
@@ -9761,7 +9761,7 @@ func TestSwitchToBuildWaitsForQuiet(t *testing.T) {
 			}
 		}
 	}()
-	s.switchToBuild(se)
+	s.switchStage(se)
 	close(stop)
 	se.mu.Lock()
 	out, stage := string(se.buf), se.stage
@@ -9899,7 +9899,7 @@ func TestSwitchToBuildTypesNothing(t *testing.T) {
 	}
 	s, se, _ := buildSwitchSession(t, "Tier: normal | Plan model: haiku")
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	check("no Build model", se, "build")
 
 	s, se, _ = buildSwitchSession(t, "Tier: normal | Plan model: haiku | Build model: sonnet")
@@ -9907,12 +9907,12 @@ func TestSwitchToBuildTypesNothing(t *testing.T) {
 	se.agent = "pi"
 	se.mu.Unlock()
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	check("pi", se, "plan")
 
 	s, se, _ = buildSwitchSession(t, "Tier: normal | Plan model: sonnet | Build model: sonnet")
 	se.setStatus("running")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	check("same model, agent working", se, "plan")
 }
 
@@ -9970,7 +9970,7 @@ func TestSwitchToBuildReadsTheBoundWorktreesPlan(t *testing.T) {
 			}
 			writeSignoffPlan(t, wt, "t-ab12", "Tier: normal | Plan model: haiku | Build model: sonnet", true)
 			se.setStatus("awaiting-input")
-			s.switchToBuild(se)
+			s.switchStage(se)
 			se.mu.Lock()
 			out, stage := string(se.buf), se.stage
 			se.mu.Unlock()
@@ -9978,7 +9978,7 @@ func TestSwitchToBuildReadsTheBoundWorktreesPlan(t *testing.T) {
 				t.Fatalf("stage %q, typed %q: want /model %s and the continue line from the worktree's approved plan", stage, out, want("sonnet"))
 			}
 			se.setStatus("awaiting-input")
-			s.switchToBuild(se) // a second turn end: nothing more is typed
+			s.switchStage(se) // a second turn end: nothing more is typed
 			se.mu.Lock()
 			again := string(se.buf)
 			se.mu.Unlock()
@@ -10097,7 +10097,7 @@ func TestSessionsRowCarriesModelAndStage(t *testing.T) {
 		t.Fatalf("before the switch: model %v stage %v, want haiku plan", got["model"], got["stage"])
 	}
 	se.setStatus("awaiting-input")
-	s.switchToBuild(se)
+	s.switchStage(se)
 	if got := row(); got["model"] != "sonnet" || got["stage"] != "build" {
 		t.Fatalf("after the switch: model %v stage %v, want sonnet build", got["model"], got["stage"])
 	}

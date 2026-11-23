@@ -191,7 +191,7 @@ for agent in canon-reviewer canon-evaluator; do
 done
 grep -qF '**Model tier for gates.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Model tier for gates note (t-21d8)"
 grep -qF -- '- **Cross-harness caveat.**' "$ROOT/skills/sprint/reference/complete.md" || fail "complete.md lost its Cross-harness caveat (t-7e5d, t-21d8)"
-grep -qF 'defaults.{plan,build,speccheck,reviewer,evaluator,evaluator2,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults (t-8f6d)"
+grep -qF 'defaults.{plan,build,close,speccheck,reviewer,evaluator,evaluator2,light}.{claude,copilot}' "$ROOT/tools/sprint-check-app/CLAUDE.md" || fail "the board's CLAUDE.md lost the per-agent defaults (t-8f6d)"
 old_block="$ROOT/tests/fixtures/model-tiers-old-block.md"
 
 # A project still carrying the old long block gets the short one; the rest of its file is untouched.

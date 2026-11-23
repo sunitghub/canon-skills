@@ -218,14 +218,6 @@ run_checks() {
 
 if [[ "${1-}" == --run ]]; then run_checks; exit $?; fi
 
-# _close_started_since_start <id> — t-985c: true when the activity log holds a close.started for <id> after its newest sprint.started.
-_close_started_since_start() {
-  local d="${CANON_HOME:-${HOME:-}/.canon}/events" f files=()
-  for f in "$d"/*.jsonl; do [[ -f "$f" ]] && files+=("$f"); done
-  (( ${#files[@]} )) || return 1
-  awk -v t="\"ticket\":\"$1\"" 'index($0, t) { if (index($0, "\"kind\":\"sprint.started\"")) s = 0; else if (index($0, "\"kind\":\"close.started\"")) s = 1 } END { exit !s }' "${files[@]}"
-}
-
 id="${1-}"
 [[ "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: pre-gate-check.sh <ticket-id>" >&2; exit 2; }
 export PRE_GATE_ID="$id"
@@ -242,5 +234,5 @@ grep "^evidence: canon's own setup lines" <<<"$msg" || true   # t-e9aa: why a tr
 # the activity log has no close.started for this ticket since its newest sprint.started. The project is the ticket folder's grandparent, as
 # gate-snapshot.sh's events: a land worktree or a clone stamps into the project's .tickets/. Observer-only: never changes the exit.
 tdir="$(dirname "$(dirname "$log")")"
-if ! _close_started_since_start "$id"; then canon_event close.started sprint "$(dirname "$(dirname "$tdir")")" "ticket=$id" || true; fi
+if ! close_started_since_start "$id"; then canon_event close.started sprint "$(dirname "$(dirname "$tdir")")" "ticket=$id" || true; fi
 exit "$rc"

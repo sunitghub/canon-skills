@@ -143,7 +143,7 @@ type session struct {
 	ticketsDir   string    // t-ffb9: parent of the session's state dir, resolved once at spawn() — .tickets/ for a ticket, the daemon's scratch dir for a scratch session (t-47f1) — lets debugf (no *server access) find it without re-walking
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	convID       string    // t-b1c8: the conversation id given to claude (--session-id or --resume), which names its transcript; empty for other agents
-	stage        string    // t-3425: "plan" or "build", the stage the session's model is for ("" for pi and term)
+	stage        string    // t-3425: "plan" or "build", the stage the session's model is for ("" for pi and term); t-3e06: "close" once the close began
 	model        string    // t-3425: the model it runs on (passed as --model, or typed with /model at the switch)
 	started      time.Time // t-391a: spawn time for the /sessions listing
 	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
@@ -1131,6 +1131,9 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	}
 	if stage == "build" && se.model != "" { // t-3425: a Start on an approved plan begins the build on its model
 		se.emit("implement.started", map[string]string{"model": se.model, "tier": stage, "source": source})
+	}
+	if stage == "close" && se.model != "" { // t-3e06: a Start on a ticket whose close began runs the close on its model (the card's Close row)
+		se.emit("build.switch", map[string]string{"stage": "close", "line": "spawn", "outcome": "started", "model": se.model})
 	}
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
@@ -4667,14 +4670,14 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *sessio
 		return
 	}
 	se.setStatus(status)
-	if status == "awaiting-input" { // t-3425: the turn ended: a plan approved in it moves the session to the Build model
-		go s.switchToBuild(se)
+	if status == "awaiting-input" { // t-3425: the turn ended: a plan approved in it moves the session to the Build model (t-3e06: a close begun in it, to Close)
+		go s.switchStage(se)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // typeLine writes one line into a session as a person would: the text, then Enter as a SEPARATE write 300 ms later (t-cd06: one write
-// with a trailing \r lands as an unsubmitted draft). The one way the daemon types into a session (Save & End, the Build switch).
+// with a trailing \r lands as an unsubmitted draft). The one way the daemon types into a session (Save & End, the stage switch).
 func typeLine(se *session, text string) error {
 	if _, err := se.pty.Write([]byte(text)); err != nil {
 		return err
@@ -4684,16 +4687,19 @@ func typeLine(se *session, text string) error {
 	return err
 }
 
-// switchToBuild (t-3425, user 2026-11-14: switch at approval): when a claude or copilot session that started on the Plan model reaches
-// the prompt (awaiting-input) and its plan now carries sprint approve's record, it types `/model <build>` once, then one line that
-// continues the build, and records implement.started. Only at rest (waitAtRestWhy): never while the agent works or the person types, never
-// with a menu open; never twice (the session's stage becomes build); pi has no /model and is never switched.
-func (s *server) switchToBuild(se *session) {
+// switchStage (t-3425, user 2026-11-14: switch at approval; t-3e06: and at the close) moves a claude or copilot session to the model of
+// the stage its ticket has reached, when it reaches the prompt (awaiting-input): plan -> build once the plan carries sprint approve's
+// record, build -> close once the close began (closeBeganIn: sprint pre-gate-check's close.started). It types `/model <m>` once, then
+// one line that continues the work, and records implement.started (build) or build.switch stage=close outcome=started (close). Only at
+// rest (waitAtRestWhy): never while the agent works or the person types, never with a menu open; never twice for a stage (the session's
+// stage moves on); pi has no /model and is never switched. With no model for the stage nothing is typed and only the stage moves.
+func (s *server) switchStage(se *session) {
 	agent := tierAgent(se.agent)
 	se.mu.Lock()
-	claim := se.stage == "plan" && agent != ""
+	prev := se.stage
+	claim := (prev == "plan" || prev == "build") && agent != ""
 	if claim {
-		se.stage = "switching" // one switch at a time: a second awaiting-input meanwhile finds no "plan"
+		se.stage = "switching" // one switch at a time: a second awaiting-input meanwhile finds no plan or build
 	}
 	se.mu.Unlock()
 	if !claim {
@@ -4701,47 +4707,47 @@ func (s *server) switchToBuild(se *session) {
 	}
 	done := false
 	defer func() {
-		if !done { // not switched (not approved, or the session was not at rest): the next awaiting-input tries again
+		if !done { // not switched (nothing to switch to, or the session was not at rest): the next awaiting-input tries again
 			se.mu.Lock()
 			if se.stage == "switching" {
-				se.stage = "plan"
+				se.stage = prev
 			}
 			se.mu.Unlock()
 		}
 	}()
-	if !s.planApprovedIn(se.projectRoot, se.ticket) {
+	model, stage, source := s.sessionModel(se.projectRoot, se.ticket, agent)
+	if stage == prev || stage == "plan" { // the ticket has not moved past the session's stage
 		return
 	}
-	model, stage, source := s.sessionModel(se.projectRoot, se.ticket, agent)
 	if agent == "copilot" {
 		model = copilotModel(model)
 	}
-	if model == "" { // no Build model: sprint approve told the agent nothing, so nothing is typed and the session keeps its model
+	if model == "" { // no model for the stage: the CLI told the agent nothing, so nothing is typed and the session keeps its model
 		done = true
 		se.mu.Lock()
-		se.stage = "build"
+		se.stage = stage
 		se.mu.Unlock()
 		return
 	}
 	se.mu.Lock()
 	from := se.model
 	se.mu.Unlock()
-	// t-d2ab: every end of the switch is one build.switch event (canon events, the card later), so a stall says why.
+	// t-d2ab: every end of the switch is one build.switch event (canon events, the card later), so a stall says why; t-3e06: stage names which.
 	report := func(line, outcome string, extra map[string]string) {
-		d := map[string]string{"line": line, "outcome": outcome}
+		d := map[string]string{"line": line, "outcome": outcome, "stage": stage}
 		for k, v := range extra {
 			d[k] = v
 		}
 		se.emit("build.switch", d)
 	}
-	// t-9831/t-d2ab: once the switch has typed into the session, a failure ends it: stage build (a later turn end types nothing into a
-	// session the person now drives), no implement.started, and the session asks for the person (the card shows Needs you).
+	// t-9831/t-d2ab: once the switch has typed into the session, a failure ends it: the stage moves on (a later turn end types nothing into a
+	// session the person now drives), no started record, and the session asks for the person (the card shows Needs you).
 	giveUp := func(line, now string) {
 		done = true
 		se.mu.Lock()
-		se.stage, se.model = "build", now
+		se.stage, se.model = stage, now
 		se.mu.Unlock()
-		se.debugf("build switch: %s line not taken, gave up, needs you", line)
+		se.debugf("%s switch: %s line not taken, gave up, needs you", stage, line)
 		se.setStatus("needs-you")
 	}
 	notAtRest := func(line string) bool {
@@ -4749,7 +4755,7 @@ func (s *server) switchToBuild(se *session) {
 		if why == "" {
 			return false
 		}
-		se.debugf("build switch: %s line: not at rest (%s, %d ms since activity)", line, why, ms)
+		se.debugf("%s switch: %s line: not at rest (%s, %d ms since activity)", stage, line, why, ms)
 		report(line, "not_at_rest", map[string]string{"reason": why, "quiet_ms": strconv.FormatInt(ms, 10)})
 		return true
 	}
@@ -4771,7 +4777,7 @@ func (s *server) switchToBuild(se *session) {
 		typed = true
 		time.Sleep(time.Second) // let the CLI take the model before the next line
 	}
-	// sprint approve told the agent to end its turn, so the continue line is typed even when the model is already Build's (reviewer t-3425)
+	// the CLI told the agent to end its turn, so the continue line is typed even when the model is already the stage's (reviewer t-3425)
 	if notAtRest("continue") {
 		if typed {
 			giveUp("continue", model)
@@ -4781,7 +4787,11 @@ func (s *server) switchToBuild(se *session) {
 	se.mu.Lock()
 	hook := se.promptHook
 	se.mu.Unlock()
-	taken, attempts, err := typeConfirmed(se, "continue line", "Plan approved: continue the build ("+se.ticket+") on "+model+".", hook)
+	line := "Plan approved: continue the build (" + se.ticket + ") on " + model + "."
+	if stage == "close" {
+		line = "Close model on: continue the close (" + se.ticket + ") on " + model + "."
+	}
+	taken, attempts, err := typeConfirmed(se, "continue line", line, hook)
 	if err != nil {
 		report("continue", "write_error", nil)
 		if typed {
@@ -4796,9 +4806,13 @@ func (s *server) switchToBuild(se *session) {
 	}
 	done = true
 	se.mu.Lock()
-	se.stage, se.model = "build", model
+	se.stage, se.model = stage, model
 	se.mu.Unlock()
-	se.debugf("build switch: %s -> %s (%s)", from, model, source)
+	se.debugf("%s switch: %s -> %s (%s)", stage, from, model, source)
+	if stage == "close" {
+		report("continue", "started", map[string]string{"model": model})
+		return
+	}
 	report("continue", "started", nil)
 	se.emit("implement.started", map[string]string{"model": model, "tier": stage, "source": source})
 }
@@ -4961,11 +4975,12 @@ var (
 	signoffHeadingRe = regexp.MustCompile(`(?m)^##[ \t]+Sign-off[ \t\r]*$`)
 	nextHeadingRe    = regexp.MustCompile(`(?m)^##[ \t]`)
 	tierLineRe       = regexp.MustCompile(`(?m)^[ \t]*[Tt]ier[ \t]*:.*$`)
-	// t-3425: one label rule for every Sign-off model field (gate, plan, build); the first letter may be either case.
+	// t-3425: one label rule for every Sign-off model field (gate, plan, build; t-3e06: close); the first letter may be either case.
 	signoffModelLabelRe = map[string]*regexp.Regexp{
 		"gate":  regexp.MustCompile(`[Gg]ate[ \t]+model[ \t]*:[ \t]*`),
 		"plan":  regexp.MustCompile(`[Pp]lan[ \t]+model[ \t]*:[ \t]*`),
 		"build": regexp.MustCompile(`[Bb]uild[ \t]+model[ \t]*:[ \t]*`),
+		"close": regexp.MustCompile(`[Cc]lose[ \t]+model[ \t]*:[ \t]*`), // t-3e06
 	}
 	// The argv guard is common.ModelValueRe (t-3425: one owner with common.AdminStageModel; mirrors signoff_model_resolve's charset guard):
 	// plan.md is writable by the very agent the value configures, so a leading `-` must never make `--model <value>` a second option.
@@ -5027,13 +5042,40 @@ func seedModelTiers() string {
 	return ""
 }
 
+// closeBeganIn (t-3e06) is pre-gate-check.sh's own rule (_close_started_since_start): the activity log holds a close.started for the
+// ticket after its newest sprint.started, so a close from an earlier sprint of the ticket never counts. An event's project is the folder
+// its writer ran in: the session's project, or the worktree the ticket's sprint is bound to. Day files are read newest first; the first
+// that holds either kind for the ticket decides (its last such line). The log is append-only data any local writer can add to: it only
+// moves the stage, the model typed still comes from plan.md or Admin and passes common.ModelValueRe.
+func (s *server) closeBeganIn(root, ticket string) bool {
+	projects := map[string]bool{root: true}
+	if wt := s.boundWorktreeIn(root, ticket); wt != "" {
+		projects[wt] = true
+	}
+	for _, path := range events.DayFiles(events.Home()) {
+		last := ""
+		_ = events.EachIn(path, func(ev events.Event) {
+			if (ev.Kind == "sprint.started" || ev.Kind == "close.started") && ev.Data["ticket"] == ticket && projects[ev.Project] {
+				last = ev.Kind
+			}
+		})
+		if last != "" {
+			return last == "close.started"
+		}
+	}
+	return false
+}
+
 // sessionModel (t-3425) is the model a claude or copilot session of ticket runs on, the stage it is for and where it came from:
-// "plan" until sprint approve's record is in plan.md, then "build". The ticket's own `Plan model:` / `Build model:` wins, else
+// "plan" until sprint approve's record is in plan.md, then "build"; t-3e06: "close" once the close began (closeBeganIn). The ticket's own `Plan model:` / `Build model:` wins, else
 // Admin's pick for that stage and agent (common.AdminStageModel over common.LoadModelTiers, the registry's one owner). `Gate model:` no longer sets the session (user, 2026-11-14): it is the gates'. Every value passes common.ModelValueRe.
 func (s *server) sessionModel(root, ticket, agent string) (model, stage, source string) {
 	stage = "plan"
 	if s.planApprovedIn(root, ticket) {
 		stage = "build"
+		if s.closeBeganIn(root, ticket) {
+			stage = "close"
+		}
 	}
 	label := common.TierStepLabel[stage]
 	if v := s.signoffModelIn(root, ticket, stage); v != "" {

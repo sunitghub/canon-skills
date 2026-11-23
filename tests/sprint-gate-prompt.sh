@@ -95,6 +95,20 @@ gp evaluator; assert_contains "$out" "
 Model: haiku (Lite evaluator)"
 "$TKT" demo "$id" off >/dev/null
 
+# 4b. t-3e06: the Close pick is the session's model, never a gate's: with Admin's Close on a model no gate step picks (and a ticket Close
+# model line), the reviewer, evaluator and spec check prompts name their own steps' models, and a Lite evaluator stays Haiku.
+cp "$CANON_HOME/cockpit/model-tiers.json" "$W/tiers.saved"
+reg '{"defaults":{"reviewer":{"claude":"claude-sonnet-5-5"},"evaluator":{"claude":"claude-sonnet-5-5"},"speccheck":{"claude":"claude-sonnet-5-5"},"close":{"claude":"claude-opus-5-5"}},'"$MODELS"'}'
+signoff "Tier: normal | Risk: x | Close model: opus"
+for g in reviewer evaluator speccheck; do
+  gp "$g"; absent "$out" "opus"; absent "$err" "opus"; assert_contains "$err" "with model: sonnet"
+done
+"$TKT" demo "$id" on >/dev/null
+gp evaluator; assert_contains "$out" "
+Model: haiku (Lite evaluator)"; absent "$err" "opus"
+"$TKT" demo "$id" off >/dev/null
+signoff "Tier: normal | Risk: x"; cp "$W/tiers.saved" "$CANON_HOME/cockpit/model-tiers.json"
+
 # 5. The evaluator carries check-evidence's output; a refusing check-evidence gives no prompt, exit 1 and the reason
 gp evaluator
 assert_eq 0 "$code"

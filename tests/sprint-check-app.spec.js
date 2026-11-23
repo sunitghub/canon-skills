@@ -14777,7 +14777,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
 // stubbed so these tests never write the real (possibly user-local) model-tiers.json.
 test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
-    defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, speccheck: { claude: 'm-haiku', copilot: 'claude-sonnet-5.5' },
+    defaults: { plan: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, build: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, close: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, speccheck: { claude: 'm-haiku', copilot: 'claude-sonnet-5.5' },
       reviewer: { claude: 'm-sonnet', copilot: 'gpt-6-luna' }, evaluator: { claude: 'm-sonnet', copilot: 'claude-sonnet-5.5' }, evaluator2: {}, light: { claude: 'm-haiku', copilot: 'gpt-6-luna' } },
     models: {
       anthropic: [
@@ -14791,8 +14791,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const OPT = (ids, group = 'Anthropic') => ids.map(([id, name, usage]) => ({ id, name, group: id.startsWith('o-') || id.startsWith('gpt-') ? 'OpenAI' : group, ...(usage ? { usage } : {}) }));
   const OPTIONS = {
     ok: true,
-    steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '4' },
-      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '5' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '6' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
+    steps: [{ id: 'plan', label: 'Plan', seq: '1' }, { id: 'speccheck', label: 'Spec check', role: 'advisory', checks: 'plan', seq: '2' }, { id: 'build', label: 'Build', seq: '3' }, { id: 'close', label: 'Close', seq: '4' }, { id: 'reviewer', label: 'Reviewer', role: 'advisory', checks: 'build', seq: '5' },
+      { id: 'evaluator', label: 'Evaluator', role: 'binding', checks: 'build', seq: '6' }, { id: 'evaluator2', label: 'Second eval', role: 'advisory', seq: '7' }, { id: 'light', label: 'Simple / Light work', seq: '' }],
     agents: [{ id: 'claude', label: 'Claude Code' }, { id: 'copilot', label: 'Copilot CLI' }],
     user_file: '/home/u/.canon/cockpit/model-tiers.json',   // t-b809: named in the Save hint
     // t-f5fa: the board's resolved presets (common.ResolvePreset): one matching FIXTURE's picks, one that changes Build, with a note
@@ -15080,7 +15080,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     await page.locator('#mt-agent').selectOption('claude');
     const panel = page.locator('#mt-panel');
     await expect(panel.locator('#mt-agent')).toHaveCount(1);
-    await expect(panel.locator('#mt-defaults .mt-default-card')).toHaveCount(7);
+    await expect(panel.locator('#mt-defaults .mt-default-card')).toHaveCount(8);   // t-3e06: + Close
     for (const scheme of ['light', 'dark']) {
       await page.emulateMedia({ colorScheme: scheme });
       const b = await panel.evaluate(el => { const c = getComputedStyle(el); return [parseFloat(c.borderTopWidth), c.borderTopStyle, c.borderTopColor, getComputedStyle(document.body).backgroundColor]; });
@@ -15088,7 +15088,7 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     const top = async id => (await page.locator(`#mt-step-${id} select`).boundingBox()).y;
-    for (const [a, b] of [['plan', 'speccheck'], ['build', 'reviewer'], ['evaluator', 'evaluator2']]) {
+    for (const [a, b] of [['plan', 'speccheck'], ['build', 'close'], ['reviewer', 'evaluator'], ['evaluator2', 'light']]) {
       expect(Math.abs(await top(a) - await top(b))).toBeLessThan(1);   // descriptions of different lengths, one line of pickers
     }
   });
@@ -15096,8 +15096,8 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   test('Model tiers shows one card per step for the chosen agent, with each step\'s list (t-8f6d)', async ({ page }) => {
     const posts = await openModelTiers(page);
     const opts = async step => page.locator(`#mt-step-${step} select option`).evaluateAll(o => o.map(x => x.value));
-    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(7);
-    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['1. Plan', '2. Spec check (advisory)', '3. Build', '4. Reviewer (advisory)', '5. Evaluator (binding)', '6. Second eval (advisory)', 'Simple / Light work']);   // t-864c (user): numbered in run order
+    await expect(page.locator('#mt-defaults .mt-default-card')).toHaveCount(8);   // t-3e06: + Close
+    await expect(page.locator('#mt-defaults .mt-default-card .setting-k')).toHaveText(['1. Plan', '2. Spec check (advisory)', '3. Build', '4. Close', '5. Reviewer (advisory)', '6. Evaluator (binding)', '7. Second eval (advisory)', 'Simple / Light work']);   // t-864c (user): numbered in run order; t-3e06: Close after Build
     await expect(page.locator('#mt-agent')).toHaveValue('claude');
     expect(await opts('reviewer')).toEqual(['m-sonnet', 'm-haiku']);   // Claude Code: Anthropic only
     expect(await opts('evaluator')).toEqual(['m-sonnet']);             // never a Haiku model
@@ -15370,7 +15370,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(light[0]).toBe(light[1]);
     expect(dark[0]).not.toBe(light[0]);
     // t-8f6d: one default card per step, each with one picker for the chosen agent (Claude Code first)
-    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(7);   // t-9b13: six steps; t-864c: the Second eval
+    await expect(page.locator('#mt-defaults .mt-default-card .mt-picker')).toHaveCount(8);   // t-9b13: six steps; t-864c: the Second eval; t-3e06: Close
     await expect(page.locator('#mt-agent option')).toHaveText(['Claude Code', 'Copilot CLI']);
     // Anthropic tab active by default with the 6 seeded models (t-99b2: the 5.5 models sit before their predecessors)
     await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
