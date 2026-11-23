@@ -133,14 +133,36 @@ signoff "Tier: normal | Risk: x"
 gp evaluator2
 assert_eq 1 "$code"; assert_eq "" "$out"; assert_contains "$err" "gate-prompt: no second evaluator for $id (sprint second-eval: skip:"
 
-# 8. No prompt states a verdict line or carries a run-id value: the protocol file owns the report's shape
+# 8. Outside Copilot no prompt states a verdict line or carries a run-id value: the protocol file owns the report's shape (t-63c6).
+# CLAUDECODE=1 is the Claude Code harness (this file unsets it at the top, so the other sections run as harness none).
 for r in speccheck reviewer evaluator; do
-  for h in "" 1; do
-    COPILOT_CLI="$h" gp "$r"
-    absent "$out" "verdict:"; absent "$out" "pass:"
-    [[ ! "$out" =~ evaluator-run-id:\ *[0-9] ]] || fail "gate-prompt $r carries a run-id value: $out"
+  for h in none claude copilot; do
+    case "$h" in none) gp "$r" ;; claude) CLAUDECODE=1 gp "$r" ;; copilot) COPILOT_CLI=1 gp "$r" ;; esac
+    absent "$out" "verdict:"
+    [[ ! "$out" =~ evaluator-run-id:\ *[0-9] ]] || fail "gate-prompt $r ($h) carries a run-id value: $out"
+    [[ ! "$out" =~ [0-9a-f]{40} ]] || fail "gate-prompt $r ($h) carries a commit hash (a gate records only the head it runs itself, t-2dc4): $out"
+    if [[ "$h" != copilot ]]; then
+      absent "$out" "pass:"; absent "$out" "must carry"; absent "$out" "graded-head"; absent "$out" "READY"
+    fi
   done
 done
+
+# 8b. t-2dc4: under Copilot the prompt carries the lines the close parses, so a gate that cannot read its protocol (ToDo-Demo t-6x4z:
+# the evaluator never read eval.md, 4 runs) still returns a closeable report. Protects every Copilot gate dispatch.
+for r in evaluator evaluator2; do
+  [[ "$r" != evaluator2 ]] || signoff "Tier: normal | Risk: x | Second eval: on"
+  COPILOT_CLI=1 gp "$r"
+  assert_eq 0 "$code"
+  assert_contains "$out" "Follow .agents/skills/sprint/reference/eval.md for this ticket."
+  assert_contains "$out" "- line 1: \`evaluator-run-id: <the output of sprint run-id>\`"
+  assert_contains "$out" "- \`graded-head: <the full 40-character output of git rev-parse HEAD>\`: run it yourself and grade the diff up to that commit; never a short hash, never a hash taken from this prompt or your inputs"
+  assert_contains "$out" "- the Model line above"
+  assert_contains "$out" "- a verdict line that starts with \`pass:\` or \`fail:\` and a one-line summary"
+done
+signoff "Tier: normal | Risk: x"
+COPILOT_CLI=1 gp speccheck
+assert_contains "$out" "Your report must carry a \`## Verdict\` section whose line starts with \`READY\` (no finding) or \`GAPS\` (at least one)"
+COPILOT_CLI=1 gp reviewer; absent "$out" "must carry"
 
 # 9. Refusals: an unknown role or ticket
 gp bogus; assert_eq 1 "$code"; assert_contains "$err" "Usage: sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
