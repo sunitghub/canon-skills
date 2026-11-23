@@ -924,8 +924,11 @@ func TestPipelineTemplateMatchesTheResolvedState(t *testing.T) {
 	for _, x := range list {
 		m := x.(map[string]any)
 		ids = append(ids, m["id"].(string))
-		if m["name"] == "" || m["blurb"] == "" {
-			t.Errorf("template %v has no name or blurb", m)
+		if name, _ := m["name"].(string); name == "" { // a missing key is nil, not "": the page reads t.name and t.blurb
+			t.Errorf("template %v has no name", m)
+		}
+		if blurb, _ := m["blurb"].(string); blurb == "" {
+			t.Errorf("template %v has no blurb", m)
 		}
 		if _, leaked := m["off"]; leaked {
 			t.Errorf("the off list is the board's, not the page's: %v", m)
@@ -1062,7 +1065,7 @@ func TestPipelineTemplateRefusalsWriteNothing(t *testing.T) {
 // commands reproduce (t-2087).
 func TestPipelineTemplateBlurbs(t *testing.T) {
 	want := map[string][]string{
-		"lean-close":    {"reviewer", "53k", "37%", "evaluator"},
+		"lean-close":    {"reviewer", "53k", "2-6 min", "37%", "evaluator"},
 		"trimmed-close": {"code-simplifier", "skill-eval", "1 run in 6", "28", "reviewer"},
 	}
 	for tid, words := range want {
