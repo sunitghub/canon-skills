@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.81.1] - 2026-11-23
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Security: the Cockpit daemon no longer hands a live session's token to a second `/session/start` for the same ticket (reattach), so no other process of yours can type into a running session's terminal through the daemon; on Windows that was an elevated shell while `su` is on. `daemon.json` no longer holds the daemon's token. A browser that did not start the session now shows "This session is open in another browser" with an End button; the same browser (reload, second window) still attaches. An agent typing to its own permission prompt is reduced, not closed: see `docs/sprint-check.md` (t-d5a8).
+
 ## [0.81.0] - 2026-11-23
 
 - Added: Factory › Pipeline offers three pipeline templates under its heading: canon's default, Trimmed close (code-simplifier and skill-eval off) or Lean close (the reviewer off), each with a description of what it gives up from canon's own closed tickets. Picking one, or a first change that would create `canon-config/pipeline.yaml`, asks before it saves (the after-the-fact "Pipeline saved" dialog is gone), and `docs/wrapup-gates.md` compares them with Lite, the default and the bugfix tier (t-2087).
