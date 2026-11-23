@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-11-23
+
+- Added: Factory › Pipeline offers three pipeline templates under its heading: canon's default, Trimmed close (code-simplifier and skill-eval off) or Lean close (the reviewer off), each with a description of what it gives up from canon's own closed tickets. Picking one, or a first change that would create `canon-config/pipeline.yaml`, asks before it saves (the after-the-fact "Pipeline saved" dialog is gone), and `docs/wrapup-gates.md` compares them with Lite, the default and the bugfix tier (t-2087).
+- Fixed: the pre-commit hook's test run no longer inherits git's author variables, and three suites no longer fail under load (a same-second cost fixture, a push's background gc during cleanup, and mutant-sweep killing a reused process id) (t-2087).
+
 ## [0.80.0] - 2026-11-22
 
 The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
