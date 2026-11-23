@@ -83,6 +83,18 @@ _bad() { echo "subagent-log.sh: $1" >&2; usage; exit 1; }
 if [[ -z "$TOKENS" && -n "${CLAUDECODE:-}" ]] && gate_role_ok "$AGENT_TYPE"; then
   echo "subagent-log.sh: no --tokens: in Claude Code the totals come in the background task's <usage> notice; wait for it, then log (never guess a number)" >&2
 fi
+# t-46df: under Copilot CLI the session cannot see a gate's tokens or minutes; take the missing ones from Copilot's session record (the
+# relay's own task, `sprint gate-usage`). A flag given always wins; a record that cannot be read leaves them empty and says why.
+if [[ ( -z "$TOKENS" || -z "$MINUTES" ) && "${COPILOT_CLI:-}" == 1 && -z "${CLAUDECODE:-}" && -n "$TICKET" ]] && gate_role_ok "$AGENT_TYPE"; then
+  if _use="$("$SCRIPT_DIR/sprint" gate-usage "$TICKET" "$AGENT_TYPE" 2>&1)" && [[ "$_use" == *$'\t'* ]]; then
+    _ut="${_use%%$'\t'*}" _um="${_use#*$'\t'}"
+    [[ -n "$TOKENS" || ! "$_ut" =~ ^[0-9]+$ ]] || TOKENS="$_ut"
+    [[ -n "$MINUTES" || ! "$_um" =~ ^[0-9]+$ ]] || MINUTES="$_um"
+    echo "subagent-log.sh: tokens ${TOKENS:-unknown}, minutes ${MINUTES:-unknown} from Copilot's session record ($AGENT_TYPE)" >&2
+  else
+    echo "subagent-log.sh: no tokens or minutes from Copilot's session record: ${_use:-gate-usage gave nothing}" >&2
+  fi
+fi
 REPO_ROOT="$(project_root)"
 # Tier is recorded now, not read later: a ticket's dir goes away on export.
 if [[ -z "$TIER" && -n "$TICKET" && -f "$REPO_ROOT/.tickets/$TICKET/plan.md" ]]; then

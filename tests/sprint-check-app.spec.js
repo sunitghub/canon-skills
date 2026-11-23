@@ -6426,6 +6426,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect(await copilot.locator('svg.ag-mk-copilot rect').evaluate(r => getComputedStyle(r).fill), `the Copilot tile paints violet, ${theme}`).toBe('rgb(137, 87, 229)');
         const box = sel => page.locator(sel).first().evaluate(el => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
         expect(await box('#ag-list svg.ag-mk-copilot'), `same box as the Claude mark, ${theme}`).toEqual(await box('#ag-list svg.ag-mk-claude'));
+        // t-3e06: the tile fills the 16 px box (Claude's strokes span 2..22 of 24), and the glyph is `>C`: a chevron and an arc
+        const tile = await copilot.locator('svg.ag-mk-copilot').evaluate(svg => { const r = svg.querySelector('rect').getBBox(), d = svg.querySelector('path').getAttribute('d'); return { x: r.x, y: r.y, w: r.width, h: r.height, chevron: /^M6 8\.5l3\.5 3\.5L6 15\.5/.test(d), arc: /a3\.7 3\.7 0 1 0/.test(d) }; });
+        expect(tile, `the >C tile, ${theme}`).toEqual({ x: 2, y: 2, w: 20, h: 20, chevron: true, arc: true });
       }
       const pi = page.locator('#ag-list .ag-row', { hasText: 't-fff6' });   // a rendered Pi row keeps its lettered tile (reviewer, t-4358)
       await expect(pi.locator('.ag-i .ag-badge')).toHaveText('P');
@@ -8698,8 +8701,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const PLAN_WRITTEN = ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'Build the thing.', ''];
     const ev = (kind, data = {}, ts = '2026-11-19T10:00:00.000Z', ticket) => ({ schema: 1, id: kind + ts, ts, kind, source: 'sprint', project: '/p', data: { ticket, ...data } });
     const json = body => r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    async function openRail(page, id, { sprint = [], events = [], opts = {} } = {}) {
+    async function openRail(page, id, { sprint = [], events = [], opts = {}, files = {} } = {}) {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'], ...opts });
+      for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(PROJECT_ROOT, '.tickets', id, name), text);   // t-e371: gate reports
       await stubCockpit(page);
       await page.route(`**/api/v1/sprint/${id}`, json({ schema: 1, ticket: id, events: sprint }));
       await page.route('**/api/v1/events?**', json({ schema: 1, events, cursor: '' }));
@@ -8758,6 +8762,80 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(card(page).locator('.spc-row[data-spc-row="spec-check"] .spc-note.skip')).toHaveText('not run');
         await expect(card(page).locator('.spc-row[data-spc-row="code-reviewer"]')).not.toHaveClass(/\bdone\b/);   // no event: not done, no note
         await expect(card(page).locator('.spc-row[data-spc-row="code-reviewer"] .spc-note')).toHaveCount(0);
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    // t-3df9 + t-3e06 (user 11-23: two lines, the model that ran, never guessed): an agent row that ran names its model under its name, the
+    // Evaluator's second run on another model shows the latest and "Run 2", Build and Close show the session's model, a row that has not run
+    // has no second line, and the time stays on line 1. Protects the Cockpit rail's Sprint progress card.
+    test('agent, Build and Close rows show the model they ran on on a second line; a row not run has none', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, '3df9');
+      const at = mm => `2026-11-19T10:${mm}:00.000Z`;
+      try {
+        await openRail(page, id, { sprint: [
+          ev('sprint.started', {}, at('00'), id), ev('plan.approved', {}, at('05'), id), ev('close.started', {}, at('20'), id),
+          ev('gate.finished', { role: 'evaluator', verdict: 'pass', model: 'claude-opus-5-5' }, at('42'), id), ev('gate.started', { role: 'reviewer', attempt: '1' }, at('45'), id),
+        ], events: [
+          ev('implement.started', { model: 'claude-sonnet-5-5' }, at('06'), id), ev('build.switch', { stage: 'close', outcome: 'started', model: 'claude-sonnet-5.5' }, at('21'), id),
+          ev('gate.started', { role: 'evaluator' }, at('30'), id), ev('gate.finished', { role: 'evaluator', verdict: 'fail', model: 'sonnet' }, at('35'), id),
+          ev('gate.started', { role: 'evaluator' }, at('40'), id),
+        ] });
+        const sub = rid => card(page).locator(`.spc-row[data-spc-row="${rid}"] .spc-sub`);
+        await expect(sub('eval')).toHaveText('Opus 5.5 · Run 2');
+        await expect(sub('eval')).toHaveAttribute('title', 'claude-opus-5-5');
+        await expect(sub('build')).toHaveText('Sonnet 5.5');
+        await expect(sub('close')).toHaveText('Sonnet 5.5');
+        await expect(sub('reviewer')).toHaveCount(0);   // running, not finished: no model guessed
+        await expect(sub('spec-check')).toHaveCount(0);
+        // line 1 keeps the name whole, the chip and the time; line 2 sits under the name, smaller and muted, in both themes
+        const geo = await card(page).locator('.spc-row[data-spc-row="eval"]').evaluate(li => {
+          const n = li.querySelector('.spc-n').getBoundingClientRect(), k = li.querySelector('.spc-k').getBoundingClientRect(), s2 = li.querySelector('.spc-sub');
+          const sb = s2.getBoundingClientRect(), nm = li.querySelector('.spc-n');
+          return { below: sb.top >= n.bottom - 1, chipOnLine1: Math.abs(k.top - n.top) < 6, under: sb.left >= n.left - 1, whole: nm.scrollWidth <= nm.clientWidth + 1,
+            smaller: parseFloat(getComputedStyle(s2).fontSize) < parseFloat(getComputedStyle(nm).fontSize) };
+        });
+        expect(geo).toEqual({ below: true, chipOnLine1: true, under: true, whole: true, smaller: true });
+        for (const theme of ['dark', 'light']) {
+          await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+          const [fg, bg] = await sub('eval').evaluate(el => { let b = el, c = 'rgba(0, 0, 0, 0)'; while (b && (c = getComputedStyle(b).backgroundColor) === 'rgba(0, 0, 0, 0)') b = b.parentElement; return [getComputedStyle(el).color, c]; });
+          const lum = c => { const [r, g, b] = c.match(/\d+(\.\d+)?/g).slice(0, 3).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+          const ratio = (Math.max(lum(fg), lum(bg)) + 0.05) / (Math.min(lum(fg), lum(bg)) + 0.05);
+          expect(ratio, `the model line reads against the card, ${theme} (${fg} on ${bg})`).toBeGreaterThanOrEqual(4.5);
+        }
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    // t-e371 (Windows runs t-c3gi, t-6x4z: Copilot relays wrote the reports but no event): a gate whose report holds a verdict reads done (or
+    // failed), a hand-typed Wrapup Gates row turns its inline gate done or skipped, and the card never prints an event kind. Protects the rail card.
+    test('reports and Wrapup Gates rows stand in for missing events; the card never prints an event kind', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, 'e371');
+      const at = mm => `2026-11-19T10:${mm}:00.000Z`;
+      try {
+        await openRail(page, id, {
+          sprint: [ev('sprint.started', {}, at('00'), id), ev('plan.approved', {}, at('05'), id), ev('close.started', {}, at('20'), id),
+            ev('gate.started', { role: 'reviewer', attempt: '1' }, at('30'), id), ev('wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }, at('50'), id)],
+          files: {
+            'spec-review.md': '# Spec check: x\n\nModel: sonnet (Admin Spec check default, claude)\n\n## Verdict\nREADY — fine.\n',
+            'review-notes.md': '# Review Notes\n\nModel: gpt-6-luna (Admin Reviewer default, copilot)\n\n## Verdict\n\nYES\n',
+            'eval-report.md': 'evaluator-run-id: 1-1\ngraded-head: abc\n\nModel: claude-sonnet-5.5 (Admin Evaluator default, copilot)\n\n## Verdict\n\nfail: criterion 2\n',
+            'acceptance.md': '# Acceptance\n\n## Criteria\n- [ ] a criterion\n\n## Wrapup Gates\n| Gate | Status | Notes |\n|---|---|---|\n| security-review | ran | ok |\n| mutation-test | skipped | no logic |\n',
+          } });
+        const row = rid => card(page).locator(`.spc-row[data-spc-row="${rid}"]`);
+        await expect(row('spec-check')).toHaveClass(/\bdone\b/);
+        await expect(row('spec-check').locator('.spc-note')).toHaveCount(0);   // not "not run"
+        await expect(row('spec-check').locator('.spc-sub')).toHaveText('Sonnet');
+        await expect(row('reviewer')).toHaveClass(/\bdone\b/);
+        await expect(row('reviewer').locator('.spc-sub')).toHaveText('GPT-6 Luna');
+        await expect(row('eval').locator('.spc-note.fail')).toHaveText('failed');
+        await expect(row('security-review')).toHaveClass(/\bdone\b/);
+        await expect(row('mutation-test').locator('.spc-note.skip')).toHaveText('skipped');
+        await expect(card(page).locator('.spc-status')).toHaveText('Closing');
+        await expect(card(page)).not.toContainText('wrapup.');
+        await expect(card(page)).not.toContainText('gate_finished');
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
@@ -12859,7 +12937,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(chip).toBeHidden();   // t-fe82: working lives in the Agents sidebar
       // t-d00c, t-1917: the ambient token meter and the session's folder go to the pane header (the page), not the bar
       // t-45b1: each field on its own (the page labels them), the session's model and stage included
-      await expect.poll(paneInfo).toEqual({ info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 }, cwd: PROJECT_ROOT });
+      await expect.poll(paneInfo).toEqual({ info: { cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 2 }, cwd: PROJECT_ROOT });   // t-3df9: no model or stage
       await expect(page.locator('#ck-meter')).toHaveCount(0);
       // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto save"; the sentence is the tooltip.
       await expect(reaper).toHaveText('Auto save');
@@ -12884,7 +12962,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toBeHidden();
       await expect(reaper).toBeHidden();
-      await expect.poll(paneInfo).toEqual({ info: { model: '', stage: '' }, cwd: PROJECT_ROOT });   // t-d00c, t-45b1: no meter fields on a row without one (not "0%"), no model on an old daemon
+      await expect.poll(paneInfo).toEqual({ info: {}, cwd: PROJECT_ROOT });   // t-d00c: no meter fields on a row without one (not "0%"); t-3df9: never a model
       await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {
@@ -14119,21 +14197,19 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await expect(page.locator('.status')).toBeHidden();
       await expect(page.locator('#paneMeter')).toBeHidden();   // nothing sent yet: no empty chip
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj <img src=x onerror=1>' }, '*'));
-      // t-45b1: labelled fields on row 1 (Subagents shown at 0, the model by its name), the folder alone on row 2
-      await expect(page.locator('#paneMeter')).toHaveText('Model Sonnet 5.5 · buildCache 87%LLM calls 42Tool calls 130Subagents 0');
-      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(5);
+      // t-45b1: labelled fields on row 1 (Subagents shown at 0), the folder alone on row 2; t-3df9: no Model field, even when a model is sent
+      await expect(page.locator('#paneMeter')).toHaveText('Cache 87%LLM calls 42Tool calls 130Subagents 0');
+      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(4);
       const rows2 = await page.evaluate(() => { const m = document.getElementById('paneMeter').getBoundingClientRect(), c = document.getElementById('paneCwd').getBoundingClientRect(), h = document.querySelector('header').getBoundingClientRect(); return { cwdBelow: c.top >= m.bottom - 1, cwdLeft: Math.abs(c.left - h.left) < 20, cwdWide: c.width > h.width * 0.8 }; });
       expect(rows2).toEqual({ cwdBelow: true, cwdLeft: true, cwdWide: true });
-      // before the first answer: the model and stage only; a pi session (no model): the counts only; never "undefined"
+      // before the first answer (no counts known, only a model and stage from an older board): the row hides; never "undefined"
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-haiku-5.5', stage: 'plan' }, cwd: '/tmp/proj' }, '*'));
-      await expect(page.locator('#paneMeter')).toHaveText('Model Haiku 5.5 · plan');
-      // a date-suffixed id with a one-number version is that version, not "4.20250514" (reviewer, t-45b1)
-      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-4-20250514', stage: 'build' }, cwd: '/tmp/proj' }, '*'));
-      await expect(page.locator('#paneMeter')).toHaveText('Model Sonnet 4 · build');
+      await expect(page.locator('#paneMeter')).toBeHidden();
+      await expect(page.locator('#paneCwd')).toBeVisible();
       // narrow pane, every field: A−/A+ stay on the fields' row (never alone on a row), no field is cut, no sideways scroll, the folder below them all
       await page.setViewportSize({ width: 700, height: 600 });
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'pane-info', info: { model: 'claude-sonnet-5-5', stage: 'build', cache_pct: 87, llm_calls: 42, tool_calls: 130, sub_agents: 0 }, cwd: '/tmp/proj' }, '*'));
-      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(5);
+      await expect(page.locator('#paneMeter .pi-f')).toHaveCount(4);
       const narrow = await page.evaluate(() => { const m = document.getElementById('paneMeter').getBoundingClientRect(), f = document.querySelector('.fontctl').getBoundingClientRect(), c = document.getElementById('paneCwd').getBoundingClientRect();
         const cut = [...document.querySelectorAll('#paneMeter .pi-f')].some(e => { const r = e.getBoundingClientRect(); return r.right > m.right + 1 || e.scrollWidth > e.clientWidth + 1; });
         return { fontBesideFields: f.top < m.bottom && f.left >= m.right - 1, cwdBelow: c.top >= Math.max(m.bottom, f.bottom) - 1, cut, noScroll: (h => h.scrollWidth <= h.clientWidth)(document.querySelector('header')) };   // the header's own width (xterm refits on its own resize)

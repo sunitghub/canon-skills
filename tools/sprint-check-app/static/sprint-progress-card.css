@@ -6,6 +6,11 @@
 /* t-985c: a long step name gives way (ellipsis) so the time keeps its right edge */
 .spc-live .spc-row{flex-wrap:nowrap}
 .spc-live .spc-row:has(.spc-line){flex-wrap:wrap}   /* reviewer: the Manual Close row's sentence goes under it, the name stays whole */
+/* t-3df9 (user 11-23): line 2 under the name: the model the row ran on and "Run N", smaller and muted so it reads as the row's child;
+   order keeps the time on line 1 */
+.spc-live .spc-row:has(.spc-sub){flex-wrap:wrap}
+.spc-sub{order:1;flex-basis:100%;padding-left:8px;font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spc-line{order:2}
 .spc-live .spc-n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spc-t{margin-left:auto;padding-left:8px;font-size:11px;color:var(--text-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .spc-note + .spc-t{margin-left:0}

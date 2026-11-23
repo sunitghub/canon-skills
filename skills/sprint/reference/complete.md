@@ -399,7 +399,7 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
    YES → pass, NO → fail; evaluator `pass` → pass, anything else → fail). A dispatch that dies
    on its budget is logged too, `--outcome budget`. Omit a number the hand-back does not give,
    never guess one. In Claude Code the totals are in the background task's completion notice
-   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`sprint subagent-log` warns when a Claude Code gate row has no `--tokens`). Log from the notification that says the agent completed; one that says it "stopped with background work of its own still running" is interim and its figures are partial. A row logged early is replaced by calling `sprint subagent-log` again with the same `--agent-id`.
+   (`<usage>`), which can arrive after the agent's report: wait for it before logging (`sprint subagent-log` warns when a Claude Code gate row has no `--tokens`). Under Copilot CLI the session never sees them: pass `--ticket <id>` and `sprint subagent-log` fills them from Copilot's session record (t-46df). Log from the notification that says the agent completed; one that says it "stopped with background work of its own still running" is interim and its figures are partial. A row logged early is replaced by calling `sprint subagent-log` again with the same `--agent-id`.
    Pass `--model <id>` too (t-3a14): the model this dispatch resolved to and passed (the Admin
    default's registry id, e.g. `claude-sonnet-5-5`, never its alias; the ticket's `Gate model:`; or the agent's floor), not one read back from the report.
    Leave it out when the model is unknown; never write a guessed one.

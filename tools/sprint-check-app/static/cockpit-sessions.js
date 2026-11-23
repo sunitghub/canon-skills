@@ -267,10 +267,11 @@ const agentTile=agent=>`<span class="ag-badge">${esc(agentName(agent).charAt(0)|
 const AGENT_MARK={claude:()=>markClaude(),copilot:()=>markCopilot()};
 export const agentMark=agent=>(AGENT_MARK[agent]||(()=>agentTile(agent)))();
 const markClaude=()=>'<svg class="ag-mark ag-mk-claude" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M5 5l4 4M15 15l4 4M19 5l-4 4M5 19l4-4" fill="none" stroke="'+CLAUDE_ORANGE+'" stroke-width="2.6" stroke-linecap="round"/></svg>';
-// t-4358: Copilot CLI's mark is canon's own glyph, a `>_` prompt on a violet tile, not GitHub's mascot or icon: GitHub's brand rules need
+// t-4358: Copilot CLI's mark is canon's own glyph (t-3e06: `>C`, so it reads as Copilot, not any terminal agent) on a violet tile that
+// fills the box as Claude's mark does, not GitHub's mascot or icon: GitHub's brand rules need
 // its Brand team's approval for any public use of a mascot, and Copilot has no standalone logo (brand.github.com, checked 2026-11-17).
 const COPILOT_VIOLET='#8957e5';   // the same in both themes (an SVG attribute, like CLAUDE_ORANGE); white glyph on it reads in both
-const markCopilot=()=>'<svg class="ag-mark ag-mk-copilot" viewBox="0 0 24 24" aria-hidden="true"><rect x="1.5" y="3" width="21" height="18" rx="5" fill="'+COPILOT_VIOLET+'"/><path d="M7 9l3.5 3L7 15M12.5 15.5H17" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const markCopilot=()=>'<svg class="ag-mark ag-mk-copilot" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" fill="'+COPILOT_VIOLET+'"/><path d="M6 8.5l3.5 3.5L6 15.5M18 9.2a3.7 3.7 0 1 0 0 5.6" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 export const agentName=a=>AGENT_NAME[a]||'';
 export function ageShort(secs){ return secs<60 ? '<1m' : secs<3600 ? Math.floor(secs/60)+'m' : secs<86400 ? Math.floor(secs/3600)+'h' : Math.floor(secs/86400)+'d'; }
 function stateGlyph(state){

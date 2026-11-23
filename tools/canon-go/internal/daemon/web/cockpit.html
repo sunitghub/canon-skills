@@ -127,14 +127,6 @@
 <script src="/web/vendor/xterm.js" integrity="sha384-f/1U6Z9wM4D71a5eRXEZnyOTMOvjqxr2XLwh+Go1OvIl3L3tOcvUrzudnhbECwl4"></script>
 <script src="/web/vendor/xterm-addon-fit.js" integrity="sha384-txoiwu4RR2GD3qySbaj+BbzibkLbSJRcfqGYMu6z1EqHil4A2dyBiBW5dlacG6OR"></script>
 <script>
-// t-45b1: a model id as people say it (claude-sonnet-5-5 or claude-sonnet-5.5 -> Sonnet 5.5); an alias or another vendor's id stays as written.
-function modelName(id){
-  var m = /^claude-([a-z]+)-(\d+)(?:[-.](\d{1,2})(?!\d))?(?:-\d{8})?$/.exec(String(id));   // a minor is 1-2 digits: claude-sonnet-4-20250514 is Sonnet 4, not 4.20250514
-  if(!m) return String(id);
-  return m[1].charAt(0).toUpperCase() + m[1].slice(1) + " " + m[2] + (m[3] ? "." + m[3] : "");
-}
-</script>
-<script>
 (function(){
   "use strict";
   var TOKEN = "__COCKPIT_TOKEN__";
@@ -455,13 +447,13 @@ function canonPrefixKeys(emit) {
         .catch(function(){ try{ toParent({ source: "canon-cockpit", type: "end-scratch-failed", reason: "Couldn't reach the daemon." }); }catch(e){} });
     } else if(d.type === "pane-info"){
       // t-1917: the board owns the daemon row and sends the meter and the session's folder; the text is set, never parsed as markup.
-      // t-45b1: row 1 is labelled fields (model and stage, then the meter), built with text nodes only; row 2 is the folder.
+      // t-45b1: row 1 is labelled fields (the meter), built with text nodes only; row 2 is the folder. t-3df9: no Model field (the harness
+      // shows its model, the Sprint progress card the stage); a model sent by an older board is ignored.
       var pm = document.getElementById("paneMeter"), pc = document.getElementById("paneCwd"), info = d.info && typeof d.info === "object" ? d.info : null;
       pm.textContent = "";
       var add = function(k, v){ var f = document.createElement("span"); f.className = "pi-f"; var kk = document.createElement("span"); kk.className = "pi-k"; kk.textContent = k + " "; var b = document.createElement("b"); b.textContent = v; f.appendChild(kk); f.appendChild(b); pm.appendChild(f); };
       var num = function(v){ return typeof v === "number" && isFinite(v) ? String(v) : null; };
       if(info){
-        if(typeof info.model === "string" && info.model) add("Model", modelName(info.model) + (typeof info.stage === "string" && info.stage ? " \u00b7 " + info.stage : ""));
         if(num(info.cache_pct) !== null) add("Cache", num(info.cache_pct) + "%");
         if(num(info.llm_calls) !== null) add("LLM calls", num(info.llm_calls));
         if(num(info.tool_calls) !== null) add("Tool calls", num(info.tool_calls));

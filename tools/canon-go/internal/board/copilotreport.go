@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -78,6 +79,7 @@ type copilotQuery struct {
 	Prefix string // the report's first line: evaluator-run-id: or # Review Notes
 	Second bool   // the second evaluator: its prompt names .tickets/<id>/eval-report-2.md
 	Record bool   // the close check: the gate's whole record (its raw lines), not the report
+	Usage  bool   // t-46df: the gate's tokens and minutes ("<tokens>\t<minutes>"), for `sprint subagent-log` under Copilot
 	From   time.Time
 	To     time.Time
 }
@@ -143,6 +145,7 @@ func (m copilotMiss) closer(o copilotMiss) bool {
 
 type copilotTask struct {
 	agentType, prompt string
+	started           string // t-46df: the dispatch's own timestamp (tool.execution_start)
 	subagent, agentID string // what subagent.started named for this call
 	done              *copilotLine
 	doneRaw           string
@@ -163,6 +166,9 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	tasks := map[string]*copilotTask{}
 	var order []string
 	raw := map[string][]string{}  // agentId -> its raw lines
+	used := map[string]int64{}    // t-46df: agentId -> its model calls' input + output tokens (input holds the cache counts)
+	usedSeen := map[string]bool{} // apiCallId already counted
+	usedAny := map[string]bool{}
 	msgs := map[string][]string{} // agentId -> its assistant.message texts, in order
 	br := bufio.NewReaderSize(f, 1<<20)
 	for {
@@ -182,6 +188,12 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 			// Only what the gate authored counts: its commands (tool.execution_start arguments) and its messages. The outputs of its
 			// tool calls do not: a gate that merely read a report someone typed (cat eval-report.md) must not back that report.
 			switch l.Type {
+			case "session.usage_record":
+				if u := l.Data.Usage; u != nil && (u.APICallID == "" || !usedSeen[u.APICallID]) {
+					usedSeen[u.APICallID] = u.APICallID != ""
+					used[l.AgentID] += u.InputTokens + u.OutputTokens
+					usedAny[l.AgentID] = true
+				}
 			case "tool.execution_start":
 				raw[l.AgentID] = append(raw[l.AgentID], text)
 			case "assistant.message":
@@ -199,7 +211,7 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 		switch l.Type {
 		case "tool.execution_start":
 			if l.Data.ToolName == "task" {
-				tasks[id] = &copilotTask{agentType: l.Data.Arguments.AgentType, prompt: l.Data.Arguments.Prompt}
+				tasks[id] = &copilotTask{agentType: l.Data.Arguments.AgentType, prompt: l.Data.Arguments.Prompt, started: l.Timestamp}
 				order = append(order, id)
 			}
 		case "subagent.started":
@@ -255,6 +267,9 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 	if newest.done.Data.Success == nil || !*newest.done.Data.Success {
 		return "", at, true, false, copilotMiss{why: fmt.Sprintf("the newest matching %s task failed", q.Agent)}
 	}
+	if q.Usage {
+		return copilotUsageLine(newest, at, used, usedAny), at, true, true, copilotMiss{}
+	}
 	if q.Record {
 		return strings.Join(append(append([]string{}, raw[newest.agentID]...), newest.doneRaw), "\n") + "\n", at, true, true, copilotMiss{}
 	}
@@ -272,6 +287,23 @@ func copilotFindIn(path string, q copilotQuery) (out string, at time.Time, candi
 		}
 	}
 	return "", at, true, false, copilotMiss{why: fmt.Sprintf("the newest matching %s task's result has no whole line starting %q", q.Agent, q.Prefix)}
+}
+
+// copilotUsageLine (t-46df) is "<tokens>\t<minutes>\n" for one gate task: tokens = its agent's usage_record input + output (Copilot's
+// input already holds the cache reads and writes, as Claude Code's total does), minutes = dispatch to result, rounded up. A part the
+// record does not hold is empty, never 0.
+func copilotUsageLine(t *copilotTask, done time.Time, used map[string]int64, usedAny map[string]bool) string {
+	tokens, minutes := "", ""
+	if t.agentID != "" && usedAny[t.agentID] {
+		tokens = strconv.FormatInt(used[t.agentID], 10)
+	}
+	if st, err := time.Parse(time.RFC3339Nano, t.started); err == nil && !done.Before(st) {
+		minutes = strconv.Itoa(int(math.Ceil(done.Sub(st).Minutes())))
+		if minutes == "0" {
+			minutes = "1"
+		}
+	}
+	return tokens + "\t" + minutes + "\n"
 }
 
 // cutAfterVerdict ends a review at its verdict line (t-2986: a Copilot reviewer appended commentary after YES, which a relay would have
@@ -327,7 +359,7 @@ func copilotMismatch(t *copilotTask, q copilotQuery) (string, bool) {
 // test can take the Windows branch on any OS (the daemon's pattern, daemon/main.go fromMSYS).
 var fromMSYS = func(p string) string { return common.FromMSYS(p, runtime.GOOS) }
 
-// copilotReportCLI: copilot-report [--second] [--record] [--from <unix>] [--to <unix>] <copilot-home> <agent> <ticket> <protocol-file> <prefix>
+// copilotReportCLI: copilot-report [--second] [--record|--usage] [--from <unix>] [--to <unix>] <copilot-home> <agent> <ticket> <protocol-file> <prefix>
 // --record prints the gate's raw record instead of the report (the close check greps it, as it greps Claude Code's transcripts).
 // Exit 0 with the output, 1 when the layout is recognised but no result matches, 3 when there is no Copilot session record.
 // The window defaults to the last 3 hours.
@@ -336,6 +368,7 @@ func copilotReportCLI(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	second := fs.Bool("second", false, "the second evaluator's report (eval-report-2.md)")
 	record := fs.Bool("record", false, "print the gate's raw record (every line its agentId produced and its result), not the report")
+	usage := fs.Bool("usage", false, "print the gate's tokens and minutes as <tokens>\\t<minutes> (t-46df), not the report")
 	from := fs.String("from", "", "earliest result time, unix seconds")
 	to := fs.String("to", "", "latest result time, unix seconds")
 	if fs.Parse(args) != nil || fs.NArg() != 5 {
@@ -343,7 +376,7 @@ func copilotReportCLI(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	now := time.Now()
-	q := copilotQuery{Agent: fs.Arg(1), Ticket: fs.Arg(2), Proto: fs.Arg(3), Prefix: fs.Arg(4), Second: *second, Record: *record, From: now.Add(-3 * time.Hour), To: now.Add(time.Minute)}
+	q := copilotQuery{Agent: fs.Arg(1), Ticket: fs.Arg(2), Proto: fs.Arg(3), Prefix: fs.Arg(4), Second: *second, Record: *record, Usage: *usage, From: now.Add(-3 * time.Hour), To: now.Add(time.Minute)}
 	for _, t := range []struct {
 		s   string
 		dst *time.Time

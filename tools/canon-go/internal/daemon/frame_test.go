@@ -79,7 +79,7 @@ func TestCockpitPaneHeader(t *testing.T) {
 		`id="paneMeter"`, `id="paneCwd"`, `d.type === "pane-info"`,
 		"pt.textContent = typeof d.cwd", `id="paneCwdText"`, "direction:rtl", "color:var(--text)",
 		// t-45b1: two rows: labelled fields from the board's separate values (text nodes only), the folder alone on the second row
-		`add("Model", modelName(info.model)`, `add("Cache",`, `add("LLM calls",`, `add("Tool calls",`, `add("Subagents",`,
+		`add("Cache",`, `add("LLM calls",`, `add("Tool calls",`, `add("Subagents",`,
 		"header{display:flex;flex-wrap:wrap", ".paneinfo.cwd{flex:1 1 100%;order:99",
 	} {
 		if !strings.Contains(page, want) {
@@ -92,6 +92,9 @@ func TestCockpitPaneHeader(t *testing.T) {
 	c, cp, pi := strings.Index(sel, `<option value="claude">Claude Code</option>`), strings.Index(sel, `<option value="copilot">Copilot CLI</option>`), strings.Index(sel, `<option value="pi">Pi</option>`)
 	if c < 0 || cp < 0 || pi < 0 || !(c < cp && cp < pi) || strings.Contains(sel, "selected") {
 		t.Fatalf("agent picker order: claude %d, copilot %d, pi %d (want Claude Code, Copilot CLI, Pi, Claude Code first): %s", c, cp, pi, sel)
+	}
+	if strings.Contains(page, `add("Model"`) || strings.Contains(page, "modelName(") { // t-3df9: the harness shows its model, the card the stage
+		t.Fatal("the pane header still shows a Model field")
 	}
 	i := strings.Index(page, `d.type === "pane-info"`)
 	if strings.Contains(page[i:i+1800], "innerHTML") { // t-45b1: the handler grew; still text only

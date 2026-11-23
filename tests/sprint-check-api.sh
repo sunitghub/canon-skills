@@ -560,13 +560,16 @@ mkdir -p "$WT/.tickets/t-mock"
 printf '# Plan (worktree)\nWorktree plan body\n' > "$WT/.tickets/t-mock/plan.md"
 printf '# Acceptance (worktree)\n' > "$WT/.tickets/t-mock/acceptance.md"
 printf '## Current Focus\nWorktree handoff focus.\n' > "$WT/HANDOFF.md"
+printf '# Review Notes\n\n## Verdict\nYES\n' > "$WT/.tickets/t-mock/review-notes.md"   # t-e371: the card reads the worktree's reports
 WT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$WT")"
 python3 - "$(curl -s "$B/api/cockpit-docs/t-mock?cwd=$WT_ENC")" <<'PY'
 import json, sys
 d = json.loads(sys.argv[1])
-for k, want in (("plan", "Worktree plan body"), ("acceptance", "Acceptance (worktree)"), ("handoff", "Worktree handoff focus")):
+for k, want in (("plan", "Worktree plan body"), ("acceptance", "Acceptance (worktree)"), ("handoff", "Worktree handoff focus"), ("review-notes", "## Verdict\nYES")):
     if want not in (d.get(k) or ""):
         print(f"sprint-check-api: FAIL — cockpit-docs did not return the worktree {k}: {d}"); sys.exit(1)
+if d.get("eval-report") is not None or d.get("spec-review") is not None:
+    print(f"sprint-check-api: FAIL — cockpit-docs invented a report the worktree does not hold: {d}"); sys.exit(1)
 PY
 code="$(curl -s -o /dev/null -w '%{http_code}' "$B/api/cockpit-docs/t-mock?cwd=%2Ftmp")"
 [[ "$code" == 400 ]] || fail "sprint-check-api: cockpit-docs accepted a non-worktree cwd (status $code)"

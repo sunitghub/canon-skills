@@ -7,7 +7,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 const CARD = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'static', 'sprint-progress-card.js');
-import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticketMode, stepStartTimes, firstClosing, rowStates, ROW_END, INLINE_GATES }) => {
+import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticketMode, stepStartTimes, firstClosing, rowStates, ROW_END, INLINE_GATES, reportFacts, wrapupRows, shortModel }) => {
   let fails = 0;
   function ok(name, cond, detail) {
     if (cond) console.log('  ok   ' + name);
@@ -79,7 +79,15 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('a gate with no role: "Running", no row', sprintProgress(NODES, events([['gate.started', {}]])).status === 'Running' && sprintProgress(NODES, events([['gate.started', {}]])).cur === '');
     ok('a running gate never repeats its name (user, t-985c)', sprintProgress(NODES, events([['gate.started', { role: 'evaluator', attempt: '2' }]])).status === 'Running · attempt 2');
     const unk = sprintProgress(NODES, events([['some.future_kind']]));
-    ok('a kind the card does not know: idle, named', unk.tone === 'idle' && unk.cur === '' && unk.status === 'some.future_kind', unk);
+    // t-e371: the card never prints an event's kind; a kind with no status of its own leaves the previous one
+    ok('a kind the card does not know is never shown', unk.tone === 'idle' && unk.cur === '' && unk.status === 'Not started', unk);
+    const after = sprintProgress(NODES, events([['plan.approved'], ['some.future_kind'], ['implement.started']]));
+    ok('a kind with no status after approval keeps Implementing', after.status === 'Implementing' && after.cur === 'build', after);
+    for (const k of ['wrapup.gate_started', 'wrapup.gate_finished']) {
+      const w = sprintProgress(NODES, events([['plan.approved'], ['close.started'], [k, { gate: 'doc-audit', result: 'ran' }]]));
+      const html = progressCardHtml(NODES, 'normal', { ...w, rows: rowStates(NODES, events([['plan.approved'], ['close.started'], [k, { gate: 'doc-audit', result: 'ran' }]])) });
+      ok(`${k} newest: Closing, and no kind in the card`, w.status === 'Closing' && !html.includes(k), [w, html.slice(0, 120)]);
+    }
     const nokind = sprintProgress(NODES, [{ ts: '2026-11-19T10:00:00.000Z', data: {} }]);
     ok('an event with no kind is ignored', nokind.status === 'Not started', nokind);
     const tie = sprintProgress(NODES, [{ kind: 'plan.approved', ts: '2026-11-19T10:00:00.000Z', data: {} }, { kind: 'gate.started', ts: '2026-11-19T10:00:00.000Z', data: { role: 'reviewer' } }]);
@@ -197,7 +205,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('the newest wrapup result for a gate wins', rowStates(NODES, evts([['wrapup.gate_finished', { gate: 'doc-audit', result: 'skipped' }], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }]]))['doc-audit'].state === 'done');
     ok('run counts per role: reviewer 3, evaluator 1, spec check 0', rs.reviewer.runs === 3 && rs.eval.runs === 1 && rs['spec-check'].runs === 0, rs);
     h = draw(close.slice(0, -1));   // the third run not started: the Reviewer row is not current, shows "run 2"
-    ok('a gate row that ran twice shows "run 2"', li(h, 'reviewer').includes('<span class="spc-note ">run 2</span>'), li(h, 'reviewer'));
+    ok('a gate row that ran twice shows "Run 2" on its second line', li(h, 'reviewer').includes('<span class="spc-sub">Run 2</span>'), li(h, 'reviewer'));
     ok('the Second eval never counts as an Evaluator run', rowStates(NODES, events([['gate.started', { role: 'evaluator' }], ['gate.started', { role: 'evaluator2' }]])).eval.runs === 1);
     ok('a failed evaluator: not done, "failed" once it is not current', (() => { const x = draw([['gate.finished', { role: 'evaluator', verdict: 'fail' }], ['gate.started', { role: 'reviewer' }]]); return !/ done\b/.test(li(x, 'eval').slice(0, 60)) && li(x, 'eval').includes('<span class="spc-note fail">failed</span>'); })());
     ok('Build is done once the close began, not before', rowStates(NODES, events([['plan.approved']])).build.state === '' && rowStates(NODES, events([['plan.approved'], ['wrapup.gate_finished', { gate: 'doc-audit', result: 'ran' }]])).build.state === 'done');
@@ -209,6 +217,44 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const dup = events([['gate.started', { role: 'reviewer' }]]).map(e => ({ ...e, id: 'x1' }));
     ok('an event in both the snapshot and the window counts once', rowStates(NODES, [...dup, ...dup]).reviewer.runs === 1);
     ok('every inline gate is a pipeline node with an end kind', INLINE_GATES.every(g => NODES.some(n => n.id === g) && ROW_END[g]));
+  }
+
+  // t-3df9 + t-3e06: the second line names the model a row ran on (never a guess); t-e371: a report or a Wrapup Gates row stands in for a
+  // missing event. Protects the Cockpit rail's Sprint progress card.
+  {
+    const li2 = (html, id) => { const m = new RegExp(`<li[^>]*data-spc-row="${id}"[\\s\\S]*?</li>`).exec(html); return m ? m[0] : ''; };
+    const draw2 = (list, art) => { const ev = events(list); return progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, ev), rows: rowStates(NODES, ev, art) }); };
+    const ran = draw2([['plan.approved'], ['implement.started', { model: 'claude-sonnet-5-5' }], ['gate.started', { role: 'reviewer' }], ['gate.finished', { role: 'reviewer', verdict: 'YES', model: 'gpt-6-luna' }],
+      ['gate.started', { role: 'evaluator' }], ['gate.finished', { role: 'evaluator', verdict: 'fail', model: 'sonnet' }], ['gate.started', { role: 'evaluator' }], ['gate.finished', { role: 'evaluator', verdict: 'pass', model: 'claude-opus-5-5' }],
+      ['build.switch', { stage: 'close', outcome: 'started', model: 'claude-sonnet-5.5' }]]);
+    ok('an agent row that ran shows its model, full id in the title', li2(ran, 'reviewer').includes('<span class="spc-sub" title="gpt-6-luna">GPT-6 Luna</span>'), li2(ran, 'reviewer'));
+    ok('a second run on another model shows the latest and Run 2', li2(ran, 'eval').includes('>Opus 5.5 · Run 2</span>'), li2(ran, 'eval'));
+    ok('Build shows implement.started\'s model', li2(ran, 'build').includes('>Sonnet 5.5</span>'), li2(ran, 'build'));
+    ok('Close shows the Close switch\'s model', li2(ran, 'close').includes('title="claude-sonnet-5.5">Sonnet 5.5</span>'), li2(ran, 'close'));
+    ok('the name stays on line 1 with its chip, before the second line', /<span class="spc-n">Reviewer<\/span><span class="spc-k agent">Agent<\/span><span class="spc-sub"/.test(li2(ran, 'reviewer')), li2(ran, 'reviewer'));
+    const before = draw2([['plan.approved']]);
+    ok('a row that has not run has no second line (no preview)', !li2(before, 'reviewer').includes('spc-sub') && !li2(before, 'eval').includes('spc-sub') && !li2(before, 'close').includes('spc-sub'), [li2(before, 'reviewer'), li2(before, 'close')]);
+    ok('the Close switch never moves the card back to Build', sprintProgress(NODES, events([['plan.approved'], ['close.started'], ['build.switch', { stage: 'close', outcome: 'started' }]])).status === 'Closing'
+      && sprintProgress(NODES, events([['plan.approved'], ['close.started'], ['build.switch', { stage: 'close', outcome: 'not_taken', attempts: '3' }]])).status.startsWith('Close switch:'));
+    ok('a Close switch is not Build\'s start time', stepStartTimes(NODES, events([['plan.approved'], ['build.switch', { stage: 'close', outcome: 'started' }]])).build === stepStartTimes(NODES, events([['plan.approved']])).build);
+    // reports stand in for a missing gate.finished
+    const facts = reportFacts('# Spec check\n\nModel: sonnet (Admin Spec check default, claude)\n\n## Verdict\nGAPS — two.\n');
+    ok('reportFacts reads the verdict word and the Model line', facts.verdict === 'gaps' && facts.model === 'sonnet', facts);
+    ok('reportFacts: bold YES under the heading, pass: prefix, nothing', reportFacts('## Verdict\n\n**YES** fine').verdict === 'yes' && reportFacts('## Verdict\n\npass: all hold').verdict === 'pass' && reportFacts('no verdict here').verdict === '');
+    const art = { reports: { speccheck: { verdict: 'ready', model: 'sonnet' }, reviewer: { verdict: 'yes', model: 'gpt-6-luna' }, evaluator: { verdict: 'pass', model: 'claude-sonnet-5-5' } } };
+    const rs = rowStates(NODES, events([['plan.approved'], ['gate.started', { role: 'speccheck' }], ['gate.started', { role: 'reviewer' }], ['gate.started', { role: 'evaluator' }]]), art);
+    ok('a report with a verdict marks Spec check, Reviewer and Evaluator done, with the report\'s model', rs['spec-check'].state === 'done' && rs.reviewer.state === 'done' && rs.eval.state === 'done' && rs.reviewer.model === 'gpt-6-luna', rs);
+    ok('a spec check that never logged its start reads done from its report, not "not run"', rowStates(NODES, events([['plan.approved']]), art)['spec-check'].state === 'done');
+    ok('an evaluator report other than pass is failed', rowStates(NODES, events([['plan.approved']]), { reports: { evaluator: { verdict: 'fail' } } }).eval.state === 'failed');
+    ok('no report and no event: not run / empty, as before', rowStates(NODES, events([['plan.approved']]), {})['spec-check'].state === 'notrun' && rowStates(NODES, events([['plan.approved']]), {}).reviewer.state === '');
+    const acc = '## Criteria\n| doc-audit | ran | not this table |\n\n## Wrapup Gates\n| Gate | Status | Notes |\n|---|---|---|\n| security-review | ran | ok |\n| mutation-test | skipped | no logic |\n| reviewer | ran | YES |\n';
+    const wr = wrapupRows(acc);
+    ok('wrapupRows reads only the Wrapup Gates table\'s inline gates', JSON.stringify(wr) === JSON.stringify({ 'security-review': 'ran', 'mutation-test': 'skipped' }), wr);
+    const rw = rowStates(NODES, events([['plan.approved'], ['close.started']]), { wrapup: wr });
+    ok('a hand-typed Wrapup Gates row turns its gate done or skipped', rw['security-review'].state === 'done' && rw['mutation-test'].state === 'skipped' && rw['doc-audit'].state === '', rw);
+    ok('shortModel', shortModel('claude-sonnet-5-5') === 'Sonnet 5.5' && shortModel('claude-haiku-4-5-20251001') === 'Haiku 4.5' && shortModel('claude-opus-5.5') === 'Opus 5.5' && shortModel('gpt-6-luna') === 'GPT-6 Luna'
+      && shortModel('sonnet') === 'Sonnet' && shortModel('Claude Sonnet 5.5') === 'Sonnet 5.5' && shortModel('') === '', ['claude-sonnet-5-5', 'gpt-6-luna', 'Claude Sonnet 5.5'].map(shortModel));
+    ok('a model from the log is escaped', draw2([['gate.finished', { role: 'reviewer', verdict: 'YES', model: '<img src=x>' }]]).includes('&lt;img'));
   }
 
   // a status or reason from the log is escaped too

@@ -183,6 +183,32 @@ gate_ticket both
 body "$now-7777" "pass: all criteria met" > ".tickets/$gid/eval-report.md"
 assert_contains "$(CLAUDECODE=1 CLAUDE_CONFIG_DIR="$W/no-claude" "$SPRINT" complete 2>&1)" "no Claude Code subagent transcripts"
 
+# 7b. t-46df: under Copilot `sprint subagent-log` fills a gate's missing tokens and minutes from the record (its own agent's usage_records,
+# dispatch to result rounded up); a given flag wins; no task for the ticket leaves them empty with the reason. Protects the close's gate
+# rows (and the Sprint progress card's cost) under Copilot CLI.
+gate_ticket usage; rid="$now-8888"
+mkdir -p "$COPILOT_HOME/session-state/s9"
+node -e '
+  const [f, id, prompt, result, at] = process.argv.slice(1); const t = s => new Date((Number(at) + s) * 1000).toISOString();
+  const use = (agent, call, i, o) => ({ type: "session.usage_record", timestamp: t(30), ...(agent ? { agentId: agent } : {}), data: { usage: { model: "claude-sonnet-5.5", inputTokens: i, outputTokens: o, apiCallId: call } } });
+  const lines = [
+    { type: "tool.execution_start", timestamp: t(0), data: { toolCallId: id, toolName: "task", arguments: { agent_type: "canon-evaluator", prompt, name: "gate", mode: "sync" } } },
+    { type: "subagent.started", timestamp: t(1), agentId: "ag-" + id, data: { toolCallId: id, agentName: "canon-evaluator", agentType: "canon-evaluator" } },
+    use("ag-" + id, "u1", 4000, 200), use("ag-" + id, "u2", 6000, 300), use("", "m1", 99999, 1), use("ag-other", "o1", 50000, 5),
+    { type: "tool.execution_complete", timestamp: t(130), data: { toolCallId: id, success: true, result: { content: result } } },
+  ];
+  require("fs").writeFileSync(f, lines.map(l => JSON.stringify(l)).join("\n") + "\n");' \
+  "$COPILOT_HOME/session-state/s9/events.jsonl" c9 "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$((now - 200))"
+out="$("$SPRINT" subagent-log --agent-id "$rid" --agent-type evaluator --ticket "$gid" 2>&1)"
+assert_contains "$out" "tokens 10500, minutes 3 from Copilot's session record (evaluator)"
+assert_contains "$(grep -F "\"agent_id\":\"$rid\"" .claude/subagent-runs.jsonl)" '"tokens":10500'
+out="$("$SPRINT" subagent-log --agent-id "$rid-b" --agent-type evaluator --ticket "$gid" --tokens 7 2>&1)"
+assert_contains "$out" "tokens 7, minutes 3 from Copilot's session record"   # the flag wins, the missing minutes are filled
+out="$("$SPRINT" subagent-log --agent-id "$rid-c" --agent-type reviewer --ticket "$gid" 2>&1)"
+assert_contains "$out" "no tokens or minutes from Copilot's session record: gate-usage: no reviewer task for $gid"
+[[ "$(grep -F "\"agent_id\":\"$rid-c\"" .claude/subagent-runs.jsonl)" != *'"tokens":0'* ]] || fail "subagent-log wrote 0 tokens for an unread record"
+rm -rf "$COPILOT_HOME/session-state/s9"; drop
+
 # 8. Copilot's files were only read
 assert_eq "$sum_before" "$(find "$COPILOT_HOME/session-state/s1" -type f -exec cksum {} + | sort)" "Copilot's session record is never written"
 echo "sprint-relay-report-copilot: ok"

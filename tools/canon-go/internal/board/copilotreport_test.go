@@ -357,3 +357,37 @@ func FuzzCutAfterVerdict(f *testing.F) {
 		}
 	})
 }
+
+// t-46df: copilot-report --usage gives `sprint subagent-log` a Copilot gate's tokens and minutes: its own agent's usage_records (input +
+// output, each apiCallId once), never another agent's or the main session's; minutes from dispatch to result, rounded up; a gate with no
+// usage_record leaves tokens empty, never 0. Protects the close's gate rows under Copilot CLI.
+func TestCopilotUsageOfTheGate(t *testing.T) {
+	use := func(agent, call string, in, out int) cpEvent {
+		e := cpEvent{"type": "session.usage_record", "timestamp": "2026-11-21T10:02:00.000Z", "data": map[string]any{"usage": map[string]any{"model": "claude-sonnet-5.5", "inputTokens": in, "outputTokens": out, "cacheReadTokens": in / 2, "apiCallId": call}}}
+		if agent != "" {
+			e["agentId"] = agent
+		}
+		return e
+	}
+	home := t.TempDir()
+	writeSession(t, home, "s1",
+		cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"),
+		use("ag-c1", "a1", 1000, 50), use("ag-c1", "a2", 2000, 70), use("ag-c1", "a2", 2000, 70), // a repeated call counts once
+		use("ag-other", "b1", 9000, 900), use("", "m1", 5000, 100), // another agent's and the main session's calls never count
+		cpDone("c1", "2026-11-21T10:04:10.000Z", report, true))
+	q := evalQuery()
+	q.Usage = true
+	got, found, _, why := copilotFind(home, q)
+	if !found || got != "3120\t5\n" {
+		t.Fatalf("usage = %q (found %v, %s), want 3120 tokens and 5 minutes (4m10s rounded up)", got, found, why)
+	}
+	home2 := t.TempDir()
+	writeSession(t, home2, "s1", cpStart("c1", "canon-evaluator", evalPrompt), cpSub("c1", "canon-evaluator"), cpDone("c1", "2026-11-21T10:00:20.000Z", report, true))
+	if got, found, _, _ := copilotFind(home2, q); !found || got != "\t1\n" {
+		t.Fatalf("no usage_record: %q, want empty tokens and 1 minute", got)
+	}
+	var out, errb bytes.Buffer
+	if rc := copilotReportCLI([]string{"--usage", "--from", "1795000000", "--to", strconv.FormatInt(time.Date(2026, 11, 21, 11, 0, 0, 0, time.UTC).Unix(), 10), home, "canon-evaluator", "t-abcd", "reference/eval.md", "evaluator-run-id:"}, &out, &errb); rc != 0 || out.String() != "3120\t5\n" {
+		t.Fatalf("CLI --usage: rc %d out %q err %q", rc, out.String(), errb.String())
+	}
+}

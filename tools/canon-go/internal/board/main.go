@@ -3704,19 +3704,25 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 		}
 		return string(b)
 	}
-	var plan, acceptance any
+	// t-e371: + the gates' reports, which the Sprint progress card reads for a verdict no event recorded
+	out := map[string]any{}
+	folder := false
 	if fi, err := os.Stat(filepath.Join(tickets, ticketID)); err == nil && fi.IsDir() {
-		plan = read(ticketID + "/plan.md")
-		acceptance = read(ticketID + "/acceptance.md")
-	} else {
-		plan = read(ticketID + "-plan.md")
-		acceptance = read(ticketID + "-acceptance.md")
+		folder = true
+	}
+	for _, slug := range []string{"plan", "acceptance", "spec-review", "review-notes", "eval-report"} {
+		if folder {
+			out[slug] = read(ticketID + "/" + slug + ".md")
+		} else {
+			out[slug] = read(ticketID + "-" + slug + ".md")
+		}
 	}
 	var handoff any
 	if b, err := os.ReadFile(filepath.Join(cwdReal, "HANDOFF.md")); err == nil {
 		handoff = string(b)
 	}
-	return map[string]any{"plan": plan, "acceptance": acceptance, "handoff": handoff}, true
+	out["handoff"] = handoff
+	return out, true
 }
 
 // isCanonRuntimePath reports whether a git-porcelain path (repo-root-relative,
