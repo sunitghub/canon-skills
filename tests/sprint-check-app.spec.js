@@ -13814,6 +13814,13 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const rightTok = await request.get(`${base}/session/${started.session}/preview/${encodeURIComponent(started.previewToken)}/style.css`);
     expect(rightTok.status()).toBe(200);
     expect(await rightTok.text()).toContain('#marker');
+
+    // t-d5a8: a reattach never returns a live session's token, so a session left running here would make the next
+    // test's page attach token-less to it (it passed only when run alone). End it and wait until it is gone.
+    const killRes = await request.post(`${base}/session/${started.session}/kill`, { headers: { Authorization: `Bearer ${started.token}` } });
+    expect(killRes.status()).toBe(204);
+    await expect.poll(async () => (await (await request.get(`${base}/sessions`)).json()).map(x => x.session), { timeout: 10_000 })
+      .not.toContain(started.session);
   });
   test('the real daemon page relays the accepted absolute path with preview-file (t-533f) @webkit', async ({ page, context, browserName }) => {
     // Playwright's Chromium blocks a page framing a loopback daemon port under Local Network
