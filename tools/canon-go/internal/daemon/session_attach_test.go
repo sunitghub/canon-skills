@@ -279,6 +279,10 @@ func TestReattachNoToken(t *testing.T) {
 			if again["session"] != first["session"] || again["attached"] != true {
 				t.Fatalf("second start must attach to %v: %v", first["session"], again)
 			}
+			// The page relays cwd and requested to the board's "Working in:" line (t-7590, t-eed3).
+			if _, ok := again["requested"]; !ok || first["cwd"] == "" || again["cwd"] != first["cwd"] {
+				t.Fatalf("reattach reply must keep cwd %v and a requested key: %v", first["cwd"], again)
+			}
 			for _, k := range []string{"token", "previewToken"} {
 				if _, ok := again[k]; ok {
 					t.Fatalf("reattach reply carries %q: %v", k, again)
