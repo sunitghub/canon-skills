@@ -16,6 +16,7 @@ git config --global init.defaultBranch main
 git config --global user.name test; git config --global user.email test@example.com
 
 git init -q --bare "$W/origin.git"
+git -C "$W/origin.git" config receive.autogc false   # a push otherwise may start a detached gc that still writes origin.git while the EXIT trap removes it
 SEED="$W/seed"; git init -q "$SEED"; cd "$SEED"
 mkdir -p scripts; printf '#!/usr/bin/env bash\necho "suite: ok"\n' > scripts/test.sh; chmod +x scripts/test.sh
 printf '# Handoff\n\nnarrative\n' > HANDOFF.md

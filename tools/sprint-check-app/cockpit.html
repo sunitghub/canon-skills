@@ -255,7 +255,8 @@
                   <span class="pl-src" id="fac-pipe-src"></span>
                   <button type="button" class="btn b-neutral pl-reset" id="fac-pipe-reset" disabled>Reset to canon&rsquo;s default</button>
                 </div>
-                <div class="setting-d">Reorder the gates inside Wrapup and switch the optional ones off. Locked rows always run; hover or focus <b>locked &middot; why</b>. A gate you switch off reads <code>skipped | removed in this project&rsquo;s pipeline</code> in the Wrapup Gates table and in summary.md, and leaves an activity-log event.</div>
+                <div class="pl-tpl" id="fac-pipe-tpl" role="radiogroup" aria-label="Pipeline template"></div>
+                <div class="setting-d pl-tpl-d" id="fac-pipe-tpl-d" hidden><b>Custom (your changes):</b> no template matches; the rows below show what is off and the wrapup order.</div>
                 <div class="pl-prev" id="fac-pipe-prev" role="group" aria-label="Preview this pipeline for a ticket"></div>
                 <div class="pl-split"><div id="fac-pipe-rows" aria-live="polite"></div>
                 <aside class="spc" id="fac-pipe-cardprev" aria-label="Sprint progress for the previewed ticket"></aside></div>
@@ -315,14 +316,6 @@
 <!-- Close-tab warning (t-0db3): the tab has a LIVE agent session. Never orphan or
      kill it silently — offer Save & End / End without saving / Keep working.
      Shown only for a live tab; an idle tab closes straight to Projects. -->
-<!-- Factory > Pipeline (t-3a58): shown once, by the change that creates canon-config/pipeline.yaml. -->
-<div class="scrim" id="pipe-saved">
-  <div class="cmodal" role="dialog" aria-modal="true" aria-labelledby="pipe-saved-t">
-    <h2 id="pipe-saved-t">Pipeline saved</h2>
-    <p>Saved in <code>canon-config/pipeline.yaml</code>. Commit it (<code>git add canon-config/pipeline.yaml</code>) so teammates and cloud sessions use it.</p>
-    <div class="cfoot"><button class="btn b-primary" id="pipe-saved-ok">OK</button></div>
-  </div>
-</div>
 <div class="scrim" id="closeWarn">
   <div class="cmodal">
     <div class="ci">&#9654;</div>

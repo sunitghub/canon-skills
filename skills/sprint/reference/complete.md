@@ -45,6 +45,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    show the user and run `sprint approve` again); a ticket approved before the pin only gets a notice. A passing close writes one
    `wrapup.gate_finished` event with `result=removed` per removed node. A removed node is a user-elected reduction, the same class as Lite and
    `eval_override`: the evaluator floor stays, and headless/CI ignores the file as it ignores `demo`. The refusals print the exact row or line to add.
+   Factory › Pipeline's picker writes two named templates (t-2087): Lean close (`off: [reviewer]`) and Trimmed close (`off: [code-simplifier, skill-eval]`); each is an ordinary project pipeline here, and `docs/wrapup-gates.md` compares them with Lite, the default and the bugfix tier.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
    wrapup: keep `security-review` (a fix can still touch a trust boundary) and

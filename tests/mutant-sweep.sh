@@ -13,8 +13,15 @@ HAVE_GO=0; command -v gofmt >/dev/null && HAVE_GO=1   # the Go cases need gofmt 
 T="${TMPDIR:-/tmp}"; WORK="$(mktemp -d "${T%/}/mutant-sweep-test.XXXXXX")"
 PIDS="$WORK/pids"; TESTS="$WORK/tests"; : > "$PIDS"; : > "$TESTS"
 reap() {   # a broken tool can leave its tests running: stop exactly the pids (and groups) they recorded
+  # A recorded pid has usually exited (the test checks that) and may be reused by any process of yours: scripts/test.sh's own
+  # `sleep 0.2` took a SIGKILL here and the whole suite run died. Kill a pid only while its command is still one this test started.
   local pid
-  while read -r pid; do kill -KILL -- "-$pid" "$pid" 2>/dev/null || true; done < <(cat "$TESTS" "$PIDS" 2>/dev/null)
+  while read -r pid; do
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    case "$(ps -o command= -p "$pid" 2>/dev/null)" in
+      "sleep 300"|"sleep 120"|"bash tests/t-loop.sh"*|"bash ./loop.sh"*) kill -KILL -- "-$pid" "$pid" 2>/dev/null || true ;;
+    esac
+  done < <(cat "$TESTS" "$PIDS" 2>/dev/null)
 }
 trap 'reap; rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg" CANON_HOME="$WORK/canon-home"

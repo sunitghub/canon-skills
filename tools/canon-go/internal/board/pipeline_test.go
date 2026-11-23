@@ -467,6 +467,7 @@ func TestPipelineRequestKeysAreStrict(t *testing.T) {
 		"mixed-case key":  `{"op":"toggle","Id":"doc-audit","on":false}`,
 		"duplicate op":    `{"op":"toggle","op":"reset"}`,
 		"duplicate id":    `{"op":"toggle","id":"doc-audit","id":"skill-eval","on":false}`,
+		"template ID":     `{"op":"template","ID":"lean-close"}`,
 		"trailing brace":  `{"op":"reset"}}`,
 		"trailing text":   `{"op":"reset"} x`,
 		"trailing array":  `{"op":"reset"}[]`,
@@ -889,5 +890,193 @@ func TestPipelineWriteIntoAReadOnlyFolderIsRefusedCleanly(t *testing.T) {
 	defer os.Chmod(root, 0o755)
 	if code, m := post(id, `{"op":"toggle","id":"skill-eval","on":false}`); code != 409 || !strings.Contains(fmt.Sprint(m["error"]), "could not be created") {
 		t.Fatalf("a root that cannot hold canon-config = %d %v", code, m)
+	}
+}
+
+// t-2087: Factory > Pipeline's template picker. Prod path: the header's picker sends op "template", and GET's `template` tells the
+// page which one the project's resolved state is.
+func pipelineTemplateField(t *testing.T, id string) string {
+	t.Helper()
+	code, g := pipelineGetReq(id)
+	if code != 200 || g["ok"] != true {
+		t.Fatalf("GET = %d %v", code, g)
+	}
+	s, ok := g["template"].(string)
+	if !ok {
+		t.Fatalf("no template field: %v", g)
+	}
+	return s
+}
+
+func pipelineWriteFile(t *testing.T, root, text string) {
+	t.Helper()
+	os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+	if err := os.WriteFile(filepath.Join(root, "canon-config", "pipeline.yaml"), []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPipelineTemplateMatchesTheResolvedState(t *testing.T) {
+	id, root := pipelineEnv(t)
+	_, g := pipelineGetReq(id)
+	list, _ := g["templates"].([]any)
+	var ids []string
+	for _, x := range list {
+		m := x.(map[string]any)
+		ids = append(ids, m["id"].(string))
+		if name, _ := m["name"].(string); name == "" { // a missing key is nil, not "": the page reads t.name and t.blurb
+			t.Errorf("template %v has no name", m)
+		}
+		if blurb, _ := m["blurb"].(string); blurb == "" {
+			t.Errorf("template %v has no blurb", m)
+		}
+		if _, leaked := m["off"]; leaked {
+			t.Errorf("the off list is the board's, not the page's: %v", m)
+		}
+	}
+	if strings.Join(ids, " ") != "canon-default trimmed-close lean-close" {
+		t.Fatalf("templates = %v", ids)
+	}
+	for _, c := range []struct{ name, file, want string }{
+		{"no file", "", "canon-default"},
+		{"a default file", "extends: canon-default\n", "canon-default"},
+		{"exact Lean", "extends: canon-default\noff: [reviewer]\n", "lean-close"},
+		{"exact Trimmed", "extends: canon-default\noff: [code-simplifier, skill-eval]\n", "trimmed-close"},
+		{"Trimmed written in another order", "extends: canon-default\noff: [skill-eval, code-simplifier]\n", "trimmed-close"},
+		{"Lean plus another gate off", "extends: canon-default\noff: [reviewer, mutation-test]\n", ""},
+		{"Lean with a reorder", "extends: canon-default\noff: [reviewer]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n", ""},
+		{"half of Trimmed", "extends: canon-default\noff: [skill-eval]\n", ""},
+	} {
+		os.RemoveAll(filepath.Join(root, "canon-config"))
+		if c.file != "" {
+			pipelineWriteFile(t, root, c.file)
+		}
+		if got := pipelineTemplateField(t, id); got != c.want {
+			t.Errorf("%s: template = %q, want %q", c.name, got, c.want)
+		}
+	}
+	// an unreadable file: ok false and no template at all (the page shows no picker)
+	pipelineWriteFile(t, root, "extends: something-else\n")
+	_, g = pipelineGetReq(id)
+	if _, has := g["template"]; has || g["ok"] != false {
+		t.Fatalf("an unreadable file's view = %v", g)
+	}
+}
+
+func TestPipelineTemplateOpWritesTheTemplate(t *testing.T) {
+	id, root := pipelineEnv(t)
+	// from a custom file: the whole state is replaced
+	pipelineWriteFile(t, root, "extends: canon-default\noff: [mutation-test]\nwrapup-order: [doc-audit, code-reviewer, code-simplifier]\n")
+	code, m := post(id, `{"op":"template","id":"lean-close"}`)
+	if code != 200 || m["template"] != "lean-close" || m["created"] != false {
+		t.Fatalf("lean-close = %d %v", code, m)
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\noff: [reviewer]\n" {
+		t.Fatalf("file = %q", got)
+	}
+	code, m = post(id, `{"op":"template","id":"trimmed-close"}`)
+	if code != 200 || m["template"] != "trimmed-close" {
+		t.Fatalf("trimmed-close = %d %v", code, m)
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\noff: [code-simplifier, skill-eval]\n" {
+		t.Fatalf("file = %q", got)
+	}
+	if out, err := runPipeline("check", "--project", root); err != nil || !strings.Contains(out, "ok") {
+		t.Fatalf("the reader refuses what the template wrote: %q %v", out, err)
+	}
+	// canon-default rewrites the existing file as the default
+	if code, m = post(id, `{"op":"template","id":"canon-default"}`); code != 200 || m["template"] != "canon-default" || m["changed"] != false {
+		t.Fatalf("canon-default = %d %v", code, m)
+	}
+	if got := pipelineFileText(root); got != "extends: canon-default\n" {
+		t.Fatalf("file after canon-default = %q", got)
+	}
+}
+
+func TestPipelineTemplateFirstWriteAndNoFile(t *testing.T) {
+	id, root := pipelineEnv(t)
+	before := treeDigest(t, root)
+	if code, m := post(id, `{"op":"template","id":"canon-default"}`); code != 200 || m["created"] != false {
+		t.Fatalf("canon-default with no file = %d %v", code, m)
+	}
+	if treeDigest(t, root) != before {
+		t.Fatal("canon-default with no file created something")
+	}
+	if code, m := post(id, `{"op":"template","id":"lean-close"}`); code != 200 || m["created"] != true {
+		t.Fatalf("the first write must report created (the page's saved dialog): %d %v", code, m)
+	}
+}
+
+func TestPipelineTemplateEventsAndNoOps(t *testing.T) {
+	id, _ := pipelineEnv(t)
+	events := func() string {
+		var all string
+		files, _ := filepath.Glob(filepath.Join(os.Getenv("CANON_HOME"), "events", "*.jsonl"))
+		for _, f := range files {
+			b, _ := os.ReadFile(f)
+			all += string(b)
+		}
+		return all
+	}
+	post(id, `{"op":"template","id":"lean-close"}`)
+	post(id, `{"op":"template","id":"lean-close"}`) // the same state again: nothing written, nothing logged
+	if n := strings.Count(events(), `"name":"pipeline.template"`); n != 1 {
+		t.Fatalf("pipeline.template lines = %d, want 1: %q", n, events())
+	}
+	if !strings.Contains(events(), `"new":"off=reviewer"`) {
+		t.Fatalf("the event lacks the new off list: %q", events())
+	}
+	post(id, `{"op":"template","id":"canon-default"}`)
+	all := events()
+	if strings.Count(all, `"name":"pipeline.template"`) != 2 || strings.Contains(all, `"name":"pipeline.reset"`) {
+		t.Fatalf("canon-default must log pipeline.template, not pipeline.reset: %q", all)
+	}
+}
+
+func TestPipelineTemplateRefusalsWriteNothing(t *testing.T) {
+	id, root := pipelineEnv(t)
+	post(id, `{"op":"toggle","id":"break-it","on":false}`)
+	before := treeDigest(t, root)
+	for _, c := range []struct{ name, body, want string }{
+		{"unknown id", `{"op":"template","id":"fast-close"}`, "unknown template 'fast-close'"},
+		{"missing id", `{"op":"template"}`, "template needs an id"},
+		{"malformed id", `{"op":"template","id":"../x"}`, "bad template id"},
+	} {
+		code, m := post(id, c.body)
+		if code != 400 || m["error"] != c.want {
+			t.Errorf("%s: %d %v, want 400 %q", c.name, code, m, c.want)
+		}
+		if treeDigest(t, root) != before {
+			t.Errorf("%s: the project changed", c.name)
+		}
+	}
+	// a file the reader refuses: only Reset repairs it, as for toggle
+	pipelineWriteFile(t, root, "extends: something-else\n")
+	before = treeDigest(t, root)
+	if code, _ := post(id, `{"op":"template","id":"lean-close"}`); code != 400 {
+		t.Errorf("template over an unreadable file = %d, want 400", code)
+	}
+	if treeDigest(t, root) != before {
+		t.Error("template over an unreadable file changed it")
+	}
+}
+
+// The blurbs are what a person reads before switching a gate off: each names what it gives up, with the figures research.md's
+// commands reproduce (t-2087).
+func TestPipelineTemplateBlurbs(t *testing.T) {
+	want := map[string][]string{
+		"lean-close":    {"reviewer", "53k", "2-6 min", "37%", "evaluator"},
+		"trimmed-close": {"code-simplifier", "skill-eval", "1 run in 6", "28", "reviewer"},
+	}
+	for tid, words := range want {
+		tp := pipelineTemplateByID(tid)
+		if tp == nil {
+			t.Fatalf("no template %s", tid)
+		}
+		for _, w := range words {
+			if !strings.Contains(tp.Blurb, w) {
+				t.Errorf("%s blurb lacks %q: %s", tid, w, tp.Blurb)
+			}
+		}
 	}
 }

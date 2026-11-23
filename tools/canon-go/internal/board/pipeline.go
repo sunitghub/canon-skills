@@ -184,6 +184,51 @@ func pipelineSame(a, b []string) bool {
 	return true
 }
 
+// t-2087: a template is a named state of the project file. The board owns the list (the page never builds the file); picking one
+// writes `off:` from it with canon's wrapup order. A state matches a template when the resolved off-set and wrapup order equal it.
+type pipelineTemplate struct {
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Blurb string   `json:"blurb"`
+	off   []string // in pipeline.yaml's node order, as pipelineOff lists them
+}
+
+var pipelineTemplates = []pipelineTemplate{
+	{ID: "canon-default", Name: "canon's default", off: []string{},
+		Blurb: "Every optional gate runs: spec check, the wrapup gates, the reviewer, mutation testing and the evaluator."},
+	{ID: "trimmed-close", Name: "Trimmed close", off: []string{"code-simplifier", "skill-eval"},
+		Blurb: "Switches off code-simplifier and skill-eval; the reviewer, spec check, the other wrapup gates and the evaluator stay. " +
+			"In canon's own tickets the simplifier changed the code in about 1 run in 6, as tidying (dead code, duplication), " +
+			"and skill-eval failed none of its 28 reports."},
+	{ID: "lean-close", Name: "Lean close", off: []string{"reviewer"},
+		Blurb: "Switches off the reviewer; spec check, the wrapup gates and the evaluator stay. It saves about 53k fresh tokens " +
+			"and 2-6 min a step (to-do bench, Sonnet 5.5) and gives up the gate that catches most: in canon's own tickets the " +
+			"reviewer said NO on 37% of its verdicts (332 of 907) and on 53% of high-risk tickets."},
+}
+
+func pipelineTemplateByID(id string) *pipelineTemplate {
+	for i := range pipelineTemplates {
+		if pipelineTemplates[i].ID == id {
+			return &pipelineTemplates[i]
+		}
+	}
+	return nil
+}
+
+// pipelineTemplateOf is the template a resolved state equals, "" for any other state (custom).
+func pipelineTemplateOf(nodes, def []pipelineNode) string {
+	if !pipelineSame(pipelineWrapup(nodes), pipelineWrapup(def)) {
+		return ""
+	}
+	off := pipelineOff(nodes)
+	for _, t := range pipelineTemplates {
+		if pipelineSame(off, t.off) {
+			return t.ID
+		}
+	}
+	return ""
+}
+
 // pipelineFileState looks at <root>/canon-config/pipeline.yaml without following a link. exists is true for a plain file;
 // problem is set when the folder or the file is a symlink or not a regular file (nothing is read or written then).
 func pipelineFileState(root string) (exists bool, text string, problem string) {
@@ -282,6 +327,8 @@ func pipelineView(root string) map[string]any {
 	}
 	out["nodes"] = nodes
 	out["changed"] = len(pipelineOff(nodes)) > 0 || !pipelineSame(pipelineWrapup(nodes), pipelineWrapup(def))
+	out["templates"] = pipelineTemplates
+	out["template"] = pipelineTemplateOf(nodes, def)
 	return out
 }
 
@@ -401,8 +448,8 @@ func pipelineApply(r *http.Request, root string, req pipelineRequest) (map[strin
 	bad := func(status int, msg string) (map[string]any, int) {
 		return map[string]any{"ok": false, "error": pipelineClean(msg)}, status
 	}
-	if req.Op != "toggle" && req.Op != "order" && req.Op != "reset" {
-		return bad(http.StatusBadRequest, "op must be toggle, order or reset")
+	if req.Op != "toggle" && req.Op != "order" && req.Op != "reset" && req.Op != "template" {
+		return bad(http.StatusBadRequest, "op must be toggle, order, reset or template")
 	}
 	exists, text, problem := pipelineFileState(root)
 	if problem != "" {
@@ -454,6 +501,18 @@ func pipelineApply(r *http.Request, root string, req pipelineRequest) (map[strin
 			}
 		}
 		wrapup = pipelineWrapup(nodes)
+	case "template":
+		if req.ID == "" {
+			return bad(http.StatusBadRequest, "template needs an id")
+		}
+		if !pipelineIDRe.MatchString(req.ID) {
+			return bad(http.StatusBadRequest, "bad template id")
+		}
+		t := pipelineTemplateByID(req.ID)
+		if t == nil {
+			return bad(http.StatusBadRequest, "unknown template '"+req.ID+"'")
+		}
+		off, wrapup = append([]string{}, t.off...), defWrapup
 	case "order":
 		cur := pipelineWrapup(nodes)
 		if len(req.Wrapup) != len(cur) {
