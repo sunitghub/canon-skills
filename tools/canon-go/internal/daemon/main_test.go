@@ -4664,7 +4664,7 @@ func TestSessionsEndpoint(t *testing.T) {
 // t-44d9: daemon.json carries the daemon's own pid so the board can force-restart it.
 func TestStateFileIncludesPid(t *testing.T) {
 	dir := t.TempDir()
-	if err := writeStateFile(dir, "127.0.0.1:1234", "tok"); err != nil {
+	if err := writeStateFile(dir, "127.0.0.1:1234"); err != nil {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(dir, "daemon.json"))
@@ -4675,8 +4675,12 @@ func TestStateFileIncludesPid(t *testing.T) {
 	if st["pid"] != fmt.Sprint(os.Getpid()) {
 		t.Fatalf("daemon.json pid = %q, want %d", st["pid"], os.Getpid())
 	}
-	if st["addr"] != "127.0.0.1:1234" || st["token"] != "tok" {
-		t.Fatalf("daemon.json addr/token wrong: %v", st)
+	if st["addr"] != "127.0.0.1:1234" {
+		t.Fatalf("daemon.json addr wrong: %v", st)
+	}
+	// t-d5a8: the boot token never sits in a file the daemon's own agents can read.
+	if _, ok := st["token"]; ok {
+		t.Fatalf("daemon.json carries a token: %v", st)
 	}
 }
 
@@ -4690,7 +4694,7 @@ func TestShutdownAllSessionsReapsAndClears(t *testing.T) {
 	stateDir := t.TempDir()
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: stateDir})
 	t.Cleanup(func() { killAllSessions(s) })
-	if err := writeStateFile(stateDir, "127.0.0.1:1", bootTok); err != nil {
+	if err := writeStateFile(stateDir, "127.0.0.1:1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.spawn("t-ab12", root, root, "claude"); err != nil {

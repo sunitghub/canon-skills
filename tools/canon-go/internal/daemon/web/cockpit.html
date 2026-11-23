@@ -21,6 +21,7 @@
   .btn-start{background:var(--accent);color:#fff;white-space:nowrap}   /* one line in a crowded pane header */
   .btn-kill{background:var(--panel2);color:var(--dim);border:1px solid var(--border)}
   .btn-kill:hover{color:var(--red);border-color:var(--red)}
+  .btn-end{background:var(--panel2);color:var(--red);border:1px solid var(--red);white-space:nowrap}
   .spacer{flex:1}
   .status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);font-family:var(--mono)}
   .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
@@ -102,6 +103,7 @@
       </select>
       <button class="btn-start" id="startBtn">▶ Run sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
+      <button class="btn-end" id="endHereBtn" hidden>End it here</button>
     </div>
     <span class="paneinfo cwd" id="paneCwd" hidden><bdo dir="ltr" id="paneCwdText"></bdo></span>
     <div class="spacer"></div>
@@ -601,7 +603,11 @@ function canonPrefixKeys(emit) {
         return;
       }
       var j = await r.json();
-      session = j.session; sessTok = j.token; previewTok = j.previewToken; activeTicket = ticket;
+      // t-d5a8: a reattach never repeats the session's tokens; the page that spawned it stored them in this origin.
+      var pair = j.attached ? loadTok(j.session) : { token: j.token, previewToken: j.previewToken };
+      if(!pair){ elsewhere(j.session); return; }
+      if(!j.attached) storeTok(j.session, pair);
+      session = j.session; sessTok = pair.token; previewTok = pair.previewToken; activeTicket = ticket;
       // t-7590: report the cwd the daemon actually resolved (not PREFILL_CWD,
       // which may have been ignored/overridden) so the board's "Working in:"
       // reflects reality and can flag a wrong-tree mismatch.
@@ -758,6 +764,7 @@ function canonPrefixKeys(emit) {
           else setStatus("running","running · "+activeTicket);
         }
         else if(ev==="exit"){
+          dropTok(session);
           setStatus("done","finished");
           termEnded();
           resetTermModes(false);
@@ -810,11 +817,43 @@ function canonPrefixKeys(emit) {
   async function kill(){
     if(!session) return;
     await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
+    dropTok(session);
     if(streamAbort) streamAbort.abort();
     termEnded();
     setStatus("","killed"); document.getElementById("killBtn").disabled = true; document.getElementById("startBtn").disabled = false; session=null; sessTok=null;
     resetTermModes(false);
     unlockStart();
+  }
+
+  // t-d5a8: a session's token pair is stored only by the page whose Start spawned it (localStorage, this daemon's own
+  // origin), so reloads, lane switches and a second window of the same browser can attach. Another browser (or cleared
+  // site data) gets no token from the daemon: it says so and offers End, never a silent half-attached terminal.
+  function storeTok(sid, pair){ try{ localStorage.setItem("ck-sess-"+sid, JSON.stringify(pair)); }catch(e){} }
+  function loadTok(sid){
+    try{ var v = JSON.parse(localStorage.getItem("ck-sess-"+sid) || "null"); return v && typeof v.token === "string" && v.token ? v : null; }catch(e){ return null; }
+  }
+  function dropTok(sid){ try{ if(sid) localStorage.removeItem("ck-sess-"+sid); }catch(e){} }
+  var endHereSid = null;
+  function elsewhere(sid){
+    endHereSid = sid;
+    setStatus("error","open in another browser");
+    term.writeln("\r\n\x1b[31mThis session is open in another browser. Open it there, or End it here and start again.\x1b[0m");
+    document.getElementById("endHereBtn").hidden = false;
+  }
+  async function endHere(){
+    var sid = endHereSid; if(!sid) return;
+    var btn = document.getElementById("endHereBtn"); btn.disabled = true;
+    try{
+      var r = await fetch("/sessions"); var row = r.ok ? (await r.json()).filter(function(x){ return x.session === sid; })[0] : null;
+      var e = row ? await fetch("/end-session", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)),
+        body: JSON.stringify({ session: sid, ticket: row.ticket, project_root: row.project_root, mode: "kill" }) }) : null;
+      if(e && !e.ok && e.status !== 410){ term.writeln("\r\n\x1b[31mcould not end it ("+e.status+"): "+(await e.text()).trim()+"\x1b[0m"); return; }
+      endHereSid = null; btn.hidden = true;
+      setStatus("","ended");
+      term.writeln("\r\n\x1b[38;5;244mEnded. Start again for a fresh session.\x1b[0m");
+      unlockStart(); checkLive();
+    }catch(err){ term.writeln("\r\n\x1b[31m"+err+"\x1b[0m"); }
+    finally{ btn.disabled = false; }
   }
 
   // t-61c7: a tab that opens an id with a live session says so and offers Attach
@@ -858,6 +897,7 @@ function canonPrefixKeys(emit) {
 
   document.getElementById("startBtn").addEventListener("click", start);
   document.getElementById("killBtn").addEventListener("click", kill);
+  document.getElementById("endHereBtn").addEventListener("click", endHere);
   document.getElementById("ticket").addEventListener("keydown", function(e){ if(e.key==="Enter") start(); });
   if(PREFILL){ document.getElementById("ticket").value = PREFILL; }
   if(EMBED === "1"){ document.body.classList.add("embed"); }

@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 )
 
-// DefaultCockpitStateDir is the per-user folder where the cockpit daemon publishes daemon.json (its address and boot
-// token), hook settings and its pid: $XDG_RUNTIME_DIR, else the user cache dir. The board and the daemon share it
+// DefaultCockpitStateDir is the per-user folder where the cockpit daemon publishes daemon.json (its address and pid; never
+// the boot token, t-d5a8), hook settings: $XDG_RUNTIME_DIR, else the user cache dir. The board and the daemon share it
 // (t-68ae: the board used a fixed os.TempDir() path any local account could create first).
 func DefaultCockpitStateDir() string {
 	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
