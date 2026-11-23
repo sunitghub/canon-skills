@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-23-2026 11:27
+learnings-sweep last run: 11-23-2026 15:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-23 | [t-2dc4](.tickets/t-2dc4/learnings.md) | A file linked into every project (gate agent files) must not name a path only canon's checkout has: defer to the dispatcher's resolved path; and read a command's whole test file before planning a change to it (§8 encoded the t-63c6 rule the plan contradicted). | UNPROMOTED |
 | 2026-11-23 | [t-d5a8](.tickets/t-d5a8/learnings.md) | A test that asserts a rejection (401 on an empty bearer) passes with or without the fix: the guard is the key-absence assert on the raw reply, proved by reverting the fix in a scratch copy, not by a refusal the code always gave. | UNPROMOTED |
 | 2026-11-23 | [t-ca5b](.tickets/t-ca5b/learnings.md) | A self-test with one plant per rule still lets an OR'd rule go unguarded: removing the Bash `.output`-read rule kept `--self-test` at PASS while the real corpus lost 36 of 157 polls; plant one case per clause and mutate each clause, not only the field name. | UNPROMOTED |
 | 2026-11-23 | [t-2087](.tickets/t-2087/learnings.md) | A busy guard that drops an input must redraw the control it dropped: `pointer-events:none` stops the mouse, not the keyboard, so a select kept a template that was never written until the next load. | UNPROMOTED |
