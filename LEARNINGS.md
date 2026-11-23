@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-22-2026 20:44
+learnings-sweep last run: 11-22-2026 21:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-23 | [t-ca5b](.tickets/t-ca5b/learnings.md) | A self-test with one plant per rule still lets an OR'd rule go unguarded: removing the Bash `.output`-read rule kept `--self-test` at PASS while the real corpus lost 36 of 157 polls; plant one case per clause and mutate each clause, not only the field name. | UNPROMOTED |
 | 2026-11-23 | [t-2087](.tickets/t-2087/learnings.md) | A busy guard that drops an input must redraw the control it dropped: `pointer-events:none` stops the mouse, not the keyboard, so a select kept a template that was never written until the next load. | UNPROMOTED |
 | 2026-11-22 | [t-0abe](.tickets/t-0abe/learnings.md) | A boundary that picks one event among many (first `close.started`, last reviewer `gate.finished`, only the `ran` security-review row) needs a fixture with two of each plus a decoy of the neighbouring kind: with one of each, first/last swaps and dropped filters stayed green until mutants caught them. | UNPROMOTED |
 | 2026-11-22 | [t-8882](.tickets/t-8882/learnings.md) | `[[ … ]] \|\| X="$(grep …)"` under `set -e` exits the script silently when grep matches nothing (the last command of an `\|\|` list still trips errexit): add `\|\| { echo …; exit 2; }` for an empty input file. | UNPROMOTED |
