@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
@@ -27,15 +28,24 @@ const internalPrefix = "canon/internal/"
 var boundaryPattern = "./internal/..."
 
 // TestInternalImportBoundary protects the release binary's build (a board<->daemon cycle would block it) and keeps
-// each package small and separately testable.
+// each package small and separately testable. It lists the graph once per release GOOS: a `_windows.go` file's import
+// is invisible to a darwin or linux `go list`.
 func TestInternalImportBoundary(t *testing.T) {
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		checkInternalImports(t, goos)
+	}
+}
+
+func checkInternalImports(t *testing.T, goos string) {
+	t.Helper()
 	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", boundaryPattern)
 	cmd.Dir = "../.."
+	cmd.Env = append(os.Environ(), "GOOS="+goos)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list %s failed: %v\n%s", boundaryPattern, err, stderr.String())
+		t.Fatalf("GOOS=%s go list %s failed: %v\n%s", goos, boundaryPattern, err, stderr.String())
 	}
 	seen := 0
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -47,20 +57,19 @@ func TestInternalImportBoundary(t *testing.T) {
 		pkg := strings.TrimPrefix(fields[0], internalPrefix)
 		allowed, ok := allowedInternalImports[pkg]
 		if !ok {
-			t.Errorf("package %s has no row: add it to allowedInternalImports in cmd/canon-go/importboundary_test.go", fields[0])
+			t.Errorf("GOOS=%s: package %s has no row: add it to allowedInternalImports in cmd/canon-go/importboundary_test.go", goos, fields[0])
 			continue
 		}
 		for _, imp := range fields[1:] {
 			if !strings.HasPrefix(imp, internalPrefix) {
 				continue
 			}
-			dep := strings.TrimPrefix(imp, internalPrefix)
-			if !slices.Contains(allowed, dep) {
-				t.Errorf("%s imports %s, which its row does not allow: edit allowedInternalImports in cmd/canon-go/importboundary_test.go", fields[0], imp)
+			if !slices.Contains(allowed, strings.TrimPrefix(imp, internalPrefix)) {
+				t.Errorf("GOOS=%s: %s imports %s, which its row does not allow: edit allowedInternalImports in cmd/canon-go/importboundary_test.go", goos, fields[0], imp)
 			}
 		}
 	}
 	if seen == 0 {
-		t.Fatalf("go list %s listed no %s package\n%s", boundaryPattern, internalPrefix, stderr.String())
+		t.Fatalf("GOOS=%s go list %s listed no %s package\n%s", goos, boundaryPattern, internalPrefix, stderr.String())
 	}
 }
