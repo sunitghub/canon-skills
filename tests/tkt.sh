@@ -670,7 +670,7 @@ rm -rf "$json_project"
   rc=0; out="$(cd "$wt" && "$TKT" copy-back 2>&1)" || rc=$?; [[ $rc -ne 0 && "$out" == *"Usage: tkt copy-back <id>"* ]] || fail "copy-back with no id: rc=$rc $out"
   assert_contains "$("$TKT" help)" "  copy-back <id>            Copy a worktree's own ticket folder back to main"   # t-ffa8: its own row, description at column 29
   # a ticket main has no folder for is not created there; an id that is not a plain ticket name is refused by the helper itself
-  zid=t-zzz1; mkdir -p "$wt/.tickets/$zid"; printf -- '---\nid: %s\nstatus: open\n---\n# only here\n' "$zid" > "$wt/.tickets/$zid/ticket.md"
+  zid="t-zzz1"; mkdir -p "$wt/.tickets/$zid"; printf -- '---\nid: %s\nstatus: open\n---\n# only here\n' "$zid" > "$wt/.tickets/$zid/ticket.md"
   (cd "$wt" && "$TKT" close "$zid" --no-sprint >/dev/null 2>&1)
   [[ ! -e ".tickets/$zid" ]] || fail "copy-back created a folder in main for a ticket main never had"
   # ".." names a folder that exists under main's .tickets, so only the id check stops it copying a whole worktree root over main's
