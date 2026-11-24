@@ -308,6 +308,12 @@ cov_commit "mixed" docs/guide.md src/app.sh
 assert_eq 0 "$cov_rc"; assert_eq "args:[]" "$cov_runs"
 assert_contains "$cov_out" "[pre-commit] Full suite:"; assert_contains "$cov_out" "src/app.sh: no row in tests/suite-map.txt"
 [[ "$cov_out" =~ \[pre-commit\]\ Tests\ passed\ \([0-9]+s\)\. ]] || fail "t-2912: no seconds on the full pass line: $cov_out"
+# (e) a path its row maps but no suite names (@named finds nothing), beside a covered one: the full suite, the path named.
+printf 'docs/*.md @named\n' > "$cov_project/tests/suite-map.txt"; git -C "$cov_project" add tests/suite-map.txt
+git -C "$cov_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m "named-only row"
+cov_commit "unnamed doc" docs/guide.md docs/other.md
+assert_eq 0 "$cov_rc"; assert_eq "args:[]" "$cov_runs"
+assert_contains "$cov_out" "docs/other.md: its tests/suite-map.txt rows select no suite"
 # (c) a stale label in any row, even one this commit does not match: blocked, the row named, no suite run.
 printf 'docs/*.md @named\nsrc/*.sh tests/gone.sh\n' > "$cov_project/tests/suite-map.txt"; git -C "$cov_project" add tests/suite-map.txt
 git -C "$cov_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m "stale row"

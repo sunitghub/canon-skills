@@ -12,7 +12,8 @@
 #
 # Map rows: `<pattern> <token>...  # why`. <pattern> is a shell `case` glob (`*` also matches `/`). A token is a --list label,
 # `ALL` (that path runs the full suite), or `@named` (every suite whose source names the path, as written or by its last two
-# path parts). A path is mapped when a row matches it; the union of every matching row is taken. A path that is itself a
+# path parts). A path is mapped when a row matches it; the union of every matching row is taken, and a mapped path that
+# selects no suite (an `@named` row no suite names it under) runs the full suite. A path that is itself a
 # --list label selects itself. Every scoped run adds the whole-repo pins in tests/pre-gate-suites.txt.
 # Self-check on every run: each row's labels must be --list labels (a stale label would select the wrong suites). A pattern
 # that matches nothing is harmless: an unmatched path runs the full suite (changelog.d/ is empty after each release).
@@ -68,7 +69,7 @@ while IFS= read -r p; do
   [[ -n "$p" ]] || continue
   case "$p" in .tickets/*|HANDOFF.md|LEARNINGS.md|LEARNINGS-*.md|DECISIONS.md|DECISIONS-*.md) continue ;; esac   # records: the hook's t-7db9 rule
   if is_label "$p"; then add "$p" "$p"; continue; fi
-  mapped=0
+  mapped=0; before="$SEL$FULL"
   while read -r pat toks; do
     # shellcheck disable=SC2254
     case "$p" in $pat) ;; *) continue ;; esac
@@ -81,7 +82,9 @@ while IFS= read -r p; do
       esac
     done
   done <<<"$ROWS"
-  (( mapped )) || FULL+="$p: no row in $MAP_NAME$NL"
+  if (( ! mapped )); then FULL+="$p: no row in $MAP_NAME$NL"
+  elif [[ "$SEL$FULL" == "$before" ]]; then FULL+="$p: its $MAP_NAME rows select no suite (no suite names it)$NL"   # never dropped silently
+  fi
 done <<<"$PATHS"
 
 if [[ -n "$FULL" ]]; then printf '%s' "$FULL" | sed 's/^/ALL	/'; exit 0; fi
