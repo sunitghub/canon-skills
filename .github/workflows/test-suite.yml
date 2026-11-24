@@ -2,6 +2,8 @@
 # never fails the run (continue-on-error) and the job summary lists the failing suites; a later ticket makes it required.
 # The public mirror canon-skills carries this file too: keep it read-only, secret-free, no privileged PR trigger, no schedule.
 # Pins are updated by hand (no Dependabot config, t-8493): docs/ci-security.md.
+# t-a18d: the job runs on canon-skills only (public, free minutes; tkt push-main puts the same commit there) and on the private
+# repo only by hand (Actions › Run workflow): there each push cost ~19 paid minutes. The pre-commit hook runs the covering suites locally.
 name: test-suite
 
 on:
@@ -15,6 +17,7 @@ permissions:
 
 jobs:
   test-suite:
+    if: github.repository == 'sunitghub/canon-skills' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:

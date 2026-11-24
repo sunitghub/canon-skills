@@ -11,6 +11,9 @@ source "$ROOT/tests/helpers.sh"
 WFD=.github/workflows
 EXPECTED="govulncheck.yml vendored-updates.yml test-suite.yml binaries-released.yml"
 ADVISORY="test-suite.yml binaries-released.yml"   # t-7ef7: the only workflows that may carry continue-on-error (advisory until a ticket makes them required)
+# t-a18d: these run their job on canon-skills (public, free minutes) or by hand only; on the private repo a push cost paid minutes
+GATED="test-suite.yml govulncheck.yml"
+GATE="    if: github.repository == 'sunitghub/canon-skills' || github.event_name == 'workflow_dispatch'"
 
 check_common() {   # check_common <workflow file>: the rules every workflow keeps
   local wf="$1" adv=0
@@ -135,6 +138,7 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
   case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { grep -qE 'run:.*scripts/test\.sh|^[[:space:]]+bash scripts/test\.sh' "$wf" || echo "test-suite.yml: does not run scripts/test.sh"; grep -qE '^[[:space:]]+pull_request:' "$wf" || echo "test-suite.yml: not run on pull_request"; } ;; esac
   # the lockfile is gitignored: npm ci cannot run, and an unpinned install never runs package scripts (t-7ef7)
   case " $ADVISORY " in *" test-suite.yml "*) wf="$r/$WFD/test-suite.yml"; [[ ! -f "$wf" ]] || { ! grep -qE '^[[:space:]]+run:[[:space:]]*npm ci' "$wf" || echo "test-suite.yml: npm ci with a gitignored package-lock.json"; ! grep -qE '^[[:space:]]+run:[[:space:]]*npm (install|i)( |$)' "$wf" || grep -qE '^[[:space:]]+run:[[:space:]]*npm install .*--ignore-scripts' "$wf" || echo "test-suite.yml: npm install runs package scripts"; } ;; esac
+  for name in $GATED; do wf="$r/$WFD/$name"; [[ ! -f "$wf" ]] || grep -qxF "$GATE" "$wf" || echo "$name: not gated to canon-skills"; done
   # two scheduled workflows never share a minute (t-93ff: a different minute from govulncheck's)
   cat "$r/$WFD"/*.yml "$r/$WFD"/*.yaml 2>/dev/null | grep -E '^[[:space:]]+- cron:' | sort | uniq -d | sed 's/^ */cron shared by two workflows: /' || true
   [[ ! -e "$r/.github/dependabot.yml" && ! -e "$r/.github/dependabot.yaml" ]] || echo "dependabot config present"
@@ -240,5 +244,8 @@ plant "$TPL: Node not at an exact x.y.z" $TPL 's/node-version: 22\.23\.5/node-ve
 plant "$TPL: an environment override of PATH, NODE_OPTIONS or npm/yarn config" $TPL 's/^(        uses: actions\/setup-node@.*)$/\1\n        env: { NODE_OPTIONS: x }/'
 plant "$TPL: a strategy matrix present" $TPL 's/^    runs-on: ubuntu-latest$/    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22.23.4]/'
 plant "missing $TPL" $TPL rm
+# t-a18d: the canon-skills job gate
+plant "$S: not gated to canon-skills" $S '/^    if: github\.repository/d'
+plant "$G: not gated to canon-skills" $G '/^    if: github\.repository/d'
 
 echo "ci-security-config: ok ($(ls "$ROOT/$WFD" | wc -l | tr -d ' ') workflows and the canon-gate template pinned and least-privilege, no dependabot config; $n planted breaks caught)"

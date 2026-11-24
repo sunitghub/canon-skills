@@ -2,6 +2,8 @@
 # (Dependabot does not see the standard library). A reachable vulnerability fails the job.
 # The public mirror canon-skills carries this file too: keep it read-only, secret-free, pull_request only.
 # Pins are updated by hand (no Dependabot config, t-8493): docs/ci-security.md.
+# t-a18d: the job runs on canon-skills only (public, free minutes; it gets every main push) and on the private repo only by hand
+# (Actions › Run workflow).
 name: govulncheck
 
 on:
@@ -23,6 +25,7 @@ permissions:
 
 jobs:
   govulncheck:
+    if: github.repository == 'sunitghub/canon-skills' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

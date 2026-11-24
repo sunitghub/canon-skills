@@ -10,6 +10,10 @@ covers the Go standard library, which Dependabot does not see.
 - On demand: Actions › govulncheck › Run workflow (`workflow_dispatch`).
 - On a push to `main` and on a pull request that touches `tools/canon-go/**` or the workflow file.
 
+The job runs on the public mirror canon-skills only, where Actions minutes are free and every `main` push lands (`t-a18d`).
+On the private repo the triggers still fire but the job is skipped; run it there by hand with Actions › govulncheck › Run
+workflow.
+
 A reachable vulnerability fails the job (govulncheck exits non-zero; nothing swallows it). Fix it with a normal
 sprint: usually a `toolchain` bump in `tools/canon-go/go.mod` for a standard-library finding, or a dependency bump.
 Any go.mod change moves the daemon's and the board's source keys (`tools/src-key.sh`), so it needs a release; a
@@ -84,7 +88,9 @@ no secrets, no `${{ }}` in a `run:`, no schedule); `tests/ci-security-config.sh`
 files only, and still rejects `|| true`.
 
 - `.github/workflows/test-suite.yml` runs `scripts/test.sh --jobs 4` on `ubuntu-latest` for every pull request, every push
-  to `main` and on demand. The summary lists the failing suites with their first FAIL line and the slowest 10, so the first
+  to `main` and on demand. The job runs on canon-skills only, where minutes are free (`t-a18d`: each private-repo push cost
+  ~19 paid minutes); on the private repo it is skipped unless started by hand with Actions › test-suite › Run workflow.
+  `tests/ci-security-config.sh` checks the job's `if:` line in this file and in govulncheck.yml. The summary lists the failing suites with their first FAIL line and the slowest 10, so the first
   runs show which suites assume macOS. Making it required is a later ticket. It installs with `npm install --no-audit --no-fund
   --ignore-scripts`, not `npm ci`: `package-lock.json` is gitignored, and with no lockfile pinning the versions, no package's
   install script may run on the runner (`tests/ci-security-config.sh` checks both).
