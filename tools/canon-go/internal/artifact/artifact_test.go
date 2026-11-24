@@ -141,6 +141,13 @@ func TestUserPicks(t *testing.T) {
 	if fs := Check("eval-report.md", []byte(same), ""); len(fs) != 0 {
 		t.Errorf("graded-head repeated with the same value must be accepted (sprint sorts -u): got %v", fs)
 	}
+	// The strip is what makes a bold line a Tier line at all: a bold one with a bad word, or a second bold one, is refused.
+	for _, l := range []string{"**Tier**: trivial-adjacent", "**Tier:** planned", "Tier: normal\n**Tier**: bugfix"} {
+		p := strings.Replace(valid["plan.md"], "**Tier**: Normal.", l, 1)
+		if fs := Check("plan.md", []byte(p), ""); len(fs) != 1 || fs[0].Rule != "plan.tier" {
+			t.Errorf("%q: want one plan.tier finding, got %v", l, fs)
+		}
+	}
 	for _, l := range []string{"Tier: normal", "**tier**: High-Risk | Risk: x", "TIER : bugfix.", "  Tier:trivial"} {
 		p := strings.Replace(valid["plan.md"], "**Tier**: Normal.", l, 1)
 		if fs := Check("plan.md", []byte(p), ""); len(fs) != 0 {
