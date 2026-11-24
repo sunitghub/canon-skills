@@ -553,8 +553,7 @@ func TestVerifyGivesTheReason(t *testing.T) {
 		Lines       int
 	}
 	json.Unmarshal([]byte(l[2]), &s)
-	again, _ := json.Marshal(map[string]any{"day": s.Day, "lines": s.Lines, "sha256": s.SHA256, "prev": sum(l[2] + "x")})
-	again, _ = json.Marshal(map[string]any{"day": s.Day, "lines": s.Lines + 1, "sha256": s.SHA256, "prev": sum(l[2])})
+	again, _ := json.Marshal(map[string]any{"day": s.Day, "lines": s.Lines + 1, "sha256": s.SHA256, "prev": sum(l[2])})
 	f, _ := os.OpenFile(filepath.Join(d, sealsName), os.O_APPEND|os.O_WRONLY, 0)
 	f.Write(append(again, '\n'))
 	f.Close()

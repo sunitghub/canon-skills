@@ -6,6 +6,8 @@ import (
 )
 
 // ErrNoGitBash means no Git for Windows bash was found: su and the launch hand-off need it on Windows.
+//
+//lint:ignore ST1005 starts with a product name and is shown to the user as written
 var ErrNoGitBash = errors.New("Git for Windows is required (https://git-scm.com/download/win): its bash.exe was not found")
 
 // findGitBash finds Git's bash.exe in the order tools/tkt.cmd uses, so the Console and the board run the same bash. The path

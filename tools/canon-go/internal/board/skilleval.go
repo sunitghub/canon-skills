@@ -10,7 +10,7 @@ package board
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- a 12-hex cache tag for a skill folder, not a secret or a signature
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -196,7 +196,7 @@ func pyUnescapeKey(k string) string {
 	for _, r := range k {
 		switch {
 		case r <= 0xFF:
-			raw = append(raw, byte(r))
+			raw = append(raw, byte(r)) // #nosec G115 -- the case above holds r <= 0xFF
 		case r <= 0xFFFF:
 			raw = append(raw, fmt.Sprintf(`\u%04x`, r)...)
 		default:
@@ -250,7 +250,7 @@ func pyUnescapeKey(k string) string {
 			if !ok || v > 0x10FFFF {
 				return k
 			}
-			out = append(out, rune(v))
+			out = append(out, rune(v)) // #nosec G115 -- the check above holds v <= 0x10FFFF
 			i += 2 + n
 		default:
 			out = append(out, '\\', rune(e)) // unknown escape: kept as written
@@ -893,7 +893,7 @@ func skillEvalBlocker(checks []skillCheckRow, allowTrust bool) string {
 
 func skillEvalKey(root, skillDir string) string { return resolvedOrAbs(root) + "\x00" + skillDir }
 func skillEvalTag(root, skillDir string) string {
-	sum := sha1.Sum([]byte(resolvedOrAbs(root) + "|" + skillDir))
+	sum := sha1.Sum([]byte(resolvedOrAbs(root) + "|" + skillDir)) // #nosec G401 -- a cache tag, not a secret or a signature
 	return hex.EncodeToString(sum[:])[:12]
 }
 func skillEvalStatePath(root string) string {

@@ -131,7 +131,7 @@ func v1EventsStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	send := func(frame string) bool {
 		rc.SetWriteDeadline(time.Now().Add(v1StreamWrite))
-		if _, err := fmt.Fprint(w, frame); err != nil {
+		if _, err := fmt.Fprint(w, frame); err != nil { // #nosec G705 -- a text/event-stream frame of JSON-encoded events, not HTML
 			return false
 		}
 		return rc.Flush() == nil

@@ -162,7 +162,7 @@ type session struct {
 	done          chan struct{}
 	reaped        chan struct{} // t-86fe: closed once the agent process has exited and been waited for
 	doneOnce      sync.Once
-	bg            sync.WaitGroup // t-183f: readLoop + waitExit, so teardown can wait until they stop writing
+	bg            sync.WaitGroup // t-183f: readLoop + waitExit (+ the Copilot watcher, t-77ba), so teardown can wait until they stop writing
 	closeOnce     sync.Once      // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
 	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
@@ -413,7 +413,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	page = strings.ReplaceAll(page, "__COCKPIT_AGENT_HINT__", agentHint)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	io.WriteString(w, page)
+	io.WriteString(w, page) // #nosec G705 -- every value substituted above is validated (ticket and cwd by regex, parentOrigin by parentOriginRe, mode and agent from fixed sets)
 }
 
 // guard enforces loopback Host + Origin on every guarded request.
@@ -1153,7 +1153,12 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
 	s.snapshotAdd(se)
-	se.bg.Add(2)
+	// t-77ba: the Copilot watcher joins bg in the same Add, before any goroutine can drop the count to 0, so teardown waits for it too
+	n := 2
+	if copilotLog != "" {
+		n = 3
+	}
+	se.bg.Add(n)
 	go func() { defer se.bg.Done(); se.readLoop() }()
 	go func() { defer se.bg.Done(); se.waitExit(c.Wait, s.cfg.exitDrain) }() // reaps the child (no zombie) and ends readLoop on Windows
 	// t-c723: a resumed session's old turns are history, so it starts at the log's size now
@@ -1162,7 +1167,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		if copilotResuming {
 			from = copilotLogSize(copilotLog)
 		}
-		go s.watchCopilotTurns(se, copilotLog, from)
+		go func() { defer se.bg.Done(); s.watchCopilotTurns(se, copilotLog, from) }()
 	}
 	return se, nil
 }
@@ -5298,7 +5303,7 @@ func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
 		os.Exit(0)
 	}()
 	// t-68ae: refuse connections another OS user opened (Linux), on every route.
-	srv := &http.Server{Handler: common.RequireSamePeer(s.handler()), ConnContext: common.PeerConnContext}
+	srv := &http.Server{Handler: common.RequireSamePeer(s.handler()), ConnContext: common.PeerConnContext, ReadHeaderTimeout: 10 * time.Second} // t-9a2b: gosec G112
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

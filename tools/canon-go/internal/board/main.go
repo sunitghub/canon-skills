@@ -184,7 +184,7 @@ func Run(buildVersion, buildCommit, buildDaemonKey string, args []string) int {
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	// t-68ae: refuse connections another OS user opened (Linux), on every route.
-	server := &http.Server{Addr: addr, Handler: common.RequireSamePeer(mux), ConnContext: common.PeerConnContext}
+	server := &http.Server{Addr: addr, Handler: common.RequireSamePeer(mux), ConnContext: common.PeerConnContext, ReadHeaderTimeout: 10 * time.Second} // t-9a2b: gosec G112
 	if w := common.PeerCheckWarning(); w != "" {
 		fmt.Fprintln(os.Stderr, w)
 	}
@@ -670,7 +670,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				w.Header().Add("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:")
 				w.Header().Set("X-Content-Type-Options", "nosniff")
 				w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-				w.Write(body)
+				w.Write(body) // #nosec G705 -- the report is served under CSP sandbox without allow-same-origin (above), so it cannot reach this API
 			}
 			return
 		}
@@ -4747,7 +4747,7 @@ func cockpitRunningBuild(addr string) map[string]any {
 		return nil
 	}
 	client := &http.Client{Timeout: 400 * time.Millisecond}
-	resp, err := client.Get("http://" + addr + "/version")
+	resp, err := client.Get("http://" + addr + "/version") // #nosec G704 -- addr is from daemon.json in canon's own state dir, written by the user's daemon (same trust as the board)
 	if err != nil {
 		return nil
 	}
@@ -5620,7 +5620,7 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 	if strings.HasPrefix(contentType, "text/html") {
 		w.Header().Set("Cache-Control", "no-store") // t-07c8: always serve fresh (local dev tool)
 	}
-	w.Write(body)
+	w.Write(body) // #nosec G705 -- callers pass the board's own app/cockpit files or image-extension paths only (screenshotPathRe, imageExts)
 }
 
 func sendText(w http.ResponseWriter, text string) {

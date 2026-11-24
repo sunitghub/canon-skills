@@ -8393,6 +8393,7 @@ func TestReapNowSavesThenEnds(t *testing.T) {
 	// killSession registers its change recording before it removes the snapshot entry; taking the lock that removal
 	// held orders that registration before the teardown's Wait (seen only through the file, the race detector can't tell).
 	snapMu.Lock()
+	//lint:ignore SA2001 a barrier: taking the lock orders killSession's registration before the teardown's Wait
 	snapMu.Unlock()
 }
 
@@ -8424,6 +8425,7 @@ func TestReapNowAndKillNoteScratchLeftovers(t *testing.T) {
 	}
 	waitSnapshotGone(t, s, "s-aa01")
 	snapMu.Lock()
+	//lint:ignore SA2001 a barrier: taking the lock orders killSession's registration before the teardown's Wait
 	snapMu.Unlock()
 	hand := func() string { b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); return string(b) }
 	if !strings.Contains(hand(), "s-aa01: 1 file changed in the main checkout — left by Reap now") {
@@ -8553,6 +8555,7 @@ func TestKillNotesAScratchSessionOnce(t *testing.T) {
 	}
 	waitSnapshotGone(t, s, "s-ee05")
 	snapMu.Lock()
+	//lint:ignore SA2001 a barrier: taking the lock orders killSession's registration before the teardown's Wait
 	snapMu.Unlock()
 	// The reap's own goroutine may still be writing its note after the Kill ended the session: wait for one, then
 	// make sure no second one follows.

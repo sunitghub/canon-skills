@@ -2560,7 +2560,9 @@ func TestManualWritesLikeDemo(t *testing.T) {
 	id := tk["id"].(string)
 	path := filepath.Join(ticketsDir, id, "ticket.md")
 	read := func() string { raw, _ := os.ReadFile(path); return string(raw) }
-	if !writeBoolField(id, "manual", true, "") || !writeBoolField(id, "manual", true, "") || strings.Count(read(), "\nmanual: true\n") != 1 {
+	first := writeBoolField(id, "manual", true, "")
+	second := writeBoolField(id, "manual", true, "")
+	if !first || !second || strings.Count(read(), "\nmanual: true\n") != 1 {
 		t.Fatalf("manual ON must write one line and be idempotent:\n%s", read())
 	}
 	if !writeBoolField(id, "demo", true, "") || !writeBoolField(id, "manual", false, "") || strings.Contains(read(), "manual:") || !strings.Contains(read(), "\ndemo: true\n") {

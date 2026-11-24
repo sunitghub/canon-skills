@@ -169,7 +169,7 @@ func hashDay(path string) (sum string, lines int, err error) {
 			}
 			h.Write(buf[:n])
 			lines += bytes.Count(buf[:n], []byte{'\n'})
-			last = buf[n-1]
+			last = buf[n-1] // #nosec G602 -- inside if n > 0, and n <= len(buf)
 		}
 		if rerr == io.EOF {
 			break

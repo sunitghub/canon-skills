@@ -23,7 +23,6 @@ import (
 type tsFix struct {
 	t                    *testing.T
 	root, cfg, cop, home string
-	n                    int
 }
 
 func newTSFix(t *testing.T) *tsFix {

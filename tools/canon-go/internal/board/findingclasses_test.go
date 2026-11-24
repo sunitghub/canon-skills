@@ -237,8 +237,8 @@ func TestFindingClassesCLIOutput(t *testing.T) {
 		t.Fatalf("two tickets, two classes once each: no ladder: %q", out)
 	}
 	c, out, _ = fcRun(root, tbl)
-	if !strings.Contains(out, "bloat                  2 tickets, 2 findings: t-hhh2 t-hhh1  -> propose a rule\n") {
-		t.Fatalf("text row: %q", out)
+	if c != 0 || !strings.Contains(out, "bloat                  2 tickets, 2 findings: t-hhh2 t-hhh1  -> propose a rule\n") {
+		t.Fatalf("text row: %d %q", c, out)
 	}
 	_, out, _ = fcRun(root, tbl, "--start")
 	if out != "Recurring finding class: bloat in 2 tickets (t-hhh2 t-hhh1): propose a rule. Details: canon-go finding-classes\n" {

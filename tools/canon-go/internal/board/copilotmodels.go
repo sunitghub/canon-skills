@@ -68,6 +68,7 @@ func parseCopilotModels(result map[string]any) ([]copilotModel, error) {
 	ms, _ := result["models"].(map[string]any)
 	avail, ok := ms["availableModels"].([]any)
 	if !ok {
+		//lint:ignore ST1005 starts with a product name and is shown to the user as written
 		return nil, errors.New("Copilot answered without a model list (signed out?)")
 	}
 	seen := map[string]bool{}
@@ -88,6 +89,7 @@ func parseCopilotModels(result map[string]any) ([]copilotModel, error) {
 		}
 	}
 	if len(out) == 0 {
+		//lint:ignore ST1005 starts with a product name and is shown to the user as written
 		return nil, errors.New("Copilot listed no Claude or GPT model")
 	}
 	return out, nil
@@ -97,6 +99,7 @@ func parseCopilotModels(result map[string]any) ([]copilotModel, error) {
 func readCopilotModels(ctx context.Context) ([]copilotModel, error) {
 	bin, err := exec.LookPath(copilotBin)
 	if err != nil {
+		//lint:ignore ST1005 starts with a product name and is shown to the user as written
 		return nil, errors.New("Copilot CLI is not installed (no copilot on PATH)")
 	}
 	dir, err := os.MkdirTemp("", "canon-copilot-models-")
@@ -144,7 +147,9 @@ func acpNewSession(ctx context.Context, bin, dir string) (map[string]any, error)
 			}
 		}
 	}()
+	//lint:ignore ST1005 starts with a product name and is shown to the user as written
 	timeout := fmt.Errorf("Copilot CLI did not answer within %s", copilotReadTimeout)
+	//lint:ignore ST1005 starts with a product name and is shown to the user as written
 	stopped := errors.New("Copilot CLI stopped before it answered")
 	call := func(id int, method string, params map[string]any) (map[string]any, error) {
 		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
@@ -170,6 +175,7 @@ func acpNewSession(ctx context.Context, bin, dir string) (map[string]any, error)
 					continue
 				}
 				if e, ok := msg["error"].(map[string]any); ok {
+					//lint:ignore ST1005 starts with a product name and is shown to the user as written
 					return nil, fmt.Errorf("Copilot refused: %s", cleanCopilotText(fmt.Sprint(e["message"])))
 				}
 				res, _ := msg["result"].(map[string]any)
