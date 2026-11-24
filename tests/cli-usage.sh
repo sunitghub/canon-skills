@@ -66,8 +66,10 @@ done
 
 # 5. a row appended out of order still prints under its own group; an undeclared group fails loudly
 s="$W/order.tsv"
-printf '@group\tFirst\n@group\tSecond\nSecond\tbeta\tb\nFirst\talpha\ta\nFirst\tlate-one\tadded at the end of the file\n' > "$s"
-assert_eq $'\nFirst:\n  alpha                     a\n  late-one                  added at the end of the file\n\nSecond:\n  beta                      b' "$(usage "$s")"
+# the wrap boundary: a 25-char synopsis keeps its description on the line, a 26-char one moves it; no trailing spaces
+s25="$(printf 'a%.0s' {1..25})"; s26="$(printf 'b%.0s' {1..26})"; pad="$(printf '%28s' '')"
+printf '@group\tFirst\n@group\tSecond\nSecond\tbeta\tb\nFirst\talpha\ta\nFirst\t%s\tc\nFirst\t%s\td\nFirst\tbare\t\nFirst\tlate-one\tadded at the end of the file\n' "$s25" "$s26" > "$s"
+assert_eq $'\nFirst:\n  alpha                     a\n  '"$s25"$' c\n  '"$s26"$'\n'"$pad"$'d\n  bare\n  late-one                  added at the end of the file\n\nSecond:\n  beta                      b' "$(usage "$s")"
 printf 'Nowhere\tx\ty\n' >> "$s"
 rc=0; err="$(usage "$s" 2>&1)" || rc=$?
 [[ $rc -ne 0 ]] || fail "an undeclared group printed help (rc 0)"
