@@ -310,8 +310,13 @@ done
 # owner holds the paragraph; the two agent files and the two Codex files carry the same sentence (a gate may read only its agent file).
 grep -qF -- '**Leave nothing running when you return.**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the '**Leave nothing running when you return.**' paragraph (t-85dc, Check M)"
 for file in "${GATE_AGENT_FILES[@]}"; do
-  grep -qF -- 'Return only when nothing you started is still running: run every long command in the foreground with a timeout, and start no background process you cannot stop' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'leave nothing running' sentence (t-85dc, Check M)"
+  joined="$(tr '\n' ' ' < "$file" | tr -d '`')"
+  label="${file#"$ROOT"/}"
+  [[ "$joined" == *"never poll it (no sleep, no reading its output file, no wait loop): end your turn and you are resumed with its result"* ]] || fail "doc-mirror-parity: $label lost the move rule: never poll a moved command (t-47b3, Check M)"
+  [[ "$joined" != *"and start no background process you cannot stop"* ]] || fail "doc-mirror-parity: $label still carries the pre-t-47b3 'Return only when' sentence (t-47b3, Check M)"
 done
+grep -qF -- 'If the harness moves a command to the background' "$SHARED" && grep -qF -- 'never poll it: no `sleep`' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost the move clause (t-47b3, Check M)"
+grep -qF -- 'waiting on its own background work' "$ROOT/skills/sprint/reference/complete.md" || fail "doc-mirror-parity: complete.md lost the 'waiting on its own background work' not-a-report line (t-47b3, Check M)"
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 # t-2dc4: these files reach every project through the .claude/agents link, where canon's skills/ path does not exist, so none names a
 # protocol path as its own: each follows the one `sprint gate-prompt` resolves (ToDo-Demo t-6x4z under Copilot: the gates searched for
