@@ -13,6 +13,7 @@ standards/*.md                            @named
 tools/*.md                                @named                         # command reference pages
 changelog.d/*.md                          @named tests/changelog-release.sh
 CHANGELOG.md                              @named
+VERSION                                   @named                         # the release commit (t-0fe6); no hub reads it, Go tests write their own
 README.md                                 @named
 tools/sprint-check-app/static/*           @named tools/canon-go/internal/board   # the board's Go suite serves these
 tools/canon-go/internal/daemon/*_test.go  tools/canon-go/internal/daemon         # a Go test file: only its own package suite

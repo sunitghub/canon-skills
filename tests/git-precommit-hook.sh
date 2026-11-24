@@ -328,6 +328,22 @@ cov_commit "doc, no map" docs/guide.md
 assert_eq 0 "$cov_rc"; assert_eq "args:[]" "$cov_runs"
 [[ "$cov_out" != *"Covering suites"* && "$cov_out" != *"Full suite:"* ]] || fail "t-2912: a project with no map printed map output: $cov_out"
 assert_contains "$cov_out" "[pre-commit] Running test suite..."
+# (f) t-0fe6: canon's own map scopes a release commit (scripts/changelog-release.sh stages VERSION, CHANGELOG.md and deletes the
+# fragments). Prod path: the pre-commit hook on every canon release commit; with no VERSION row it ran the full suite (378-411 s).
+rel_out="$(bash "$ROOT/tools/covering-suites.sh" "$ROOT" VERSION CHANGELOG.md changelog.d/t-rel1.md)"
+[[ "$rel_out" != *ALL$'\t'* ]] || fail "t-0fe6: canon's map runs the full suite for a release commit: $rel_out"
+for l in tests/changelog-release.sh tests/canon-version.sh tests/release.sh; do
+  grep -q "^LABEL	$l	" <<<"$rel_out" || fail "t-0fe6: the release file set does not select $l: $rel_out"
+done
+rel_repo="$scratch_home/rel-repo"; mkdir -p "$rel_repo/changelog.d"   # canon's map, runner and suites, at a release commit's shape
+cp -R "$ROOT/scripts" "$ROOT/tests" "$rel_repo/"
+printf '0.0.1\n' > "$rel_repo/VERSION"; printf '# Changelog\n' > "$rel_repo/CHANGELOG.md"; printf -- '- Fixed: x (t-rel1)\n' > "$rel_repo/changelog.d/t-rel1.md"
+git -C "$rel_repo" init -q; git -C "$rel_repo" add -A; git -C "$rel_repo" -c user.email=t@t -c user.name=t commit -q --no-verify -m base
+printf '0.0.2\n' > "$rel_repo/VERSION"; printf '## [0.0.2]\n' >> "$rel_repo/CHANGELOG.md"
+git -C "$rel_repo" rm -q changelog.d/t-rel1.md; git -C "$rel_repo" add VERSION CHANGELOG.md
+rel_out="$(bash "$ROOT/tools/covering-suites.sh" "$rel_repo" --staged)"
+[[ "$rel_out" != *ALL$'\t'* ]] || fail "t-0fe6: a staged release commit runs the full suite: $rel_out"
+grep -q "^LABEL	tests/changelog-release.sh	.*changelog.d/t-rel1.md" <<<"$rel_out" || fail "t-0fe6: the deleted fragment is not a staged path under changelog-release: $rel_out"
 
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
