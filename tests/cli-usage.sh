@@ -36,6 +36,9 @@ for cli in sprint tkt; do
   out="$(cd "$W" && "$bin")"
   for a in help -h --help; do assert_eq "$out" "$(cd "$W" && "$bin" "$a")"; done
   assert_eq "$out" "$(usage "$tsv")"
+  # the @intro rows open it and the @footer rows close it, after one blank line
+  assert_eq "$(awk -F'\t' '$1 == "@intro" { print $2 }' "$tsv")" "$(head -n 3 <<<"$out")"
+  assert_eq "$(printf '\n'; awk -F'\t' '$1 == "@footer" { print $2 }' "$tsv")" "$(tail -n 3 <<<"$out")"
 
   # 3. plain ASCII, no colour; a line over 80 is only a synopsis that is itself over 78
   if LC_ALL=C grep -n '[^ -~]' <<<"$out"; then fail "$cli: help has a non-ASCII or control byte"; fi
@@ -74,6 +77,10 @@ printf 'Nowhere\tx\ty\n' >> "$s"
 rc=0; err="$(usage "$s" 2>&1)" || rc=$?
 [[ $rc -ne 0 ]] || fail "an undeclared group printed help (rc 0)"
 assert_contains "$err" 'group "Nowhere" has no @group row'
+# a missing table fails with the fix, not awk's own error
+rc=0; err="$(usage "$W/none.tsv" 2>&1)" || rc=$?
+[[ $rc -eq 1 ]] || fail "a missing usage table returned $rc, not 1"
+assert_contains "$err" "usage table missing: $W/none.tsv (run canon update"
 
 # 6. the drift guard can fail: a dropped row and a new dispatcher arm are each caught (scratch copies)
 grep -v $'\tpr-ready ' "$TOOLS_DIR/tkt-usage.tsv" > "$W/tkt-usage.tsv"
