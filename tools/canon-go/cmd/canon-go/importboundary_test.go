@@ -25,11 +25,11 @@ var allowedInternalImports = map[string][]string{
 
 const internalPrefix = "canon/internal/"
 
-var boundaryPattern = "./internal/..."
+const boundaryPattern = "./internal/..."
 
 // TestInternalImportBoundary protects the release binary's build (a board<->daemon cycle would block it) and keeps
 // each package small and separately testable. It lists the graph once per release GOOS: a `_windows.go` file's import
-// is invisible to a darwin or linux `go list`.
+// is invisible to a darwin or linux `go list`. Test imports count too: a board test importing daemon is the same edge.
 func TestInternalImportBoundary(t *testing.T) {
 	for _, goos := range []string{"darwin", "linux", "windows"} {
 		checkInternalImports(t, goos)
@@ -38,7 +38,7 @@ func TestInternalImportBoundary(t *testing.T) {
 
 func checkInternalImports(t *testing.T, goos string) {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", boundaryPattern)
+	cmd := exec.Command("go", "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}} {{join .TestImports \" \"}} {{join .XTestImports \" \"}}", boundaryPattern)
 	cmd.Dir = "../.."
 	cmd.Env = append(os.Environ(), "GOOS="+goos)
 	var stderr bytes.Buffer
