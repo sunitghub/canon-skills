@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.10.2
-updated: 2026-10-21
+version: 1.10.3
+updated: 2026-11-23
 ---
 
 # Skill Setup Standard
@@ -297,6 +297,10 @@ Seed gotchas to consider for new skills:
 
 - If the skill seems to stop influencing behavior mid-session, the content is still present but compaction may have trimmed it — after compaction each skill gets at most 5,000 tokens carried forward (shared 25,000-token budget across all invoked skills). Re-invoke the skill to restore full content.
 - Skill content enters context as a single message on invocation and stays for the rest of the session. Write standing instructions, not one-time steps, for guidance that should apply throughout a task.
+- A file linked into every project (an agent file, a shared reference) names no path that exists only in canon's checkout: defer to the path the dispatcher resolves (t-2dc4; class: shipped-file-names-canon-only-path; id: P-130).
+- An advisory step a session can read past gets its own numbered step and a mechanical reminder at the next checkpoint, not a clause inside another step (t-d826; class: advisory-step-read-past; id: P-131).
+- A protocol input the session must copy into a prompt by hand gets dropped: have the tool print the whole prompt and the doc say pass it verbatim (t-63c6; class: hand-copied-prompt-input; id: P-132).
+- A rule that says a line is always required carries its exception next to it, not only in a Gotchas stop path, and the stop path gets an eval case (t-7e8c; class: always-rule-vs-stop-gotcha; id: P-133).
 
 ## On-demand hooks
 

@@ -19,7 +19,7 @@ changes which close gates run.
 ## Steps
 
 1. **State the symptom** exactly as observed (inputs → wrong output), not the suspected cause.
-2. **Reproduce** it deterministically — the smallest input that shows the defect.
+2. **Reproduce** it deterministically — the smallest input that shows the defect. First grep `tests/` for the reported output: a test that asserts it as normal is the bug's own evidence (t-46b9; class: bug-asserted-as-normal; id: P-129).
 3. **5 Whys.** Ask "why" down the causal chain until you reach a cause you can change, not a
    restatement of the symptom. Stop when the next "why" leaves the codebase (e.g. a third-party
    contract). Record the chain in `plan.md`.

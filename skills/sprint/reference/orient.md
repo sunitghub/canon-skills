@@ -107,6 +107,8 @@ Example: `no relevant files found for job-queue — searched: jobs/, workers/, l
 
 File existence alone is not a completion signal — a subagent can create an empty or stub file without doing any work. A bare sentinel without the `searched:` clause is treated as invalid (same as missing). The paths listed must reflect actual search locations; this is what distinguishes "looked and found nothing" from "never looked".
 
+A subagent's WebFetch returns a model-written digest, not page text: check every load-bearing quote against the raw page (`curl`, line numbers) and tag each source raw or digest; before a criterion names a source, fetch it raw (a client-rendered site cannot be read) (t-9915; class: digest-quote-unverified; id: P-128).
+
 **After all subagents complete:**
 
 1. Read each `.tickets/<id>/research-<subsystem>.md`.

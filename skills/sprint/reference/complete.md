@@ -63,7 +63,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    live demo (time-box), or a docs/research/UX-mockup sprint whose whole surface is `.md`/`.pen`
    (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
    **keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` (which `bugfix` keeps).**
-   (step 2 = advisory reviewer, step 3 = evaluator; refresh-docs, the pipeline's last step, still runs.) It **never drops below the binding evaluator** — that floor is non-negotiable. **The evaluator is forced to Haiku
+   (step 2 = advisory reviewer, step 3 = evaluator; refresh-docs, the pipeline's last step, still runs.) A Lite sprint that adds a file the release zip ships (under `docs/`) runs `tests/release-zip-slim.sh` before the close; contributor-only files go on `SLIM_EXCLUDE` (t-141a, t-9915; class: lite-stamp-misses-zip-caps; id: P-125). It **never drops below the binding evaluator** — that floor is non-negotiable. **The evaluator is forced to Haiku
    (`security-review` runs inline on the session model)** — see the Model-tier section below.
    This reduction is driven by an explicit **user flag, not structural
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
@@ -524,6 +524,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
    A `YES` does not clear its `Consider` items: reproduce each one, then fix it, ticket it or dismiss it with a reason (t-79bf; class: verdict-read-not-considers; id: P-066).
+   A reviewer fix that changes behaviour a criterion states (a closed "exactly" list included) needs the user's yes and the criterion reworded in the same pass, or the evaluator grades the old wording (t-aba6, t-864c, t-27e5, t-9b13; class: fix-outruns-criterion; id: P-124).
 
    **Log the subagent run.** Immediately after the reviewer subagent completes (and after `sprint gate-snapshot post`, step 7), run
    `sprint subagent-log --agent-id <id> --agent-type reviewer <cost flags, (5)>`. This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
@@ -547,7 +548,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    needs approval" is not acceptable for normal/high-risk sprints. If the runtime can't spawn
    the evaluator subagent, stop closeout and report the blocker.
 
-   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only but for the events it writes). It first runs the cap check (t-c990): a `tools/caps.tsv` file this branch changed that is over its cap refuses here and again at `sprint complete` (and writes `budget.exceeded` on each run); one the branch did not change, and `LEARNINGS.md` always, only warn. It runs
+   **Evidence pre-flight (t-a3d7).** Before dispatching, run `sprint check-evidence <id>` (bare, on PATH; read-only but for the events it writes). It first runs the cap check (t-c990): a `tools/caps.tsv` file this branch changed that is over its cap refuses here and again at `sprint complete` (and writes `budget.exceeded` on each run); one the branch did not change, and `LEARNINGS.md` always, only warn. A cap's number is also pinned in `tests/caps.sh` and `docs/releasing.md`: grep the number before changing a cap (t-2ce8, t-21d8; class: cap-pinned-thrice; id: P-122). It runs
    `sprint evidence check` at HEAD and exits 1, naming each log and its fix, unless every top-level log in `.tickets/<id>/evidence/` is
    `fresh` with `exit=0` or `covered`. On exit 1, do not dispatch: re-stamp or fix what it names, and move a log kept for history or
    produced off-tree (a probe commit, a deliberate mutant run) into a subfolder of `evidence/`, which `check` never scans. A stale
@@ -658,7 +659,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
-   **Advisory batch (t-9e7a).** When two or more of skill-eval, break-it and the reviewer run at a close, dispatch them in one message inside the reviewer's `gate-snapshot pre`/`post` window: the reviewer, break-it and every skill-eval executor together; each skill-eval grader as soon as its executor returns. None writes a tracked file while it runs (break-it works on a snapshot outside the repo; skill-eval's history line waits), so `post` stays truthful. After all return: `post`, then each `sprint subagent-log`, then `tools/skill-eval-history.sh` and its commit, then the fixes from all three, then security-review, the sweep and the evaluator, which stays last and alone. In the batch neither report is readable by the other gate: break-it's snapshot has no `.git`/`.tickets`, and the reviewer's prompt names no break-it output. The trade (user, 2026-11-20): a break-it fix no longer gets the advisory reviewer; it still gets inline security-review, which covers the same untrusted surface, and the binding evaluator. Wall time is the longest of the three, not their sum (t-2ce8: ~10 min sequential from close start to the reviewer's end).
+   **Advisory batch (t-9e7a).** When two or more of skill-eval, break-it and the reviewer run at a close, dispatch them in one message inside the reviewer's `gate-snapshot pre`/`post` window: the reviewer, break-it and every skill-eval executor together; each skill-eval grader as soon as its executor returns. None writes a tracked file while it runs (break-it works on a snapshot outside the repo; skill-eval's history line waits), so `post` stays truthful. After all return: `post`, then each `sprint subagent-log`, then `tools/skill-eval-history.sh` and its commit, then the fixes from all three, then security-review, the sweep and the evaluator, which stays last and alone. In the batch neither report is readable by the other gate: break-it's snapshot has no `.git`/`.tickets`, and the reviewer's prompt names no break-it output. The trade (user, 2026-11-20): a break-it fix no longer gets the advisory reviewer; it still gets inline security-review, which covers the same untrusted surface, and the binding evaluator. Wall time is the longest of the three, not their sum (t-2ce8: ~10 min sequential from close start to the reviewer's end). Label each result by the agent that returned it, never by arrival order, and hand each skill-eval grader its executor's report verbatim (t-9e7a; class: parallel-result-mislabel; id: P-121).
 
    **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch, after the wrapup gates and
    in one message with the reviewer (the advisory batch above, t-9e7a; its fixes get security-review and the evaluator), an isolated
@@ -827,6 +828,8 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    promotion into the durable store is the one step that stays manual and fresh-context, exactly
    as before — `promote-learnings` runs with no memory of this sprint, per its own SKILL.md.
 
+   **A cloud session cannot watch its own Actions run (t-7ef7).** A ticket that adds or changes a CI workflow is landed and graded where its run is visible (locally or on GitHub), not in the cloud session (t-7ef7; class: ci-graded-blind; id: P-136).
+
    **A cloud session does not run the sweep (t-8a0d).** When the issue that started the session (`tkt send-issue`'s body, close step 8) says to
    leave root `LEARNINGS.md` alone, the session still runs `tkt learn <id>`, so `.tickets/<id>/learnings.md` exists, but it does not run the `learnings-sweep`
    skill and commits no change to root `LEARNINGS.md`: that commit conflicts with every release that lands on main first.
@@ -868,7 +871,7 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
       section), run `scripts/release.sh --dry-run` after the push to `public`, show the user its output, and run
       `scripts/release.sh` only on their explicit yes: it pushes a tag to the public repo. Then publish its two canon-site lines and the badge (`docs/releasing.md` step 5, on the user's yes) and run the `scripts/check-release-live.sh` command it printed last; the release is done when that passes (t-ea3a). Nothing mechanical refuses a push
       while the ticket is open (that would need a hook, `t-f01d`); step 9 already precedes this step. `docs/releasing.md`.
-    - **Sprint docs name no future version (t-607a, t-e1a2).** Sprint work writes its changelog entry under `CHANGELOG.md`'s `[Unreleased]` and never writes the next version in docs ("Since 0.45.0"); the release commit adds the number and date. In canon (it has `scripts/changelog-release.sh`) the entry goes in its own file, `changelog.d/<id>.md` (the same `- Fixed: … (t-xxxx)` lines), and the sprint never edits `CHANGELOG.md`: two tickets then never conflict there (t-5ed4).
+    - **Sprint docs name no future version (t-607a, t-e1a2).** Sprint work writes its changelog entry under `CHANGELOG.md`'s `[Unreleased]` and never writes the next version in docs ("Since 0.45.0"); the release commit adds the number and date. In canon (it has `scripts/changelog-release.sh`) the entry goes in its own file, `changelog.d/<id>.md` (the same `- Fixed: … (t-xxxx)` lines), and the sprint never edits `CHANGELOG.md`: two tickets then never conflict there (t-5ed4). Write the fragment with the code, before the evaluator: `changelog.d/` is not a late doc, so a fragment committed after the grade makes the report stale and moves to the release commit (t-ab7e; class: late-changelog-fragment; id: P-123).
     - **Worktree (t-8f48, t-2906).** A sprint run in a linked worktree commits on its branch and opens no PR: the user
       merges it into the main checkout's branch with the card's **Check & merge** (`tkt merge <id>`: the evaluator's
       graded head, a conflict check, the tests on main + branch, then one merge commit), the same dialog as a PR's. After
