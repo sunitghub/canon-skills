@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-11-24
+
+- Changed: the pre-commit hook runs only the suites that cover the staged files when the project has a `tests/suite-map.txt` (path patterns to `scripts/test.sh --list` labels, or `@named` for the suites that name the file), plus the `tests/pre-gate-suites.txt` pins; it prints each suite with the path that pulled it in, runs the full suite, naming the path, for any path the map selects no suite for, blocks a commit whose map names a suite that does not exist, and prints the run's seconds. A project without the map runs the full suite as before; the close's full-suite stamp is unchanged (t-2912).
+
 ## [0.83.0] - 2026-11-24
 
 - Changed: `sprint` and `tkt` help (bare, `help`, `-h`, `--help`) lists commands in groups of related ones, each description at one column and one or two lines long; the text is one table per CLI (`tools/sprint-usage.tsv`, `tools/tkt-usage.tsv`) printed by one shared printer, and a test keeps each table and its dispatcher in step (`tkt pr-ready` was missing). Long explanations live in `tools/ticket.md` (t-ffa8).
