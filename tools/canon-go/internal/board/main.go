@@ -245,6 +245,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   api schema [--json]      the /api/v1 and event schemas (t-0b89)
   sessions-table           a /api/v1/sessions body on stdin as canon's table (t-5b80)
   caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use (tools/caps.tsv)
+  validate <ticket dir | artifact file>   the artifact schema's findings (t-c2de)
   machine [--json]         this machine's OS, chip, cores and RAM (no hostname)
   recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events
 

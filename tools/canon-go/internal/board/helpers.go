@@ -21,11 +21,13 @@
 //	sprint-check recent --project <root> [--n N] [--handoff <file>] | recent --strip   a project's recent stage events (t-2db7)
 //	sprint-check machine [--json]                  this machine's OS, chip, cores and RAM in one line, no hostname (t-c542; evidence.sh)
 //	sprint-check caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use against tools/caps.tsv (t-19bb)
+//	sprint-check validate <ticket dir | artifact file>   the artifact schema's findings, file:line: rule (t-c2de); exit 0 ok, 1 findings, 2 unreadable
 package board
 
 import (
 	"bufio"
 	"bytes"
+	"canon/internal/artifact"
 	"canon/internal/common"
 	"canon/internal/events"
 	"encoding/json"
@@ -119,6 +121,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return 0, true
 	case "caps": // t-19bb: the cap meter; read-only
 		return capsCLI(args[1:], stdout, stderr), true
+	case "validate": // t-c2de: the artifact schema's findings for a ticket folder or one artifact; read-only
+		return validateCLI(args[1:], stdout, stderr), true
 	case "machine":
 		return machineCLI(args[1:], stdout, stderr), true
 	case "recent":
@@ -659,5 +663,26 @@ func sessionsTableCLI(stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 	}
 	fmt.Fprint(stdout, cockpitSessionsText(body.Sessions))
+	return 0
+}
+
+// validateCLI prints one line per artifact finding and exits 1, `artifacts: ok (<n> files)` and 0, or the read error and 2 (t-c2de).
+func validateCLI(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
+		fmt.Fprintln(stderr, "usage: canon-go validate <ticket dir | artifact file>")
+		return 2
+	}
+	fs, n, err := artifact.Validate(args[0])
+	if err != nil {
+		fmt.Fprintln(stderr, "validate:", err)
+		return 2
+	}
+	for _, f := range fs {
+		fmt.Fprintln(stdout, f)
+	}
+	if len(fs) > 0 {
+		return 1
+	}
+	fmt.Fprintf(stdout, "artifacts: ok (%d files)\n", n)
 	return 0
 }

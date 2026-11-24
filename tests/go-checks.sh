@@ -85,4 +85,34 @@ miss="$(doc_missing "$ROOT/tools/canon-go/.gosec-excludes" "$ROOT/docs/ci-securi
 grep -v '^| *G104 *|' "$ROOT/docs/ci-security.md" > "$WORK/doc.md"
 [[ "$(doc_missing "$ROOT/tools/canon-go/.gosec-excludes" "$WORK/doc.md")" == G104 ]] || fail "go-checks: a planted missing doc row was not caught"
 
+# t-c2de: --fuzz runs each Fuzz target alone (go test -fuzz refuses a pattern matching two); a failing target is 1 and named
+F="$WORK/fz"; mkdir -p "$F/p"; printf 'module fz\n\ngo 1.21\n' > "$F/go.mod"
+cat > "$F/p/p_test.go" <<'GO'
+package p
+
+import "testing"
+
+func FuzzOK(f *testing.F) { f.Add("a"); f.Fuzz(func(t *testing.T, s string) {}) }
+
+func FuzzBoom(f *testing.F) {
+	f.Add("boom")
+	f.Fuzz(func(t *testing.T, s string) {
+		if s == "boom" {
+			t.Fatal("planted")
+		}
+	})
+}
+GO
+run "$PATH" --fuzz "$F" 1
+assert_eq 1 "$code"; assert_contains "$out" "fuzz ./p FuzzBoom FAIL" "go-checks: a failing fuzz target is named"
+assert_contains "$out" "fuzz ./p FuzzOK ok" "go-checks: the other target still runs"
+sed -i.bak '/FuzzBoom/,$d' "$F/p/p_test.go"; rm -rf "$F/p/testdata"
+run "$PATH" --fuzz "$F" 1
+assert_eq 0 "$code"; assert_contains "$out" "fuzz ./p FuzzOK ok" "go-checks: passing targets are 0"
+run "$PATH" --fuzz "$F"
+assert_eq 2 "$code"; assert_contains "$out" "usage: go-checks.sh --fuzz" "go-checks: --fuzz without seconds is a usage error"
+printf 'package p\n' > "$F/p/p_test.go"
+run "$PATH" --fuzz "$F" 1
+assert_eq 2 "$code"; assert_contains "$out" "no Fuzz targets" "go-checks: a module with no target is 2"
+
 echo "go-checks: ok"

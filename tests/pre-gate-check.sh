@@ -20,6 +20,9 @@ mkdir -p "$WORK/tmp" "$WORK/home"; : > "$WORK/home/canary"
 export TMPDIR="$WORK/tmp" CANON_HOME="$WORK/home"
 unset CANON_TICKETS_DIR
 export GOCACHE="$WORK/gocache" GOPATH="$WORK/gopath" GOTOOLCHAIN=local GOFLAGS=-mod=mod
+# t-c2de: the board binary is a stub (no `validate` in its help), so every case below reads `artifacts skipped` unless it says otherwise
+mkdir -p "$WORK/stub"; printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/stub/none"; chmod +x "$WORK/stub/none"
+export SPRINT_CHECK_BIN="$WORK/stub/none"
 
 ID="t-abcd"
 R="$WORK/repo"; mkdir -p "$R/tools" && cd "$R"
@@ -429,6 +432,28 @@ echo '- an entry' >> CHANGELOG.md; commit
 run "$ID"; [[ "$code" == 0 ]] || fail "pre-gate-check: the changelog field changed the exit code ($code): $out"
 assert_contains "$out" "| changelog (advisory): CHANGELOG.md changed; write the entry as changelog.d/$ID.md instead" "pre-gate-check: a canon sprint editing CHANGELOG.md is told to write a fragment"
 BASE="$BASE_CL"; reset
+
+# --- t-c2de: the advisory artifacts field (canon-go validate on the ticket's folder). Protects the pre-gate line every close prints:
+# ok, findings listed after the line, validate's error shown, and a board without validate says skipped; none changes the exit code.
+vstub() { # vstub <exit> <output…>: a board whose help names validate and whose validate prints the lines and exits <exit>
+  local rc="$1" f="$WORK/stub/v$1" l; shift
+  { printf '#!/usr/bin/env bash\n[ "$1" = --help ] && { echo "  validate <ticket dir | artifact file>"; exit 0; }\n'
+    printf '[ "$1" = validate ] && [ -d "$2" ] || exit 9\n'; for l in "$@"; do printf 'echo %q\n' "$l"; done; printf 'exit %s\n' "$rc"; } > "$f"
+  chmod +x "$f"; printf '%s\n' "$f"
+}
+reset; printf '#!/usr/bin/env bash\ntrue\n' > tools/x.sh; commit
+run "$ID"; assert_eq 0 "$code"; assert_contains "$out" "| artifacts skipped | canon-go has no validate" "pre-gate-check: a board without validate is skipped"
+SPRINT_CHECK_BIN="$(vstub 0 "artifacts: ok (1 files)")" run "$ID"
+assert_eq 0 "$code"; assert_contains "$out" "| artifacts ok" "pre-gate-check: no finding reads ok"
+assert_eq 1 "$(wc -l <<<"$out" | tr -d ' ')"
+SPRINT_CHECK_BIN="$(vstub 1 ".tickets/$ID/ticket.md:1: ticket.frontmatter: a; allowed: b" ".tickets/$ID/plan.md:3: plan.tier: c; allowed: d")" run "$ID"
+assert_eq 0 "$code"; assert_contains "$out" "| artifacts 2 findings (advisory)" "pre-gate-check: findings are counted"
+assert_contains "$out" "artifacts (advisory):"$'\n'".tickets/$ID/ticket.md:1: ticket.frontmatter" "pre-gate-check: findings are listed after the line"
+grep -q "plan.md:3: plan.tier" ".tickets/$ID/evidence/pre-gate.log" || fail "pre-gate-check: findings are not in the stamped log"
+SPRINT_CHECK_BIN="$(vstub 2 "validate: plan.md: not a regular file")" run "$ID"
+assert_eq 0 "$code"; assert_contains "$out" "| artifacts error (advisory)" "pre-gate-check: validate's exit 2 is an advisory error"
+assert_contains "$out" "validate: plan.md: not a regular file" "pre-gate-check: validate's error is shown"
+reset
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"
 echo "pre-gate-check: ok"

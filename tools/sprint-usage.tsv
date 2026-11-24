@@ -19,6 +19,7 @@ Close	complete [<ticket-id>]	Validate the acceptance checklist, close the ticket
 Close	pre-gate-check <args>	The close's cheap checks before any gate
 Close	check-evidence <id>	Before the evaluator: every stamped log fresh with exit 0, every [manual] criterion recorded
 Close	check-review-notes <id>	Check review-notes.md's shape (sprint complete's rule)
+Close	validate <id|path>	Check a ticket's artifacts against the schema: file:line, rule, allowed shape
 Close	manual-qa <id> --by "<who>" --step "<what>|pass|fail|n/a" ...	Record the user's testing in evidence/manual-qa.md
 Close	wrapup-row <id> <gate> ran|skipped "<notes>"	Write one Wrapup Gates row and its event
 Close	close-hint <id>	Why a closed sprint's close was slow (silent if not)

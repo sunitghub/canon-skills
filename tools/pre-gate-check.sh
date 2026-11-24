@@ -13,6 +13,8 @@
 #   non-doc file when the diff holds no test file). Line count is not quality, so it never changes the exit code.
 #   t-c8c6: also advisory, a `path forms` field: added shell lines outside platform-lib.sh/ticket-root.sh that write a drive-letter pattern or compare a
 #   cygpath -u result inside [ ] / [[ ]] (a second copy of the path rule; compare with canon_same_folder or canon_path_key).
+#   t-c2de: also advisory, an `artifacts ok|<n> findings (advisory)|error (advisory)|skipped | <reason>` field: canon-go validate (the
+#   artifact schema) on the ticket's folder, its findings printed after the line.
 #   t-dc18: also advisory, an `agent files` field naming each changed always-on agent file (rows `agent-file` in size-caps.tsv: CLAUDE.md, AGENTS.md, PROMOTED.md, standards/efficiency.md) with its first added lines, so a deployment note
 #   written into an agent-private file is seen at the close instead of after the word cap trips.
 # Output: the one stamped line (plus the failing tool's output when a check fails); the full log is
@@ -98,6 +100,23 @@ agent_file_report() {
 # drive-letter pattern ([A-Za-z]:) or compares a `cygpath -u` result inside a test bracket (an assignment is a conversion, not named). Such a line is usually a second copy of the rule: compare through
 # canon_same_folder or canon_path_key instead. A conversion for a native program is fine; the reviewer judges, so it never changes the exit code.
 PATH_FORM_OWNERS="tools/platform-lib.sh tools/ticket-root.sh"
+# t-c2de: artifacts_report sets art_line (the `artifacts` field) and art_out (the findings, or validate's error): the artifact schema
+# (canon-go validate) on the ticket's folder. Advisory: a finding or an error never changes the exit code.
+artifacts_report() {
+  local root td b out vrc=0
+  art_line=""; art_out=""
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || root=""
+  td="$root/.tickets"; [[ -n "$root" && -d "$td" ]] || td="${CANON_TICKETS_DIR-}"
+  [[ -n "${PRE_GATE_ID-}" && -n "$td" && -d "$td/$PRE_GATE_ID" ]] || { art_line="artifacts skipped | no ticket dir"; return; }
+  b="$(board_has 'validate <ticket dir')" || { art_line="artifacts skipped | canon-go has no validate"; return; }
+  out="$("$b" validate "$td/$PRE_GATE_ID" 2>&1 </dev/null)" || vrc=$?
+  case "$vrc" in
+    0) art_line="artifacts ok" ;;
+    1) art_line="artifacts $(grep -c . <<<"$out") findings (advisory)"; art_out="$out" ;;
+    *) art_line="artifacts error (advisory)"; art_out="$out" ;;
+  esac
+}
+
 path_forms_report() {
   local base="$1" f hits="" n=0 h
   while IFS= read -r f; do
@@ -221,10 +240,14 @@ run_checks() {
   line+=" | $(size_report "$base")"
   line+=" | $(agent_file_report "$base")"
   line+=" | $(path_forms_report "$base")"
+  local art_line art_out
+  artifacts_report
+  line+=" | $art_line"
   line+="$(changelog_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
   [[ -z "$adv" ]] || printf 'go-checks (advisory):\n%s' "$adv"
+  [[ -z "$art_out" ]] || printf 'artifacts (advisory):\n%s\n' "$art_out"
   return "$rc"
 }
 

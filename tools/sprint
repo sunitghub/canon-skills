@@ -2046,6 +2046,16 @@ cmd_wrapup_row() {
 # Git Bash through its .cmd shim.
 cmd_run_id() { printf '%s-%s\n' "$(date +%s)" "$RANDOM"; }
 
+# cmd_validate <id | path> — t-c2de: the artifact schema (canon-go validate, internal/artifact) on a ticket's folder or one artifact
+# file: `<path>:<line>: <rule>: <problem>; allowed: <shape>` per finding. Exit and output are canon-go's: 0 ok, 1 findings, 2 unreadable.
+cmd_validate() {
+  [[ $# -eq 1 && -n "$1" ]] || { echo "usage: sprint validate <ticket-id | ticket folder | artifact file>" >&2; exit 2; }
+  local target="$1" b
+  [[ "$target" =~ ^t-[a-z0-9]{4}$ ]] && target="$(ticket_dir_for "$target")"
+  b="$(board_has 'validate <ticket dir')" || { echo "sprint validate: this install's canon-go has no validate (run canon update)" >&2; exit 2; }
+  exec "$b" validate "$target"
+}
+
 # _copilot_model_id <alias> — complete.md "Copilot CLI dispatch": Copilot rejects Claude Code's aliases, so a Sign-off or Lite alias is
 # named by Copilot's id; anything else (already an id) is unchanged.
 _copilot_model_id() {
@@ -2759,6 +2769,7 @@ main() {
     relay-report) cmd_relay_report "$@" ;;
     check-review-notes) cmd_check_review_notes "$@" ;;
     check-evidence) cmd_check_evidence "$@" ;;
+    validate) cmd_validate "$@" ;;
     close-hint)
       [[ "${1:-}" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: sprint close-hint <ticket-id>" >&2; exit 2; }
       _close_hint "$1" "$(project_root)" "$(_signoff_tier "$(ticket_dir_for "$1")/plan.md" 2>/dev/null)" ;;

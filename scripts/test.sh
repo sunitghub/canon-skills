@@ -173,6 +173,7 @@ tests=(
   "$ROOT/tests/release-manifest.sh"
   "$ROOT/tests/dead-code-scan.sh"
   "$ROOT/tests/pre-gate-check.sh"
+  "$ROOT/tests/sprint-validate.sh"
   "$ROOT/tests/sprint-gate-agents.sh"
   "$ROOT/tests/sprint-session-context.sh"
   "$ROOT/tests/doc-check.sh"
@@ -273,7 +274,7 @@ skipped() {
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
-go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term ./internal/transcript); }   # t-8020: one module
+go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/artifact ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term ./internal/transcript); }   # t-8020: one module
 go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {

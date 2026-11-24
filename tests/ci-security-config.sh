@@ -119,7 +119,7 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
           grep -qE 'run:[[:space:]]*govulncheck[[:space:]]+\./\.\.\.[[:space:]]*$' "$wf" || echo "scan is not a bare 'govulncheck ./...'"
           grep -qE 'go-version-file:[[:space:]]*tools/canon-go/go\.mod' "$wf" || echo "no go-version-file: tools/canon-go/go.mod"
         } | sed "s/^/$name: /" ;;
-      go-checks.yml)   # t-9a2b: exact tool pins, the user's cadence (no pull_request), a time cap, the two exact run lines
+      go-checks.yml)   # t-9a2b: exact tool pins, the user's cadence (no pull_request), a time cap, the exact run lines (t-c2de: + fuzz)
         { grep -qE 'go install honnef\.co/go/tools/cmd/staticcheck@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
             || echo "staticcheck not installed at an exact vX.Y.Z"
           grep -qE 'go install github\.com/securego/gosec/v2/cmd/gosec@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
@@ -127,6 +127,8 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
           grep -qE 'run:[[:space:]]*go test -race -count=1 \./\.\.\.[[:space:]]*$' "$wf" || echo "race run is not a bare 'go test -race -count=1 ./...'"
           grep -qE 'run:[[:space:]]*bash tools/go-checks\.sh --require tools/canon-go[[:space:]]*$' "$wf" \
             || echo "lint run is not a bare 'bash tools/go-checks.sh --require tools/canon-go'"
+          grep -qE 'run:[[:space:]]*bash tools/go-checks\.sh --fuzz tools/canon-go 10[[:space:]]*$' "$wf" \
+            || echo "fuzz run is not a bare 'bash tools/go-checks.sh --fuzz tools/canon-go 10'"   # t-c2de
           grep -qE '^[[:space:]]+timeout-minutes:[[:space:]]*[0-9]+' "$wf" || echo "no timeout-minutes"
           ! grep -qE '^[[:space:]]+pull_request:' "$wf" || echo "runs on pull_request (cadence: schedule, Go-path push, by hand)"
           awk '/^  push:/{p=1;next} p&&/^  [^ ]/{p=0} p&&/paths:/{f=1} END{exit !f}' "$wf" || echo "push has no paths filter"
@@ -269,6 +271,8 @@ plant "$C: a step failure is swallowed" $C 's/--require tools\/canon-go$/--requi
 plant "$C: a step failure is swallowed" $C 's/^        run: go test -race -count=1 \.\/\.\.\.$/        continue-on-error: true\n&/'
 plant "$C: race run is not a bare" $C 's/-race -count=1/-count=1/'
 plant "$C: lint run is not a bare" $C 's/ --require tools\/canon-go$/ tools\/canon-go/'
+plant "$C: fuzz run is not a bare" $C 's/--fuzz tools\/canon-go 10$/--fuzz tools\/canon-go 10 || true/'
+plant "$C: fuzz run is not a bare" $C '/--fuzz tools\/canon-go 10$/d'
 plant "$C: no timeout-minutes" $C '/timeout-minutes:/d'
 plant "$C: runs on pull_request" $C 's/^  workflow_dispatch:/  workflow_dispatch:\n  pull_request:/'
 plant "$C: push has no paths filter" $C '/^    paths:$/,/go-checks\.yml"$/d'

@@ -13,10 +13,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/
 ident=(-c user.email=t@example.com -c user.name=test)
 
 R="$WORK/repo"; M="$R/tools/canon-go"
-mkdir -p "$M/cmd/canon-go" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings" "$M/internal/transcript"
+mkdir -p "$M/cmd/canon-go" "$M/internal/artifact" "$M/internal/board" "$M/internal/daemon" "$M/internal/common" "$M/internal/events" "$M/internal/machine" "$M/internal/term" "$M/internal/settings" "$M/internal/transcript"
 cp "$ROOT/tools/src-key.sh" "$R/tools/"
 printf 'module canon\n' > "$M/go.mod"; : > "$M/go.sum"
-for d in cmd/canon-go internal/board internal/daemon internal/common internal/events internal/machine internal/term internal/settings internal/transcript; do echo "package x // $d" > "$M/$d/x.go"; done
+for d in cmd/canon-go internal/artifact internal/board internal/daemon internal/common internal/events internal/machine internal/term internal/settings internal/transcript; do echo "package x // $d" > "$M/$d/x.go"; done
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 key() { bash -c 'source "$1/tools/src-key.sh"; canon_src_key "$1" "$2" ${3:+"$3"}' _ "${R2:-$R}" "$@"; }
 commit() { echo "// $1" >> "$M/$1/x.go" 2>/dev/null || echo "// $1" >> "$M/$1"; git -C "$R" "${ident[@]}" commit -qam "$1"; }

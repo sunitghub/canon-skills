@@ -157,12 +157,13 @@ It needs `vuln.go.dev`. Where that host is blocked but Google Cloud Storage is n
 
 ## go-checks: race detector, staticcheck, gosec (t-9a2b)
 
-`.github/workflows/go-checks.yml` runs three checks on `tools/canon-go`:
+`.github/workflows/go-checks.yml` runs four checks on `tools/canon-go`:
 - `go test -race -count=1 ./...`
 - staticcheck
 - gosec
+- every `Fuzz` target for 10 seconds (t-c2de)
 
-The last two run through `tools/go-checks.sh`, the one owner of their command lines. `tools/pre-gate-check.sh` runs the same script on a
+The last three run through `tools/go-checks.sh`, the one owner of their command lines (`--fuzz` runs one `go test -fuzz` per target, since it refuses a pattern that matches two). `tools/pre-gate-check.sh` runs the same script on a
 sprint's changed Go packages as an advisory `go-checks` field: a finding is shown but never fails the close, and the field
 reads `skipped` when neither tool is installed.
 
@@ -173,7 +174,7 @@ reads `skipped` when neither tool is installed.
 
 It has no `pull_request` trigger, because your own changes reach canon-skills as a push. Like govulncheck, the job runs on canon-skills only (free
 minutes) and on the private repo only by hand. `tests/ci-security-config.sh` holds the workflow to this shape: exact tool pins,
-no `pull_request`, a `paths` filter, `timeout-minutes`, and the two exact run lines.
+no `pull_request`, a `paths` filter, `timeout-minutes`, and the three exact run lines.
 
 **Pins**:
 - staticcheck `honnef.co/go/tools/cmd/staticcheck@v0.8.2`
@@ -187,6 +188,7 @@ Bump them by hand in a sprint (`go list -m -versions <module>`), and fix or reco
 go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
 go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
 tools/go-checks.sh --require tools/canon-go        # 0 clean, 1 a finding, 2 a tool missing or a bad exclude line
+tools/go-checks.sh --fuzz tools/canon-go 30        # every Fuzz target 30 s each; 1 a target failed (its input lands in testdata/fuzz/)
 (cd tools/canon-go && go test -race -count=3 ./...) # -count=1 can hide a race (t-77ba's second one showed only at 3)
 ```
 

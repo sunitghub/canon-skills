@@ -22,3 +22,4 @@ tools/canon-go/internal/common/*_test.go  tools/canon-go/internal/board
 tools/canon-go/internal/events/*_test.go  tools/canon-go/internal/board
 tools/canon-go/internal/settings/*_test.go tools/canon-go/internal/board
 tools/canon-go/cmd/*_test.go              tools/canon-go/internal/board
+tools/canon-go/internal/artifact/*        tools/canon-go/internal/board tests/sprint-validate.sh   # t-c2de: the schema; go_board runs its package
