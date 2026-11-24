@@ -268,6 +268,40 @@ board_has() {
 }
 # class_table — this install's tools/finding-classes.tsv (t-70f2), the one table of finding classes.
 class_table() { echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/finding-classes.tsv"; }
+# canon_usage <table> — print a CLI's help from its usage table (t-ffa8: tools/sprint-usage.tsv, tools/tkt-usage.tsv, the one owner
+# of each help text). Rows: `@intro|@footer<TAB>text`, `@group<TAB>Name` (declares the group order), `Group<TAB>synopsis<TAB>description`;
+# '#' and blank lines skipped. Commands print by declared group, then file order, so a row added anywhere lands in its group. Descriptions
+# start at column 29 (a synopsis of 26+ chars puts its description on the next line) and wrap at 80. A row naming an undeclared group fails.
+canon_usage() {
+  [[ -f "$1" ]] || { echo "usage table missing: $1 (run canon update to restore canon's tools)" >&2; return 1; }
+  awk -F'\t' -v col=28 -v width=80 '
+    function emit(syn, desc,   n, w, i, line, pad, first) {
+      pad = sprintf("%" col "s", "")
+      if (length(syn) <= col - 3) line = sprintf("  %-" (col - 2) "s", syn)
+      else { print "  " syn; line = pad }
+      n = split(desc, w, " "); first = 1
+      for (i = 1; i <= n; i++) {
+        if (!first && length(line) + 1 + length(w[i]) > width) { print line; line = pad; first = 1 }
+        line = line (first ? "" : " ") w[i]; first = 0
+      }
+      if (n || length(syn) <= col - 3) { sub(/ +$/, "", line); print line }
+    }
+    /^#/ || /^[[:space:]]*$/ { next }
+    $1 == "@intro"  { intro[++ni] = $2; next }
+    $1 == "@footer" { foot[++nf] = $2; next }
+    $1 == "@group"  { gname[++ng] = $2; gid[$2] = ng; next }
+    { r++; rg[r] = $1; rs[r] = $2; rd[r] = $3; rl[r] = FNR }
+    END {
+      for (i = 1; i <= r; i++) if (!(rg[i] in gid)) { printf "%s:%d: group \"%s\" has no @group row\n", FILENAME, rl[i], rg[i] > "/dev/stderr"; exit 2 }
+      for (i = 1; i <= ni; i++) print intro[i]
+      for (g = 1; g <= ng; g++) {
+        print ""; print gname[g] ":"
+        for (i = 1; i <= r; i++) if (rg[i] == gname[g]) emit(rs[i], rd[i])
+      }
+      if (nf) print ""
+      for (i = 1; i <= nf; i++) print foot[i]
+    }' "$1"
+}
 # cap_table — this install's tools/caps.tsv (t-19bb), the table the tools that run here enforce.
 cap_table() { echo "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/caps.tsv"; }
 # cap_read <caps --json output> — sets CAP_NAME CAP_USED CAP_LIMIT CAP_UNIT CAP_LEFT CAP_OVER; fails unless it is a reading:

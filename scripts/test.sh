@@ -80,6 +80,7 @@ tests=(
   "$ROOT/tests/sprint-gate-prompt.sh"
   "$ROOT/tests/sprint-models-line.sh"
   "$ROOT/tests/sprint-wrapup-row.sh"
+  "$ROOT/tests/cli-usage.sh"
   "$ROOT/tests/pipeline-events.sh"
   "$ROOT/tests/sprint-relay-report-copilot.sh"
   "$ROOT/tests/sprint-caps-close.sh"

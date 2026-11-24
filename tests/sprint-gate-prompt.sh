@@ -188,9 +188,9 @@ snap="$("$ROOT/tools/gate-snapshot.sh" pre "$t/gate-snapshot.txt" --role reviewe
 "$ROOT/tools/gate-snapshot.sh" post "$t/gate-snapshot.txt" >/dev/null
 assert_contains "$snap" "gate-snapshot: prompt: sprint gate-prompt $id reviewer (pass its output to the gate verbatim)"
 help="$("$SPRINT" --help 2>&1 || true)"
-assert_contains "$help" "sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
-assert_contains "$help" "sprint run-id"
-assert_contains "$help" "sprint relay-report <id> [evaluator|evaluator2|reviewer|speccheck]"
+assert_contains "$help" "  gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
+assert_contains "$help" "  run-id "
+assert_contains "$help" "  relay-report <id> [evaluator|evaluator2|reviewer|speccheck]"
 rid="$("$SPRINT" run-id)"
 [[ "$rid" =~ ^[0-9]{10}-[0-9]+$ ]] || fail "sprint run-id printed '$rid', not <epoch-seconds>-<number>"
 

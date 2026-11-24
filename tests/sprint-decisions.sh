@@ -120,7 +120,7 @@ row 2026-08-04 t-if01 'the sprint workflow, said in words only.' r >> "$D"; row 
 rc "$S" decisions related tools/zzz-tool; assert_contains "$out" "t-ig01"; [[ "$out" != *"t-if01"* ]] || fail "an extensionless path matched by its basename"
 rc "$S" decisions related tools/sprint; [[ "$out" != *"t-if01"* ]] || fail "tools/sprint matched every row that says sprint: $out"
 
-rc "$S" help; assert_contains "$out" "sprint decisions related <path|t-xxxx>..."; assert_contains "$out" "mark <row-id>"
+rc "$S" help; assert_contains "$out" "  decisions related <path|t-xxxx>..."; assert_contains "$out" "mark <row>"
 # ids differ for distinct rows of the same length; a token of exactly 3 characters (or a 3-character basename) matches, 2 does not
 cp "$D" "$D.keep"
 row 2026-08-01 t-ia01 'aaaa tkx here.' r >> "$D"; row 2026-08-02 t-ib01 'bbbb t.k here.' r >> "$D"

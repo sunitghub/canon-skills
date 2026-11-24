@@ -1,0 +1,51 @@
+# tkt-usage.tsv (t-ffa8) - the one owner of `tkt --help`: tools/platform-lib.sh canon_usage prints it; tests/cli-usage.sh checks every
+# command main() dispatches has one row here. Rows: @intro|@footer<TAB>text, @group<TAB>Name (group order), Group<TAB>synopsis<TAB>description.
+# A new command goes in its group; file position inside the file does not matter, order inside a group does. Plain ASCII; details: tools/ticket.md.
+@intro	tkt - minimal ticket system
+@intro	
+@intro	Usage: tkt <command> [args]
+@group	Create and find
+@group	Status
+@group	Close options
+@group	After the close
+@group	Merge and push
+@group	GitHub and cloud
+Create and find	create [title] [-d text] [-t type] [-p 0-4] [--tags a,b]	Create a ticket, print its ID; -t bug|feature|task|epic|chore (task), -p 0 highest (2)
+Create and find	ls|list [--status=X] [--json]	List tickets; --json: [{id,status,type,priority,title}]
+Create and find	show <id> [--json]	Display a ticket; --json: one object
+Create and find	tags <id> [csv]	Print or replace a ticket's tags (at most 8)
+Create and find	why <file>	Show tickets whose commits touched a file
+Create and find	current	Show the active ticket
+Status	start <id>	Set status to in_progress and mark it ACTIVE
+Status	close <id> [--no-sprint]	Close, clear ACTIVE; sprint docs: use sprint complete, or --no-sprint to force
+Status	reopen <id>	Set status to open
+Status	archive <id>	Set status to archived (off the board, searchable)
+Status	copy-back <id>	Copy a worktree's own ticket folder back to main
+Close options	ci <id> [on|off]	CI-eligible for headless grading (default on)
+Close options	gate <id> [eval|full]	Headless gate mode with ci on: eval (evaluator only) or full (default); no arg prints it
+Close options	demo <id> [on|off]	Lite close: security-review + the evaluator (Haiku) only; no arg prints it
+Close options	manual <id> [on|off]	User-tested close: your sprint manual-qa record is the evidence; no arg prints it
+After the close	learn <id> [--force]	Distill a closed sprint's deviations and findings into an UNPROMOTED learnings.md
+After the close	compact [--older-than DAYS] [--dry-run]	Shrink old closed tickets' evidence/ (DAYS: 14)
+Merge and push	merge <id> [--test CMD] [--yes | --check]	Check & merge a closed ticket: its PR, or its worktree branch into the default branch
+Merge and push	finish <id> [--check [--fetch] | --push --yes | --reset --yes | --dismiss]	After tkt merge: list (--check) or push the commits, reset the worktree, or hide the Finish step
+Merge and push	commit-push <id> [--dry-run] [--file <path>]... [--message <text>]	Commit exactly the named files, push the branch to origin (never forced)
+Merge and push	push-main	Push the default branch to each canon.mirror remote
+Merge and push	release-check <sha>	Exit 1 when <sha> ships binaries not yet released
+Merge and push	worktree-reset [--yes | --dry-run]	In a worktree whose PR merged: reset its branch to origin's default branch
+GitHub and cloud	send-issue <id> [--dry-run] [--public] [--allow-unpushed] [--manual-after-merge] [--launch [--yes]]	Post the ticket as a GitHub issue for a cloud session; --launch starts it, in a real terminal only
+GitHub and cloud	import-issue <N> [--body-file F] [--force]	Rebuild .tickets/<id>/ from a send-issue body
+GitHub and cloud	sync-issues [--dry-run [--json]]	Make a ticket of each unlinked canon-labelled issue
+GitHub and cloud	open-pr <id>	Open the PR a cloud session did not, with "Fixes #N"
+GitHub and cloud	pr-ready <id> [--pr N]	Mark the ticket's own draft PR ready, so merge-pr can merge it
+GitHub and cloud	merge-pr <id> [--pr N] [--test CMD] [--yes | --check]	Check a cloud ticket's PR (evaluator, mergeable, suite green) and merge it after a y
+GitHub and cloud	land <id> [--pr N] [--fix] | --finish	Close an imported cloud ticket here in a PR-head worktree; --finish removes it
+GitHub and cloud	merged <id> --pr N [--sha S]	Record a PR merged outside merge-pr
+GitHub and cloud	github-status <id> [--json]	Where it stands: sent, pr-open, results-ready, results-in or merged
+GitHub and cloud	take-back <id> [--close-issue]	Bring a ticket sent to GitHub back to this machine
+GitHub and cloud	export <id> [--public]	Send a cloud sprint's ticket folder back
+GitHub and cloud	import-results <id> [--pr N]	Bring canon-results/<id> back (local edits kept)
+GitHub and cloud	github-doctor [--json]	Read-only GitHub readiness checks, the cloud recipe
+GitHub and cloud	cloud-env [--json]	This project's Claude cloud environment recipe
+@footer	Tickets live in .tickets/<id>/ticket.md; the active one in .tickets/ACTIVE.
+@footer	Partial IDs match (tkt show 8ms finds t-8ms5). Details: tools/ticket.md

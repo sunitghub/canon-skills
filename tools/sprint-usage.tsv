@@ -1,0 +1,42 @@
+# sprint-usage.tsv (t-ffa8) - the one owner of `sprint --help`: tools/platform-lib.sh canon_usage prints it; tests/cli-usage.sh checks every
+# command main() dispatches has one row here. Rows: @intro|@footer<TAB>text, @group<TAB>Name (group order), Group<TAB>synopsis<TAB>description.
+# A new command goes in its group; file position inside the file does not matter, order inside a group does. Plain ASCII; details belong in the docs.
+@intro	sprint - canon workflow spine
+@intro	
+@intro	Usage: sprint <command> [args]
+@group	Start and plan
+@group	Close
+@group	Gates
+@group	Records and cost
+Start and plan	start <ticket-id> | "title"	Start a sprint on a ticket, or a new one from a title
+Start and plan	continue <ticket-id>	Resume an in_progress ticket (read-only)
+Start and plan	import-issue <N> [--body-file F] [--force]	In a cloud session: rebuild the ticket a `tkt send-issue` issue carries, then start its sprint
+Start and plan	approve <id>	Tick "Plan approved" and pin ## Approach by sha256; sprint complete refuses a changed Approach
+Start and plan	current	Show the active sprint ticket
+Start and plan	status [--json]	Active ticket and required sprint files; --json: {"active","ticket","files"}
+Start and plan	suggest-tier [<id>] [--base-ref <ref>]	Propose (never apply) bugfix or normal from the diff; you write the Tier line
+Close	complete [<ticket-id>]	Validate the acceptance checklist, close the ticket
+Close	pre-gate-check <args>	The close's cheap checks before any gate
+Close	check-evidence <id>	Before the evaluator: every stamped log fresh with exit 0, every [manual] criterion recorded
+Close	check-review-notes <id>	Check review-notes.md's shape (sprint complete's rule)
+Close	manual-qa <id> --by "<who>" --step "<what>|pass|fail|n/a" ...	Record the user's testing in evidence/manual-qa.md
+Close	wrapup-row <id> <gate> ran|skipped "<notes>"	Write one Wrapup Gates row and its event
+Close	close-hint <id>	Why a closed sprint's close was slow (silent if not)
+Gates	gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>	A gate's whole dispatch prompt; pass it verbatim (stderr: the model and the step after)
+Gates	gate-model <id> <reviewer|evaluator|speccheck>	The model to dispatch that gate with
+Gates	second-eval <id>	The second evaluator's model, or skip: <reason>
+Gates	run-id	An evaluator run-id, <epoch-seconds>-<number>
+Gates	relay-report <id> [evaluator|evaluator2|reviewer|speccheck]	Copy a read-only gate's report from the harness transcript into its file, byte for byte
+Gates	eval-verdict <id>	Record the evaluator's pass/fail in eval_fail_count (internal: complete.md step 3)
+Gates	eval-compare <id>	The binding and second evaluators' grades row by row, and Disagreements: <n>
+Gates	gate-usage <id> <evaluator|evaluator2|reviewer|speccheck>	Copilot CLI: a gate's tokens and minutes from Copilot's session record
+Gates	gate-snapshot <args>	Run tools/gate-snapshot.sh (same args, exit code)
+Gates	base-ref	The gates' diff base: merge-base of HEAD and origin/<default branch> (or why not, exit 1)
+Records and cost	recent [--strip-handoff]	Recent stage events; --strip-handoff takes the generated block out of HANDOFF.md
+Records and cost	evidence <args>	Run tools/evidence.sh (same args, exit code)
+Records and cost	subagent-log <args>	Run tools/subagent-log.sh (same args, exit code)
+Records and cost	decisions related <path|t-xxxx>... [--limit N|--all]	DECISIONS.md rows naming files or tickets; archive <row> --by <t-id>; mark <row> <date> "<text>"
+Records and cost	gate-cost [--last N]	Close-gate cost from .claude/subagent-runs.jsonl: median and worst tokens and minutes by gate and tier
+Records and cost	token-spend [--last N] [--ticket <id> [--record]]	Where closed sprints' tokens went: by phase and model, cache reads, peak context
+@footer	The CLI owns deterministic workflow state. The agent owns orientation, gray-area
+@footer	resolution, impact analysis, implementation, review and test judgment.

@@ -70,6 +70,6 @@ assert_eq "$before" "$(cat "$acc")"
 assert_eq "$n" "$(cat "$CANON_HOME"/events/*.jsonl | grep -c wrapup.gate_finished)"
 
 # 5. --help lists it
-assert_contains "$("$SPRINT" --help 2>&1 || true)" 'sprint wrapup-row <id> <gate> ran|skipped "<notes>"'
+assert_contains "$("$SPRINT" --help 2>&1 || true)" '  wrapup-row <id> <gate> ran|skipped "<notes>"'
 
 echo "sprint-wrapup-row: ok"

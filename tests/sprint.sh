@@ -34,7 +34,7 @@ want="$(cd "$ROOT" && bash tools/evidence.sh neutral)"; [[ -n "$want" ]] || fail
 assert_eq "$want" "$(cd "$ROOT" && "$SPRINT" evidence neutral)"   # a success path
 rm -rf "$outside"
 help="$("$SPRINT" help)"
-assert_contains "$help" "sprint gate-snapshot | evidence | subagent-log | pre-gate-check <args>"
+for c in gate-snapshot evidence subagent-log pre-gate-check; do assert_contains "$help" "  $c <args>"; done   # t-ffa8: one row each
 for f in "$ROOT/tools/sprint" "$ROOT/tools/evidence.sh" "$ROOT/tools/gate-snapshot.sh"; do   # hints the agent acts on name the sprint form
   ! grep -nE "(log (it|them) with|run '|never writes|re-stamp at HEAD \(|overwrites it\): )(tools/)?(subagent-log|evidence|gate-snapshot)\.sh" "$f" \
     || fail "t-96f1: $f still tells the agent to run a .sh tool bare"
