@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-24-2026 20:16
+learnings-sweep last run: 11-24-2026 21:48
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-24 | [t-ca0e](.tickets/t-ca0e/learnings.md) | A `go list` import guard sees only the host GOOS and non-test imports: a `_windows.go` edge and a board `_test.go` importing daemon both passed until the graph was listed per GOOS (darwin, linux, windows) with `.TestImports`/`.XTestImports` (code-reviewer and reviewer catches). | UNPROMOTED |
 | 2026-11-24 | [t-9a2b](.tickets/t-9a2b/learnings.md) | A rule stated only in docs is not a guard: "G112 is never excluded" sat in the excludes file, the doc and the criteria, but nothing refused a `G112` line, and the plant that proves the timeout check would go green once G112 was excluded (routed to t-ca0e). | UNPROMOTED |
 | 2026-11-24 | [t-0fe6](.tickets/t-0fe6/learnings.md) | A path-to-suite map is checked against the real project, not only a fixture map: canon's own map had no VERSION row, so every release commit ran the full suite (378-411 s) while the fixture tests stayed green; a real-map assertion for the release file set now guards it (27 suites, 92 s). | UNPROMOTED |
 | 2026-11-24 | [t-a18d](.tickets/t-a18d/learnings.md) | A ticket note's stated premise is checked before it shapes the design: "check-vendored.sh scans at release" was false (nothing local runs govulncheck), so narrowing govulncheck's paths would have dropped coverage; gating to the free public mirror kept it. A scripted doc insert joined two wrapped lines (reviewer caught a 190-char line). | UNPROMOTED |
