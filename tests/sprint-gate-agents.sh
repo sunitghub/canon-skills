@@ -4,6 +4,8 @@
 # A fixture Claude config holds this session's transcript, whose first "cwd" and "timestamp" are the start folder and time.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+# t-280d: a private event log; scripts/test.sh shares one CANON_HOME across its parallel suites, so last_started read their starts
+CANON_HOME="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/gate-agents-home.XXXXXX")" && pwd -P)"; export CANON_HOME
 use_fresh_board "$(mktemp -d)"   # sprint.started goes through the board binary
 
 W="$(cd "$(mktemp -d)" && pwd -P)"
@@ -67,5 +69,5 @@ newp; out="$(CLAUDECODE= start notcc)"; [[ "$out" != *"WARNING: canon's gate age
 [[ "$(last_started)" != *gate_agents* ]] || fail "gate_agents written outside Claude Code"
 newp; out="$(CLAUDE_CODE_SESSION_ID=nope start notranscript)"; [[ "$out" != *"WARNING: canon's gate agents"* ]] || fail "warned with no transcript: $out"
 
-rm -rf "$W"
+rm -rf "$W" "$CANON_HOME"
 echo "sprint-gate-agents: ok (no warning with agents in the start folder or the user's; warns when started elsewhere, when agents came after the start, and with no agents (refresh hint); sprint continue too; gate_agents ok/missing; silent outside Claude Code or without a transcript)"
