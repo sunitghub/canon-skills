@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-24-2026 06:05
+learnings-sweep last run: 11-24-2026 08:33
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-24 | [t-2912](.tickets/t-2912/learnings.md) | A selector that maps a path to rules must fail safe per path, not per run: a path whose matching row selected no suite was dropped beside a covered path (the run was scoped, so nothing ran the full suite); count each path's own additions. | UNPROMOTED |
 | 2026-11-24 | [t-ffa8](.tickets/t-ffa8/learnings.md) | A test that compares a CLI's output with the same printer it calls cannot catch what the printer drops: deleting the intro/footer prints and the wrap-boundary change survived until rows were asserted from the data independently | UNPROMOTED |
 | 2026-11-24 | [t-47b3](.tickets/t-47b3/learnings.md) | A harness that moves a subagent's command to the background after a fixed cap cannot follow a rule to wait in the foreground: the rule must say end the turn and resume; the probe, not the doc, proved it. A pre-commit integrity check that compares gate files to the tagged release blocks the first gate-file commit made on that tag. | UNPROMOTED |
 | 2026-11-24 | [t-280d](.tickets/t-280d/learnings.md) | A suite that reads the shared event log must pin its own CANON_HOME: under scripts/test.sh another suite's `sprint.started` landed first, and the proof is a foreign-writer harness plus a revert that fails quoting the foreign event. | UNPROMOTED |
