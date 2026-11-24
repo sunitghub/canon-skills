@@ -1,1 +1,0 @@
-- Changed: canon's own CI checks (`test-suite`, `govulncheck`) run their job on the public canon-skills repo only, where Actions minutes are free and every release lands; on the private repo they run only when started by hand (Actions › Run workflow), and `tests/ci-security-config.sh` keeps the guard line in both workflows (t-a18d).

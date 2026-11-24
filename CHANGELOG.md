@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.84.1] - 2026-11-24
+
+- Changed: canon's own CI checks (`test-suite`, `govulncheck`) run their job on the public canon-skills repo only, where Actions minutes are free and every release lands; on the private repo they run only when started by hand (Actions › Run workflow), and `tests/ci-security-config.sh` keeps the guard line in both workflows (t-a18d).
+
 ## [0.84.0] - 2026-11-24
 
 - Changed: the pre-commit hook runs only the suites that cover the staged files when the project has a `tests/suite-map.txt` (path patterns to `scripts/test.sh --list` labels, or `@named` for the suites that name the file), plus the `tests/pre-gate-suites.txt` pins; it prints each suite with the path that pulled it in, runs the full suite, naming the path, for any path the map selects no suite for, blocks a commit whose map names a suite that does not exist, and prints the run's seconds. A project without the map runs the full suite as before; the close's full-suite stamp is unchanged (t-2912).
