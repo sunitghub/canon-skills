@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.82.1] - 2026-11-24
+
+- Fixed: `tests/sprint-gate-agents.sh` no longer fails at random in the parallel full suite (it blocked four commits, a release among them): it read the newest `sprint.started` from the event log every suite shares, so another suite's start could land first; it now keeps its own log (t-280d).
+
 ## [0.82.0] - 2026-11-23
 
 The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
