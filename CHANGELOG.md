@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.85.1] - 2026-11-24
+
+- Added: `TestInternalImportBoundary` (`tools/canon-go/cmd/canon-go/importboundary_test.go`) holds canon-go's allowed internal package graph in one table and fails on an import or a package it does not list, for darwin, linux and windows, test imports included. `standards/efficiency-notes.md` `## Go` gains the Go rules (error wrapping, log or return, goroutine exits, `os.Root`, crypto/rand and constant-time compares, `-race -count=3`, a table row per new package). The release-zip size cap is now 4800 KB. No daemon restart needed (t-ca0e).
+
 ## [0.85.0] - 2026-11-24
 
 - Added: `go-checks` CI (`.github/workflows/go-checks.yml`): canon-go's race detector, staticcheck v0.8.2 and gosec v2.30.0, weekly, on a push that changes Go, and by hand (canon-skills only). `tools/go-checks.sh` owns both lint command lines; gosec rules are switched off only in `tools/canon-go/.gosec-excludes`, each with a reason (`docs/ci-security.md` lists them). Pre-gate runs it on a sprint's changed Go packages as an advisory `go-checks` field when either tool is installed (t-9a2b).
