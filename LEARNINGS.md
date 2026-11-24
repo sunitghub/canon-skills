@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-23-2026 19:10
+learnings-sweep last run: 11-24-2026 02:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-24 | [t-47b3](.tickets/t-47b3/learnings.md) | A harness that moves a subagent's command to the background after a fixed cap cannot follow a rule to wait in the foreground: the rule must say end the turn and resume; the probe, not the doc, proved it. A pre-commit integrity check that compares gate files to the tagged release blocks the first gate-file commit made on that tag. | UNPROMOTED |
 | 2026-11-24 | [t-280d](.tickets/t-280d/learnings.md) | A suite that reads the shared event log must pin its own CANON_HOME: under scripts/test.sh another suite's `sprint.started` landed first, and the proof is a foreign-writer harness plus a revert that fails quoting the foreign event. | UNPROMOTED |
 | 2026-11-23 | [t-3e06](.tickets/t-3e06/learnings.md) | A spec test that starts a real daemon session must end it: t-d5a8 (reattach returns no token) turned a leftover live session into a next-test failure that passed alone, so it read as a flake for a whole sprint; and a criterion copied from a sibling path (Build's pi line) must say what that path really prints | `promoted → standards/efficiency-notes.md` |
 | 2026-11-23 | [t-2dc4](.tickets/t-2dc4/learnings.md) | A file linked into every project (gate agent files) must not name a path only canon's checkout has: defer to the dispatcher's resolved path; and read a command's whole test file before planning a change to it (§8 encoded the t-63c6 rule the plan contradicted). | `promoted → standards/skill-setup-std.md` |
