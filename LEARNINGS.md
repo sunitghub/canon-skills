@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-24-2026 10:26
+learnings-sweep last run: 11-24-2026 11:29
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-24 | [t-0fe6](.tickets/t-0fe6/learnings.md) | A path-to-suite map is checked against the real project, not only a fixture map: canon's own map had no VERSION row, so every release commit ran the full suite (378-411 s) while the fixture tests stayed green; a real-map assertion for the release file set now guards it (27 suites, 92 s). | UNPROMOTED |
 | 2026-11-24 | [t-a18d](.tickets/t-a18d/learnings.md) | A ticket note's stated premise is checked before it shapes the design: "check-vendored.sh scans at release" was false (nothing local runs govulncheck), so narrowing govulncheck's paths would have dropped coverage; gating to the free public mirror kept it. A scripted doc insert joined two wrapped lines (reviewer caught a 190-char line). | UNPROMOTED |
 | 2026-11-24 | [t-2912](.tickets/t-2912/learnings.md) | A selector that maps a path to rules must fail safe per path, not per run: a path whose matching row selected no suite was dropped beside a covered path (the run was scoped, so nothing ran the full suite); count each path's own additions. | UNPROMOTED |
 | 2026-11-24 | [t-ffa8](.tickets/t-ffa8/learnings.md) | A test that compares a CLI's output with the same printer it calls cannot catch what the printer drops: deleting the intro/footer prints and the wrap-boundary change survived until rows were asserted from the data independently | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-24-2026 10:26
 | 2026-11-15 | [t-3786](.tickets/t-3786/learnings.md) | One DOM element shared by every tab is owned by the active tab only if every tab change syncs it; a Terminal pane's tab beside a session tab is the exception (the reviewer caught the blank host half). And a revert-proof copy without node_modules and .tickets fails every board-spec mutant: run a comment-only control first | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
 | 2026-11-15 | [t-420c](.tickets/t-420c/learnings.md) | A preview that a later run acts on must pin what it showed (origin's tip): the run fetched again after the confirm and could push a merge nobody saw; and a refusal changing a shared message needs a grep of every parser, spec and test that reads it | `promoted → standards/efficiency-notes.md` |
 | 2026-11-15 | [t-f5fa](.tickets/t-f5fa/learnings.md) | A save-time check of saved user data against the live registry blocks unrelated writes once the registry moves (retire refused): check shape at save, validity at use; and an undo branch after a helper that already reloaded state deletes real data | `promoted → standards/efficiency-notes.md` |
-| 2026-11-15 | [t-864c](.tickets/t-864c/learnings.md) | A UI spec that mocks the save route never reaches the server validator (Off after a pick was refused); a closed "exactly" list in a criterion must be amended when a reviewer fix adds a case; a survivor inside a ||/&& condition is behaviour, not text. | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md, skills/sprint/reference/complete.md` |
 <!-- canon:learnings:END -->
