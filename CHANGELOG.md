@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-11-24
+
+- Changed: `sprint` and `tkt` help (bare, `help`, `-h`, `--help`) lists commands in groups of related ones, each description at one column and one or two lines long; the text is one table per CLI (`tools/sprint-usage.tsv`, `tools/tkt-usage.tsv`) printed by one shared printer, and a test keeps each table and its dispatcher in step (`tkt pr-ready` was missing). Long explanations live in `tools/ticket.md` (t-ffa8).
+
 ## [0.82.2] - 2026-11-24
 
 - Fixed: gates no longer poll a command the harness moved to the background. Claude Code moves a subagent's command after 180 s whatever `timeout` it passes, and the gate rule (run in the foreground and wait) left the gates polling; they now end their turn and are resumed with the result, in the shared protocol, the six gate agent files and the close's dispatch notes (t-47b3).
