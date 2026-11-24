@@ -271,6 +271,58 @@ git -C "$rec_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m 
 printf 'z\n' >> "$rec_project/.tickets/t-rec1/notes.md"; rec_commit "after a skip" .tickets
 assert_eq 0 "$rec_rc"; assert_contains "$rec_out" "test suite skipped"; assert_contains "$rec_out" "Run /wrapup"   # the reminder still runs after a skip
 
+# ── Covering suites (t-2912) ─────────────────────────────────────────────────
+# Prod path: every `git commit` in a project with tests/suite-map.txt runs only the suites tools/covering-suites.sh picks. The
+# fixture runner lists three suites and records the arguments it was run with; a full run is a run with no arguments.
+cov_project="$(make_project)"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$cov_project" "$scratch_home"' EXIT
+mkdir -p "$cov_project/scripts" "$cov_project/tests" "$cov_project/docs" "$cov_project/src"
+cat > "$cov_project/scripts/test.sh" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--list" ]]; then printf '%s\n' tests/a.sh tests/b.sh tests/c.sh; exit 0; fi
+printf 'args:[%s]\n' "$*" >> "$(dirname "$0")/../runs.log"
+exit 0
+EOF
+chmod +x "$cov_project/scripts/test.sh"
+printf 'docs/guide.md\n' > "$cov_project/tests/a.sh"; : > "$cov_project/tests/b.sh"; : > "$cov_project/tests/c.sh"
+printf 'docs/*.md @named tests/c.sh\n' > "$cov_project/tests/suite-map.txt"
+printf 'g\n' > "$cov_project/docs/guide.md"; printf 'x\n' > "$cov_project/src/app.sh"
+printf 'runs.log\n' > "$cov_project/.gitignore"
+git -C "$cov_project" add -A; git -C "$cov_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m base
+"$SKILLS" add sprint "$cov_project" >/dev/null
+cov_commit() {   # cov_commit <msg> <paths...>: change and stage the paths, commit through the hook; sets cov_rc, cov_out, cov_runs
+  local msg="$1" f; shift
+  for f in "$@"; do printf 'more\n' >> "$cov_project/$f"; done
+  git -C "$cov_project" add -- "$@"; rm -f "$cov_project/runs.log"
+  set +e; cov_out="$(cd "$cov_project" && git -c user.email=t@t -c user.name=t commit -m "$msg" 2>&1)"; cov_rc=$?; set -e
+  cov_runs="$(cat "$cov_project/runs.log" 2>/dev/null || true)"
+}
+# (a) a mapped path: exactly the selected suites (@named picks a.sh, the row adds c.sh, b.sh names nothing), each with its path.
+cov_commit "mapped doc" docs/guide.md
+assert_eq 0 "$cov_rc"; assert_eq "args:[--only tests/a.sh --only tests/c.sh]" "$cov_runs"
+assert_contains "$cov_out" "[pre-commit] Covering suites (tests/suite-map.txt): 2 of 3"
+assert_contains "$cov_out" "tests/a.sh  <- docs/guide.md"; assert_contains "$cov_out" "tests/c.sh  <- docs/guide.md"
+[[ "$cov_out" =~ \[pre-commit\]\ Tests\ passed\ \([0-9]+s\)\. ]] || fail "t-2912: no seconds on the scoped pass line: $cov_out"
+# (b) one unmapped path beside a mapped one: the full suite, and the path that forced it is named (never a silent skip).
+cov_commit "mixed" docs/guide.md src/app.sh
+assert_eq 0 "$cov_rc"; assert_eq "args:[]" "$cov_runs"
+assert_contains "$cov_out" "[pre-commit] Full suite:"; assert_contains "$cov_out" "src/app.sh: no row in tests/suite-map.txt"
+[[ "$cov_out" =~ \[pre-commit\]\ Tests\ passed\ \([0-9]+s\)\. ]] || fail "t-2912: no seconds on the full pass line: $cov_out"
+# (c) a stale label in any row, even one this commit does not match: blocked, the row named, no suite run.
+printf 'docs/*.md @named\nsrc/*.sh tests/gone.sh\n' > "$cov_project/tests/suite-map.txt"; git -C "$cov_project" add tests/suite-map.txt
+git -C "$cov_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m "stale row"
+cov_commit "doc under a stale map" docs/guide.md
+[[ "$cov_rc" -ne 0 ]] || fail "t-2912: a stale map label did not block the commit"
+assert_contains "$cov_out" "BLOCKED — tests/suite-map.txt could not pick the suites"; assert_contains "$cov_out" "row 'src/*.sh': 'tests/gone.sh' is not a scripts/test.sh --list label"
+assert_eq "" "$cov_runs"
+git -C "$cov_project" reset -q --hard
+# (d) no map: the full suite with no arguments, as before t-2912 (every project that ships no map).
+git -C "$cov_project" rm -q tests/suite-map.txt; git -C "$cov_project" -c user.email=t@t -c user.name=t commit -q --no-verify -m "no map"
+cov_commit "doc, no map" docs/guide.md
+assert_eq 0 "$cov_rc"; assert_eq "args:[]" "$cov_runs"
+[[ "$cov_out" != *"Covering suites"* && "$cov_out" != *"Full suite:"* ]] || fail "t-2912: a project with no map printed map output: $cov_out"
+assert_contains "$cov_out" "[pre-commit] Running test suite..."
+
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
 trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$leak_root" "$rec_project" "$nogit_project" "$scratch_home"' EXIT

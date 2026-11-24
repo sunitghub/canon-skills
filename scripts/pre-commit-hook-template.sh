@@ -117,17 +117,44 @@ fi
 if [[ "$RECORDS_ONLY" == 1 && -x "$TEST_RUNNER" ]]; then
   echo "[pre-commit] Records only (.tickets/, HANDOFF, LEARNINGS, DECISIONS): test suite skipped."
 elif [[ -x "$TEST_RUNNER" ]]; then
-  echo "[pre-commit] Running test suite..."
+  # t-2912: a project with tests/suite-map.txt runs only the suites that cover the staged paths (tools/covering-suites.sh owns the
+  # rule); any path the map does not cover runs the full suite, and a map that fails its self-check blocks the commit. No map: the
+  # full suite, as before. The close's full-suite stamp stays the gate.
+  ONLY_ARGS=()
+  if [ -f "$GIT_ROOT/tests/suite-map.txt" ]; then
+    COVER="$CANON_ROOT/tools/covering-suites.sh"
+    _cov_rc=0; cover_out="$(bash "$COVER" "$GIT_ROOT" --staged 2>&1)" || _cov_rc=$?
+    if [ "$_cov_rc" -ne 0 ]; then
+      echo ""
+      echo "[pre-commit] BLOCKED — tests/suite-map.txt could not pick the suites (exit $_cov_rc):"
+      echo "$cover_out" | sed 's/^/  /'
+      echo "  Fix the row it names, or commit with --no-verify on purpose."
+      exit 1
+    fi
+    if grep -q '^ALL	' <<< "$cover_out"; then
+      echo "[pre-commit] Full suite:"
+      grep '^ALL	' <<< "$cover_out" | cut -f2- | sed 's/^/  /'
+    else
+      _total="$(bash "$TEST_RUNNER" --list 2>/dev/null | grep -c . || true)"
+      echo "[pre-commit] Covering suites (tests/suite-map.txt): $(grep -c '^LABEL	' <<< "$cover_out") of $_total"
+      while IFS='	' read -r _k _label _why; do
+        echo "  $_label  <- $_why"
+        ONLY_ARGS+=(--only "$_label")
+      done <<< "$cover_out"
+    fi
+  fi
+  [ "${#ONLY_ARGS[@]}" -gt 0 ] || echo "[pre-commit] Running test suite..."
+  _t0=$SECONDS
   # git exports its own repo into a hook (GIT_INDEX_FILE and GIT_PREFIX always, GIT_DIR from a linked worktree, GIT_WORK_TREE when the caller set it). A suite that runs
   # `git init`/`config`/`worktree` in a temp dir would act on THIS repo instead (t-ce0b). Only the suite is cleaned: the checks
   # above and below need the commit's own index.
   # git (seen on 2.54) also exports the commit's GIT_AUTHOR_NAME/EMAIL/DATE: a suite test that commits would take your identity over its own config.
-  if ! test_output="$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_AUTHOR_DATE bash "$TEST_RUNNER" 2>&1)"; then
+  if ! test_output="$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_AUTHOR_DATE bash "$TEST_RUNNER" ${ONLY_ARGS[@]+"${ONLY_ARGS[@]}"} 2>&1)"; then
     echo "[pre-commit] BLOCKED — test suite failed:"
     echo "$test_output"
     exit 1
   fi
-  echo "[pre-commit] Tests passed."
+  echo "[pre-commit] Tests passed ($((SECONDS - _t0))s)."
 fi
 
 # ── Windows .cmd wrapper coverage check (advisory) ──────────────────────────

@@ -1,0 +1,23 @@
+# t-2912: which suites the pre-commit hook runs for a staged path (read by tools/covering-suites.sh; its header has the rules).
+# A staged path with no row runs the full suite, so a hub (tools/sprint, tools/tkt, tools/platform-lib.sh, tools/skills.sh,
+# tests/helpers.sh, scripts/test.sh, this file) never gets one: nearly every suite runs them. Every scoped run adds
+# tests/pre-gate-suites.txt (caps, the release zip, doc parity). The close's full-suite stamp stays the gate.
+# `@named`: the suites whose source names the path. Every row is checked on every commit: its labels must be --list labels.
+
+skills/*/SKILL.md                         ALL                            # frontmatter: skills.sh list/add/refresh parse every one
+skills/*.md                               @named                         # skill references and checklists
+agents/*.md                               @named                         # gate agent definitions
+agents/*.toml                             @named                         # the Codex mirrors of the same
+docs/*.md                                 @named
+standards/*.md                            @named
+tools/*.md                                @named                         # command reference pages
+changelog.d/*.md                          @named tests/changelog-release.sh
+CHANGELOG.md                              @named
+README.md                                 @named
+tools/sprint-check-app/static/*           @named tools/canon-go/internal/board   # the board's Go suite serves these
+tools/canon-go/internal/daemon/*_test.go  tools/canon-go/internal/daemon         # a Go test file: only its own package suite
+tools/canon-go/internal/board/*_test.go   tools/canon-go/internal/board
+tools/canon-go/internal/common/*_test.go  tools/canon-go/internal/board
+tools/canon-go/internal/events/*_test.go  tools/canon-go/internal/board
+tools/canon-go/internal/settings/*_test.go tools/canon-go/internal/board
+tools/canon-go/cmd/*_test.go              tools/canon-go/internal/board
