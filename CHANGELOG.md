@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.82.2] - 2026-11-24
+
+- Fixed: gates no longer poll a command the harness moved to the background. Claude Code moves a subagent's command after 180 s whatever `timeout` it passes, and the gate rule (run in the foreground and wait) left the gates polling; they now end their turn and are resumed with the result, in the shared protocol, the six gate agent files and the close's dispatch notes (t-47b3).
+
 ## [0.82.1] - 2026-11-24
 
 - Fixed: `tests/sprint-gate-agents.sh` no longer fails at random in the parallel full suite (it blocked four commits, a release among them): it read the newest `sprint.started` from the event log every suite shares, so another suite's start could land first; it now keeps its own log (t-280d).
