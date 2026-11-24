@@ -90,10 +90,11 @@ files only, and still rejects `|| true`.
 - `.github/workflows/test-suite.yml` runs `scripts/test.sh --jobs 4` on `ubuntu-latest` for every pull request, every push
   to `main` and on demand. The job runs on canon-skills only, where minutes are free (`t-a18d`: each private-repo push cost
   ~19 paid minutes); on the private repo it is skipped unless started by hand with Actions › test-suite › Run workflow.
-  `tests/ci-security-config.sh` checks the job's `if:` line in this file and in govulncheck.yml. The summary lists the failing suites with their first FAIL line and the slowest 10, so the first
-  runs show which suites assume macOS. Making it required is a later ticket. It installs with `npm install --no-audit --no-fund
-  --ignore-scripts`, not `npm ci`: `package-lock.json` is gitignored, and with no lockfile pinning the versions, no package's
-  install script may run on the runner (`tests/ci-security-config.sh` checks both).
+  `tests/ci-security-config.sh` checks the job's `if:` line in this file and in govulncheck.yml. The summary lists the
+  failing suites with their first FAIL line and the slowest 10, so the first runs show which suites assume macOS. Making
+  it required is a later ticket. It installs with `npm install --no-audit --no-fund --ignore-scripts`, not `npm ci`:
+  `package-lock.json` is gitignored, and with no lockfile pinning the versions, no package's install script may run on the
+  runner (`tests/ci-security-config.sh` checks both).
 - `.github/workflows/binaries-released.yml` runs `scripts/check-binaries-released.sh --download` on a push to `main` that
   changes `tools/canon-go/**` or `tools/cockpit-daemon.sha256`: a Go change without its release shows up in the summary.
 
