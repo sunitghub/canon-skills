@@ -138,6 +138,7 @@ elif [[ -x "$TEST_RUNNER" ]]; then
       _total="$(bash "$TEST_RUNNER" --list 2>/dev/null | grep -c . || true)"
       echo "[pre-commit] Covering suites (tests/suite-map.txt): $(grep -c '^LABEL	' <<< "$cover_out") of $_total"
       while IFS='	' read -r _k _label _why; do
+        [ "$_k" = LABEL ] || continue   # cover_out carries the tool's stderr too
         echo "  $_label  <- $_why"
         ONLY_ARGS+=(--only "$_label")
       done <<< "$cover_out"
