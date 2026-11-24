@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-24-2026 02:30
+learnings-sweep last run: 11-24-2026 06:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-24 | [t-ffa8](.tickets/t-ffa8/learnings.md) | A test that compares a CLI's output with the same printer it calls cannot catch what the printer drops: deleting the intro/footer prints and the wrap-boundary change survived until rows were asserted from the data independently | UNPROMOTED |
 | 2026-11-24 | [t-47b3](.tickets/t-47b3/learnings.md) | A harness that moves a subagent's command to the background after a fixed cap cannot follow a rule to wait in the foreground: the rule must say end the turn and resume; the probe, not the doc, proved it. A pre-commit integrity check that compares gate files to the tagged release blocks the first gate-file commit made on that tag. | UNPROMOTED |
 | 2026-11-24 | [t-280d](.tickets/t-280d/learnings.md) | A suite that reads the shared event log must pin its own CANON_HOME: under scripts/test.sh another suite's `sprint.started` landed first, and the proof is a foreign-writer harness plus a revert that fails quoting the foreign event. | UNPROMOTED |
 | 2026-11-23 | [t-3e06](.tickets/t-3e06/learnings.md) | A spec test that starts a real daemon session must end it: t-d5a8 (reattach returns no token) turned a leftover live session into a next-test failure that passed alone, so it read as a flake for a whole sprint; and a criterion copied from a sibling path (Build's pi line) must say what that path really prints | `promoted → standards/efficiency-notes.md` |
@@ -80,9 +81,4 @@ learnings-sweep last run: 11-24-2026 02:30
 | 2026-11-15 | [t-420c](.tickets/t-420c/learnings.md) | A preview that a later run acts on must pin what it showed (origin's tip): the run fetched again after the confirm and could push a merge nobody saw; and a refusal changing a shared message needs a grep of every parser, spec and test that reads it | `promoted → standards/efficiency-notes.md` |
 | 2026-11-15 | [t-f5fa](.tickets/t-f5fa/learnings.md) | A save-time check of saved user data against the live registry blocks unrelated writes once the registry moves (retire refused): check shape at save, validity at use; and an undo branch after a helper that already reloaded state deletes real data | `promoted → standards/efficiency-notes.md` |
 | 2026-11-15 | [t-864c](.tickets/t-864c/learnings.md) | A UI spec that mocks the save route never reaches the server validator (Off after a pick was refused); a closed "exactly" list in a criterion must be amended when a reviewer fix adds a case; a survivor inside a ||/&& condition is behaviour, not text. | `promoted → standards/efficiency-notes.md, tools/sprint-check-app/CLAUDE.md, skills/sprint/reference/complete.md` |
-| 2026-11-14 | [t-9b13](.tickets/t-9b13/learnings.md) | A new gate role at a new point in the sprint breaks readers that take the first gate.started as the start of the gates phase (token-spend); and a Go in-memory migration does not reach a protocol that reads the registry file: each new Admin step needs its fallback in the protocol text. | `promoted → standards/efficiency-notes.md, skills/sprint/reference/complete.md` |
-| 2026-11-14 | [t-3425](.tickets/t-3425/learnings.md) | A daemon path that types into a session needs an output-quiet rule, not just the status: awaiting-input is set by hooks and cleared only by input, so it can stay set while the agent works; and a "end your turn now" message must match every branch of what the daemon does (the Plan == Build stall). | `promoted → standards/efficiency-notes.md` |
-| 2026-11-14 | [t-aba6](.tickets/t-aba6/learnings.md) | A reviewer fix that changes behaviour the acceptance states needs the user's consent and an amended criterion, or the evaluator must fail it; and a clause on an external order or time window needs a sort or a test, not a hope | `promoted → skills/sprint/reference/complete.md` |
-| 2026-11-14 | [t-8f6d](.tickets/t-8f6d/learnings.md) | A migration that carries a user's pick across a new rule must apply that rule to the pick, or validation refuses every later save behind an error that names nothing | `promoted → standards/efficiency-notes.md` |
-| 2026-11-14 | [t-9d04](.tickets/t-9d04/learnings.md) | Moving a check to file identity widens what it accepts on a case-insensitive volume: return the folder's own spelling, or every map keyed by a string spelling (holds) misses the new variant | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
