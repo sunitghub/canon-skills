@@ -200,6 +200,7 @@ tests=(
   "$ROOT/tests/pipefail-rewrites.sh"
   "$ROOT/tests/pi-gate-recipe.sh"
   "$ROOT/tests/ci-security-config.sh"
+  "$ROOT/tests/go-checks.sh"
   "$ROOT/tests/model-registry-parity.sh"
   "$ROOT/tests/vendored-manifest.sh"
   "$ROOT/tests/check-vendored.sh"

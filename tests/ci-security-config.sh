@@ -9,10 +9,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 source "$ROOT/tests/helpers.sh"
 WFD=.github/workflows
-EXPECTED="govulncheck.yml vendored-updates.yml test-suite.yml binaries-released.yml"
+EXPECTED="govulncheck.yml vendored-updates.yml test-suite.yml binaries-released.yml go-checks.yml"
 ADVISORY="test-suite.yml binaries-released.yml"   # t-7ef7: the only workflows that may carry continue-on-error (advisory until a ticket makes them required)
 # t-a18d: these run their job on canon-skills (public, free minutes) or by hand only; on the private repo a push cost paid minutes
-GATED="test-suite.yml govulncheck.yml"
+GATED="test-suite.yml govulncheck.yml go-checks.yml"
 GATE="    if: github.repository == 'sunitghub/canon-skills' || github.event_name == 'workflow_dispatch'"
 
 check_common() {   # check_common <workflow file>: the rules every workflow keeps
@@ -117,6 +117,19 @@ check() {   # check <root>: print one line per broken rule ("<file>: <rule>"), n
         { grep -qE 'go install golang\.org/x/vuln/cmd/govulncheck@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
             || echo "govulncheck not installed at an exact vX.Y.Z"
           grep -qE 'run:[[:space:]]*govulncheck[[:space:]]+\./\.\.\.[[:space:]]*$' "$wf" || echo "scan is not a bare 'govulncheck ./...'"
+          grep -qE 'go-version-file:[[:space:]]*tools/canon-go/go\.mod' "$wf" || echo "no go-version-file: tools/canon-go/go.mod"
+        } | sed "s/^/$name: /" ;;
+      go-checks.yml)   # t-9a2b: exact tool pins, the user's cadence (no pull_request), a time cap, the two exact run lines
+        { grep -qE 'go install honnef\.co/go/tools/cmd/staticcheck@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
+            || echo "staticcheck not installed at an exact vX.Y.Z"
+          grep -qE 'go install github\.com/securego/gosec/v2/cmd/gosec@v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$' "$wf" \
+            || echo "gosec not installed at an exact vX.Y.Z"
+          grep -qE 'run:[[:space:]]*go test -race -count=1 \./\.\.\.[[:space:]]*$' "$wf" || echo "race run is not a bare 'go test -race -count=1 ./...'"
+          grep -qE 'run:[[:space:]]*bash tools/go-checks\.sh --require tools/canon-go[[:space:]]*$' "$wf" \
+            || echo "lint run is not a bare 'bash tools/go-checks.sh --require tools/canon-go'"
+          grep -qE '^[[:space:]]+timeout-minutes:[[:space:]]*[0-9]+' "$wf" || echo "no timeout-minutes"
+          ! grep -qE '^[[:space:]]+pull_request:' "$wf" || echo "runs on pull_request (cadence: schedule, Go-path push, by hand)"
+          awk '/^  push:/{p=1;next} p&&/^  [^ ]/{p=0} p&&/paths:/{f=1} END{exit !f}' "$wf" || echo "push has no paths filter"
           grep -qE 'go-version-file:[[:space:]]*tools/canon-go/go\.mod' "$wf" || echo "no go-version-file: tools/canon-go/go.mod"
         } | sed "s/^/$name: /" ;;
       vendored-updates.yml)
@@ -247,5 +260,20 @@ plant "missing $TPL" $TPL rm
 # t-a18d: the canon-skills job gate
 plant "$S: not gated to canon-skills" $S '/^    if: github\.repository/d'
 plant "$G: not gated to canon-skills" $G '/^    if: github\.repository/d'
+# t-9a2b: go-checks.yml
+C=go-checks.yml
+plant "$C: not gated to canon-skills" $C '/^    if: github\.repository/d'
+plant "$C: staticcheck not installed at an exact" $C 's/staticcheck@v[0-9.]+$/staticcheck/'
+plant "$C: gosec not installed at an exact" $C 's/gosec@v[0-9.]+$/gosec@main/'
+plant "$C: a step failure is swallowed" $C 's/--require tools\/canon-go$/--require tools\/canon-go || true/'
+plant "$C: a step failure is swallowed" $C 's/^        run: go test -race -count=1 \.\/\.\.\.$/        continue-on-error: true\n&/'
+plant "$C: race run is not a bare" $C 's/-race -count=1/-count=1/'
+plant "$C: lint run is not a bare" $C 's/ --require tools\/canon-go$/ tools\/canon-go/'
+plant "$C: no timeout-minutes" $C '/timeout-minutes:/d'
+plant "$C: runs on pull_request" $C 's/^  workflow_dispatch:/  workflow_dispatch:\n  pull_request:/'
+plant "$C: push has no paths filter" $C '/^    paths:$/,/go-checks\.yml"$/d'
+plant "$C: no go-version-file" $C '/go-version-file:/d'
+plant "cron shared by two workflows" $C 's/"29 6 \* \* 1"/"17 6 * * 1"/'
+plant "missing $WFD/$C" $C rm
 
 echo "ci-security-config: ok ($(ls "$ROOT/$WFD" | wc -l | tr -d ' ') workflows and the canon-gate template pinned and least-privilege, no dependabot config; $n planted breaks caught)"

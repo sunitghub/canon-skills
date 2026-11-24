@@ -1,4 +1,4 @@
-# CI security: govulncheck and vendored code
+# CI security: govulncheck, go-checks and vendored code
 
 `.github/workflows/govulncheck.yml` (`t-b525`) scans the Go daemon module, `tools/canon-go`, with
 [govulncheck](https://go.dev/doc/security/vuln/). It reports only vulnerabilities the code can reach, and it
@@ -154,6 +154,77 @@ govulncheck ./...
 
 It needs `vuln.go.dev`. Where that host is blocked but Google Cloud Storage is not, the same database is at
 `govulncheck -db https://storage.googleapis.com/go-vulndb ./...`.
+
+## go-checks: race detector, staticcheck, gosec (t-9a2b)
+
+`.github/workflows/go-checks.yml` runs three checks on `tools/canon-go`:
+- `go test -race -count=1 ./...`
+- staticcheck
+- gosec
+
+The last two run through `tools/go-checks.sh`, the one owner of their command lines. `tools/pre-gate-check.sh` runs the same script on a
+sprint's changed Go packages as an advisory `go-checks` field: a finding is shown but never fails the close, and the field
+reads `skipped` when neither tool is installed.
+
+**When it runs** (user, 2026-11-23):
+- weekly (Monday 06:29 UTC)
+- on a push to `main` that touches `tools/canon-go/**`, `tools/go-checks.sh` or the workflow file
+- by hand (Actions › go-checks › Run workflow)
+
+It has no `pull_request` trigger, because your own changes reach canon-skills as a push. Like govulncheck, the job runs on canon-skills only (free
+minutes) and on the private repo only by hand. `tests/ci-security-config.sh` holds the workflow to this shape: exact tool pins,
+no `pull_request`, a `paths` filter, `timeout-minutes`, and the two exact run lines.
+
+**Pins**:
+- staticcheck `honnef.co/go/tools/cmd/staticcheck@v0.8.2`
+- gosec `github.com/securego/gosec/v2/cmd/gosec@v2.30.0`
+
+Bump them by hand in a sprint (`go list -m -versions <module>`), and fix or record every new finding in the same change.
+
+**Run it locally**:
+
+```bash
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+tools/go-checks.sh --require tools/canon-go        # 0 clean, 1 a finding, 2 a tool missing or a bad exclude line
+(cd tools/canon-go && go test -race -count=3 ./...) # -count=1 can hide a race (t-77ba's second one showed only at 3)
+```
+
+### Exclusions
+
+A rule is excluded for the whole module only when one reason holds at every site. Each excluded rule is a line in
+`tools/canon-go/.gosec-excludes`, `G<nnn> <reason>`, and `go-checks.sh` refuses a line without a reason. Each one also needs a
+row in the table below: `tests/go-checks.sh` fails when one is missing. A single finding is not excluded. Instead it gets
+`// #nosec G<nnn> -- <reason>` (gosec) or `//lint:ignore <check> <reason>` (staticcheck) on its own line. G112 (a server
+without `ReadHeaderTimeout`) is never excluded: both servers set it, and it is the plant that proves the gosec step can fail.
+Reviewed with the user on 2026-11-24; the counts are as of then.
+
+| Rule | Sites | Why it is excluded |
+|---|---|---|
+| G104 | 88 | Unchecked errors on best-effort writes and closes (HTTP responses, logs, temp files) whose error has nowhere useful to go. |
+| G122 | 3 | A path from a variable in a walk callback. Repo-path reads are guarded (Lstat, regular files only, a size cap: t-ca73). |
+| G204 | 43 | exec with a variable command or args. canon always passes separate args and never runs a shell. |
+| G301 | 26 | 0755 directories under the project or canon's state dir, readable like git's own. |
+| G302 | 4 | 0644 logs and settings, readable like git's own. Secrets are written 0600. |
+| G304 | 115 | A path from a variable. Repo-path reads are guarded (t-ca73). The os.Root slice (t-9a2b's follow-up) moves the files the board serves under a root, not all of these. |
+| G306 | 20 | 0644 project files (tickets, docs, settings), readable like git's own. Secrets are written 0600. |
+| G702 | 10 | The taint form of G204: the same exec calls with separate args and no shell (all 10 read). |
+| G703 | 83 | The taint form of G304: the same path reads, guarded per t-ca73. |
+
+Line-level exceptions (each reason sits on the line itself):
+
+| Site | Rule | Why |
+|---|---|---|
+| `internal/daemon/main.go` cockpit page write | G705 | Every value substituted into the page is validated: ticket and cwd by regex, the parent by `parentOriginRe`, mode and agent from fixed sets. |
+| `internal/board/main.go` skill-eval report | G705 | Served under `CSP: sandbox` without `allow-same-origin`, so it cannot reach the board API. |
+| `internal/board/main.go` `serveFile` | G705 | Callers pass the board's own app and cockpit files, or image-extension paths only (`screenshotPathRe`, `imageExts`). |
+| `internal/board/apiv1events.go` stream frame | G705 | A `text/event-stream` frame of JSON-encoded events, not HTML. |
+| `internal/board/main.go` `cockpitRunningBuild` | G704 | The address comes from `daemon.json` in canon's own state dir, written by the user's daemon (same trust as the board). |
+| `internal/board/skilleval.go` ×2 | G115 | The line above range-checks the value (`r <= 0xFF`, `v <= 0x10FFFF`). |
+| `internal/board/skilleval.go` sha1 | G401, G505 | Makes a 12-hex cache tag for a skill folder, not a secret or a signature. |
+| `internal/events/seal.go` `hashDay` | G602 | The index is inside `if n > 0`, and `n <= len(buf)`. |
+| `internal/daemon/main_test.go` ×3 | SA2001 | An empty `snapMu` critical section is a deliberate barrier that orders `killSession`'s registration before the teardown's Wait. |
+| `internal/board/copilotmodels.go` ×6, `internal/term/gitbash.go` | ST1005 | The message starts with a product name (Copilot, Git) and is shown to the user as written. |
 
 ## Vendored third-party code: new versions and advisories
 

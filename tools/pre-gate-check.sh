@@ -5,6 +5,7 @@
 #   non-zero (the stamped log then ends `exit 1`, which `sprint check-evidence` refuses). A MISSING tool is never a
 #   pass: the line says `<tool> skipped | no <tool>`.
 #   A project with tests/gate-cases/ also runs the gate eval set (gate-cases.sh run) and says `gate cases N/N`; a failing case is non-zero (t-2178).
+#   t-9a2b: also advisory, `go-checks ok|findings (advisory)|skipped`: tools/go-checks.sh (staticcheck + gosec) on the changed Go packages.
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
 #   --changed), and every changed file the scan cannot read ("not scanned").
 #   t-835f: also advisory, a `size` field: `planned N files, changed M, +A/-D` from the same diff, with `unplanned:` (a changed file plan.md's
@@ -124,7 +125,7 @@ changelog_report() {
 }
 
 run_checks() {
-  local base files f line="pre-gate" fails="" out rc=0 sc=() nd=() gd=() d
+  local base files f line="pre-gate" fails="" adv="" out rc=0 sc=() nd=() gd=() d
   if [[ -n "${PRE_GATE_BASE-}" ]]; then base="$PRE_GATE_BASE"
   else base="$(gate_base .)" || { echo "pre-gate: no git baseline ($base); set PRE_GATE_BASE" >&2; return 2; }   # t-99d2
   fi
@@ -153,14 +154,24 @@ run_checks() {
   fi
   if ((${#gd[@]})); then
     if command -v go >/dev/null 2>&1; then
-      local bad=0 mod rel
+      local bad=0 mod rel lint=0 lbad=0 lmods=() lpkgs=() i
       for d in "${gd[@]}"; do
         mod="$d"; while [[ "$mod" != . && ! -f "$mod/go.mod" ]]; do mod="$(dirname "$mod")"; done
         [[ -f "$mod/go.mod" ]] || continue
         rel="./${d#"$mod"/}"; [[ "$d" == "$mod" ]] && rel=.
         out="$(cd "$mod" && go vet "$rel" 2>&1)" || { bad=1; fails+="$out"$'\n'; }
+        lmods+=("$mod"); lpkgs+=("$rel")
       done
       if ((bad)); then line+=" | go vet FAIL"; rc=1; else line+=" | go vet ${#gd[@]} pkg ok"; fi
+      # t-9a2b: staticcheck + gosec through go-checks.sh (the module's .gosec-excludes), advisory: a finding never changes rc.
+      # Checked here, not by go-checks' exit, since a run with both tools missing also exits 0.
+      if ! type -P staticcheck >/dev/null && ! type -P gosec >/dev/null; then line+=" | go-checks skipped | no staticcheck/gosec"
+      elif ((${#lmods[@]})); then
+        for i in "${!lmods[@]}"; do
+          lint=1; out="$("$SCRIPT_DIR/go-checks.sh" "${lmods[$i]}" "${lpkgs[$i]}" 2>&1)" || { lbad=1; adv+="$out"$'\n'; }
+        done
+        if ((lbad)); then line+=" | go-checks findings (advisory)"; elif ((lint)); then line+=" | go-checks ok"; fi
+      fi
     else line+=" | go vet skipped | no go"; fi
   fi
 
@@ -213,6 +224,7 @@ run_checks() {
   line+="$(changelog_report "$base")"
   printf '%s\n' "$line"
   [[ -z "$fails" ]] || printf '%s' "$fails"
+  [[ -z "$adv" ]] || printf 'go-checks (advisory):\n%s' "$adv"
   return "$rc"
 }
 

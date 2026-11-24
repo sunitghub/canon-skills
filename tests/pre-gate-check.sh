@@ -77,6 +77,33 @@ run "$ID"
 [[ "$code" != 0 ]] || fail "pre-gate-check: a vet error passed"
 assert_contains "$out" "go vet FAIL" "pre-gate-check: go vet failure line"
 
+# --- t-9a2b: go-checks (staticcheck + gosec via tools/go-checks.sh), advisory: ok, a finding never fails, both tools missing is skipped ---
+# The PATH drops any dir holding a real staticcheck/gosec, so only the fakes below (or none) are seen.
+NOLINT=""; IFS=: read -ra pdirs <<<"$PATH"
+for d in "${pdirs[@]}"; do [[ -x "$d/staticcheck" || -x "$d/gosec" ]] || NOLINT+="${NOLINT:+:}$d"; done
+PATH="$NOLINT" type -P go >/dev/null || fail "pre-gate-check: go shares a PATH dir with staticcheck/gosec; this test cannot hide them"
+FAKE="$WORK/fakelint"; mkdir -p "$FAKE"
+printf '#!/usr/bin/env bash
+exit 0
+' > "$FAKE/staticcheck"
+printf '#!/usr/bin/env bash
+[[ -z "${FAKE_GOSEC_FIND:-}" ]] || { echo "G999 planted finding"; exit 1; }
+' > "$FAKE/gosec"
+chmod +x "$FAKE/staticcheck" "$FAKE/gosec"
+reset
+mkdir -p gomod; printf 'module m\n\ngo 1.21\n' > gomod/go.mod; printf 'package m\n\nfunc A() {}\n' > gomod/a.go; commit
+set +e; out="$(cd "$R" && PATH="$FAKE:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok" "pre-gate-check: clean go-checks line"
+rm -rf ".tickets/$ID/evidence"
+set +e; out="$(cd "$R" && FAKE_GOSEC_FIND=1 PATH="$FAKE:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"   # advisory: a finding never changes the exit code
+assert_contains "$out" "| go-checks findings (advisory)" "pre-gate-check: go-checks finding line"
+assert_contains "$out" "G999 planted finding" "pre-gate-check: the tool's own finding is shown"
+rm -rf ".tickets/$ID/evidence"
+set +e; out="$(cd "$R" && PATH="$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks skipped | no staticcheck/gosec" "pre-gate-check: no linters is skipped"
+[[ "$out" != *"go-checks ok"* ]] || fail "pre-gate-check: missing linters reported ok"
+
 # --- shellcheck absent from PATH: skipped, never a pass ---
 reset
 printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; commit

@@ -1,0 +1,42 @@
+# t-9a2b: canon-go's race detector, staticcheck and gosec (tools/go-checks.sh owns the lint command lines and reads
+# tools/canon-go/.gosec-excludes). Same read-only, pinned shape as govulncheck.yml; the public mirror canon-skills carries it too.
+# Cadence (user, 2026-11-23): weekly, on a push to main that changes Go, and by hand; never on every push, no pull_request.
+# t-a18d: runs on canon-skills only (public, free minutes) and on the private repo only by hand. Pins: docs/ci-security.md.
+name: go-checks
+
+on:
+  schedule:
+    - cron: "29 6 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/canon-go/**"
+      - "tools/go-checks.sh"
+      - ".github/workflows/go-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  go-checks:
+    if: github.repository == 'sunitghub/canon-skills' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/canon-go/go.mod
+          cache: false
+      - name: Install staticcheck and gosec
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@v0.8.2
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+      - name: Race detector
+        working-directory: tools/canon-go
+        run: go test -race -count=1 ./...
+      - name: staticcheck and gosec
+        run: bash tools/go-checks.sh --require tools/canon-go
