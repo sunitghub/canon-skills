@@ -24,11 +24,13 @@ tkt current                   # show active ticket
 tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint — directs to sprint complete if sprint docs exist, or to sprint start/--no-sprint otherwise)
 tkt archive <id>              # mark archived (hidden from board, searchable)
 tkt reopen <id>               # reopen
-tkt ci <id> [on|off]          # mark CI-eligible for headless grading
+tkt ci <id> [on|off]          # mark CI-eligible for headless grading (default on); reminds you to `git add -f` the ticket's docs where .tickets/ is gitignored
 tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
-tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
-tkt manual <id> [on|off]      # user-tested close: your sign-off (sprint manual-qa) replaces re-testing; evaluator read-only
-tkt tags <id> [csv]           # print or replace a ticket's tags (tkt create --tags a,b); the board finds them with tag:x
+tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku), skipping the advisory reviewer and the rest of wrapup; never drops below the evaluator; no arg prints the state, off removes the line
+tkt manual <id> [on|off]      # user-tested close: your sign-off (sprint manual-qa) replaces re-testing; evaluator read-only; refused at the close for high-risk or gate-file work
+tkt copy-back <id>            # copy a worktree's own ticket folder back to main (the board's Done/Discard runs it)
+tkt why <file>                # tickets whose commits touched a file
+tkt tags <id> [csv]           # print or replace a ticket's tags (tkt create --tags a,b); the board finds them with tag:x; lowercase letters, digits and dashes, at most 8; an empty list clears them
 tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 tkt compact [--older-than DAYS] [--dry-run]  # shrink old closed tickets' evidence/ (default 14 days); sprint complete runs it
@@ -39,6 +41,7 @@ tkt import-results <id> [--pr N]    # on your machine: bring canon-results/<id> 
 tkt sync-issues [--dry-run [--json]] [--only N[,N...]] # make a ticket of each open issue labelled canon that no ticket links to (labels: bug|feature|task|chore|epic, p0-p4); --json: the dry run as one object (Factory › GitHub's Intake); --only: make tickets for just those issue numbers (refuses, writing nothing, any that is not waiting)
 tkt github-doctor [--json]          # read-only GitHub readiness: gh installed and signed in, then 2.1 repo on GitHub, 2.2 origin points at it, 2.3 first push (public/private shown), test command (optional); the cloud recipe (Cockpit: Factory › GitHub)
 tkt cloud-env [--json]              # this project's Claude cloud environment recipe (domains, setup script) from tools/cloud-env.sh; Go projects get the Go part
+tkt merge <id> [--test CMD] [--yes | --check]  # Check & merge any closed ticket: one sent to GitHub merges its PR (merge-pr, same options plus --pr N); any other merges its worktree branch into the project's default branch (origin/HEAD, else main or master) here, as one merge commit, after the same checks and its tests on that branch + the work branch; a main checkout on another branch stays there (the default branch moves by ref)
 tkt merge-pr <id> [--pr N] [--test CMD] [--yes | --check]  # on your machine: check a cloud ticket's PR (evaluator passed on its head, own repo, mergeable, suite green on base + PR) and merge it after a y, then fast-forward the local base branch, or merge GitHub's into it when it has local commits (t-dde9) (when your own changes to a file stop that, fix them and run `tkt merge-pr <id>` again: on a ticket already merged it only retries the local update); --check reports readiness without running anything; progress shows while the tests run (CANON_PROGRESS_SECONDS without a terminal, default 30); a red run names the FAILED/FAIL lines and keeps the full log (path printed)
 tkt merged <id> --pr N [--sha S]   # record a PR merged outside merge-pr (by hand): checks GitHub says MERGED and the PR head is on origin's base, then writes merged:, the github.md trail and the github.merged event (nothing is written when a check fails; a ticket with merged: is left alone). The board's GitHub poll does the same by itself (actor: system)
 tkt github-status <id> [--json]      # where a ticket sent to GitHub stands: sent, branch (pushed, no PR), pr-open, results-ready, results-in or merged, plus the canon.mirror remotes (read-only apart from fetching a PR head past graded-head that is not local yet; what the board polls; a PR GitHub says is merged that the ticket has no merged: for is recorded once, as `tkt merged` does, or comes back as a `warning` when a check fails)
@@ -49,6 +52,8 @@ tkt land <id> [--pr N] [--fix]   # continue an imported cloud ticket here: a wor
 tkt finish <id> [--check | --push --yes | --reset --yes | --dismiss]  # after tkt merge: list or push the default branch to origin (never forced; when origin moved on, Push first merges origin's branch into it), then reset the ticket's worktree; --dismiss hides the board's Finish step
 tkt worktree-reset [--yes | --dry-run]  # in a linked worktree whose PR merged: fetch, then reset its long-lived tracking branch to origin's default branch. Refuses (one line, with the fix) in the main checkout, on the default branch, on a detached HEAD, on uncommitted or untracked files (canon's .agents/skills and .claude/skills links aside), on commits on no remote, on skip-worktree/assume-unchanged files, mid merge/rebase/cherry-pick/revert, or when the fetch fails. Prints the commits and files it drops and the new tip; stash and other worktrees are a notice (shared, untouched). Asks once (--yes skips; no terminal refuses). Never pushes, deletes a branch or removes a worktree
 tkt take-back <id> [--close-issue]   # bring a ticket sent to GitHub back to this machine (clears runs: github; --close-issue also closes the issue and clears github:)
+tkt commit-push <id> [--dry-run] [--file <path>]... [--message <text>]  # commit exactly the named files in the ticket's checkout, then push its branch to origin (never forced; -u for a new branch; refused when origin is ahead); --dry-run lists branch and files
+tkt pr-ready <id> [--pr N]           # mark the ticket's own open, same-repo draft PR ready so merge-pr can merge it (the board's Mark ready); undo: gh pr ready --undo N
 ```
 
 `tkt compact` touches only closed or cancelled tickets whose `ticket.md` is older than DAYS. It deletes the raw
