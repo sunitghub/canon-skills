@@ -65,7 +65,7 @@ session "$P" $(( now - 3600 ))
 id="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
 out="$(cd "$P" && "$ROOT/tools/sprint" continue "$id" 2>&1)"; assert_contains "$out" "WARNING: canon's gate agents"
 # 7. silent, and no gate_agents field, outside Claude Code or when the transcript is not found
-newp; out="$(CLAUDECODE= start notcc)"; [[ "$out" != *"WARNING: canon's gate agents"* ]] || fail "warned outside Claude Code: $out"
+newp; out="$(CLAUDECODE='' start notcc)"; [[ "$out" != *"WARNING: canon's gate agents"* ]] || fail "warned outside Claude Code: $out"
 [[ "$(last_started)" != *gate_agents* ]] || fail "gate_agents written outside Claude Code"
 newp; out="$(CLAUDE_CODE_SESSION_ID=nope start notranscript)"; [[ "$out" != *"WARNING: canon's gate agents"* ]] || fail "warned with no transcript: $out"
 
