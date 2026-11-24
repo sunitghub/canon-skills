@@ -1,0 +1,1 @@
+- Changed: a release commit runs only the suites that read `VERSION` (27 suites, about 90 s) instead of the full suite (about 400 s): `tests/suite-map.txt` maps it, and `tests/git-precommit-hook.sh` checks canon's own map keeps the release file set scoped (t-0fe6).
