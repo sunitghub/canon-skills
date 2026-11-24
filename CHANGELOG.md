@@ -6,6 +6,11 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-11-24
+
+- Added: `go-checks` CI (`.github/workflows/go-checks.yml`): canon-go's race detector, staticcheck v0.8.2 and gosec v2.30.0, weekly, on a push that changes Go, and by hand (canon-skills only). `tools/go-checks.sh` owns both lint command lines; gosec rules are switched off only in `tools/canon-go/.gosec-excludes`, each with a reason (`docs/ci-security.md` lists them). Pre-gate runs it on a sprint's changed Go packages as an advisory `go-checks` field when either tool is installed (t-9a2b).
+- Fixed: a data race in the daemon's session teardown: the Copilot turn watcher now joins the session's goroutine group (t-77ba). The board and daemon servers set `ReadHeaderTimeout`. Restart the daemon after updating (Admin › **Restart Daemon**) (t-9a2b).
+
 ## [0.84.2] - 2026-11-24
 
 - Changed: a release commit runs only the suites that read `VERSION` (27 suites, about 90 s) instead of the full suite (about 400 s): `tests/suite-map.txt` maps it, and `tests/git-precommit-hook.sh` checks canon's own map keeps the release file set scoped (t-0fe6).
