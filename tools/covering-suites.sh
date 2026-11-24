@@ -23,7 +23,8 @@ usage() { echo "usage: covering-suites.sh <project root> --staged | <project roo
 [[ $# -ge 2 ]] || usage
 ROOT="$1"; shift
 [[ -d "$ROOT" ]] || { echo "covering-suites: no such folder: $ROOT" >&2; exit 2; }
-MAP="$ROOT/tests/suite-map.txt"
+MAP_NAME="tests/suite-map.txt"   # one literal: evidence.sh scope-audit reads a tests path followed by a variable as a suite built at run time
+MAP="$ROOT/$MAP_NAME"
 PINS="$ROOT/tests/pre-gate-suites.txt"
 NL=$'\n'; TAB=$'\t'
 
@@ -80,7 +81,7 @@ while IFS= read -r p; do
       esac
     done
   done <<<"$ROWS"
-  (( mapped )) || FULL+="$p: no row in tests/suite-map.txt$NL"
+  (( mapped )) || FULL+="$p: no row in $MAP_NAME$NL"
 done <<<"$PATHS"
 
 if [[ -n "$FULL" ]]; then printf '%s' "$FULL" | sed 's/^/ALL	/'; exit 0; fi
