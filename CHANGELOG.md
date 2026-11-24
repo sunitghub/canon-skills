@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.84.2] - 2026-11-24
+
+- Changed: a release commit runs only the suites that read `VERSION` (27 suites, about 90 s) instead of the full suite (about 400 s): `tests/suite-map.txt` maps it, and `tests/git-precommit-hook.sh` checks canon's own map keeps the release file set scoped (t-0fe6).
+
 ## [0.84.1] - 2026-11-24
 
 - Changed: canon's own CI checks (`test-suite`, `govulncheck`) run their job on the public canon-skills repo only, where Actions minutes are free and every release lands; on the private repo they run only when started by hand (Actions › Run workflow), and `tests/ci-security-config.sh` keeps the guard line in both workflows (t-a18d).
