@@ -103,6 +103,11 @@ rm -rf ".tickets/$ID/evidence"
 set +e; out="$(cd "$R" && PATH="$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code"; assert_contains "$out" "| go-checks skipped | no staticcheck/gosec" "pre-gate-check: no linters is skipped"
 [[ "$out" != *"go-checks ok"* ]] || fail "pre-gate-check: missing linters reported ok"
+# only one tool installed (gosec): go-checks still runs, it is not the both-missing skip
+FAKE1="$WORK/fakelint1"; mkdir -p "$FAKE1"; cp "$FAKE/gosec" "$FAKE1/gosec"
+rm -rf ".tickets/$ID/evidence"
+set +e; out="$(cd "$R" && PATH="$FAKE1:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok" "pre-gate-check: one linter installed still runs go-checks"
 
 # --- shellcheck absent from PATH: skipped, never a pass ---
 reset

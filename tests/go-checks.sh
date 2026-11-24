@@ -17,7 +17,7 @@ NOLINT=""; IFS=: read -ra pdirs <<<"$PATH"
 for d in "${pdirs[@]}"; do [[ -x "$d/staticcheck" || -x "$d/gosec" ]] || NOLINT+="${NOLINT:+:}$d"; done
 FAKE="$WORK/fake"; mkdir -p "$FAKE"
 for t in staticcheck gosec; do
-  printf '#!/usr/bin/env bash\necho "$*" > "%s/%s.argv"\n[[ "${FAKE_FIND:-}" != %s ]] || { echo "%s planted finding"; exit 1; }\n' "$WORK" "$t" "$t" "$t" > "$FAKE/$t"
+  printf '#!/usr/bin/env bash\necho "$*" > "%s/%s.argv"; pwd > "%s/%s.pwd"\n[[ "${FAKE_FIND:-}" != %s ]] || { echo "%s planted finding"; exit 1; }\n' "$WORK" "$t" "$WORK" "$t" "$t" "$t" > "$FAKE/$t"
   chmod +x "$FAKE/$t"
 done
 M="$WORK/mod"; mkdir -p "$M"; printf 'module m\n\ngo 1.21\n' > "$M/go.mod"
@@ -29,11 +29,15 @@ run "$FAKE:$NOLINT" --require "$M"
 assert_eq 0 "$code"; assert_contains "$out" "staticcheck ok" "go-checks: staticcheck ok"; assert_contains "$out" "gosec ok" "go-checks: gosec ok"
 assert_eq "./..." "$(cat "$WORK/staticcheck.argv")"
 assert_eq "-quiet ./..." "$(cat "$WORK/gosec.argv")"
+# both tools run inside the module, so ./... means its packages
+assert_eq "$M" "$(cat "$WORK/staticcheck.pwd")"; assert_eq "$M" "$(cat "$WORK/gosec.pwd")"
 
-# a finding from either tool is 1, with the tool's own output
+# a finding from either tool is 1, with the tool's own output; a staticcheck finding still lets gosec run
 for t in staticcheck gosec; do
+  rm -f "$WORK"/*.argv
   set +e; out="$(FAKE_FIND=$t PATH="$FAKE:$NOLINT" bash "$GC" --require "$M" ./a 2>&1)"; code=$?; set -e
   assert_eq 1 "$code"; assert_contains "$out" "$t planted finding" "go-checks: $t finding shown"; assert_contains "$out" "$t FAIL" "go-checks: $t FAIL line"
+  [[ -f "$WORK/staticcheck.argv" && -f "$WORK/gosec.argv" ]] || fail "go-checks: a $t finding stopped the other tool"
 done
 assert_eq "-quiet ./a" "$(cat "$WORK/gosec.argv")"
 
@@ -54,6 +58,15 @@ run "$FAKE:$NOLINT" --require "$M"
 assert_eq 2 "$code"; assert_contains "$out" ".gosec-excludes:2: needs 'G<nnn> <reason>'" "go-checks: reasonless exclude refused"
 run "$FAKE:$NOLINT" "$M" "./..."
 assert_eq 2 "$code"
+# the rule must start the line
+printf 'XG104 a reason\n' > "$M/.gosec-excludes"
+run "$FAKE:$NOLINT" --require "$M"
+assert_eq 2 "$code"; assert_contains "$out" ".gosec-excludes:1: needs" "go-checks: a line not starting with G<nnn> refused"
+# a last line without a newline still counts
+printf 'G104 a reason\nG304 another reason' > "$M/.gosec-excludes"
+run "$FAKE:$NOLINT" --require "$M"
+assert_eq 0 "$code"; assert_eq "-quiet -exclude=G104,G304 ./..." "$(cat "$WORK/gosec.argv")"
+rm -f "$M/.gosec-excludes"
 
 # usage: no module, or a dir with no go.mod
 run "$FAKE:$NOLINT"; assert_eq 2 "$code"
