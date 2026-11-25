@@ -21,6 +21,7 @@ var valid = map[string]string{
 	"plan.md":         "# Plan\n\n## Sign-off\n**Tier**: Normal. | Risk: low | Gate model: haiku\n\n- [x] Plan approved — proceed to implementation\nApproved: sha256:" + hex64 + " 2026-11-24T22:40:44Z\nPipeline: sha256:1de8c9fc6b17 off=- wrapup=code-simplifier\n\n## Approach\nTier: a prose line outside Sign-off\nApproved: by the user\n```\n- [ ] Plan approved\n```\n",
 	"eval-report.md":  "evaluator-run-id: 1795556751-20092\ngraded-head: " + hex40 + "\nModel: sonnet (Admin Evaluator default, claude)\n\npass: every criterion is proven\n\n```\nfail: a quoted log line\nevaluator-run-id: quoted\n```\n",
 	"review-notes.md": "# Review\n\nAct On: none\n\n## Verdict\n\n**YES** — nothing to act on\n",
+	"spec-review.md":  "# Spec check: t-abcd\n\nModel: sonnet\n\n## Verdict\nGAPS — two findings\n\n## Findings\n1. Plan — x: y. Fix: z.\n",
 }
 
 type refusal struct {
@@ -73,6 +74,10 @@ var refusals = []refusal{
 	{"eval-report.md", "pass: every criterion is proven\n", "pass: every criterion is proven\nfail: and another\n", "eval.verdict", 6},
 	{"review-notes.md", "**YES** — nothing to act on", "Maybe — later", "review.verdict", 0},
 	{"review-notes.md", "## Verdict\n", "Verdict: YES\n", "review.verdict", 1},
+	{"spec-review.md", "GAPS — two findings", "READY | GAPS — <one sentence>", "spec.verdict", 0},
+	{"spec-review.md", "GAPS — two findings", "PASS — fine", "spec.verdict", 0},
+	{"spec-review.md", "## Verdict\nGAPS — two findings\n", "## Verdict\n", "spec.verdict", 0},
+	{"spec-review.md", "## Verdict\n", "Verdict: READY\n", "spec.verdict", 1},
 }
 
 func lineOf(text, needle string) int {
@@ -224,7 +229,7 @@ func TestValidateFolderAndFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if fs, n, err := Validate(dir); err != nil || n != 5 || len(fs) != 0 {
+	if fs, n, err := Validate(dir); err != nil || n != len(Files) || len(fs) != 0 {
 		t.Fatalf("valid folder: got %v %d %v", fs, n, err)
 	}
 	bad := filepath.Join(dir, "ticket.md")
@@ -387,7 +392,7 @@ func TestStrictLinesAreAnchored(t *testing.T) {
 // The rules table names a known file for each rule, by its id's prefix; a quoted line drops control characters and
 // stops at 60 characters; a file at the cap is read (t-c2de mutation sweep).
 func TestRulesQuoteAndCap(t *testing.T) {
-	prefix := map[string]string{"ticket": "ticket.md", "acceptance": "acceptance.md", "plan": "plan.md", "eval": "eval-report.md", "review": "review-notes.md"}
+	prefix := map[string]string{"ticket": "ticket.md", "acceptance": "acceptance.md", "plan": "plan.md", "eval": "eval-report.md", "review": "review-notes.md", "spec": "spec-review.md"}
 	for _, r := range Rules {
 		if want := prefix[strings.SplitN(r.ID, ".", 2)[0]]; r.File != want {
 			t.Errorf("rule %s: File %q, want %q", r.ID, r.File, want)
@@ -409,5 +414,58 @@ func TestRulesQuoteAndCap(t *testing.T) {
 	}
 	if _, _, err := Validate(p); err != nil {
 		t.Errorf("a file of exactly MaxSize bytes is read: %v", err)
+	}
+}
+
+// Holds is what `sprint approve` and `sprint next` ask (t-2bfe): a missing file or a malformed line is false, the pin
+// counts only inside `## Sign-off`, a link or an unknown rule is an error and never "holds".
+func TestHolds(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "t-abcd")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := func(id string, w bool) {
+		t.Helper()
+		if got, err := Holds(dir, id); err != nil || got != w {
+			t.Fatalf("Holds(%s) = %v, %v; want %v", id, got, err, w)
+		}
+	}
+	want("spec.verdict", false) // no file
+	want("plan.approved-stamp", false)
+	write("spec-review.md", valid["spec-review.md"])
+	want("spec.verdict", true)
+	write("spec-review.md", strings.Replace(valid["spec-review.md"], "GAPS — two findings", "READY", 1))
+	want("spec.verdict", true)
+	write("spec-review.md", strings.Replace(valid["spec-review.md"], "GAPS — two findings", "READY | GAPS — <one sentence>", 1))
+	want("spec.verdict", false) // the unfilled template
+	write("plan.md", valid["plan.md"])
+	want("plan.approved-stamp", true)
+	unpinned := strings.Replace(valid["plan.md"], "Approved: sha256:"+hex64+" 2026-11-24T22:40:44Z\n", "", 1)
+	write("plan.md", unpinned) // a ticked box alone is not approval
+	want("plan.approved-stamp", false)
+	write("plan.md", unpinned+"Approved: sha256:"+hex64+" 2026-11-24T22:40:44Z\n") // a pin under ## Approach
+	want("plan.approved-stamp", false)
+	write("plan.md", strings.Replace(valid["plan.md"], "22:40:44Z", "22:40", 1))
+	want("plan.approved-stamp", false)
+	if _, err := Holds(dir, "review.verdict"); err == nil {
+		t.Fatal("a rule no node may produce must be an error")
+	}
+	if _, err := Holds(dir, "no.such"); err == nil {
+		t.Fatal("an unknown rule must be an error")
+	}
+	if err := os.Remove(filepath.Join(dir, "spec-review.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "plan.md"), filepath.Join(dir, "spec-review.md")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	if ok, err := Holds(dir, "spec.verdict"); err == nil || ok {
+		t.Fatalf("a linked spec-review.md: want an error, got %v %v", ok, err)
 	}
 }

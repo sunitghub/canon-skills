@@ -22,6 +22,7 @@ var allowedInternalImports = map[string][]string{
 	"machine":    {},
 	"settings":   {},
 	"transcript": {},
+	"walk":       {"artifact"},
 }
 
 const internalPrefix = "canon/internal/"

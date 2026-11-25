@@ -32,7 +32,7 @@ func (f Finding) String() string {
 }
 
 // Files are the artifacts the schema knows, in the order a ticket folder is checked.
-var Files = []string{"ticket.md", "acceptance.md", "plan.md", "eval-report.md", "review-notes.md"}
+var Files = []string{"ticket.md", "acceptance.md", "plan.md", "eval-report.md", "review-notes.md", "spec-review.md"}
 
 // MaxSize caps one artifact: a ticket file is a few KB, so anything near this is not one.
 const MaxSize = 4 << 20
@@ -62,6 +62,7 @@ var Rules = []Rule{
 	{"eval.graded-head", "eval-report.md", "one `graded-head: <40-64 lowercase hex>` value"},
 	{"eval.verdict", "eval-report.md", "exactly one line starting `pass:`, `fail:`, `partial:` or `not-run:` and a reason"},
 	{"review.verdict", "review-notes.md", "a `## Verdict` heading whose first word is YES or NO"},
+	{"spec.verdict", "spec-review.md", "a `## Verdict` heading whose first word is READY or GAPS (not the template's `READY | GAPS`)"},
 }
 
 var ruleByID = func() map[string]Rule {
@@ -73,7 +74,7 @@ var ruleByID = func() map[string]Rule {
 }()
 
 // ErrNotArtifact is returned for a file whose base name is not one of Files.
-var ErrNotArtifact = errors.New("not a ticket artifact (want ticket.md, acceptance.md, plan.md, eval-report.md or review-notes.md)")
+var ErrNotArtifact = errors.New("not a ticket artifact (want ticket.md, acceptance.md, plan.md, eval-report.md, review-notes.md or spec-review.md)")
 
 // Validate checks a ticket folder (each of Files that exists) or one artifact file. The error is for a path that cannot
 // be read as an artifact (missing, a link, not a regular file, too large); a missing file inside a folder is not checked.
@@ -128,6 +129,28 @@ func knownFile(name string) bool {
 }
 
 func validateFile(path, name, folder string) ([]Finding, error) {
+	data, err := read(path)
+	if err != nil {
+		return nil, err
+	}
+	fs := Check(name, data, folder)
+	for i := range fs {
+		fs[i].Path = path
+	}
+	return fs, nil
+}
+
+// ReadLines returns an artifact's lines as the checkers see them (BOM dropped, CRLF read as LF), with read's limits.
+func ReadLines(path string) ([]string, error) {
+	data, err := read(path)
+	if err != nil {
+		return nil, err
+	}
+	return lines(data), nil
+}
+
+// read returns an artifact's bytes: a regular file under MaxSize, never a link.
+func read(path string) ([]byte, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
@@ -138,15 +161,7 @@ func validateFile(path, name, folder string) ([]Finding, error) {
 	if fi.Size() > MaxSize {
 		return nil, fmt.Errorf("%s: %d bytes is over the %d-byte artifact cap", path, fi.Size(), MaxSize)
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- read-only; the caller names the path and it was checked to be a regular file
-	if err != nil {
-		return nil, err
-	}
-	fs := Check(name, data, folder)
-	for i := range fs {
-		fs[i].Path = path
-	}
-	return fs, nil
+	return os.ReadFile(path) // #nosec G304 -- read-only; the caller names the path and it was checked to be a regular file
 }
 
 // Check validates one artifact's bytes by its file name. folder is the ticket folder's name for the id rule ("" skips it).
@@ -163,7 +178,9 @@ func Check(name string, data []byte, folder string) []Finding {
 	case "eval-report.md":
 		c.evalReport(ls)
 	case "review-notes.md":
-		c.reviewNotes(ls)
+		c.verdict(ls, "review.verdict", "YES", "NO")
+	case "spec-review.md":
+		c.verdict(ls, "spec.verdict", "READY", "GAPS")
 	}
 	return c.out
 }
@@ -597,11 +614,13 @@ func hasEmptyModel(fs []Finding) bool {
 	return false
 }
 
-// ---- review-notes.md
+// ---- review-notes.md, spec-review.md
 
 var verdictHeadingRe = regexp.MustCompile(`^##[ \t]+Verdict`)
 
-func (c *checker) reviewNotes(ls []string) {
+// verdict checks the first non-blank line under the first `## Verdict`: its first word (`*` ignored) is one of words,
+// and it is not the protocol's unfilled template (`READY | GAPS — …`, a `|` as the second word).
+func (c *checker) verdict(ls []string, rule string, words ...string) {
 	idx := unfenced(ls)
 	for k, i := range idx {
 		if !verdictHeadingRe.MatchString(ls[i]) {
@@ -612,13 +631,60 @@ func (c *checker) reviewNotes(ls []string) {
 			if len(w) == 0 {
 				continue
 			}
-			if v := strings.ToUpper(w[0]); v != "YES" && v != "NO" {
-				c.add(j+1, "review.verdict", quote(ls[j]))
+			if headingRe.MatchString(ls[j]) {
+				break // an empty section: the next heading is not its verdict
+			}
+			if !oneOf(strings.ToUpper(w[0]), words) || (len(w) > 1 && w[1] == "|") {
+				c.add(j+1, rule, quote(ls[j]))
 			}
 			return
 		}
-		c.add(i+1, "review.verdict", "nothing under `## Verdict`")
+		c.add(i+1, rule, "nothing under `## Verdict`")
 		return
 	}
-	c.add(1, "review.verdict", "no `## Verdict` heading")
+	c.add(1, rule, "no `## Verdict` heading")
+}
+
+// ---- produces (t-2bfe): a pipeline node's postcondition names one of these rules
+
+// present says a rule's line exists. A rule whose checker already reports its absence (a verdict) needs none here.
+var present = map[string]func(ls []string) bool{
+	"spec.verdict": func([]string) bool { return true },
+	"plan.approved-stamp": func(ls []string) bool {
+		for _, s := range named(sections(ls), "Sign-off") {
+			for _, i := range s.body {
+				if approvedOK.MatchString(ls[i]) {
+					return true
+				}
+			}
+		}
+		return false
+	},
+}
+
+// Produces reports whether id names a rule a pipeline node's `produces:` may name.
+func Produces(id string) bool { _, ok := present[id]; return ok }
+
+// Holds reports whether ticket folder dir holds rule id's line, well-formed: false for a missing file. The error is for a
+// rule no node may name or a file that cannot be read as an artifact (a link, over the cap), never read as "holds".
+func Holds(dir, id string) (bool, error) {
+	has, ok := present[id]
+	if !ok {
+		return false, fmt.Errorf("%s: not a rule a pipeline node may produce", id)
+	}
+	r := ruleByID[id]
+	data, err := read(filepath.Join(dir, r.File))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	ls := lines(data)
+	for _, f := range Check(r.File, data, "") {
+		if f.Rule == id {
+			return false, nil
+		}
+	}
+	return has(ls), nil
 }

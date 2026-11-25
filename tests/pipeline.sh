@@ -75,6 +75,8 @@ refuse() {   # refuse <expected text> <file content, printf %b>
 refuse "node 'eval' is locked: Always runs" 'extends: canon-default\noff: [eval]\n'
 refuse "node 'security-review' is locked" 'extends: canon-default\noff:\n  - security-review\n'
 refuse "unknown node 'repo-check'" 'extends: canon-default\noff: [repo-check]\n'
+refuse "unsupported line" 'extends: canon-default\nproduces: spec.verdict\n'   # t-2bfe: an assertion comes from canon's default only
+refuse "unsupported line" 'extends: canon-default\nnote: "skip it"\n'
 refuse "wrapup-order must list exactly: code-simplifier, code-reviewer, doc-audit" 'extends: canon-default\nwrapup-order: [reviewer, doc-audit, code-reviewer]\n'
 refuse "wrapup-order must list exactly" 'extends: canon-default\nwrapup-order: [doc-audit, code-reviewer]\n'
 refuse "listed twice in off" 'extends: canon-default\noff: [break-it, break-it]\n'
@@ -138,8 +140,18 @@ refuse_default "more than 200 nodes" "nodes:\n$(for n in $(seq 1 201); do printf
 fakedef "${N1}  - id: b\n    kind: step\n    order: 2\n    locked: false\n" resolve --full
 [[ "$FRC" == 0 ]] || fail "pipeline: a valid two-node default was refused: $FOUT"
 fakedef 'nodes:\n  - id: late\n    kind: gate\n    order: 20\n    locked: true\n    reason: "r"\n  - id: early\n    kind: "step"\n    order: 5\n    locked: false\n    group: wrapup\n    when: "w"\n    prompt: p.md\n' resolve --full
-assert_eq "5	early	step	on	open	wrapup	w	p.md	-	-	-
-20	late	gate	on	locked	-	-	-	r	-	-" "$FOUT"
+assert_eq "5	early	step	on	open	wrapup	w	p.md	-	-	-	-	-
+20	late	gate	on	locked	-	-	-	r	-	-	-	-" "$FOUT"
+# t-2bfe: produces/note are --full columns 12-13 (after the 11 that readers cut by position), and they never change the plain list,
+# which is the approve-time Pipeline pin: canon's own default resolves the same with every produces/note line removed
+fakedef "${N1}    produces: spec.verdict\n    note: \"run <id>\"\n" resolve --full
+[[ "$FRC" == 0 && "$(cut -f12,13 <<< "$FOUT")" == "spec.verdict	run <id>" ]] || fail "pipeline: produces/note are not columns 12-13: $FOUT"
+fakedef "${N1}    produces: Spec Verdict\n" resolve
+[[ "$FRC" == 2 && "$FOUT" == *"produces must be an artifact rule id"* ]] || fail "pipeline: a malformed produces was not refused: $FOUT"
+grep -vE '^    (produces|note): ' "$ROOT/skills/sprint/pipeline.yaml" > "$T/fk/skills/sprint/pipeline.yaml"
+assert_eq "$("$ROOT/tools/pipeline.sh" resolve)" "$(cd "$T/cwd" && "$T/fk/tools/pipeline.sh" resolve)"
+assert_eq "$("$ROOT/tools/pipeline.sh" resolve --full | cut -f1-11)" "$(cd "$T/cwd" && "$T/fk/tools/pipeline.sh" resolve --full | cut -f1-11)"
+[[ "$("$ROOT/tools/pipeline.sh" resolve --full | cut -f12 | grep -c -v '^-$')" == 2 ]] || fail "pipeline: canon's default should have 2 produces (spec-check, approve-plan)"
 rm "$T/fk/skills/sprint/pipeline.yaml"
 FRC=0; FOUT="$("$T/fk/tools/pipeline.sh" resolve 2>&1)" || FRC=$?
 [[ "$FRC" == 2 && "$FOUT" == *"default pipeline is missing"* ]] || fail "pipeline: a missing default said: $FOUT"
@@ -159,7 +171,7 @@ cli "ids takes no arguments" ids x
 cli "pipeline.sh resolve" bogus
 cli "pipeline.sh resolve"
 out="$("$P" --help)"; [[ "$out" == *"the sprint pipeline's one reader"* && "$out" == *"pipeline.sh check"* ]] || fail "pipeline: --help did not print the usage header: $out"
-out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 10 ]] || fail "pipeline: resolve --full lines do not carry 11 tab-separated fields: $out"
+out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 12 ]] || fail "pipeline: resolve --full lines do not carry 13 tab-separated fields: $out"
 
 # ── t-51c6: skip_on and only. The Pipeline tab and Sprint progress read what each ticket option skips from here (one list) ──
 [[ "$("$P" resolve)" != *your-test* ]] || fail "pipeline: the Manual-only node is in the plain list, so every approve-time pin would change"
