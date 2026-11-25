@@ -55,7 +55,7 @@ wrapup-order: [doc-audit, code-reviewer, code-simplifier]" "$(cat "$FILE")"
 
 # ── what the tab wrote is read by the reader and pinned by sprint approve ──
 out="$("$ROOT/tools/pipeline.sh" check --project "$PROJECT")"
-assert_eq "pipeline: ok (14 nodes)" "$out"
+assert_eq "pipeline: ok (15 nodes)" "$out"
 (
   cd "$PROJECT"
   start_out="$("$SPRINT" start "tab wrote this")"

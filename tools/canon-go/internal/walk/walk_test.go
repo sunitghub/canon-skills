@@ -16,10 +16,19 @@ const hex64 = "43d7c9469079310e0bfe31799a0170730f74a7137ad6882ac29f3d4849b2148e"
 
 // row is one `resolve --full` line; on is "on" or "off".
 func row(order, id, kind, on, skip, only, produces, note string) string {
-	return strings.Join([]string{order, id, kind, on, "open", "-", "-", "p/" + id + ".md", "-", skip, only, produces, note}, "\t")
+	return rowWith(order, id, kind, on, skip, only, produces, note, "-")
 }
 
-// pipe is the start of canon's default (pipeline.yaml) with the spec check on or off.
+func rowWith(order, id, kind, on, skip, only, produces, note, with string) string {
+	return strings.Join([]string{order, id, kind, on, "open", "-", "-", "p/" + id + ".md", "-", skip, only, produces, note, with}, "\t")
+}
+
+// gate is a close node whose output is its own Wrapup Gates row.
+func gate(order, id, skip, with string) string {
+	return rowWith(order, id, "gate", "on", skip, "-", "acceptance.wrapup-row", "row "+id, with)
+}
+
+// pipe is canon's default (pipeline.yaml) in short, with the spec check on or off.
 func pipe(spec string) string {
 	return strings.Join([]string{
 		row("10", "start", "step", "on", "-", "-", "-", "-"),
@@ -28,13 +37,23 @@ func pipe(spec string) string {
 		row("30", "approve-plan", "you", "on", "-", "-", "plan.approved-stamp", "run sprint approve <id>"),
 		row("40", "build", "step", "on", "-", "-", "-", "-"),
 		row("45", "your-test", "you", "on", "-", "manual", "-", "-"),
-		row("100", "eval", "agent", "on", "-", "-", "-", "-"),
+		gate("50", "code-simplifier", "lite", "-"),
+		gate("54", "doc-audit", "lite", "-"),
+		gate("60", "skill-eval", "lite", "reviewer"),
+		row("70", "reviewer", "agent", "on", "lite,manual", "-", "review.done", "dispatch the reviewer"),
+		gate("80", "security-review", "-", "-"),
+		gate("90", "mutation-test", "lite,manual", "-"),
+		row("95", "test-stamp", "step", "on", "manual", "-", "evidence.test-sh", "stamp the full suite"),
+		row("100", "eval", "agent", "on", "-", "-", "eval.verdict", "dispatch the evaluator"),
+		row("110", "close", "step", "on", "-", "-", "-", "-"),
 	}, "\n") + "\n"
 }
 
 const (
 	ticketMD = "---\nid: t-abcd\nstatus: in_progress\ntype: task\npriority: 1\n---\n# t\n"
 	specMD   = "# Spec check: t-abcd\n\n## Verdict\nREADY — no gap\n"
+	reviewMD = "# Review Notes\n\n## Verdict\nYES — fine\n"
+	evalMD   = "evaluator-run-id: 1795556751-20092\ngraded-head: 0123456789abcdef0123456789abcdef01234567\nModel: sonnet\n\npass: proven\n"
 	planMD   = "# Plan\n\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nApproved: sha256:" + hex64 + " 2026-11-25T10:00:00Z\n\n## Approach\nx\n"
 )
 
@@ -72,9 +91,9 @@ func TestWalk(t *testing.T) {
 		{"spec done", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD}, "on",
 			"next: approve-plan (you) — run sprint approve t-abcd\n"},
 		{"approved", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD}, "on",
-			"next: build (step) — p/build.md\nthen: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)\n"},
+			"next: build (step) — p/build.md\nthen: code-simplifier (gate) — row code-simplifier\n"},
 		{"approved, spec skipped", map[string]string{"ticket.md": ticketMD, "plan.md": planMD}, "on",
-			"missed: spec-check — run the spec check for t-abcd\nnext: build (step) — p/build.md\nthen: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)\n"},
+			"missed: spec-check — run the spec check for t-abcd\nnext: build (step) — p/build.md\nthen: code-simplifier (gate) — row code-simplifier\n"},
 		{"ticked box, no pin", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD,
 			"plan.md": strings.Replace(planMD, "Approved: sha256:"+hex64+" 2026-11-25T10:00:00Z\n", "", 1)}, "on",
 			"next: approve-plan (you) — run sprint approve t-abcd\n"},
@@ -83,13 +102,80 @@ func TestWalk(t *testing.T) {
 		{"project off", map[string]string{"ticket.md": ticketMD}, "off",
 			"next: approve-plan (you) — run sprint approve t-abcd\n"},
 		{"manual approved", map[string]string{"ticket.md": manual, "spec-review.md": specMD, "plan.md": planMD}, "on",
-			"next: build (step) — p/build.md\nthen: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)\n"},
+			"next: build (step) — p/build.md\nthen: code-simplifier (gate) — row code-simplifier\n"},
+		{"wrapup started", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD, "acceptance.md": acc("code-simplifier")}, "on",
+			"next: doc-audit (gate) — row doc-audit\n"},
+		{"reviewer done, skill-eval row missing", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD,
+			"acceptance.md": acc("code-simplifier", "doc-audit"), "review-notes.md": reviewMD}, "on",
+			"missed: skill-eval — row skill-eval\nnext: security-review (gate) — row security-review\n"},
+		{"evaluator ran before security-review (t-6x4z 8:07)", map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD,
+			"acceptance.md": acc("code-simplifier", "doc-audit", "skill-eval"), "review-notes.md": reviewMD, "eval-report.md": evalMD}, "on",
+			"missed: security-review — row security-review\nmissed: mutation-test — row mutation-test\nmissed: test-stamp — stamp the full suite\nnext: close (step) — p/close.md\n"},
+		{"lite: no reviewer, no sweep", map[string]string{"ticket.md": lite, "plan.md": planMD, "acceptance.md": acc("security-review")}, "on",
+			"next: test-stamp (step) — stamp the full suite\n"},
+		{"manual: no reviewer, sweep or stamp", map[string]string{"ticket.md": manual, "spec-review.md": specMD, "plan.md": planMD,
+			"acceptance.md": acc("code-simplifier", "doc-audit", "skill-eval", "security-review")}, "on",
+			"next: eval (agent) — dispatch the evaluator\n"},
 	}
 	for _, c := range cases {
 		got, code := run(ticket(t, c.files), pipe(c.spec))
 		if code != 0 || got != c.want {
 			t.Errorf("%s: exit %d\n got %q\nwant %q", c.name, code, got, c.want)
 		}
+	}
+}
+
+// acc is an acceptance.md whose Wrapup Gates table has a ran row for each node.
+func acc(nodes ...string) string {
+	s := "# Acceptance\n\n## Criteria\n- [ ] x\n\n## Test Plan\n- [ ] x\n\n## QA\n- [ ] x\n\n## Wrapup Gates\n| Gate | Status | Notes |\n|---|---|---|\n"
+	for _, n := range nodes {
+		s += "| " + n + " | ran | done |\n"
+	}
+	return s
+}
+
+// --at reviewer / eval is what `sprint gate-prompt` runs (t-a4e8): the reviewer waits for the wrapup rows but not for the
+// nodes dispatched with it (skill-eval), the evaluator waits for every earlier ON node, the stamp from --evidence only.
+func TestAtClose(t *testing.T) {
+	base := map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD}
+	with := func(extra map[string]string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	all := acc("code-simplifier", "doc-audit", "skill-eval", "security-review", "mutation-test")
+	bugfix := strings.Replace(planMD, "Tier: normal", "Tier: bugfix", 1)
+	cases := []struct {
+		name  string
+		files map[string]string
+		args  []string
+		code  int
+		want  string
+	}{
+		{"reviewer: doc-audit row missing", with(map[string]string{"acceptance.md": acc("code-simplifier")}), []string{"--at", "reviewer"}, 1, "missed: doc-audit — row doc-audit\n"},
+		{"reviewer: skill-eval goes with it", with(map[string]string{"acceptance.md": acc("code-simplifier", "doc-audit")}), []string{"--at", "reviewer"}, 0, ""},
+		{"eval: skill-eval row missing", with(map[string]string{"acceptance.md": acc("code-simplifier", "doc-audit", "security-review", "mutation-test"), "review-notes.md": reviewMD}),
+			[]string{"--at", "eval", "--evidence", "test-sh"}, 1, "missed: skill-eval — row skill-eval\n"},
+		{"eval: no stamp", with(map[string]string{"acceptance.md": all, "review-notes.md": reviewMD}), []string{"--at", "eval", "--evidence", "pre-gate,mutant-sweep"}, 1, "missed: test-stamp — stamp the full suite\n"},
+		{"eval: no review, no security-review", with(map[string]string{"acceptance.md": acc("code-simplifier", "doc-audit", "skill-eval", "mutation-test")}),
+			[]string{"--evidence", "test-sh", "--at", "eval"}, 1, "missed: reviewer — dispatch the reviewer\nmissed: security-review — row security-review\n"},
+		{"eval: all hold", with(map[string]string{"acceptance.md": all, "review-notes.md": reviewMD}), []string{"--at", "eval", "--evidence", "test-sh"}, 0, ""},
+		{"eval: bugfix needs no review", with(map[string]string{"acceptance.md": all, "plan.md": bugfix}), []string{"--at", "eval", "--evidence", "test-sh"}, 0, ""},
+	}
+	for _, c := range cases {
+		got, code := run(ticket(t, c.files), pipe("on"), c.args...)
+		if code != c.code || got != c.want {
+			t.Errorf("%s: exit %d %q, want %d %q", c.name, code, got, c.code, c.want)
+		}
+	}
+	lite := with(map[string]string{"ticket.md": strings.Replace(ticketMD, "priority: 1\n", "priority: 1\ndemo: true\n", 1)})
+	if got, code := run(ticket(t, lite), pipe("on"), "--at", "reviewer"); code != 2 || !strings.Contains(got, "not ON") {
+		t.Errorf("reviewer on a Lite ticket: exit %d %q, want 2 naming it not ON", code, got)
 	}
 }
 
@@ -139,6 +225,11 @@ func TestUnreadableIsExit2(t *testing.T) {
 		{"--at a node that is off", pipe("off"), ok, []string{"--at", "spec-check"}},
 		{"--at bad id", pipe("on"), ok, []string{"--at", "Bad"}},
 		{"extra arg", pipe("on"), ok, []string{"x"}},
+		{"--at twice", pipe("on"), ok, []string{"--at", "eval", "--at", "eval"}},
+		{"--evidence bad name", pipe("on"), ok, []string{"--evidence", "Test sh"}},
+		{"--evidence empty", pipe("on"), ok, []string{"--evidence", ""}},
+		{"--evidence no value", pipe("on"), ok, []string{"--at", "eval", "--evidence"}},
+		{"bad with", strings.Replace(pipe("on"), "\treviewer\n", "\tReviewer\n", 1), ok, nil},
 	}
 	for _, c := range cases {
 		runs := [][]string{nil, {"--at", "approve-plan"}}
@@ -183,8 +274,15 @@ func TestCanonDefaultParses(t *testing.T) {
 	for _, n := range nodes {
 		got[n.ID] = n.Produces
 	}
-	if got["spec-check"] != "spec.verdict" || got["approve-plan"] != "plan.approved-stamp" {
-		t.Fatalf("canon's default produces: %v", got)
+	want := map[string]string{"start": "-", "plan": "-", "spec-check": "spec.verdict", "approve-plan": "plan.approved-stamp", "build": "-",
+		"code-simplifier": "acceptance.wrapup-row", "code-reviewer": "acceptance.wrapup-row", "doc-audit": "acceptance.wrapup-row",
+		"skill-eval": "acceptance.wrapup-row", "break-it": "acceptance.wrapup-row", "reviewer": "review.done",
+		"security-review": "acceptance.wrapup-row", "mutation-test": "acceptance.wrapup-row", "test-stamp": "evidence.test-sh",
+		"eval": "eval.verdict", "close": "-"}
+	for id, p := range want {
+		if got[id] != p {
+			t.Errorf("canon's default: %s produces %q, want %q", id, got[id], p)
+		}
 	}
 }
 

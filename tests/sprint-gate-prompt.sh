@@ -26,12 +26,13 @@ cd "$project"
 git commit -q --allow-empty -m init
 id="$("$SPRINT" start "Gate prompts" | awk '/Sprint started:/ { print $3 }')"
 t=".tickets/$id"
-signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [x] Plan approved\n\n## Approach\nx\n' "$1" > "$t/plan.md"; }
+signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [x] Plan approved\n\n## Approach\nx\n' "$1" > "$t/plan.md"; pin_plan "$t/plan.md"; }
 reg() { mkdir -p "$CANON_HOME/cockpit"; printf '%s' "$1" > "$CANON_HOME/cockpit/model-tiers.json"; }
 gp() { set +e; out="$("$SPRINT" gate-prompt "$id" "$1" 2>"$W/err")"; code=$?; err="$(cat "$W/err")"; set -e; }
 absent() { [[ "$1" != *"$2"* ]] || fail "gate-prompt: '$2' must not appear in: $1"; }
 MODELS='"models":{"anthropic":[{"id":"claude-sonnet-5-5","alias":"sonnet"},{"id":"claude-opus-5-5","alias":"opus"},{"id":"claude-haiku-5-5","alias":"haiku"}]}'
 signoff "Tier: normal | Risk: x"
+close_ready "$t"   # t-a4e8: every step before the gates done; section 10 covers the refusals
 
 # 1. A consumer project under Claude Code: .claude/skills, the absolute report path, the agent file's floor when Admin has no pick
 gp reviewer
@@ -113,13 +114,13 @@ signoff "Tier: normal | Risk: x"; cp "$W/tiers.saved" "$CANON_HOME/cockpit/model
 gp evaluator
 assert_eq 0 "$code"
 assert_contains "$out" "\`sprint check-evidence $id\` output (pre-flight):"
-assert_contains "$out" "check-evidence: no stamped logs"
-mkdir -p "$t/evidence"; printf 'HEAD %s 2026-11-22T00:00:00Z\nexit 3\n' "$(git rev-parse HEAD)" > "$t/evidence/c.log"
+assert_contains "$out" "ok      fresh test-sh.log exit=0"
+printf 'HEAD %s 2026-11-22T00:00:00Z\nexit 3\n' "$(git rev-parse HEAD)" > "$t/evidence/c.log"
 gp evaluator
 assert_eq 1 "$code"; assert_eq "" "$out"
 assert_contains "$err" "gate-prompt: sprint check-evidence $id refuses"
 assert_contains "$err" "REFUSE  fresh c.log exit=3"
-rm -rf "$t/evidence"
+rm -f "$t/evidence/c.log"
 
 # 6. Manual mode (complete.md): the evaluator is told it is read-only; the reviewer is not
 awk 'NR == 1 || !done && /^---$/ && NR > 1 { if (NR > 1) { print "manual: true"; done = 1 } } { print }' "$t/ticket.md" > "$W/tk" && mv "$W/tk" "$t/ticket.md"
@@ -127,8 +128,9 @@ awk 'NR == 1 || !done && /^---$/ && NR > 1 { if (NR > 1) { print "manual: true";
 gp evaluator
 assert_eq 0 "$code"
 assert_contains "$out" "Manual mode: the user's recorded testing is the evidence. Run and create no tests, no mutants and no command that writes"
-gp reviewer; absent "$out" "Manual mode"
-sed -i.bak '/^manual: true$/d' "$t/ticket.md" && rm -f "$t/ticket.md.bak"; rm -rf "$t/evidence"
+gp reviewer; assert_eq 1 "$code"; absent "$out" "Manual mode"   # Manual skips the reviewer (t-a4e8: gate-prompt refuses it)
+assert_contains "$err" "node reviewer is not ON"
+sed -i.bak '/^manual: true$/d' "$t/ticket.md" && rm -f "$t/ticket.md.bak"; rm -f "$t/evidence/manual-qa.md"
 gp evaluator; absent "$out" "Manual mode"
 
 # 7. The second evaluator: second-eval's model, eval-report-2.md named as its report (the relay tells the two apart by it); skip refuses
@@ -194,4 +196,39 @@ assert_contains "$help" "  relay-report <id> [evaluator|evaluator2|reviewer|spec
 rid="$("$SPRINT" run-id)"
 [[ "$rid" =~ ^[0-9]{10}-[0-9]+$ ]] || fail "sprint run-id printed '$rid', not <epoch-seconds>-<number>"
 
+
+# 10. t-a4e8: a gate waits for the steps before it (t-6x4z 8:07: the evaluator went out before security-review, the sweep and the stamp).
+# Protects every gate dispatch: the reviewer refused on a missing wrapup row but not on the nodes dispatched with it, the evaluator on
+# each missing earlier step, a bugfix needing no reviewer, a canon-go without walk.
+acc="$t/acceptance.md"; cp "$acc" "$W/acc.saved"
+drop() { grep -v "^| $1 |" "$W/acc.saved" > "$acc"; }
+drop doc-audit
+gp reviewer; assert_eq 1 "$code"; assert_eq "" "$out"
+assert_contains "$err" "gate-prompt: the advisory reviewer must not run yet"
+assert_contains "$err" "missed: doc-audit — no doc-audit row"
+gp evaluator; assert_eq 1 "$code"; assert_contains "$err" "missed: doc-audit"
+grep -v '^| skill-eval |\|^| break-it |' "$W/acc.saved" > "$acc"
+gp reviewer; assert_eq 0 "$code"   # skill-eval and break-it go out with the reviewer
+gp evaluator; assert_eq 1 "$code"; assert_contains "$err" "missed: skill-eval"; assert_contains "$err" "missed: break-it"
+drop security-review
+gp evaluator; assert_eq 1 "$code"; assert_eq "" "$out"
+assert_contains "$err" "gate-prompt: the binding evaluator must not run yet"; assert_contains "$err" "missed: security-review — no security-review row"
+gp evaluator2; assert_eq 1 "$code"; assert_contains "$err" "missed: security-review"
+cp "$W/acc.saved" "$acc"
+mv "$t/review-notes.md" "$W/rn"
+gp evaluator; assert_eq 1 "$code"; assert_contains "$err" "missed: reviewer — no review-notes.md verdict"
+signoff "Tier: bugfix | Risk: x"
+gp evaluator; assert_eq 0 "$code"   # bugfix skips the reviewer
+signoff "Tier: normal | Risk: x"; mv "$W/rn" "$t/review-notes.md"
+mv "$t/evidence/test-sh.log" "$W/ts"
+gp evaluator; assert_eq 1 "$code"; assert_contains "$err" "missed: test-stamp — no fresh full-suite log"
+mv "$W/ts" "$t/evidence/test-sh.log"
+echo later > later.txt; git add later.txt; git commit -q -m later   # a tracked change after the stamp: stale (evidence.sh decides)
+gp evaluator; assert_eq 1 "$code"; assert_contains "$err" "missed: test-stamp"
+"$SPRINT" evidence stamp "$id" test-sh -- true >/dev/null 2>&1
+gp evaluator; assert_eq 0 "$code"
+mkdir -p "$W/oldgo"; printf '#!/usr/bin/env bash\n[[ "$1" == --help ]] && { echo "  walk <ticket dir> [--at <node>]   (t-2bfe)"; exit 0; }\nexit 9\n' > "$W/oldgo/canon-go"; chmod +x "$W/oldgo/canon-go"
+set +e; out="$(SPRINT_CHECK_BIN="$W/oldgo/canon-go" "$SPRINT" gate-prompt "$id" evaluator 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "has no walk (run canon update)"
+gp speccheck; assert_eq 0 "$code"   # the first gate walks nothing
 echo "sprint-gate-prompt: ok"

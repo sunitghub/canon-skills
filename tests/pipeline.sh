@@ -31,10 +31,11 @@ expect="10 start step on locked
 70 reviewer agent on open
 80 security-review gate on locked
 90 mutation-test gate on open
+95 test-stamp step on open
 100 eval agent on locked
 110 close step on locked"
 assert_eq "$expect" "$("$P" resolve)"
-[[ "$("$P" check)" == "pipeline: ok (14 nodes)" ]] || fail "pipeline: check on the default did not say ok (14 nodes)"
+[[ "$("$P" check)" == "pipeline: ok (15 nodes)" ]] || fail "pipeline: check on the default did not say ok (15 nodes)"
 ids="$("$P" ids | tr '\n' ' ')"
 [[ "$ids" != *repo-check* ]] || fail "pipeline: repo-check is a node again (removed in t-0a7c)"
 mt="$("$P" resolve --full | grep -F "	mutation-test	")"; [[ "$mt" == *"needs python3 (skipped with a reason when it is missing)"* ]] || fail "pipeline: mutation-test does not say it needs python3: $mt"
@@ -76,6 +77,7 @@ refuse "node 'eval' is locked: Always runs" 'extends: canon-default\noff: [eval]
 refuse "node 'security-review' is locked" 'extends: canon-default\noff:\n  - security-review\n'
 refuse "unknown node 'repo-check'" 'extends: canon-default\noff: [repo-check]\n'
 refuse "unsupported line" 'extends: canon-default\nproduces: spec.verdict\n'   # t-2bfe: an assertion comes from canon's default only
+refuse "unsupported line" 'extends: canon-default\nwith: reviewer\n'   # t-a4e8: so does a batch (`with:`)
 refuse "unsupported line" 'extends: canon-default\nnote: "skip it"\n'
 refuse "wrapup-order must list exactly: code-simplifier, code-reviewer, doc-audit" 'extends: canon-default\nwrapup-order: [reviewer, doc-audit, code-reviewer]\n'
 refuse "wrapup-order must list exactly" 'extends: canon-default\nwrapup-order: [doc-audit, code-reviewer]\n'
@@ -140,18 +142,42 @@ refuse_default "more than 200 nodes" "nodes:\n$(for n in $(seq 1 201); do printf
 fakedef "${N1}  - id: b\n    kind: step\n    order: 2\n    locked: false\n" resolve --full
 [[ "$FRC" == 0 ]] || fail "pipeline: a valid two-node default was refused: $FOUT"
 fakedef 'nodes:\n  - id: late\n    kind: gate\n    order: 20\n    locked: true\n    reason: "r"\n  - id: early\n    kind: "step"\n    order: 5\n    locked: false\n    group: wrapup\n    when: "w"\n    prompt: p.md\n' resolve --full
-assert_eq "5	early	step	on	open	wrapup	w	p.md	-	-	-	-	-
-20	late	gate	on	locked	-	-	-	r	-	-	-	-" "$FOUT"
+assert_eq "5	early	step	on	open	wrapup	w	p.md	-	-	-	-	-	-
+20	late	gate	on	locked	-	-	-	r	-	-	-	-	-" "$FOUT"
 # t-2bfe: produces/note are --full columns 12-13 (after the 11 that readers cut by position), and they never change the plain list,
 # which is the approve-time Pipeline pin: canon's own default resolves the same with every produces/note line removed
 fakedef "${N1}    produces: spec.verdict\n    note: \"run <id>\"\n" resolve --full
 [[ "$FRC" == 0 && "$(cut -f12,13 <<< "$FOUT")" == "spec.verdict	run <id>" ]] || fail "pipeline: produces/note are not columns 12-13: $FOUT"
 fakedef "${N1}    produces: Spec Verdict\n" resolve
 [[ "$FRC" == 2 && "$FOUT" == *"produces must be an artifact rule id"* ]] || fail "pipeline: a malformed produces was not refused: $FOUT"
-grep -vE '^    (produces|note): ' "$ROOT/skills/sprint/pipeline.yaml" > "$T/fk/skills/sprint/pipeline.yaml"
+# t-a4e8: with is column 14 and names a later node; one naming an earlier or unknown node is refused
+fakedef "${N1}    with: b\n  - id: b\n    kind: agent\n    order: 2\n    locked: false\n" resolve --full
+[[ "$FRC" == 0 && "$(head -1 <<< "$FOUT" | cut -f14)" == b && "$(tail -1 <<< "$FOUT" | cut -f14)" == - ]] || fail "pipeline: with is not column 14: $FOUT"
+fakedef "${N1}  - id: b\n    kind: agent\n    order: 2\n    locked: false\n    with: a\n" resolve
+[[ "$FRC" == 2 && "$FOUT" == *"node 'b': with needs a node with a higher order"* ]] || fail "pipeline: a with naming an earlier node was not refused: $FOUT"
+fakedef "${N1}    with: nope\n" resolve
+[[ "$FRC" == 2 && "$FOUT" == *"node 'a': with names no node ('nope')"* ]] || fail "pipeline: a with naming no node was not refused: $FOUT"
+grep -vE '^    (produces|note|with): ' "$ROOT/skills/sprint/pipeline.yaml" > "$T/fk/skills/sprint/pipeline.yaml"
 assert_eq "$("$ROOT/tools/pipeline.sh" resolve)" "$(cd "$T/cwd" && "$T/fk/tools/pipeline.sh" resolve)"
 assert_eq "$("$ROOT/tools/pipeline.sh" resolve --full | cut -f1-11)" "$(cd "$T/cwd" && "$T/fk/tools/pipeline.sh" resolve --full | cut -f1-11)"
-[[ "$("$ROOT/tools/pipeline.sh" resolve --full | cut -f12 | grep -c -v '^-$')" == 2 ]] || fail "pipeline: canon's default should have 2 produces (spec-check, approve-plan)"
+# t-a4e8: the default's assertions, node by node (produces, with, and a note on each produced node); a typo in an id is
+# walk_test.go's TestCanonDefaultParses (the rule list is canon-go's)
+assert_eq "spec-check spec.verdict -
+approve-plan plan.approved-stamp -
+code-simplifier acceptance.wrapup-row -
+code-reviewer acceptance.wrapup-row -
+doc-audit acceptance.wrapup-row -
+skill-eval acceptance.wrapup-row reviewer
+break-it acceptance.wrapup-row reviewer
+reviewer review.done -
+security-review acceptance.wrapup-row -
+mutation-test acceptance.wrapup-row -
+test-stamp evidence.test-sh -
+eval eval.verdict -" "$("$ROOT/tools/pipeline.sh" resolve --full | awk -F'\t' '$12 != "-" { print $2, $12, $14 }')"
+[[ -z "$("$ROOT/tools/pipeline.sh" resolve --full | awk -F'\t' '$12 != "-" && ($13 == "-" || index($13, "<id>") == 0) { print $2 }')" ]] \
+  || fail "pipeline: a produced node has no note naming <id>"
+assert_eq "95	test-stamp	step	on	open	-	every close but Manual; a project with no test command switches it off	skills/sprint/reference/complete-checklist.md	-	manual	-	evidence.test-sh" \
+  "$("$ROOT/tools/pipeline.sh" resolve --full | awk -F'\t' -v OFS='\t' '$2 == "test-stamp" { NF = 12; print }')"
 rm "$T/fk/skills/sprint/pipeline.yaml"
 FRC=0; FOUT="$("$T/fk/tools/pipeline.sh" resolve 2>&1)" || FRC=$?
 [[ "$FRC" == 2 && "$FOUT" == *"default pipeline is missing"* ]] || fail "pipeline: a missing default said: $FOUT"
@@ -171,14 +197,14 @@ cli "ids takes no arguments" ids x
 cli "pipeline.sh resolve" bogus
 cli "pipeline.sh resolve"
 out="$("$P" --help)"; [[ "$out" == *"the sprint pipeline's one reader"* && "$out" == *"pipeline.sh check"* ]] || fail "pipeline: --help did not print the usage header: $out"
-out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 12 ]] || fail "pipeline: resolve --full lines do not carry 13 tab-separated fields: $out"
+out="$("$P" resolve --project "$T" --full | sed -n 4p)"; [[ "$(printf '%s' "$out" | tr -cd '\t' | wc -c | tr -d ' ')" == 13 ]] || fail "pipeline: resolve --full lines do not carry 14 tab-separated fields: $out"
 
 # ── t-51c6: skip_on and only. The Pipeline tab and Sprint progress read what each ticket option skips from here (one list) ──
 [[ "$("$P" resolve)" != *your-test* ]] || fail "pipeline: the Manual-only node is in the plain list, so every approve-time pin would change"
 full="$("$P" resolve --full)"
 yt="$(printf '%s\n' "$full" | awk -F'\t' '$2 == "your-test" { print $3 "|" $5 "|" $11 }')"; [[ "$yt" == "you|locked|manual" ]] || fail "pipeline: your-test is not a locked you node that is only for manual: $yt"
 lite="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /lite/ { printf "%s ", $2 }')"; [[ "$lite" == "spec-check code-simplifier code-reviewer doc-audit skill-eval break-it reviewer mutation-test " ]] || fail "pipeline: Lite skips $lite"
-man="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /manual/ { printf "%s ", $2 }')"; [[ "$man" == "reviewer mutation-test " ]] || fail "pipeline: Manual skips $man"
+man="$(printf '%s\n' "$full" | awk -F'\t' '$10 ~ /manual/ { printf "%s ", $2 }')"; [[ "$man" == "reviewer mutation-test test-stamp " ]] || fail "pipeline: Manual skips $man"
 for locked in start plan approve-plan build your-test security-review eval close; do [[ "$(printf '%s\n' "$full" | awk -F'\t' -v n="$locked" '$2 == n { print $10 }')" == "-" ]] || fail "pipeline: locked node $locked is skipped by a ticket option"; done
 refuse_default "node 'a': skip_on must be lite, manual or lite,manual" "${N1}    skip_on: bogus\n"
 refuse_default "node 'a': only must be manual" "${N1}    only: lite\n"

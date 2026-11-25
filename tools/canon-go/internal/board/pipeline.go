@@ -116,8 +116,8 @@ func pipelineClean(s string) string {
 	return b.String()
 }
 
-// pipelineResolve is `pipeline.sh resolve --full [--project root]`: the nodes in run order (13 columns; this page shows
-// the first 11, the walker reads produces and note, t-2bfe). An empty root is canon's default alone.
+// pipelineResolve is `pipeline.sh resolve --full [--project root]`: the nodes in run order (14 columns; this page shows
+// the first 11, the walker reads produces, note and with, t-2bfe, t-a4e8). An empty root is canon's default alone.
 func pipelineResolve(root string) ([]pipelineNode, error) {
 	args := []string{"resolve", "--full"}
 	if root != "" {
@@ -134,7 +134,7 @@ func pipelineResolve(root string) ([]pipelineNode, error) {
 	for _, line := range strings.Split(strings.TrimRight(out, "\r\n"), "\n") {
 		line = strings.TrimSuffix(line, "\r")
 		f := strings.Split(line, "\t")
-		if len(f) != 13 || !pipelineIDRe.MatchString(f[1]) || len(nodes) >= 200 {
+		if len(f) != 14 || !pipelineIDRe.MatchString(f[1]) || len(nodes) >= 200 {
 			return nil, errors.New("pipeline: the reader printed a line this page cannot read")
 		}
 		order, convErr := strconv.Atoi(f[0])

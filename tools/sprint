@@ -737,18 +737,33 @@ cmd_approve() {
   cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
 }
 
-# _walk <root> <ticket dir> [--at <node>] — t-2bfe: canon-go walk over this project's resolved pipeline (pipeline.sh, the one reader).
-# Exit is walk's: 0, 1 (a missed node before --at's node), 2 (unreadable). A pipeline the reader refuses, or a canon-go with no walk, is 2
-# with one line naming the fix: a check that cannot run never reads as passed.
-_walk() {
-  local root="$1" tdir="$2" full b; shift 2
-  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || { echo "this install has no tools/pipeline.sh (run canon update)"; return 2; }
-  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>&1)" || { printf '%s\n' "${full##*$'\n'}"; return 2; }
-  b="$(board_has 'walk <ticket dir')" || { echo "this install's canon-go has no walk (run canon update)"; return 2; }
-  "$b" walk "$tdir" "$@" <<< "$full" 2>&1
+# _evidence_ok <evidence.sh check line> — t-a4e8: the one rule for a log the evaluator may reuse (check-evidence's `ok`, the walk's
+# test-stamp): fresh with exit 0, or covered (t-2ce8, t-a3d7).
+_evidence_ok() {
+  [[ "$1" =~ ^fresh\ [a-z0-9][a-z0-9._-]*\.log\ exit=0\ \( || "$1" =~ ^covered\ [a-z0-9][a-z0-9._-]*\.log\ exit=[0-9?]+\ \( ]]
 }
 
-# cmd_next <id> — t-2bfe: the one next step of the ticket's pipeline (up to approval in this slice; t-6a4d walks the close), after a
+# _walk <root> <ticket dir> [--at <node>] — t-2bfe: canon-go walk over this project's resolved pipeline (pipeline.sh, the one reader).
+# Exit is walk's: 0, 1 (a missed node before --at's node), 2 (unreadable). A pipeline the reader refuses, or a canon-go with no walk, is 2
+# with one line naming the fix: a check that cannot run never reads as passed. t-a4e8: with an evidence/test-sh.log, the logs
+# evidence.sh reports ok go in as --evidence (evidence.sh is the one owner of freshness); with none, evidence.sh is not run.
+_walk() {
+  local root="$1" tdir="$2" full b out line ev=""; shift 2
+  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || { echo "this install has no tools/pipeline.sh (run canon update)"; return 2; }
+  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>&1)" || { printf '%s\n' "${full##*$'\n'}"; return 2; }
+  b="$(board_has 'walk <ticket dir> [--at <node>] [--evidence')" || { echo "this install's canon-go has no walk (run canon update)"; return 2; }
+  if [[ -f "$tdir/evidence/test-sh.log" ]]; then
+    out="$(cd "$root" && CANON_TICKETS_DIR="$(dirname "$tdir")" "$SCRIPT_DIR/evidence.sh" check "$(basename "$tdir")" 2>&1)" \
+      || { echo "evidence.sh check could not read the evidence: ${out##*$'\n'}"; return 2; }
+    while IFS= read -r line; do
+      _evidence_ok "$line" || continue
+      line="${line#* }"; ev+="${ev:+,}${line%%.log *}"
+    done <<< "$out"
+  fi
+  "$b" walk "$tdir" "$@" ${ev:+--evidence "$ev"} <<< "$full" 2>&1
+}
+
+# cmd_next <id> — t-2bfe: the one next step of the ticket's pipeline (t-a4e8: through the close), after a
 # `missed:` line for each earlier ON step whose output is not there. Exit 0, or 2 when the walk cannot run.
 cmd_next() {
   local id="${1:-}" root out rc=0
@@ -1839,7 +1854,7 @@ cmd_check_evidence() {
     [[ "$line" =~ ^[a-z]+\ ([^\ ]+)\  ]] && [[ ! "${BASH_REMATCH[1]}" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]] && continue   # refused above by name
     if [[ "$line" == "  hint: "* ]]; then echo "          ${line#  }"; continue; fi   # t-ef9c: the recipe under the log above, not a log
     n=$((n + 1))
-    if [[ "$line" =~ ^fresh\ [a-z0-9][a-z0-9._-]*\.log\ exit=0\ \( || "$line" =~ ^covered\ [a-z0-9][a-z0-9._-]*\.log\ exit=[0-9?]+\ \( ]]; then echo "  ok      $line"
+    if _evidence_ok "$line"; then echo "  ok      $line"
     elif [[ "$line" =~ ^stale\ ([a-z0-9][a-z0-9._-]*\.log)\ exit=0\ \( ]] && _is_sweep_log "$edir/${BASH_REMATCH[1]}"; then
       echo "  note    $line (non-binding sweep from an older commit: not re-stamped, not reused)"   # t-2ce8
     elif (( manual_on )); then echo "  note    $line (not required: a Manual ticket closes on the user's testing)"
@@ -2142,6 +2157,19 @@ cmd_gate_prompt() {
   if [[ -f "$root/skills/sprint/reference/$file" ]]; then proto="skills/sprint/reference/$file"
   elif [[ "$harness" == copilot ]]; then proto=".agents/skills/sprint/reference/$file"
   else proto=".claude/skills/sprint/reference/$file"; fi
+  # t-a4e8: a gate waits for the steps before it (the reviewer for the wrapup rows, not the nodes dispatched with it; the evaluator for
+  # every earlier ON step, the full-suite stamp included), so one dispatched out of order is refused here, on every harness (t-6x4z 8:07).
+  if [[ "$role" != speccheck ]]; then
+    local at=eval wout wrc=0
+    [[ "$role" != reviewer ]] || at=reviewer
+    wout="$(_walk "$root" "$tdir" --at "$at")" || wrc=$?
+    if (( wrc == 1 )); then
+      echo "gate-prompt: the $label must not run yet: do each missed step first, then run gate-prompt again:" >&2
+      printf '%s\n' "$wout" >&2; exit 1
+    elif (( wrc != 0 )); then
+      echo "gate-prompt: the $label must not run: the pipeline walk could not check the steps before it: $wout" >&2; exit 1
+    fi
+  fi
   m="$(_gate_prompt_model "$id" "$role")" || exit 1
   mline="${m#*$'\t'}"; m="${m%%$'\t'*}"
   local mhint="Put this Model line in your report as given:"

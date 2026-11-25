@@ -432,7 +432,7 @@ func TestHolds(t *testing.T) {
 	}
 	want := func(id string, w bool) {
 		t.Helper()
-		if got, err := Holds(dir, id); err != nil || got != w {
+		if got, err := Holds(dir, id, In{}); err != nil || got != w {
 			t.Fatalf("Holds(%s) = %v, %v; want %v", id, got, err, w)
 		}
 	}
@@ -455,10 +455,10 @@ func TestHolds(t *testing.T) {
 	want("plan.approved-stamp", false)
 	write("plan.md", strings.Replace(valid["plan.md"], "22:40:44Z", "22:40", 1))
 	want("plan.approved-stamp", false)
-	if _, err := Holds(dir, "review.verdict"); err == nil {
+	if _, err := Holds(dir, "review.verdict", In{}); err == nil {
 		t.Fatal("a rule no node may produce must be an error")
 	}
-	if _, err := Holds(dir, "no.such"); err == nil {
+	if _, err := Holds(dir, "no.such", In{}); err == nil {
 		t.Fatal("an unknown rule must be an error")
 	}
 	if err := os.Remove(filepath.Join(dir, "spec-review.md")); err != nil {
@@ -467,7 +467,67 @@ func TestHolds(t *testing.T) {
 	if err := os.Symlink(filepath.Join(dir, "plan.md"), filepath.Join(dir, "spec-review.md")); err != nil {
 		t.Skip("no symlinks here:", err)
 	}
-	if ok, err := Holds(dir, "spec.verdict"); err == nil || ok {
+	if ok, err := Holds(dir, "spec.verdict", In{}); err == nil || ok {
 		t.Fatalf("a linked spec-review.md: want an error, got %v %v", ok, err)
 	}
+}
+
+// The close side (t-a4e8): what `sprint gate-prompt reviewer|evaluator` and `sprint next` ask of the close nodes. A node's row is
+// read alone (another gate's malformed row is that gate's miss), the reviewer is done by its verdict or a bugfix plan (the tier
+// skips it), and the full-suite stamp holds only on the names tools/sprint passes (evidence.sh owns freshness).
+func TestHoldsCloseNodes(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "t-abcd")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := func(id string, in In, w bool) {
+		t.Helper()
+		if got, err := Holds(dir, id, in); err != nil || got != w {
+			t.Fatalf("Holds(%s, %+v) = %v, %v; want %v", id, in, got, err, w)
+		}
+	}
+	row := In{Node: "mutation-test"}
+	want("acceptance.wrapup-row", row, false) // no acceptance.md
+	write("acceptance.md", valid["acceptance.md"])
+	want("acceptance.wrapup-row", row, true)
+	want("acceptance.wrapup-row", In{Node: "reviewer"}, true)
+	want("acceptance.wrapup-row", In{Node: "doc-audit"}, false) // no row
+	write("acceptance.md", valid["acceptance.md"]+"| doc-audit | maybe | x |\n")
+	want("acceptance.wrapup-row", row, true) // another gate's bad row is not this one's
+	want("acceptance.wrapup-row", In{Node: "doc-audit"}, false)
+	write("acceptance.md", strings.Replace(valid["acceptance.md"], "no logic file changed", "-", 1))
+	want("acceptance.wrapup-row", row, false) // no reason
+	write("acceptance.md", strings.Replace(valid["acceptance.md"], "## Wrapup Gates", "## Other", 1))
+	want("acceptance.wrapup-row", row, false) // a row outside the section
+	if _, err := Holds(dir, "acceptance.wrapup-row", In{}); err == nil {
+		t.Fatal("a row with no node to look up must be an error")
+	}
+
+	want("review.done", In{}, false) // no review-notes.md, no plan.md
+	write("review-notes.md", valid["review-notes.md"])
+	want("review.done", In{}, true)
+	write("review-notes.md", strings.Replace(valid["review-notes.md"], "**YES**", "MAYBE", 1))
+	want("review.done", In{}, false)
+	write("plan.md", valid["plan.md"]) // Tier: Normal
+	want("review.done", In{}, false)
+	write("plan.md", strings.Replace(valid["plan.md"], "**Tier**: Normal.", "Tier: bugfix", 1))
+	want("review.done", In{}, true) // bugfix skips the reviewer
+	write("plan.md", strings.Replace(valid["plan.md"], "Tier: a prose line", "Tier: bugfix", 1))
+	want("review.done", In{}, false) // a Tier line outside Sign-off is prose
+
+	want("eval.verdict", In{}, false)
+	write("eval-report.md", valid["eval-report.md"])
+	want("eval.verdict", In{}, true)
+	write("eval-report.md", strings.Replace(valid["eval-report.md"], "pass: every criterion is proven\n", "", 1))
+	want("eval.verdict", In{}, false)
+
+	want("evidence.test-sh", In{}, false)
+	want("evidence.test-sh", In{Evidence: []string{"pre-gate", "mutant-sweep"}}, false)
+	want("evidence.test-sh", In{Evidence: []string{"pre-gate", "test-sh"}}, true)
 }

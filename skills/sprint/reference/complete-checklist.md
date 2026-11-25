@@ -13,6 +13,8 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Steps
 
+`sprint next <id>` names the next step and any missed one.
+
 1. **Wrapup** (`skills/wrapup/SKILL.md`): code-simplifier, code-reviewer (inline), doc-audit (`tools/doc-check` first), docs.
    - **Pre-gate:** `sprint pre-gate-check <id>` first; non-zero: stop. A `switches to the Close model` line: end the turn (t-3e06). A `Session context:` line: write any unrecorded deviation into
      `plan.md`, stop, ask the user to `/clear`, then `sprint continue <id>`.
@@ -32,7 +34,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
    - **Mutation sweep** (logic files): `skills/mutation-test/SKILL.md`
      (`mutant-sweep --check` first), triage survivors; then
      `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason: `mutation-test | skipped | <reason>`.
-   - **Evidence:** in a clone of the final commit run
+   - **Evidence** (`test-stamp`): in a clone of the final commit run
      `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
      (canon: `scripts/test.sh`). Late fix: stamp the `--only` command `sprint check-evidence`'s `hint:` prints.
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
@@ -56,8 +58,8 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
 
 ## Gate dispatch inputs
 
-- **Prompt and model:** `sprint gate-prompt <id> <reviewer|evaluator|evaluator2>` prints the whole prompt (protocol, `Model:`
-  line, report path or Copilot's write-no-file rule, the evaluator's check-evidence output); stderr names the `model` to pass
+- **Prompt and model:** `sprint gate-prompt <id> <reviewer|evaluator|evaluator2>` prints the whole prompt, or refuses
+  (`missed:` lines) until the earlier steps are done; stderr names the `model` to pass
   (none: omit it). Pass the prompt verbatim; add no report shape, verdict line, run-id or changed-files list of your own.
 - `Plan` fallback, Copilot gates: `sprint relay-report <id> [reviewer]` writes the report (it takes no input);
   session never types one. Copilot's `task` call needs `name`.

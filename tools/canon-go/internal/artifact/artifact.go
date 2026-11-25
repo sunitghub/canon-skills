@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -646,46 +647,115 @@ func (c *checker) verdict(ls []string, rule string, words ...string) {
 	c.add(1, rule, "no `## Verdict` heading")
 }
 
-// ---- produces (t-2bfe): a pipeline node's postcondition names one of these rules
+// ---- produces (t-2bfe, t-a4e8): a pipeline node's postcondition names one of these
 
-// present says a rule's line exists. A rule whose checker already reports its absence (a verdict) needs none here.
-var present = map[string]func(ls []string) bool{
-	"spec.verdict": func([]string) bool { return true },
-	"plan.approved-stamp": func(ls []string) bool {
+// In is what a check needs beyond the ticket folder: the node it is for (its own `## Wrapup Gates` row) and the evidence logs
+// `tools/evidence.sh check` reports ok (`fresh … exit=0` or `covered`), named without `.log`. tools/sprint owns that verdict
+// (one owner of freshness): this package never reads a log.
+type In struct {
+	Node     string
+	Evidence []string
+}
+
+// produce is one rule a node may name: file is the artifact read ("" reads none), rule the schema rule whose finding means
+// "does not hold" ("" reads none), and holds the rest of the check, run on an existing file with no such finding.
+type produce struct {
+	file, rule string
+	holds      func(dir string, ls []string, in In) (bool, error)
+}
+
+var present = map[string]produce{
+	"spec.verdict": {"spec-review.md", "spec.verdict", nil},
+	"eval.verdict": {"eval-report.md", "eval.verdict", nil},
+	"plan.approved-stamp": {"plan.md", "plan.approved-stamp", func(_ string, ls []string, _ In) (bool, error) {
 		for _, s := range named(sections(ls), "Sign-off") {
 			for _, i := range s.body {
 				if approvedOK.MatchString(ls[i]) {
-					return true
+					return true, nil
 				}
 			}
 		}
-		return false
-	},
+		return false, nil
+	}},
+	// only the node's own row is read: a malformed row for another gate is that gate's miss, not this one's
+	"acceptance.wrapup-row": {"acceptance.md", "", func(_ string, ls []string, in In) (bool, error) {
+		if in.Node == "" {
+			return false, errors.New("acceptance.wrapup-row: no node to look up")
+		}
+		for _, s := range named(sections(ls), "Wrapup Gates") {
+			for _, i := range s.body {
+				if rowStartRe.MatchString(ls[i]) && cells(ls[i])[0] == in.Node {
+					var c checker
+					c.wrapupRow(ls[i], i+1)
+					return len(c.out) == 0, nil
+				}
+			}
+		}
+		return false, nil
+	}},
+	// the reviewer's report, or a bugfix plan: that tier skips the reviewer (complete.md step 2), so nothing is missed
+	"review.done": {"", "", func(dir string, _ []string, _ In) (bool, error) {
+		if ok, _, err := clean(dir, "review-notes.md", "review.verdict"); err != nil || ok {
+			return ok, err
+		}
+		ok, ls, err := clean(dir, "plan.md", "plan.tier")
+		if err != nil || !ok {
+			return false, err
+		}
+		for _, s := range named(sections(ls), "Sign-off") {
+			for _, i := range s.body {
+				if m := tierRe.FindStringSubmatch(strings.ToLower(strings.ReplaceAll(ls[i], "*", ""))); m != nil {
+					return m[1] == "bugfix", nil
+				}
+			}
+		}
+		return false, nil
+	}},
+	"evidence.test-sh": {"", "", func(_ string, _ []string, in In) (bool, error) {
+		return slices.Contains(in.Evidence, "test-sh"), nil
+	}},
 }
 
 // Produces reports whether id names a rule a pipeline node's `produces:` may name.
 func Produces(id string) bool { _, ok := present[id]; return ok }
 
-// Holds reports whether ticket folder dir holds rule id's line, well-formed: false for a missing file. The error is for a
-// rule no node may name or a file that cannot be read as an artifact (a link, over the cap), never read as "holds".
-func Holds(dir, id string) (bool, error) {
-	has, ok := present[id]
+// clean reads dir/file: false for a missing file, an error for one that cannot be read as an artifact (a link, over the cap),
+// else true when Check reports no finding of rule ("" checks none), with the file's lines.
+func clean(dir, file, rule string) (bool, []string, error) {
+	data, err := read(filepath.Join(dir, file))
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	if rule != "" {
+		for _, f := range Check(file, data, "") {
+			if f.Rule == rule {
+				return false, nil, nil
+			}
+		}
+	}
+	return true, lines(data), nil
+}
+
+// Holds reports whether ticket folder dir holds rule id for in.Node: false for a missing file. The error is for a rule no
+// node may name or a file that cannot be read as an artifact, never read as "holds".
+func Holds(dir, id string, in In) (bool, error) {
+	p, ok := present[id]
 	if !ok {
 		return false, fmt.Errorf("%s: not a rule a pipeline node may produce", id)
 	}
-	r := ruleByID[id]
-	data, err := read(filepath.Join(dir, r.File))
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	ls := lines(data)
-	for _, f := range Check(r.File, data, "") {
-		if f.Rule == id {
-			return false, nil
+	var ls []string
+	if p.file != "" {
+		ok, l, err := clean(dir, p.file, p.rule)
+		if err != nil || !ok {
+			return false, err
 		}
+		ls = l
 	}
-	return has(ls), nil
+	if p.holds == nil {
+		return true, nil
+	}
+	return p.holds(dir, ls, in)
 }

@@ -126,6 +126,15 @@
   "group": ""
  },
  {
+  "id": "test-stamp",
+  "kind": "step",
+  "order": 95,
+  "on": true,
+  "skip_on": "manual",
+  "only": "",
+  "group": ""
+ },
+ {
   "id": "eval",
   "kind": "agent",
   "order": 100,

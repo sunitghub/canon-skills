@@ -191,10 +191,13 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const rs = rowStates(NODES, evts(close));
     // the whole table, written out (not derived from rowStates): each row's own state after the t-pnu4 close
     const want = { start: 'done', plan: 'done', 'spec-check': 'notrun', 'approve-plan': 'done', build: 'done', 'your-test': '', 'code-simplifier': 'done',
-      'code-reviewer': '', 'doc-audit': 'skipped', 'skill-eval': '', 'break-it': '', reviewer: 'done', 'security-review': 'done', 'mutation-test': '', eval: 'done', close: '' };
+      'code-reviewer': '', 'doc-audit': 'skipped', 'skill-eval': '', 'break-it': '', reviewer: 'done', 'security-review': 'done', 'mutation-test': '', 'test-stamp': '', eval: 'done', close: '' };
     ok('each row\'s own state after the close, row by row', Object.entries(want).every(([id, st]) => rs[id] && rs[id].state === st), Object.fromEntries(Object.entries(rs).map(([k, v]) => [k, v.state])));
     const before = rowStates(NODES, evts([['sprint.started']]));
     ok('before any close event: nothing past Start is done, Spec check not yet "not run"', Object.entries(before).every(([id, v]) => v.state === (id === 'start' ? 'done' : '')), before);
+    // t-a4e8: the full-suite stamp row ends on its own evidence.stamped (name test-sh): exit 0 done, else failed; another log never
+    const ts = (data) => rowStates(NODES, evts([['evidence.stamped', data]]))['test-stamp'].state;
+    ok('test-stamp: done on a test-sh stamp with exit 0, failed on exit 1, nothing on another log', ts({ name: 'test-sh', exit: '0' }) === 'done' && ts({ name: 'test-sh', exit: '1' }) === 'failed' && ts({ name: 'pre-gate', exit: '0' }) === '');
     ok('a sprint.completed closes the Close row', rowStates(NODES, evts([['sprint.completed']])).close.state === 'done');
     ok('a started spec check that has not finished is neither done nor "not run"', rowStates(NODES, evts([['gate.started', { role: 'speccheck' }], ['plan.approved']]))['spec-check'].state === '');
     ok('Build from each close signal alone: close.started, a reviewer gate, an evaluator2 gate; not a speccheck gate',

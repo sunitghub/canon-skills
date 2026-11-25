@@ -12,7 +12,7 @@ Start and plan	start <ticket-id> | "title"	Start a sprint on a ticket, or a new 
 Start and plan	continue <ticket-id>	Resume an in_progress ticket (read-only)
 Start and plan	import-issue <N> [--body-file F] [--force]	In a cloud session: rebuild the ticket a `tkt send-issue` issue carries, then start its sprint
 Start and plan	approve <id>	Pin ## Approach by sha256; refused before the spec check, and close refuses a changed Approach
-Start and plan	next <id>	The next pipeline step, after a "missed:" line for each earlier step not done
+Start and plan	next <id>	The next pipeline step through the close, after a "missed:" line for each earlier step not done
 Start and plan	current	Show the active sprint ticket
 Start and plan	status [--json]	Active ticket and required sprint files; --json: {"active","ticket","files"}
 Start and plan	suggest-tier [<id>] [--base-ref <ref>]	Propose (never apply) bugfix or normal from the diff; you write the Tier line
@@ -24,7 +24,7 @@ Close	validate <id|path>	Check a ticket's artifacts against the schema: file:lin
 Close	manual-qa <id> --by "<who>" --step "<what>|pass|fail|n/a" ...	Record the user's testing in evidence/manual-qa.md
 Close	wrapup-row <id> <gate> ran|skipped "<notes>"	Write one Wrapup Gates row and its event
 Close	close-hint <id>	Why a closed sprint's close was slow (silent if not)
-Gates	gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>	A gate's whole dispatch prompt; pass it verbatim (stderr: the model and the step after)
+Gates	gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>	A gate's prompt, passed verbatim (stderr: model, next step); refused until earlier steps are done
 Gates	gate-model <id> <reviewer|evaluator|speccheck>	The model to dispatch that gate with
 Gates	second-eval <id>	The second evaluator's model, or skip: <reason>
 Gates	run-id	An evaluator run-id, <epoch-seconds>-<number>

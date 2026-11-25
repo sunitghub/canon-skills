@@ -126,7 +126,7 @@ export const INLINE_GATES = ['code-simplifier', 'code-reviewer', 'doc-audit', 's
 export const ROW_END = {
   start: ['sprint.started'], plan: ['plan.approved'], 'spec-check': ['gate.finished'], 'approve-plan': ['plan.approved'],
   build: ['close.started', 'wrapup.gate_finished', 'gate.started', 'gate.finished'], 'your-test': ['manual_qa.recorded'],
-  reviewer: ['gate.finished'], eval: ['gate.finished'], close: ['sprint.completed'],
+  reviewer: ['gate.finished'], eval: ['gate.finished'], close: ['sprint.completed'], 'test-stamp': ['evidence.stamped'],
   ...Object.fromEntries(INLINE_GATES.map(g => [g, ['wrapup.gate_finished']])),
 };
 const GATE_ROLE = { 'spec-check': 'speccheck', reviewer: 'reviewer', eval: 'evaluator' };   // evaluator2 never counts
@@ -172,6 +172,7 @@ export function rowStates(nodes, events, artifacts = {}) {
       state = !v && !e ? '' : v === 'pass' ? 'done' : 'failed';
     }
     else if (id === 'close') state = last('sprint.completed') ? 'done' : '';
+    else if (id === 'test-stamp') { const e = last('evidence.stamped', x => String(x.name || '') === 'test-sh'); state = !e ? '' : String(d(e).exit) === '0' ? 'done' : 'failed'; }   // t-a4e8
     else if (INLINE_GATES.includes(id)) {
       const e = last('wrapup.gate_finished', x => String(x.gate || '') === id);
       const r = e ? String(d(e).result || '') : String(wrap[id] || '');   // t-e371: else the Wrapup Gates row in acceptance.md

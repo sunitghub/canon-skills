@@ -22790,10 +22790,10 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     eval: 'Always runs: the binding evaluator is the floor of every close.', close: 'Always runs: sprint complete is how a ticket closes.',
     'your-test': 'Manual tickets only: you test by hand, and sprint manual-qa records what you saw. Waiting for your test until a fresh record exists.' };
   // t-51c6: what each ticket option skips, as pipeline.yaml declares it (skip_on), and the one Manual-only node
-  const SK = { 'spec-check': 'lite', 'code-simplifier': 'lite', 'code-reviewer': 'lite', 'doc-audit': 'lite', 'skill-eval': 'lite', 'break-it': 'lite', reviewer: 'lite,manual', 'mutation-test': 'lite,manual' };
+  const SK = { 'spec-check': 'lite', 'code-simplifier': 'lite', 'code-reviewer': 'lite', 'doc-audit': 'lite', 'skill-eval': 'lite', 'break-it': 'lite', reviewer: 'lite,manual', 'mutation-test': 'lite,manual', 'test-stamp': 'manual' };
   const DEF = [['start', 'step', 10], ['plan', 'step', 20], ['spec-check', 'agent', 25], ['approve-plan', 'you', 30], ['build', 'step', 40], ['your-test', 'you', 45], ['code-simplifier', 'gate', 50, 'wrapup'],
     ['code-reviewer', 'gate', 52, 'wrapup'], ['doc-audit', 'gate', 54, 'wrapup'], ['skill-eval', 'gate', 60], ['break-it', 'agent', 62], ['reviewer', 'agent', 70],
-    ['security-review', 'gate', 80], ['mutation-test', 'gate', 90], ['eval', 'agent', 100], ['close', 'step', 110]];
+    ['security-review', 'gate', 80], ['mutation-test', 'gate', 90], ['test-stamp', 'step', 95], ['eval', 'agent', 100], ['close', 'step', 110]];
   const projects = [
     { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
     { id: 'proj-b', path: '/tmp/proj-b', name: 'proj-b', description: '', added: '2026-09-26' },
@@ -22931,7 +22931,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     const gets = b.log.length;
     // Normal: every node but the Manual-only one, nothing skipped or waiting
     await expect(card.locator('.spc-head')).toHaveText('Sprint progress \u00b7 a Normal ticket');
-    await expect(card.locator('.spc-row')).toHaveCount(15);
+    await expect(card.locator('.spc-row')).toHaveCount(16);
     await expect(row('your-test')).toHaveCount(0);
     // t-9b13: Spec check runs for Normal and Manual tickets, between Plan and Approve plan; Lite and Manual + Lite skip it
     await expect(row('spec-check').locator('.spc-n')).toHaveText('Spec check');
@@ -22948,8 +22948,9 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(row('your-test')).toHaveCount(0);
     // Manual: Your test waits, Reviewer and mutation-test are skipped, the Evaluator is a read-only audit, and Close says what the yes is
     await page.locator('#fac-pipe-prev [data-pl-prev="manual"]').click();
-    await expect(card.locator('.spc-row')).toHaveCount(16);
+    await expect(card.locator('.spc-row')).toHaveCount(17);
     await expect(note('your-test')).toHaveText('waiting for your test');
+    await expect(note('test-stamp')).toHaveText('skipped \u00b7 Manual');   // t-a4e8: Manual closes on the user's testing, no full-suite stamp
     await expect(row('spec-check')).not.toHaveClass(/gone/);
     await expect(note('reviewer')).toHaveText('skipped \u00b7 Manual');
     await expect(note('eval')).toHaveText('read-only audit');
@@ -23019,10 +23020,10 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
-  test('lists the 16 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
+  test('lists the 17 nodes with tags, locked reasons and models, and follows the project dropdown @webkit', async ({ page }) => {
     const b = await board(page);
     await open(page);
-    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(17);
     await expect(page.locator('#fac-pipe-tpl input:checked')).toHaveValue('canon-default');
     await expect(page.locator('#fac-pipe-src')).toContainText('no project file');
     await expect(page.locator('#fac-pipe-reset')).toBeDisabled();
@@ -23037,8 +23038,8 @@ test.describe('Factory Pipeline (t-3a58)', () => {
       await expect(page.locator(`[data-pl-row="${id}"] .pl-lock`)).toHaveAttribute('title', RSN[id]);
     }
     await expect(page.locator('[data-pl-row="security-review"] .pl-lock')).toHaveAttribute('title', /^Always runs: it reviews the final diff/);
-    // the seven removable rows have a switch, all on
-    for (const id of ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test'])
+    // the eight removable rows have a switch, all on (t-a4e8: test-stamp, for a project with no test command)
+    for (const id of ['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it', 'reviewer', 'mutation-test', 'test-stamp'])
       await expect(page.locator(`[data-pl-row="${id}"] .pl-sw`)).toHaveAttribute('aria-checked', 'true');
     // arrows only on the three wrapup gates
     await expect(page.locator('.pl-mv')).toHaveCount(6);
@@ -23133,7 +23134,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     // the rows between and around the group keep their place
     const all = await page.locator('#fac-pipe-rows .pl-row .pl-n').allInnerTexts();
     expect(all.slice(0, 6)).toEqual(['Start', 'Plan', 'Spec check', 'Approve plan', 'Build', 'Your test']);   // t-51c6: the Manual-only row sits after Build; t-9b13: Spec check before approval
-    expect(all.slice(9)).toEqual(['skill-eval', 'break-it', 'Reviewer', 'security-review', 'mutation-test', 'Evaluator', 'Close']);
+    expect(all.slice(9)).toEqual(['skill-eval', 'break-it', 'Reviewer', 'security-review', 'mutation-test', 'test-stamp', 'Evaluator', 'Close']);
   });
 
   test('Reset is enabled only when something differs, rewrites the file, and creates none when there is none', async ({ page }) => {
@@ -23166,7 +23167,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await expect(page.locator('#fac-pipe-tpl-d')).toBeHidden();
     await expect(page.locator('#fac-pipe-reset')).toBeEnabled();
     await page.locator('#fac-pipe-reset').click();
-    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(16);
+    await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(17);
     await expect(page.locator('#fac-pipe-rows .pl-err')).toHaveCount(0);
   });
 

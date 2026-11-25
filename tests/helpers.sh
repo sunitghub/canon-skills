@@ -132,6 +132,19 @@ pin_plan() {
   awk -v pin="Approved: sha256:$d 2026-11-25T00:00:00Z" '!done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print pin; done = 1; next } { print }' "$1" > "$1.pin" && mv "$1.pin" "$1"
 }
 
+# close_ready <ticket dir> — t-a4e8: every close step before the evaluator done, for a fixture that dispatches a gate but is not about
+# the walk: the spec verdict, a Wrapup Gates row for each node whose produces is its row (read from pipeline.sh, the one list), a
+# reviewer verdict and a fresh full-suite stamp. Run it from the project with HEAD committed; the plan's pin is pin_plan's.
+close_ready() {
+  local d="$1" g
+  spec_verdict "$d"
+  printf '# Review Notes\n\n## Verdict\nYES — fixture\n' > "$d/review-notes.md"
+  { printf '\n## Wrapup Gates\n| Gate | Status | Notes |\n|---|---|---|\n'
+    for g in $("$TOOLS_DIR/pipeline.sh" resolve --full | awk -F'\t' '$12 == "acceptance.wrapup-row" { print $2 }'); do printf '| %s | ran | fixture |\n' "$g"; done
+  } >> "$d/acceptance.md"
+  "$SPRINT" evidence stamp "$(basename "$d")" test-sh -- true >/dev/null 2>&1 || fail "close_ready: the test-sh stamp failed"
+}
+
 # use_fresh_board <dir> — build the board into <dir> and export SPRINT_CHECK_BIN to it (t-b62a: skills.sh's settings edits and
 # sprint-headless run the board binary's helpers, and the fetched binary may be older than the tools under test).
 use_fresh_board() {

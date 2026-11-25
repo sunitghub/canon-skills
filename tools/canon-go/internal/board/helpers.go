@@ -22,7 +22,7 @@
 //	sprint-check machine [--json]                  this machine's OS, chip, cores and RAM in one line, no hostname (t-c542; evidence.sh)
 //	sprint-check caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use against tools/caps.tsv (t-19bb)
 //	sprint-check validate <ticket dir | artifact file>   the artifact schema's findings, file:line: rule (t-c2de); exit 0 ok, 1 findings, 2 unreadable
-//	sprint-check walk <ticket dir> [--at <node>]   the next pipeline node and the missed ones (t-2bfe); exit 0, 1 a miss before --at's node, 2 unreadable
+//	sprint-check walk <ticket dir> [--at <node>] [--evidence <name,...>]   the next pipeline node and the missed ones (t-2bfe, t-a4e8); exit 0, 1 a miss before --at's node, 2 unreadable
 package board
 
 import (

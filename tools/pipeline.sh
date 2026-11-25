@@ -2,7 +2,7 @@
 # pipeline.sh — the sprint pipeline's one reader (t-00e0). canon's default is skills/sprint/pipeline.yaml; a project may hold
 # only what differs in <project>/canon-config/pipeline.yaml.
 #   pipeline.sh resolve [--project <dir>] [--full]   one line per node in run order: <order> <id> <kind> <on|off> <locked|open>
-#                                                    (--full: tab separated, order id kind on|off locked|open group when prompt reason skip_on only produces note; "-" = none;
+#                                                    (--full: tab separated, order id kind on|off locked|open group when prompt reason skip_on only produces note with; "-" = none;
 #                                                    a node with `only:` (it exists for one ticket option) or `before_approval: true` (it runs before the plan is approved,
 #                                                    so it cannot change after it; t-9b13) is left out of the plain list, so the approve-time pin is unchanged)
 #   pipeline.sh ids                                  the default's node ids, one per line
@@ -63,7 +63,7 @@ function parse_default(f,   st, innodes, k, idx, key, v, i) {
     if (line ~ /^    [a-z_]+: /) {
       if (N == 0) fail(f, ln, "a field before any '- id:'")
       k = line; sub(/^    /, "", k); idx = index(k, ": "); key = substr(k, 1, idx - 1); v = val(f, ln, substr(k, idx + 2))
-      if (key !~ /^(kind|order|locked|reason|group|when|prompt|skip_on|only|before_approval|produces|note)$/) fail(f, ln, "unknown field '" key "'")
+      if (key !~ /^(kind|order|locked|reason|group|when|prompt|skip_on|only|before_approval|produces|note|with)$/) fail(f, ln, "unknown field '" key "'")
       if ((N, key) in HAVE) fail(f, ln, "field '" key "' twice in node '" ID[N] "'")
       HAVE[N, key] = 1; F[N, key] = v; continue
     }
@@ -83,6 +83,11 @@ function parse_default(f,   st, innodes, k, idx, key, v, i) {
     if ((i, "only") in HAVE && F[i, "only"] != "manual") fail(f, 0, "node '" ID[i] "': only must be manual")
     if ((i, "before_approval") in HAVE && F[i, "before_approval"] != "true") fail(f, 0, "node '" ID[i] "': before_approval must be true")
     if ((i, "produces") in HAVE && F[i, "produces"] !~ /^[a-z]+\.[a-z-]+$/) fail(f, 0, "node '" ID[i] "': produces must be an artifact rule id (internal/artifact)")
+  }
+  # t-a4e8: `with` names a later node this one is dispatched beside (it is not that node's precondition: canon-go walk --at)
+  for (i = 1; i <= N; i++) if ((i, "with") in HAVE) {
+    if (!(F[i, "with"] in SEEN)) fail(f, 0, "node '" ID[i] "': with names no node ('" F[i, "with"] "')")
+    if (F[SEEN[F[i, "with"]], "order"] + 0 <= F[i, "order"] + 0) fail(f, 0, "node '" ID[i] "': with needs a node with a higher order")
   }
   # t-9b13: a node left out of the pin must really run before approval, or a close gate could leave the pin
   for (i = 1; i <= N; i++) if ((i, "before_approval") in HAVE) {
@@ -167,7 +172,8 @@ BEGIN {
       pr = ((x, "prompt") in HAVE) ? F[x, "prompt"] : "-"; rs = ((x, "reason") in HAVE) ? F[x, "reason"] : "-"
       sk = ((x, "skip_on") in HAVE) ? F[x, "skip_on"] : "-"; ol = ((x, "only") in HAVE) ? F[x, "only"] : "-"
       pd = ((x, "produces") in HAVE) ? F[x, "produces"] : "-"; nt = ((x, "note") in HAVE) ? F[x, "note"] : "-"
-      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ord, id, F[x, "kind"], on, lk, grp, wh, pr, rs, sk, ol, pd, nt
+      wt = ((x, "with") in HAVE) ? F[x, "with"] : "-"
+      printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", ord, id, F[x, "kind"], on, lk, grp, wh, pr, rs, sk, ol, pd, nt, wt
     } else printf "%s %s %s %s %s\n", ord, id, F[x, "kind"], on, lk
   }
 }

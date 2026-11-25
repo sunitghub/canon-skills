@@ -16,13 +16,15 @@ import (
 	"canon/internal/artifact"
 )
 
-// Node is one row of `pipeline.sh resolve --full`: the 11 original columns, then produces and note ("-" = none).
+// Node is one row of `pipeline.sh resolve --full`: the 11 original columns, then produces, note and with ("-" = none). With
+// names the later node this one is dispatched beside (t-a4e8: skill-eval and break-it go out in the reviewer's batch), so it is
+// not one of that node's preconditions; it still is one of every node after.
 type Node struct {
-	Order, ID, Kind, On, Locked, Group, When, Prompt, Reason, SkipOn, Only, Produces, Note string
+	Order, ID, Kind, On, Locked, Group, When, Prompt, Reason, SkipOn, Only, Produces, Note, With string
 }
 
 const (
-	columns  = 13
+	columns  = 14
 	maxNodes = 200 // pipeline.sh's own cap
 	maxLine  = 4096
 )
@@ -30,6 +32,7 @@ const (
 var (
 	orderRe = regexp.MustCompile(`^[0-9]+$`)
 	idRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+	evRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*(,[a-z0-9][a-z0-9._-]*)*$`)
 )
 
 // Parse reads the resolved pipeline in run order. Empty input, a short or long row, or a value outside its shape is an
@@ -48,7 +51,7 @@ func Parse(r io.Reader) ([]Node, error) {
 		if len(f) != columns {
 			return nil, fmt.Errorf("pipeline line %d: %d columns, want %d (pipeline.sh resolve --full)", n, len(f), columns)
 		}
-		nd := Node{f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12]}
+		nd := Node{f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12], f[13]}
 		switch {
 		case !orderRe.MatchString(nd.Order):
 			return nil, fmt.Errorf("pipeline line %d: order %q is not a number", n, nd.Order)
@@ -58,6 +61,8 @@ func Parse(r io.Reader) ([]Node, error) {
 			return nil, fmt.Errorf("pipeline line %d: node %s: on/off is %q", n, nd.ID, nd.On)
 		case nd.Produces != "-" && !artifact.Produces(nd.Produces):
 			return nil, fmt.Errorf("pipeline line %d: node %s produces %q, not a rule a node may produce", n, nd.ID, nd.Produces)
+		case nd.With != "-" && !idRe.MatchString(nd.With):
+			return nil, fmt.Errorf("pipeline line %d: node %s: with %q is not a node id", n, nd.ID, nd.With)
 		}
 		out = append(out, nd)
 	}
@@ -136,12 +141,11 @@ func Active(n Node, t Ticket) (bool, error) {
 	return false, fmt.Errorf("node %s: only %q", n.ID, n.Only)
 }
 
-// Result is a walk: the earlier ON nodes whose `produces` fails, and the node to do now. Unwalked is true when Next has
-// no `produces` of its own (the build): the close side is not walked yet (t-6a4d).
+// Result is a walk: the earlier ON nodes whose `produces` fails, the node to do now and, when Next has no `produces` of its own
+// (build, your-test, close), the first checked node after it (Then.ID "" when none).
 type Result struct {
-	Missed   []Node
-	Next     Node
-	Unwalked bool
+	Missed     []Node
+	Next, Then Node
 }
 
 type checked struct {
@@ -150,8 +154,8 @@ type checked struct {
 }
 
 // chain is the ticket's ON nodes in order, each checked when its id comes before stop ("" checks them all): `--at` never
-// reads its own node's output or a later one's.
-func chain(dir string, nodes []Node, stop string) ([]checked, error) {
+// reads its own node's output or a later one's, and leaves out a node dispatched with stop (`with:`). ev is the ok evidence.
+func chain(dir string, nodes []Node, stop string, ev []string) ([]checked, error) {
 	t, err := ReadTicket(dir)
 	if err != nil {
 		return nil, err
@@ -163,7 +167,7 @@ func chain(dir string, nodes []Node, stop string) ([]checked, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !on {
+		if !on || (stop != "" && n.With == stop) {
 			continue
 		}
 		if n.ID == stop {
@@ -171,7 +175,7 @@ func chain(dir string, nodes []Node, stop string) ([]checked, error) {
 		}
 		c := checked{Node: n}
 		if n.Produces != "-" && read {
-			if c.holds, err = artifact.Holds(dir, n.Produces); err != nil {
+			if c.holds, err = artifact.Holds(dir, n.Produces, artifact.In{Node: n.ID, Evidence: ev}); err != nil {
 				return nil, fmt.Errorf("node %s: %w", n.ID, err)
 			}
 		}
@@ -180,10 +184,12 @@ func chain(dir string, nodes []Node, stop string) ([]checked, error) {
 	return out, nil
 }
 
-// Walk finds the last ON node whose `produces` holds: every checked node before it that fails is missed, and the next
-// node is the first checked one after it that fails, else the first unchecked one after it.
-func Walk(dir string, nodes []Node) (Result, error) {
-	c, err := chain(dir, nodes, "")
+// Walk finds the last ON node whose `produces` holds: every checked node before it that fails is missed. Next is the node
+// right after it when that one has no `produces` (the build after approval: nothing shows it done, so it is named, with Then
+// the checked node after it); else the first checked node after it, else the first node after it. Before anything holds
+// (last = -1), next is the first checked node: start and plan have no output that tells them done.
+func Walk(dir string, nodes []Node, ev []string) (Result, error) {
+	c, err := chain(dir, nodes, "", ev)
 	if err != nil {
 		return Result{}, err
 	}
@@ -199,6 +205,16 @@ func Walk(dir string, nodes []Node) (Result, error) {
 			r.Missed = append(r.Missed, n.Node)
 		}
 	}
+	if last >= 0 && last+1 < len(c) && c[last+1].Produces == "-" {
+		r.Next = c[last+1].Node
+		for _, n := range c[last+2:] {
+			if n.Produces != "-" {
+				r.Then = n.Node
+				break
+			}
+		}
+		return r, nil
+	}
 	for _, n := range c[last+1:] {
 		if n.Produces != "-" {
 			r.Next = n.Node
@@ -206,15 +222,16 @@ func Walk(dir string, nodes []Node) (Result, error) {
 		}
 	}
 	if last+1 < len(c) {
-		r.Next, r.Unwalked = c[last+1].Node, true
+		r.Next = c[last+1].Node
 		return r, nil
 	}
 	return Result{}, errors.New("no ON node after the last one that holds")
 }
 
-// Before returns the ON nodes before id whose `produces` fails: what `sprint approve` refuses on. id must be ON.
-func Before(dir string, nodes []Node, id string) ([]Node, error) {
-	c, err := chain(dir, nodes, id)
+// Before returns the ON nodes before id whose `produces` fails, leaving out those dispatched with it: what `sprint approve`
+// and `sprint gate-prompt` refuse on. id must be ON.
+func Before(dir string, nodes []Node, id string, ev []string) ([]Node, error) {
+	c, err := chain(dir, nodes, id, ev)
 	if err != nil {
 		return nil, err
 	}
@@ -241,19 +258,33 @@ func hint(n Node, id string) string {
 	return "-"
 }
 
-// Run is `canon-go walk <ticket dir> [--at <node>]`, the pipeline on stdin. Exit 0: printed (or nothing missed before
-// --at's node); 1: --at's node has a missed node before it; 2: unreadable input or usage.
+// Run is `canon-go walk <ticket dir> [--at <node>] [--evidence <name,…>]`, the pipeline on stdin. --evidence names the logs
+// tools/evidence.sh reports ok (without `.log`). Exit 0: printed (or nothing missed before --at's node); 1: --at's node has a
+// missed node before it; 2: unreadable input or usage.
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var dir, at string
-	switch {
-	case len(args) == 1 && !strings.HasPrefix(args[0], "-"):
-		dir = args[0]
-	case len(args) == 3 && !strings.HasPrefix(args[0], "-") && args[1] == "--at" && idRe.MatchString(args[2]):
-		dir, at = args[0], args[2]
-	default:
-		fmt.Fprintln(stderr, "usage: canon-go walk <ticket dir> [--at <node id>]   (pipeline.sh resolve --full on stdin)")
+	var ev []string
+	ok := len(args)%2 == 1 && !strings.HasPrefix(args[0], "-")
+	seen := map[string]bool{}
+	for i := 1; ok && i < len(args); i += 2 {
+		f, v := args[i], args[i+1]
+		switch {
+		case seen[f]:
+			ok = false
+		case f == "--at" && idRe.MatchString(v):
+			at = v
+		case f == "--evidence" && len(v) <= maxLine && evRe.MatchString(v):
+			ev = strings.Split(v, ",")
+		default:
+			ok = false
+		}
+		seen[f] = true
+	}
+	if !ok {
+		fmt.Fprintln(stderr, "usage: canon-go walk <ticket dir> [--at <node id>] [--evidence <name,...>]   (pipeline.sh resolve --full on stdin)")
 		return 2
 	}
+	dir = args[0]
 	id := dir
 	if abs, err := filepath.Abs(dir); err == nil {
 		id = filepath.Base(abs)
@@ -267,7 +298,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 	if at != "" {
-		missed, err := Before(dir, nodes, at)
+		missed, err := Before(dir, nodes, at, ev)
 		if err != nil {
 			return fail(err)
 		}
@@ -279,7 +310,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	r, err := Walk(dir, nodes)
+	r, err := Walk(dir, nodes, ev)
 	if err != nil {
 		return fail(err)
 	}
@@ -287,8 +318,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "missed: %s — %s\n", n.ID, hint(n, id))
 	}
 	fmt.Fprintf(stdout, "next: %s (%s) — %s\n", r.Next.ID, r.Next.Kind, hint(r.Next, id))
-	if r.Unwalked {
-		fmt.Fprintln(stdout, "then: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)")
+	if r.Then.ID != "" {
+		fmt.Fprintf(stdout, "then: %s (%s) — %s\n", r.Then.ID, r.Then.Kind, hint(r.Then, id))
 	}
 	return 0
 }
