@@ -702,11 +702,14 @@ var present = map[string]produce{
 		if err != nil || !ok {
 			return false, err
 		}
-		for _, s := range named(sections(ls), "Sign-off") {
-			for _, i := range s.body {
-				if m := tierRe.FindStringSubmatch(strings.ToLower(strings.ReplaceAll(ls[i], "*", ""))); m != nil {
-					return m[1] == "bugfix", nil
-				}
+		// the first Sign-off only, the one plan.tier checks: a second section's Tier line must not skip the reviewer
+		signoff := named(sections(ls), "Sign-off")
+		if len(signoff) == 0 {
+			return false, nil
+		}
+		for _, i := range signoff[0].body {
+			if m := tierRe.FindStringSubmatch(strings.ToLower(strings.ReplaceAll(ls[i], "*", ""))); m != nil {
+				return m[1] == "bugfix", nil
 			}
 		}
 		return false, nil

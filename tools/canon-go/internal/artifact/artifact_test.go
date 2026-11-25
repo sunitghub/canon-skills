@@ -520,6 +520,8 @@ func TestHoldsCloseNodes(t *testing.T) {
 	want("review.done", In{}, true) // bugfix skips the reviewer
 	write("plan.md", strings.Replace(valid["plan.md"], "Tier: a prose line", "Tier: bugfix", 1))
 	want("review.done", In{}, false) // a Tier line outside Sign-off is prose
+	write("plan.md", strings.Replace(valid["plan.md"], "**Tier**: Normal. | Risk: low | Gate model: haiku\n", "", 1)+"\n## Sign-off\nTier: bugfix\n")
+	want("review.done", In{}, false) // only the first Sign-off is the plan's (plan.tier reads it alone; break-it, t-a4e8)
 
 	want("eval.verdict", In{}, false)
 	write("eval-report.md", valid["eval-report.md"])
