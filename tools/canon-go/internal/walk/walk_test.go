@@ -205,3 +205,43 @@ func TestAtReadsOnlyEarlierNodes(t *testing.T) {
 		t.Fatalf("a full walk reads plan.md: exit %d %q, want 2", code, got)
 	}
 }
+
+// The ticket's options decide which nodes are ON (Lite skips spec-check, Manual adds your-test); slice 1's output stops at the
+// build, so a Manual ticket is checked here, where its option is read and applied (mutation sweep, t-2bfe close).
+func TestOptionsDecideActive(t *testing.T) {
+	manual := strings.Replace(ticketMD, "priority: 1\n", "priority: 1\nmanual: true\n", 1)
+	tk, err := ReadTicket(ticket(t, map[string]string{"ticket.md": manual}))
+	if err != nil || tk != (Ticket{Manual: true}) {
+		t.Fatalf("manual: true read as %+v, %v", tk, err)
+	}
+	if _, err := ReadTicket(ticket(t, map[string]string{"ticket.md": strings.Replace(ticketMD, "priority: 1\n", "priority: 1\nmanual: yes\n", 1)})); err == nil {
+		t.Error("manual: yes was read, want an error (a guess could switch a node on or off)")
+	}
+	yourTest := Node{ID: "your-test", On: "on", SkipOn: "-", Only: "manual"}
+	skipManual := Node{ID: "x", On: "on", SkipOn: "lite,manual", Only: "-"}
+	cases := []struct {
+		name string
+		n    Node
+		t    Ticket
+		want bool
+	}{
+		{"only manual, manual ticket", yourTest, Ticket{Manual: true}, true},
+		{"only manual, plain ticket", yourTest, Ticket{}, false},
+		{"skip_on manual, manual ticket", skipManual, Ticket{Manual: true}, false},
+		{"skip_on manual, plain ticket", skipManual, Ticket{}, true},
+	}
+	for _, c := range cases {
+		if got, err := Active(c.n, c.t); err != nil || got != c.want {
+			t.Errorf("%s: %v, %v; want %v", c.name, got, err, c.want)
+		}
+	}
+}
+
+// When every ON node the walk reaches holds and none follows, there is no next node: an error (exit 2), never a guess.
+func TestNothingAfterTheLastHoldingNode(t *testing.T) {
+	stdin := strings.Join(strings.Split(pipe("on"), "\n")[2:4], "\n") + "\n" // spec-check, approve-plan only
+	got, code := run(ticket(t, map[string]string{"ticket.md": ticketMD, "spec-review.md": specMD, "plan.md": planMD}), stdin)
+	if code != 2 || !strings.Contains(got, "no ON node after the last one that holds") {
+		t.Errorf("exit %d %q, want 2 and the no-next-node error", code, got)
+	}
+}

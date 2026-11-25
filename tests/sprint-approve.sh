@@ -66,6 +66,13 @@ gate >/dev/null || fail "re-approve must make the plan gate pass"
 sed -i.bak '/^Approved:/d' "$plan"; rm -f "$plan.bak"
 if out="$(gate)"; then fail "a ticked box with no pin must refuse the close"; fi
 assert_contains "$out" "Sprint $id cannot close: plan.md has no 'Approved: sha256:' pin; run sprint approve $id."
+# ...and sprint start on a written plan with that ticked box (no pin) asks for approval, not "already approved" (sprint start's step 3)
+p2="$(make_project)"; unpinned="$(sed '/^Approved:/d' "$plan")"
+out="$(cd "$p2" && sid="$("$TKT" create "Ticked, not pinned" -t task -p 2)" && mkdir -p ".tickets/$sid" \
+  && printf '%s\n' "$unpinned" > ".tickets/$sid/plan.md" && "$SPRINT" start "$sid")"
+rm -rf "$p2"
+assert_contains "$out" "3. Fill in plan.md — write the approach, then wait for explicit approval before coding."
+[[ "$out" != *"already approved"* ]] || fail "a ticked box with no pin must not read as approved at sprint start: $out"
 
 # 7. approve refuses a missing id, a missing plan, and a plan with no approval box
 out="$(run_fail "$SPRINT" approve)"; assert_contains "$out" "Usage: sprint approve"
