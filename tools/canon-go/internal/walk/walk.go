@@ -258,32 +258,37 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if abs, err := filepath.Abs(dir); err == nil {
 		id = filepath.Base(abs)
 	}
+	fail := func(err error) int {
+		fmt.Fprintln(stderr, "walk:", err)
+		return 2
+	}
 	nodes, err := Parse(stdin)
-	if err == nil && at != "" {
-		var missed []Node
-		if missed, err = Before(dir, nodes, at); err == nil {
-			for _, n := range missed {
-				fmt.Fprintf(stdout, "missed: %s — %s\n", n.ID, hint(n, id))
-			}
-			if len(missed) > 0 {
-				return 1
-			}
-			return 0
-		}
+	if err != nil {
+		return fail(err)
 	}
-	if err == nil && at == "" {
-		var r Result
-		if r, err = Walk(dir, nodes); err == nil {
-			for _, n := range r.Missed {
-				fmt.Fprintf(stdout, "missed: %s — %s\n", n.ID, hint(n, id))
-			}
-			fmt.Fprintf(stdout, "next: %s (%s) — %s\n", r.Next.ID, r.Next.Kind, hint(r.Next, id))
-			if r.Unwalked {
-				fmt.Fprintln(stdout, "then: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)")
-			}
-			return 0
+	if at != "" {
+		missed, err := Before(dir, nodes, at)
+		if err != nil {
+			return fail(err)
 		}
+		for _, n := range missed {
+			fmt.Fprintf(stdout, "missed: %s — %s\n", n.ID, hint(n, id))
+		}
+		if len(missed) > 0 {
+			return 1
+		}
+		return 0
 	}
-	fmt.Fprintln(stderr, "walk:", err)
-	return 2
+	r, err := Walk(dir, nodes)
+	if err != nil {
+		return fail(err)
+	}
+	for _, n := range r.Missed {
+		fmt.Fprintf(stdout, "missed: %s — %s\n", n.ID, hint(n, id))
+	}
+	fmt.Fprintf(stdout, "next: %s (%s) — %s\n", r.Next.ID, r.Next.Kind, hint(r.Next, id))
+	if r.Unwalked {
+		fmt.Fprintln(stdout, "then: the close is not walked yet; follow skills/sprint/reference/complete-checklist.md (t-6a4d)")
+	}
+	return 0
 }
