@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -539,27 +540,45 @@ func TestAPIv1EventsStreamEndsWhenItsFileShrinks(t *testing.T) {
 	waitFor(t, "the stream to end after its file shrank", func() bool { return len(v1StreamSlots) == 0 })
 }
 
-// Prod path: a client that stops reading is cut after the write deadline and its slot freed (t-8d45): four of them must not hold the table. A raw
-// connection with a tiny receive buffer asks for a backlog far larger than the socket buffers and then never reads.
+// Prod path: a client that stops reading is cut after the write deadline and its slot freed (t-8d45): four of them must not hold the table. The
+// stream runs over a net.Pipe, which has no buffer, so the first frame the client does not read blocks and the deadline alone ends the stream
+// (t-1775): over loopback TCP the kernel took in a backlog whose size and pace were the OS's, 0.55 s on the Mac and past waitFor's 2 s on the
+// Linux runner from v0.85.1, and a 1 KB send buffer still let it drip in for 0.17 to 2.2 s.
 func TestAPIv1EventsStreamCutsAStalledClient(t *testing.T) {
 	f := newEvFix(t)
 	v1StreamWrite = 100 * time.Millisecond
-	var b strings.Builder
-	line := f.line(1, f.proj)
-	for i := 0; i < 60000; i++ { // about 16 MB
-		b.WriteString(line)
-	}
-	f.append("2026-11-10", b.String())
-	conn, err := net.DialTimeout("tcp", f.srv.Listener.Addr().String(), 2*time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.Close()
-	conn.(*net.TCPConn).SetReadBuffer(1024)
-	fmt.Fprint(conn, "GET /api/v1/events/stream?cursor=2026-11-10:0 HTTP/1.1\r\nHost: 127.0.0.1:8423\r\n\r\n")
+	f.append("2026-11-10", strings.Repeat(f.line(1, f.proj), 10))
+	ln := &pipeListener{conns: make(chan net.Conn), done: make(chan struct{})}
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(handle))
+	srv.Listener = ln
+	srv.Start()
+	t.Cleanup(srv.Close)
+	client, server := net.Pipe()
+	defer client.Close()
+	ln.conns <- server
+	fmt.Fprint(client, "GET /api/v1/events/stream?cursor=2026-11-10:0 HTTP/1.1\r\nHost: 127.0.0.1:8423\r\n\r\n")
 	waitFor(t, "the stream to take its slot", func() bool { return len(v1StreamSlots) == 1 })
 	waitFor(t, "the stalled client to be cut", func() bool { return len(v1StreamSlots) == 0 })
 }
+
+// pipeListener hands the server the ends of net.Pipe connections the test makes.
+type pipeListener struct {
+	conns chan net.Conn
+	done  chan struct{}
+	once  sync.Once
+}
+
+func (l *pipeListener) Accept() (net.Conn, error) {
+	select {
+	case c := <-l.conns:
+		return c, nil
+	case <-l.done:
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *pipeListener) Close() error   { l.once.Do(func() { close(l.done) }); return nil }
+func (l *pipeListener) Addr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8423} }
 
 // Prod path: an idle stream says it is alive only when it has been silent (t-8d45): events flowing every 30 ms keep a 150 ms keep-alive from ever
 // being written between them.
