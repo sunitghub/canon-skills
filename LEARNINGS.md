@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 00:04
+learnings-sweep last run: 11-25-2026 09:38
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-25 | [t-2bfe](.tickets/t-2bfe/learnings.md) | A verdict parser that only reported before becomes a gate once approval reads it: `spec.verdict` took only a bare READY/GAPS word, so a ran check written `GAPS: three findings` was refused as "has not run" (reviewer catch, fixed e8606065) — when a lax reader starts blocking, re-check the shapes real reports use. | UNPROMOTED |
 | 2026-11-25 | [t-ef9c](.tickets/t-ef9c/learnings.md) | A two-way pin was claimed but only one way was checked: the runner-text label parse was "pinned equal to `--list`" while the test only asserted every `--list` label is parsed (superset), so an invented label would pass (reviewer, low; wording fixed) — say which direction a parity pin checks. | UNPROMOTED |
 | 2026-11-25 | [t-c2de](.tickets/t-c2de/learnings.md) | A Go reader of a line the shell also parses must trim as the shell does: `strings.TrimSpace` is Unicode-aware, so `status: open<NBSP>` validated ok while the shell's exact compare reads a different value (evaluator attempt 1 fail; fixed with an ASCII-only trim); the reviewer also caught `filepath.Base` of a relative path naming the folder `.`. | UNPROMOTED |
 | 2026-11-24 | [t-ca0e](.tickets/t-ca0e/learnings.md) | A `go list` import guard sees only the host GOOS and non-test imports: a `_windows.go` edge and a board `_test.go` importing daemon both passed until the graph was listed per GOOS (darwin, linux, windows) with `.TestImports`/`.XTestImports` (code-reviewer and reviewer catches). | UNPROMOTED |
