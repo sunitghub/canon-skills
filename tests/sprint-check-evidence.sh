@@ -101,4 +101,12 @@ put sweep.log "HEAD $CS $T\n\$ mutant-sweep --map x\nexit 0\n"; put b.log "HEAD 
 assert_eq 1 "$code"; assert_contains "$out" "  note    stale sweep.log"; assert_contains "$out" "REFUSE  stale b.log"
 rm "$ED/sweep.log"; put b.log "HEAD $CL $T\nexit 0\n"; unset CANON_HOME
 
+# t-ef9c: a stale full-suite log's `  hint:` line is shown as the recipe under it, never as a REFUSE or a counted log
+rm -rf "$ED"; mkdir -p scripts tests; printf 'tests=(\n  "$ROOT/tests/h.sh"\n)\n' > scripts/test.sh; echo 'echo h' > tests/h.sh
+git add scripts tests && git commit -qm suite; CH0="$(git rev-parse HEAD)"; echo 'echo h2' >> tests/h.sh; git commit -qam "suite edit"
+put full.log "HEAD $CH0 $T\n\$ scripts/test.sh\nexit 0\n"; ce "$ID"; assert_eq 1 "$code"
+assert_contains "$out" "          hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only -- scripts/test.sh --only tests/h.sh"
+assert_count 1 "REFUSE" <(printf '%s' "$out"); assert_contains "$out" "check-evidence: 1 of 1 log(s)"
+rm -rf "$ED"
+
 echo "sprint-check-evidence: ok"

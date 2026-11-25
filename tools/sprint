@@ -1825,6 +1825,7 @@ cmd_check_evidence() {
   if [[ -n "$out" ]]; then
   while IFS= read -r line; do
     [[ "$line" =~ ^[a-z]+\ ([^\ ]+)\  ]] && [[ ! "${BASH_REMATCH[1]}" =~ ^[a-z0-9][a-z0-9._-]*\.log$ ]] && continue   # refused above by name
+    if [[ "$line" == "  hint: "* ]]; then echo "          ${line#  }"; continue; fi   # t-ef9c: the recipe under the log above, not a log
     n=$((n + 1))
     if [[ "$line" =~ ^fresh\ [a-z0-9][a-z0-9._-]*\.log\ exit=0\ \( || "$line" =~ ^covered\ [a-z0-9][a-z0-9._-]*\.log\ exit=[0-9?]+\ \( ]]; then echo "  ok      $line"
     elif [[ "$line" =~ ^stale\ ([a-z0-9][a-z0-9._-]*\.log)\ exit=0\ \( ]] && _is_sweep_log "$edir/${BASH_REMATCH[1]}"; then
@@ -1835,7 +1836,7 @@ cmd_check_evidence() {
   fi
   if (( bad )); then
     echo "check-evidence: $bad of $n log(s) would fail or mislead the evaluator; do not dispatch it yet."
-    echo "  stale      re-stamp at HEAD (sprint evidence stamp, from a plain clone for the full suite)"
+    echo "  stale      re-stamp at HEAD (sprint evidence stamp, from a plain clone for the full suite; a hint: line under it names a narrower stamp)"
     echo "  exit=N     fix the failure and re-stamp; for a full board spec failing only on new flakes, list them, then stamp"
     echo "             \`node tests/board-spec-guard.js <the run's --out dir>/board-spec-*-run*.json\` at HEAD (the run log becomes covered)"
     echo "  unstamped  stamp it, or move a history or off-tree log into a subfolder of evidence/ (never scanned)"

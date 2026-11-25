@@ -19,8 +19,11 @@
 #                              tests/board-spec-baseline.json changed since, that ended in exit 0 or 1 (the guard's verdict; 2 is the
 #                              runner's own failure: the tree moved or a process leaked), and re-judged at the graded head by a fresh exit-0 log of
 #                              `node tests/board-spec-guard.js` over exactly those reports, each still matching the sha256 the run log printed
-#   covered <file> exit=<N>    t-2ce8: a `scripts/test.sh` full-suite log stale only for registered suite files no other file names, and/or
-#                              failing only on suites the branch did not change, each re-run by a fresh exit-0 `scripts/test.sh --only` log
+#   covered <file> exit=<N>    t-2ce8: a `scripts/test.sh` full-suite log stale only for registered suite files no other file names (the
+#                              map and pins only select suites, so they do not count), and/or
+#                              failing only on suites the branch did not change, each re-run by a fresh exit-0 `scripts/test.sh --only` log;
+#                              t-ef9c: other changed paths count when covering-suites.sh maps them (no ALL; graded head = clean HEAD; the map,
+#                              its reader and the pins unchanged) and those suites plus the pins were re-run; otherwise a `  hint:` names the re-run
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 #   (t-278d) a log stale only for the baseline but not covered gets a `  hint:` line after it with the covered recipe.
@@ -441,6 +444,20 @@ is_suite() {
   grep -Fxq -e "  \"\$ROOT/$1\"" -e "  suite $1 node \"\$ROOT/$1\"" <<< "$RUNNER" && return 0
   [[ "$1" == tools/canon-go/internal/board || "$1" == tools/canon-go/internal/daemon ]] && grep -Fq "  suite $1 go_" <<< "$RUNNER"
 }
+# map_labels <path>... — t-ef9c: the suites tests/suite-map.txt selects for changed non-suite paths, one label per line, via
+# covering-suites.sh reading the graded runner as text (so nothing in the judged tree runs). Fails (prints nothing) when
+# the graded head is not the clean checkout the map is read from, a path edits the map, its reader or the pins, or any path maps to ALL.
+map_labels() {
+  local p out rf
+  [[ "$graded" == "$(git -C "$root" rev-parse HEAD)" ]] || return 1
+  for p in "$@"; do case "$p" in tests/suite-map.txt|tools/covering-suites.sh|tests/pre-gate-suites.txt) return 1 ;; esac; done
+  rf="$(mktemp)" || return 1
+  printf '%s\n' "$RUNNER" > "$rf"
+  out="$(CANON_SUITE_RUNNER="$rf" bash "$SCRIPT_DIR/covering-suites.sh" "$root" "$@" 2>/dev/null)" || { rm -f "$rf"; return 1; }
+  rm -f "$rf"
+  [[ -n "$out" ]] && ! grep -q '^ALL'$'\t' <<< "$out" || return 1
+  awk -F'\t' '$1 == "LABEL" { print $2 }' <<< "$out"
+}
 # suite_covered_by <i> — t-2ce8: for a full-suite log that is stale only because registered suite files changed, and/or failing only on
 # suites the branch did not change, prints "<re-run logs>|<what>|<count>" when fresh exit-0 `--only` logs at the graded head re-ran
 # every one of those suites, else nothing. Each link is checked, never trusted: a changed suite that another tracked file names (a
@@ -453,15 +470,20 @@ suite_covered_by() {
   RUNNER="$(git -C "$root" show "$graded:scripts/test.sh" 2>/dev/null)" || return 0
   if [[ "${KINDS[$i]}" == stale ]]; then
     [[ -n "${CHGS[$i]}" ]] || return 0   # stale for another reason (unknown commit, not an ancestor, a dirty tree)
+    local other=() mapped
     while IFS= read -r p; do
       [[ -n "$p" ]] || continue
-      is_suite "$p" || return 0
+      if ! is_suite "$p"; then other+=("$p"); continue; fi
       b="${p##*/}"
-      hits="$(git -C "$root" grep -l -F -e "$b" "$graded" -- tests scripts tools ':(exclude,glob)**/*.md' 2>/dev/null | sed "s/^$graded://" | grep -vFx -e "$p" -e scripts/test.sh || true)"
+      hits="$(git -C "$root" grep -l -F -e "$b" "$graded" -- tests scripts tools ':(exclude,glob)**/*.md' 2>/dev/null | sed "s/^$graded://" | grep -vFx -e "$p" -e scripts/test.sh -e tests/suite-map.txt -e tests/pre-gate-suites.txt || true)"   # t-ef9c: the map and pins only select suites, never load one
       [[ -z "$hits" ]] || return 0
       want+="$p"$'\n'
     done <<< "${CHGS[$i]}"
     what="suite file(s) changed since"
+    if (( ${#other[@]} )); then
+      mapped="$(map_labels "${other[@]}")" || return 0
+      want+="$mapped"$'\n'; what="file(s) changed since, suites from tests/suite-map.txt"
+    fi
   fi
   if [[ "${CODES[$i]}" != 0 ]]; then
     [[ "${CODES[$i]}" =~ ^[0-9]+$ ]] || return 0
@@ -478,17 +500,25 @@ suite_covered_by() {
     (( k )) || return 0
     what="${what:+$what and }failing only on suite(s) the branch did not change"
   fi
-  want="$(printf '%s' "$want" | sort -u)"; [[ -n "$want" ]] || return 0
+  want="$(printf '%s' "$want" | awk 'NF && !seen[$0]++')"; [[ -n "$want" ]] || return 0   # first-seen order: the hint lists them as covering-suites.sh did
   for k in "${!FILES[@]}"; do
     [[ "${KINDS[$k]}" == fresh && "${CODES[$k]}" == 0 ]] || continue
     g="$(line2_of "${FILES[$k]}")"; [[ "$g" =~ $only_re ]] || continue
     a=0; for p in $g; do if (( a )); then got+="$p"$'\n'; used+="${used:+, }${FILES[$k]##*/}"; fi; if [[ "$p" == --only ]]; then a=1; else a=0; fi; done
   done
-  while IFS= read -r p; do grep -Fxq -e "$p" <<< "$got" || return 0; n=$((n + 1)); done <<< "$want"
+  local miss=""
+  while IFS= read -r p; do if grep -Fxq -e "$p" <<< "$got"; then n=$((n + 1)); else miss+=" --only $p"; fi; done <<< "$want"
+  if [[ -n "$miss" ]]; then printf 'hint|%s' "$miss"; return 0; fi
   used="$(printf '%s' "$used" | tr ',' '\n' | sed 's/^ //' | sort -u | paste -sd, - | sed 's/,/, /g')"
   printf '%s|%s|%s' "$used" "$what" "$n"
 }
 
+# hint_name_taken <log> — t-ef9c: a hint never names a log that already counts (fresh, exit 0); a stale or failing one is reused.
+hint_name_taken() {
+  local j
+  for j in "${!FILES[@]}"; do [[ "${FILES[$j]}" == "$1" ]] || continue; [[ "${KINDS[$j]}" == fresh && "${CODES[$j]}" == 0 ]] && return 0; return 1; done
+  return 1
+}
 REDIR="$(cd "$edir" && pwd -P)"
 FILES=(); KINDS=(); CODES=(); LINES=(); BASES=(); SPECQS=(); STAMPS=(); SHOWNS=(); CHGS=()
 for f in "$edir"/*.log; do
@@ -509,7 +539,11 @@ for i in "${!FILES[@]}"; do
   fi
   if [[ "${KINDS[$i]}" == stale || ( "${KINDS[$i]}" == fresh && "${CODES[$i]}" != 0 ) ]]; then
     g="$(suite_covered_by "$i")"
-    if [[ -n "$g" ]]; then
+    if [[ "$g" == hint\|* ]]; then
+      # t-ef9c: the exact re-run, under a name no log has yet, so it never overwrites an earlier re-run
+      k=""; while hint_name_taken "$edir/test-sh-only$k.log"; do k=$(( ${k:-1} + 1 )); done
+      LINES[$i]+=$'\n'"  hint: to cover it, stamp the missing suites: sprint evidence stamp $id test-sh-only$k -- scripts/test.sh${g#hint|}"
+    elif [[ -n "$g" ]]; then
       IFS='|' read -r a what n <<< "$g"
       LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; $what; re-run at ${graded:0:7} by $(safe "$a") over $n suite(s))${SHOWNS[$i]}"
     fi

@@ -7,7 +7,8 @@
 # Prints one of:
 #   ALL<TAB><reason>                  (one or more lines): run the full suite; each line names a path that forced it
 #   LABEL<TAB><label><TAB><paths>     (one or more lines): run just these; <paths> pulled the label in
-# Never exits 0 with neither. Exit 1: the map fails its self-check (the row is named on stderr) or the suite list cannot be
+# Never exits 0 with neither. CANON_SUITE_RUNNER=<file>, when set, reads the labels from that runner's text instead of running
+# `scripts/test.sh --list` (t-ef9c). Exit 1: the map fails its self-check (the row is named on stderr) or the suite list cannot be
 # read; exit 2: usage.
 #
 # Map rows: `<pattern> <token>...  # why`. <pattern> is a shell `case` glob (`*` also matches `/`). A token is a --list label,
@@ -38,7 +39,12 @@ fi
 
 if [[ ! -f "$MAP" ]]; then printf 'ALL\tno tests/suite-map.txt\n'; exit 0; fi
 
-LABELS="$(bash "$ROOT/scripts/test.sh" --list 2>/dev/null)" || { echo "covering-suites: scripts/test.sh --list failed" >&2; exit 1; }
+# t-ef9c: evidence.sh check names a copy of the graded runner instead, because check runs nothing from the tree it judges: the labels are
+# its `"$ROOT/<label>"` lines and `suite <label> …` lines, read as text (tests/evidence.sh pins them equal to --list on canon's runner).
+if [[ -n "${CANON_SUITE_RUNNER:-}" ]]; then
+  LABELS="$(sed -nE -e 's#^  "\$ROOT/([A-Za-z0-9._/-]+)"$#\1#p' -e 's#^  suite ([A-Za-z0-9._/-]+) .*#\1#p' -- "$CANON_SUITE_RUNNER")" || { echo "covering-suites: cannot read $CANON_SUITE_RUNNER" >&2; exit 1; }
+  [[ -n "$LABELS" ]] || { echo "covering-suites: $CANON_SUITE_RUNNER names no suite" >&2; exit 1; }
+else LABELS="$(bash "$ROOT/scripts/test.sh" --list 2>/dev/null)" || { echo "covering-suites: scripts/test.sh --list failed" >&2; exit 1; }; fi
 [[ -n "$LABELS" ]] || { echo "covering-suites: scripts/test.sh --list printed no suites" >&2; exit 1; }
 is_label() { grep -qxF -- "$1" <<<"$LABELS"; }
 

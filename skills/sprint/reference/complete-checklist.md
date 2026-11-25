@@ -34,7 +34,7 @@ Confirm to proceed." A broad "continue"/"finish" is not approval.
      `sprint evidence stamp <id> mutant-sweep -- mutant-sweep …`. Non-binding; not skippable without a reason: `mutation-test | skipped | <reason>`.
    - **Evidence:** in a clone of the final commit run
      `CANON_TICKETS_DIR=<project>/.tickets sprint evidence stamp <id> test-sh -- <project test command>`
-     (canon: `scripts/test.sh`; `--only <suite>` per complete.md).
+     (canon: `scripts/test.sh`). Late fix: stamp the `--only` command `sprint check-evidence`'s `hint:` prints.
    `mutation-test` row filled; `sprint check-evidence <id>` ok (`[manual]`: `sprint manual-qa`); `eval_fail_count` below 3; snapshot
    pre (`--role evaluator`); `Agent` with `subagent_type: "canon-evaluator"`; post (before fix commits):
    - Line 1 `evaluator-run-id: <epoch>-<n>`: run `sprint run-id`; skew over 300 s → discard, re-dispatch.

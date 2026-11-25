@@ -876,4 +876,79 @@ assert_eq 0 "$code"; assert_contains "$out" "ok      covered full.log exit=1"
 cd "$REPO"
 echo "evidence: a full-suite log is covered by --only re-runs only after a suite-only change or an out-of-branch failure (t-2ce8)"
 
+# --- t-ef9c: a late fix in a non-suite path is `covered` by --only re-runs of the suites tests/suite-map.txt selects ----------------
+# Protects `sprint check-evidence` (the evaluator's close gate): a narrower re-run counts only when it re-ran every selected suite.
+MR="$WORK/mapped"; mkdir -p "$MR/scripts" "$MR/tests" "$MR/src" "$MR/tools" "$MR/.tickets/$ID"; cd "$MR"
+git init -q -b main . && git config user.name t && git config user.email t@t
+cat > scripts/test.sh <<'RUNNER'
+tests=(
+  "$ROOT/tests/a.sh"
+  "$ROOT/tests/b.sh"
+  "$ROOT/tests/c.sh"
+  "$ROOT/tests/d.sh"
+)
+if [[ "${1-}" == --list ]]; then touch "$(dirname "$0")/../LIST-RAN"; printf '%s\n' tests/a.sh tests/b.sh tests/c.sh tests/d.sh; exit 0; fi
+RUNNER
+for t in a b c d; do echo "echo $t" > "tests/$t.sh"; done
+printf 'src/p.txt tests/a.sh\nsrc/q.txt tests/b.sh tests/c.sh\nsrc/all.txt ALL\n# rows for the self-edit cases: without the guard these paths would map to a suite\ntests/suite-map.txt tests/c.sh\ntools/covering-suites.sh tests/c.sh\ntests/pre-gate-suites.txt tests/c.sh\n' > tests/suite-map.txt
+echo 'tests/d.sh' > tests/pre-gate-suites.txt
+for f in p q all; do echo 1 > "src/$f.txt"; done; echo x > tools/covering-suites.sh; echo '# t' > ".tickets/$ID/ticket.md"
+git add scripts tests src tools && git commit -qm base; M0="$(git rev-parse HEAD)"
+MED="$MR/.tickets/$ID/evidence"
+mev() { set +e; out="$(cd "$MR" && bash "$EV" check "$ID" "$@" 2>&1)"; code=$?; set -e; }
+mput() { mkdir -p "$MED"; printf '%b' "$2" > "$MED/$1"; }
+mline() { printf '%s\n' "$out" | grep -E "^[a-z]+ $1 " || true; }
+mstale() { mev "$@"; [[ "$(mline full.log)" == "stale full.log exit=0 "* ]] || fail "evidence: t-ef9c: $MSG must stay stale: $out"; }
+# late <path>...: the full log at M0, then one commit appending a comment line to each path (the map and pins stay valid)
+late() { git reset -q --hard "$M0"; rm -rf "$MED"; mput full.log "HEAD $M0 $T\n\$ scripts/test.sh\nexit 0\n"; for f in "$@"; do echo "# 2" >> "$f"; done; git commit -qam late; MH="$(git rev-parse HEAD)"; }
+only() { mput "${2:-only.log}" "HEAD $MH $T\n\$ scripts/test.sh$1\nexit 0\n"; }
+# covered: a product fix, every selected suite plus the pin re-run at HEAD
+late src/q.txt; only " --only tests/b.sh --only tests/c.sh --only tests/d.sh"; mev
+assert_contains "$(mline full.log)" "covered full.log exit=0 (HEAD ${M0:0:7}; file(s) changed since, suites from tests/suite-map.txt; re-run at ${MH:0:7} by only.log over 3 suite(s))"
+[[ ! -e "$MR/LIST-RAN" ]] || fail "evidence: t-ef9c: check ran the judged tree's scripts/test.sh: $out"
+# covered: a product fix plus its own suite file (the existing suite rule and the map together)
+late src/p.txt tests/a.sh; only " --only tests/a.sh --only tests/d.sh"; mev; assert_contains "$(mline full.log)" "covered full.log exit=0"
+# the hint names exactly the missing suites, in the map's order, under a log name not yet taken
+late src/q.txt; mev; assert_contains "$out" "  hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only -- scripts/test.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"
+only " --only tests/b.sh" test-sh-only.log; mev
+assert_contains "$out" "  hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only2 -- scripts/test.sh --only tests/c.sh --only tests/d.sh"
+only " --only tests/c.sh --only tests/d.sh" test-sh-only2.log; mev; assert_contains "$(mline full.log)" "covered full.log exit=0"; [[ "$out" != *"hint:"* ]] || fail "evidence: t-ef9c: a covered log carries a hint: $out"
+# stays stale: one selected suite missing (C3), the pin missing, an ALL path, an unmapped path, a self-edit of the map, its reader or the pins
+MSG="a re-run missing tests/c.sh"; late src/q.txt; only " --only tests/b.sh --only tests/d.sh"; mstale
+MSG="a re-run missing the pin"; late src/q.txt; only " --only tests/b.sh --only tests/c.sh"; mstale
+MSG="an ALL path"; late src/all.txt tests/a.sh;   # with a suite file, so only the ALL guard keeps it stale
+ only " --only tests/a.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"; mstale; [[ "$out" != *"hint:"* ]] || fail "evidence: t-ef9c: an ALL path got a hint: $out"
+MSG="an unmapped path"; late scripts/test.sh; only " --only tests/a.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"; mstale
+for f in tests/suite-map.txt tools/covering-suites.sh tests/pre-gate-suites.txt; do
+  MSG="a late edit to $f"; late "$f" src/p.txt; only " --only tests/a.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"; mstale
+done
+# stays stale: no map, a map row naming a label the runner does not run, a runner with no suite lines, a graded head that is not HEAD
+# (each setup commit comes before the stamp, so only the late src/p.txt fix is "changed since")
+pre() { git reset -q --hard "$M0"; rm -rf "$MED"; eval "$1"; git add -A scripts tests; git commit -qm setup; mput full.log "HEAD $(git rev-parse HEAD) $T\n\$ scripts/test.sh\nexit 0\n"; echo 2 >> src/p.txt; git commit -qam late; MH="$(git rev-parse HEAD)"; }
+MSG="no map"; pre 'git rm -q tests/suite-map.txt'; only " --only tests/a.sh --only tests/d.sh"; mstale
+MSG="a bad map row"; pre "echo 'src/z.txt tests/zz.sh' >> tests/suite-map.txt"; only " --only tests/a.sh --only tests/d.sh"; mstale
+cat > "$WORK/no-suites.sh" <<'RUNNER'
+touch "$(dirname "$0")/../LIST-RAN"; echo tests/a.sh
+RUNNER
+MSG="a runner with no suite lines"; pre 'cp "$WORK/no-suites.sh" scripts/test.sh'; only " --only tests/a.sh --only tests/d.sh"; mstale
+[[ ! -e "$MR/LIST-RAN" ]] || fail "evidence: t-ef9c: a runner with no suite lines was run to list its suites: $out"
+MSG="a graded head behind HEAD"; late src/p.txt; only " --only tests/a.sh --only tests/d.sh"; G="$MH"; echo 3 >> src/q.txt; git commit -qam after; mstale "$G"
+# a second late fix: the first re-run log is now stale, so the hint reuses its name and stamping it ends in check-evidence ok
+late src/q.txt; only " --only tests/b.sh --only tests/c.sh --only tests/d.sh" test-sh-only.log; echo 3 >> src/p.txt; git commit -qam "second late fix"; MH="$(git rev-parse HEAD)"; mev
+assert_contains "$out" "  hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only -- scripts/test.sh --only tests/a.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"
+only " --only tests/a.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh" test-sh-only.log
+set +e; out="$(cd "$MR" && CANON_HOME="$WORK/ch" bash "$ROOT/tools/sprint" check-evidence "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "ok      covered full.log exit=0"
+git reset -q --hard "$M0"; rm -f "$MR/LIST-RAN"
+cd "$REPO"
+# canon's own runner: the labels covering-suites.sh reads from its text (CANON_SUITE_RUNNER, what check uses) are the --list labels,
+# so a path that is a label selects itself and nothing falls to ALL for want of a label
+want_labels="$(bash "$ROOT/scripts/test.sh" --list)"; nl="$(grep -c . <<< "$want_labels")"
+(( nl > 50 )) || fail "evidence: t-ef9c: scripts/test.sh --list printed $nl labels"
+# shellcheck disable=SC2086
+got_sel="$(cd "$ROOT" && CANON_SUITE_RUNNER="$ROOT/scripts/test.sh" bash tools/covering-suites.sh "$ROOT" $want_labels 2>&1)" || fail "evidence: t-ef9c: covering-suites.sh failed on the runner-text labels: $got_sel"
+[[ "$(grep -c $'^ALL\t' <<< "$got_sel" || true)" -eq 0 ]] || fail "evidence: t-ef9c: a --list label fell to ALL under the runner-text labels: $(grep $'^ALL\t' <<< "$got_sel")"
+while IFS= read -r l; do grep -qxF -- "$l" <<< "$(awk -F'\t' '$1 == "LABEL" { print $2 }' <<< "$got_sel")" || fail "evidence: t-ef9c: runner-text labels miss --list label $l"; done <<< "$want_labels"
+echo "evidence: a late fix's full-suite log is covered by re-runs of exactly the suites tests/suite-map.txt selects (t-ef9c)"
+
 echo "evidence: ok"
