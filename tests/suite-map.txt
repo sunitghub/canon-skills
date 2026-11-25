@@ -23,3 +23,4 @@ tools/canon-go/internal/events/*_test.go  tools/canon-go/internal/board
 tools/canon-go/internal/settings/*_test.go tools/canon-go/internal/board
 tools/canon-go/cmd/*_test.go              tools/canon-go/internal/board
 tools/canon-go/internal/artifact/*        tools/canon-go/internal/board tests/sprint-validate.sh   # t-c2de: the schema; go_board runs its package
+tools/canon-go/internal/walk/*            tools/canon-go/internal/board tests/sprint-next.sh tests/sprint-approve.sh   # t-2bfe: the walker; go_board runs its package

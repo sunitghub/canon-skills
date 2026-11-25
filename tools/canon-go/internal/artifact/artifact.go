@@ -634,7 +634,8 @@ func (c *checker) verdict(ls []string, rule string, words ...string) {
 			if headingRe.MatchString(ls[j]) {
 				break // an empty section: the next heading is not its verdict
 			}
-			if !oneOf(strings.ToUpper(w[0]), words) || (len(w) > 1 && w[1] == "|") {
+			// `GAPS: three findings` is a verdict that was written: a trailing `:`/`.`/`,` is not part of the word
+			if !oneOf(strings.TrimRight(strings.ToUpper(w[0]), ":.,"), words) || (len(w) > 1 && w[1] == "|") {
 				c.add(j+1, rule, quote(ls[j]))
 			}
 			return

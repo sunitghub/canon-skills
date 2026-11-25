@@ -442,6 +442,8 @@ func TestHolds(t *testing.T) {
 	want("spec.verdict", true)
 	write("spec-review.md", strings.Replace(valid["spec-review.md"], "GAPS — two findings", "READY", 1))
 	want("spec.verdict", true)
+	write("spec-review.md", strings.Replace(valid["spec-review.md"], "GAPS — two findings", "GAPS: three findings", 1))
+	want("spec.verdict", true) // a written verdict with a colon is not "the spec check has not run"
 	write("spec-review.md", strings.Replace(valid["spec-review.md"], "GAPS — two findings", "READY | GAPS — <one sentence>", 1))
 	want("spec.verdict", false) // the unfilled template
 	write("plan.md", valid["plan.md"])
