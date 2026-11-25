@@ -111,6 +111,15 @@ run "$PATH" --fuzz "$F" 1
 assert_eq 0 "$code"; assert_contains "$out" "fuzz ./p FuzzOK ok" "go-checks: passing targets are 0"
 run "$PATH" --fuzz "$F"
 assert_eq 2 "$code"; assert_contains "$out" "usage: go-checks.sh --fuzz" "go-checks: --fuzz without seconds is a usage error"
+for s in 5x x5 0; do
+  run "$PATH" --fuzz "$F" "$s"; assert_eq 2 "$code"; assert_contains "$out" "usage: go-checks.sh --fuzz" "go-checks: --fuzz seconds '$s' is a usage error"
+done
+run "$PATH" --fuzz "$WORK" 1
+assert_eq 2 "$code"; assert_contains "$out" "has no go.mod" "go-checks: --fuzz on a folder without go.mod is 2"
+# The -fuzz pattern is anchored both ends: FuzzOK alone, not also FuzzNotOK (go test refuses a pattern matching two)
+printf 'package p\n\nimport "testing"\n\nfunc FuzzOK(f *testing.F)    { f.Fuzz(func(t *testing.T, s string) {}) }\nfunc FuzzNotOK(f *testing.F) { f.Fuzz(func(t *testing.T, s string) {}) }\n' > "$F/p/p_test.go"
+run "$PATH" --fuzz "$F" 1
+assert_eq 0 "$code"; assert_contains "$out" "fuzz ./p FuzzOK ok" "go-checks: a target whose name ends another's runs alone"
 printf 'package p\n' > "$F/p/p_test.go"
 run "$PATH" --fuzz "$F" 1
 assert_eq 2 "$code"; assert_contains "$out" "no Fuzz targets" "go-checks: a module with no target is 2"

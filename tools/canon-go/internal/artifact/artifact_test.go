@@ -278,3 +278,121 @@ func TestValidateRefusesLinksAndHugeFiles(t *testing.T) {
 		t.Fatalf("5 MiB file: want the size refusal, got %v", err)
 	}
 }
+
+// Every allowed value is accepted and each strict key's value is checked: the enum and flag tables, the anchors on
+// each value pattern, and the field-shape spacing (t-c2de mutation sweep: these survived a value or anchor removal).
+func TestEveryAllowedValueAndEveryStrictKey(t *testing.T) {
+	set := func(old, new string) string { return strings.Replace(valid["ticket.md"], old, new, 1) }
+	var ok []string
+	for _, v := range []string{"open", "in_progress", "closed", "cancelled", "archived"} {
+		ok = append(ok, set("status: open", "status: "+v))
+	}
+	for _, v := range []string{"bug", "feature", "task", "chore", "epic", "docs"} {
+		ok = append(ok, set("type: feature", "type: "+v))
+	}
+	for _, v := range []string{"0", "1", "2", "3", "4"} {
+		ok = append(ok, set("priority: 1", "priority: "+v))
+	}
+	for _, k := range []string{"manual", "demo", "eval_override", "ci"} {
+		for _, v := range []string{"true", "false"} {
+			ok = append(ok, set("eval_override: false", "eval_override: false\n"+k+": "+v))
+			if k == "eval_override" {
+				ok[len(ok)-1] = set("eval_override: false", k+": "+v)
+			}
+		}
+	}
+	for _, body := range ok {
+		if fs := Check("ticket.md", []byte(body), "t-abcd"); len(fs) != 0 {
+			t.Errorf("want accepted:\n%s\ngot %v", body, fs)
+		}
+	}
+	bad := map[string]string{
+		set("tags:", "manual: x\ntags:"):                   "ticket.flag",
+		set("tags:", "demo: x\ntags:"):                     "ticket.flag",
+		set("tags:", "ci: x\ntags:"):                       "ticket.flag",
+		set("priority: 1", "priority: 12"):                 "ticket.priority",
+		set("eval_fail_count: 0", "eval_fail_count: 3x"):   "ticket.eval-fail-count",
+		set("id: t-abcd", "id: t-abcde"):                   "ticket.id",
+		set("id: t-abcd", "id: xt-abcd"):                   "ticket.id",
+		set("type: feature", "type:  feature"):             "ticket.field-shape",
+		set("type: feature", "type: "):                     "ticket.field-shape",
+		set("status: open", "status:done"):                 "ticket.field-shape",
+		set("status: open\n", "status: open\nstatus: x\n"): "ticket.key-duplicate",
+	}
+	for body, rule := range bad {
+		if fs := Check("ticket.md", []byte(body), "t-abcd"); len(fs) != 1 || fs[0].Rule != rule {
+			t.Errorf("want one %s finding:\n%s\ngot %v", rule, body, fs)
+		}
+	}
+	// A broken frontmatter block is one finding that quotes the first line, not one per missing key.
+	for body, problem := range map[string]string{"--\nid: t-abcd\n": "`--`", "---\nid: t-abcd\n": "not closed"} {
+		if fs := Check("ticket.md", []byte(body), "t-abcd"); len(fs) != 1 || !strings.Contains(fs[0].Problem, problem) {
+			t.Errorf("%q: want one finding naming %s, got %v", body, problem, fs)
+		}
+	}
+	if fs, end := Frontmatter([]string{"x", "a: b", "---"}); fs != nil || end != 0 {
+		t.Errorf("Frontmatter without a first `---`: got %v %d", fs, end)
+	}
+}
+
+// A strict word in the middle of a prose line is not a strict line: each line pattern is anchored at its start, and
+// a value pattern at its end (t-c2de mutation sweep).
+func TestStrictLinesAreAnchored(t *testing.T) {
+	prose := map[string]string{
+		"plan.md":         strings.Replace(valid["plan.md"], "\n\n## Approach", "\nNotes on the frontier: none\nNot Approved: yet\nSee Pipeline: later\nWe said - [v] Plan approved\n\n## Approach", 1),
+		"acceptance.md":   strings.Replace(valid["acceptance.md"], "- [ ] one", "- [ ] one\ntext - [y] inline", 1) + "see the table | below |\n| a\\|b | ran | escaped pipe |\n",
+		"eval-report.md":  valid["eval-report.md"] + "see evaluator-run-id: x\na Model: x\nthe graded-head: zz\n  ```\nfail: indented fence\n  ```\n",
+		"review-notes.md": strings.Replace(valid["review-notes.md"], "## Verdict", "Prose about ## Verdict here\nmaybe\n\n## Verdict", 1),
+	}
+	for name, body := range prose {
+		if fs := Check(name, []byte(body), "t-abcd"); len(fs) != 0 {
+			t.Errorf("%s: prose read as a strict line: %v", name, fs)
+		}
+	}
+	bad := []struct{ file, old, new, rule string }{
+		{"plan.md", "2026-11-24T22:40:44Z", "2026-11-24T22:40:44Z junk", "plan.approved-stamp"},
+		{"eval-report.md", "1795556751-20092", "1795556751-20092 x", "eval.run-id"},
+		{"eval-report.md", "graded-head: " + hex40, "graded-head: " + hex40 + strings.Repeat("a", 25), "eval.graded-head"},
+		{"eval-report.md", "graded-head: " + hex40, "graded-head: zz" + hex40, "eval.graded-head"},
+		{"eval-report.md", "```\n", "```\n```\npass: after a closed fence\n```\n", "eval.verdict"},
+		{"eval-report.md", "Model: sonnet (Admin Evaluator default, claude)", "Model:", "eval.model"},
+		{"review-notes.md", "**YES** — nothing to act on\n", "", "review.verdict"},
+	}
+	for _, b := range bad {
+		body := strings.Replace(valid[b.file], b.old, b.new, 1)
+		if fs := Check(b.file, []byte(body), "t-abcd"); len(fs) != 1 || fs[0].Rule != b.rule {
+			t.Errorf("%s %q: want one %s finding, got %v", b.file, b.new, b.rule, fs)
+		}
+	}
+	if fs := Check("review-notes.md", []byte(strings.Replace(valid["review-notes.md"], "**YES**", "No", 1)), ""); len(fs) != 0 {
+		t.Errorf("a NO verdict is accepted: got %v", fs)
+	}
+}
+
+// The rules table names a known file for each rule, by its id's prefix; a quoted line drops control characters and
+// stops at 60 characters; a file at the cap is read (t-c2de mutation sweep).
+func TestRulesQuoteAndCap(t *testing.T) {
+	prefix := map[string]string{"ticket": "ticket.md", "acceptance": "acceptance.md", "plan": "plan.md", "eval": "eval-report.md", "review": "review-notes.md"}
+	for _, r := range Rules {
+		if want := prefix[strings.SplitN(r.ID, ".", 2)[0]]; r.File != want {
+			t.Errorf("rule %s: File %q, want %q", r.ID, r.File, want)
+		}
+	}
+	if q := quote("a\x1b[31mb" + strings.Repeat("x", 80)); strings.ContainsRune(q, 0x1b) || !strings.HasPrefix(q, "`a?[31mb") || !strings.HasSuffix(q, "…`") || len([]rune(q)) != 63 {
+		t.Errorf("quote: got %q", q)
+	}
+	if q := quote(strings.Repeat("y", 60)); q != "`"+strings.Repeat("y", 60)+"`" {
+		t.Errorf("quote of exactly 60: got %q", q)
+	}
+	dir := filepath.Join(t.TempDir(), "t-abcd")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "plan.md")
+	if err := os.WriteFile(p, []byte(valid["plan.md"]+strings.Repeat("x", MaxSize-len(valid["plan.md"]))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Validate(p); err != nil {
+		t.Errorf("a file of exactly MaxSize bytes is read: %v", err)
+	}
+}

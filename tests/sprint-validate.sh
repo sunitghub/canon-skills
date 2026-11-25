@@ -37,6 +37,15 @@ assert_eq 2 "$code"; assert_contains "$out" "validate:" "sprint validate: a miss
 assert_eq 2 "$code"; assert_contains "$out" "not a ticket artifact" "sprint validate: a non-artifact file is refused"
 run
 assert_eq 2 "$code"; assert_contains "$out" "usage: sprint validate" "sprint validate: no argument is a usage error"
+run ""
+assert_eq 2 "$code"; assert_contains "$out" "usage: sprint validate" "sprint validate: an empty argument is a usage error"
+run -x
+assert_eq 2 "$code"; assert_contains "$out" "usage: canon-go validate" "sprint validate: a flag reaches canon-go as a usage error"
+# Only a bare id is a ticket id: a folder path ending in one and a relative file under one are paths
+run "$T"
+assert_eq 0 "$code"; assert_eq "artifacts: ok (2 files)" "$out"
+set +e; out="$(cd "$P/.tickets" && "$SPRINT" validate t-abcd/plan.md 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_eq "artifacts: ok (1 files)" "$out"
 
 printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/old-board"; chmod +x "$WORK/old-board"
 set +e; out="$(cd "$P" && SPRINT_CHECK_BIN="$WORK/old-board" "$SPRINT" validate t-abcd 2>&1)"; code=$?; set -e
