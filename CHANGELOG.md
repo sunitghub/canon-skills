@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-11-25
+
+- Added: `sprint validate <id|path>` checks a ticket's artifacts (ticket.md, acceptance.md, plan.md, eval-report.md, review-notes.md) against one schema, strict on the lines canon parses and silent on prose, and prints `<path>:<line>: <rule>: <problem>; allowed: <shape>` per broken line (exit 0 ok, 1 findings, 2 unreadable). `sprint pre-gate-check` shows the same as an advisory `artifacts` field. The schema lives in canon-go (`internal/artifact`); the existing readers move onto it one by one (t-c2de).
+- Added: fuzz targets for the schema, the board's ticket parser and the theme loader; `tools/go-checks.sh --fuzz <module> <seconds>` runs each one, and the go-checks CI job runs them for 10 s each (t-c2de).
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
 ## [0.85.1] - 2026-11-24
 
 - Added: `TestInternalImportBoundary` (`tools/canon-go/cmd/canon-go/importboundary_test.go`) holds canon-go's allowed internal package graph in one table and fails on an import or a package it does not list, for darwin, linux and windows, test imports included. `standards/efficiency-notes.md` `## Go` gains the Go rules (error wrapping, log or return, goroutine exits, `os.Root`, crypto/rand and constant-time compares, `-race -count=3`, a table row per new package). The release-zip size cap is now 4800 KB. No daemon restart needed (t-ca0e).
