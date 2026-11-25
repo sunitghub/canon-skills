@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 09:38
+learnings-sweep last run: 11-25-2026 13:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-25 | [t-a4e8](.tickets/t-a4e8/learnings.md) | A walker rule that reads a field must read the same occurrence its owner does: `review.done` took `Tier: bugfix` from any `## Sign-off`, so a second Sign-off released the evaluator with no review, while `plan.tier` reads only the first (break-it catch, fixed f410ae7d). The reviewer also noted that `eval.verdict` holds on a `fail:` line; `sprint complete` still refuses it. | UNPROMOTED |
 | 2026-11-25 | [t-2bfe](.tickets/t-2bfe/learnings.md) | A verdict parser that only reported before becomes a gate once approval reads it: `spec.verdict` took only a bare READY/GAPS word, so a ran check written `GAPS: three findings` was refused as "has not run" (reviewer catch, fixed e8606065) — when a lax reader starts blocking, re-check the shapes real reports use. | UNPROMOTED |
 | 2026-11-25 | [t-ef9c](.tickets/t-ef9c/learnings.md) | A two-way pin was claimed but only one way was checked: the runner-text label parse was "pinned equal to `--list`" while the test only asserted every `--list` label is parsed (superset), so an invented label would pass (reviewer, low; wording fixed) — say which direction a parity pin checks. | UNPROMOTED |
 | 2026-11-25 | [t-c2de](.tickets/t-c2de/learnings.md) | A Go reader of a line the shell also parses must trim as the shell does: `strings.TrimSpace` is Unicode-aware, so `status: open<NBSP>` validated ok while the shell's exact compare reads a different value (evaluator attempt 1 fail; fixed with an ASCII-only trim); the reviewer also caught `filepath.Base` of a relative path naming the folder `.`. | UNPROMOTED |
@@ -80,6 +81,4 @@ learnings-sweep last run: 11-25-2026 09:38
 | 2026-11-16 | [t-d8af](.tickets/t-d8af/learnings.md) | Bash `$(…)` drops NUL bytes, so `[ -n "$(tail -c1 f)" ]` calls a NUL-ended file newline-ended and the next append is glued on; count with `tail -c1 f \| wc -l`. And macOS grep reads a NUL file as binary (no match) while Git Bash's GNU grep matches, so the same file behaves differently per platform. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-16 | [t-c206](.tickets/t-c206/learnings.md) | macOS `mktemp -d` with no template ignores TMPDIR, so pinning TMPDIR does not keep a child tool's scratch dirs inside a test's folder: clean them from what the tool recorded, and pin every registry the tool writes. | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-16 | [t-925a](.tickets/t-925a/learnings.md) | A test that runs a gate tool must pin its registry too: tests/worktree-write-links.sh registered gate scopes in the real /tmp registry, so a parallel test's uninstall refused and the user's own canon update would have for 2 h; earlier suites passed on timing (t-c206). | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-16 | [t-7e8c](.tickets/t-7e8c/learnings.md) | A rule that says a line is always required collides with a gotcha that says stop: an Opus executor obeyed both and printed a `lean` verdict for a repo it never audited; an eval case on the stop path found it, so put the exception next to the rule. | `promoted → standards/skill-setup-std.md` |
-| 2026-11-15 | [t-2a95](.tickets/t-2a95/learnings.md) | Before choosing among a ticket's suggested fixes, find the actual writer: the ticket blamed handoff_recent (main only) while the post-grade HANDOFF.md change was the wrapup narrative; and two allow-lists for one question (record vs merge) had already drifted, so one predicate both read | `dismissed (covered: standards/efficiency.md)` |
 <!-- canon:learnings:END -->
