@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-24-2026 21:48
+learnings-sweep last run: 11-25-2026 01:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-25 | [t-c2de](.tickets/t-c2de/learnings.md) | A Go reader of a line the shell also parses must trim as the shell does: `strings.TrimSpace` is Unicode-aware, so `status: open<NBSP>` validated ok while the shell's exact compare reads a different value (evaluator attempt 1 fail; fixed with an ASCII-only trim); the reviewer also caught `filepath.Base` of a relative path naming the folder `.`. | UNPROMOTED |
 | 2026-11-24 | [t-ca0e](.tickets/t-ca0e/learnings.md) | A `go list` import guard sees only the host GOOS and non-test imports: a `_windows.go` edge and a board `_test.go` importing daemon both passed until the graph was listed per GOOS (darwin, linux, windows) with `.TestImports`/`.XTestImports` (code-reviewer and reviewer catches). | UNPROMOTED |
 | 2026-11-24 | [t-9a2b](.tickets/t-9a2b/learnings.md) | A rule stated only in docs is not a guard: "G112 is never excluded" sat in the excludes file, the doc and the criteria, but nothing refused a `G112` line, and the plant that proves the timeout check would go green once G112 was excluded (routed to t-ca0e). | UNPROMOTED |
 | 2026-11-24 | [t-0fe6](.tickets/t-0fe6/learnings.md) | A path-to-suite map is checked against the real project, not only a fixture map: canon's own map had no VERSION row, so every release commit ran the full suite (378-411 s) while the fixture tests stayed green; a real-map assertion for the release file set now guards it (27 suites, 92 s). | UNPROMOTED |
