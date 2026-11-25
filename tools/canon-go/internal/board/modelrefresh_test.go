@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -209,9 +210,10 @@ func TestApplyProposalResolvesAChainedRetire(t *testing.T) {
 		t.Errorf("an identical pair sent twice should collapse: %v", err)
 	}
 	for name, pairs := range map[string][][2]string{
-		"a cycle":                     {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-5-5", "claude-haiku-4-5-20251001"}},
-		"one old with two targets":    {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-4-5-20251001", "claude-opus-5-5"}},
-		"a pair retargeted to itself": {{"claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"}},
+		"a cycle":                           {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-5-5", "claude-haiku-4-5-20251001"}},
+		"one old with two targets":          {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-4-5-20251001", "claude-opus-5-5"}},
+		"a pair retargeted to itself":       {{"claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"}},
+		"a cycle the first pair leads into": {{"claude-opus-5-5", "claude-haiku-4-5-20251001"}, {"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-5-5", "claude-haiku-4-5-20251001"}},
 	} {
 		if err := applyProposal(haiku(), nil, pairs); err == nil {
 			t.Errorf("%s should be refused", name)
@@ -238,6 +240,14 @@ func TestBuildProposalChainsAddsOfOneLine(t *testing.T) {
 	adds := []map[string]any{{"id": "gpt-6.1-sol", "provider": "openai", "name": "a"}, {"id": "gpt-6.2-sol", "provider": "openai", "name": "b"}}
 	if err := applyProposal(doc, adds, [][2]string{{"gpt-6-sol", "gpt-6.1-sol"}, {"gpt-6.1-sol", "gpt-6.2-sol"}}); err != nil || entry(t, doc, "gpt-6.1-sol")["legacy"] != true || entry(t, doc, "gpt-6.2-sol")["legacy"] != nil {
 		t.Errorf("everything ticked ends on 6.2: %v %v", err, doc["models"])
+	}
+	// a find the registry already holds as legacy is not an add, so it never makes the active one stop being current
+	doc = proposalDoc()
+	m := doc["models"].(map[string]any)
+	m["openai"] = append(m["openai"].([]any), map[string]any{"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "legacy": true})
+	p = buildProposal(doc, []found{{Provider: "openai", ID: "gpt-6.1-sol", Name: "GPT-6.1 Sol"}})
+	if len(p.Add) != 0 || !slices.Contains(p.Current, "GPT-6 Sol") {
+		t.Errorf("a legacy find adds nothing and GPT-6 Sol stays current: %v %v", p.Add, p.Current)
 	}
 }
 

@@ -254,9 +254,7 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		newest := best(all, r.prov, r.line, nil) // never nil: r itself is an active entry of this line
 		if versionLess(r.ver, newest.ver) {
 			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newest.id, newest.name, gateDefault(r.id)})
-		} else if versionLess(r.ver, best(withAdds, r.prov, r.line, nil).ver) {
-			continue // t-f094: an add of its line is newer, so it is not current (the add's own row replaces it)
-		} else {
+		} else if !versionLess(r.ver, best(withAdds, r.prov, r.line, nil).ver) { // t-f094: a newer add of its line replaces it instead
 			p.Current = append(p.Current, r.name)
 		}
 	}
