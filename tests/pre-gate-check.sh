@@ -172,6 +172,8 @@ printf '#!/usr/bin/env bash\necho ok\n' > tools/clean.sh; git add tools && git c
 set +e; out="$(cd "$R2" && CANON_TICKETS_DIR="$PT" PRE_GATE_BASE="$BASE2" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code" "pre-gate-check: a clean change in a checkout with no .tickets/ exits 0 (output: $out)"
 assert_eq 1 "$(wc -l <<<"$out" | tr -d ' ')" "pre-gate-check: that run prints exactly one line (output: $out)"
+# t-c2de: the artifacts field finds the ticket under CANON_TICKETS_DIR too (it reaches the validate probe, not `no ticket dir`)
+assert_contains "$out" "| artifacts skipped | canon-go has no validate" "pre-gate-check: artifacts reads the ticket from CANON_TICKETS_DIR"
 [[ -f "$PT/$ID/evidence/pre-gate.log" && ! -e "$R2/.tickets" ]] || fail "pre-gate-check: the log must be under CANON_TICKETS_DIR and nothing under the checkout"
 assert_eq "exit 0" "$(tail -1 "$PT/$ID/evidence/pre-gate.log")"
 # the same checkout with a seeded shellcheck error still fails, and says what failed
