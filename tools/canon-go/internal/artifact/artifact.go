@@ -264,7 +264,7 @@ func (c *checker) ticket(ls []string, folder string) {
 		if !strictKeys[f.Key] {
 			continue
 		}
-		v := strings.TrimSpace(f.Raw)
+		v := strings.Trim(f.Raw, " \t") // ASCII blanks only: a trailing NBSP or U+2028 is invisible but breaks the shell readers' exact compare
 		if !strings.HasPrefix(f.Raw, " ") || strings.HasPrefix(f.Raw, "  ") || v == "" {
 			c.add(f.Line, "ticket.field-shape", quote(f.Key+":"+f.Raw))
 			continue

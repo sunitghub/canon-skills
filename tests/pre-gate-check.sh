@@ -455,6 +455,9 @@ grep -q "plan.md:3: plan.tier" ".tickets/$ID/evidence/pre-gate.log" || fail "pre
 SPRINT_CHECK_BIN="$(vstub 2 "validate: plan.md: not a regular file")" run "$ID"
 assert_eq 0 "$code"; assert_contains "$out" "| artifacts error (advisory)" "pre-gate-check: validate's exit 2 is an advisory error"
 assert_contains "$out" "validate: plan.md: not a regular file" "pre-gate-check: validate's error is shown"
+# the inner --run with no ticket folder for its id (the wrapper's evidence.sh refuses that first, so only --run reaches it)
+SPRINT_CHECK_BIN="$(vstub 0 "artifacts: ok (1 files)")" PRE_GATE_ID=t-zzzz run --run
+assert_contains "$out" "| artifacts skipped | no ticket dir" "pre-gate-check: a missing ticket folder is skipped, never validated"
 reset
 
 [[ -f "$CANON_HOME/canary" && -z "$(ls -A "$TMPDIR")" ]] || fail "pre-gate-check: left a temp file behind"

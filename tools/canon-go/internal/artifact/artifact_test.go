@@ -183,9 +183,22 @@ func TestLineEndingsAndBOM(t *testing.T) {
 	}
 }
 
+// A Unicode space (NBSP, U+2028) at the end of a strict value is part of the value, never trimmed: the shell readers
+// compare the raw text, so `status: open<NBSP>` is not `open` to them (t-c2de eval finding).
+func TestUnicodeSpaceInStrictValue(t *testing.T) {
+	for _, sp := range []string{" ", " "} {
+		for _, c := range []struct{ old, rule string }{{"id: t-abcd", "ticket.id"}, {"status: open", "ticket.status"}, {"priority: 1", "ticket.priority"}} {
+			body := strings.Replace(valid["ticket.md"], c.old, c.old+sp, 1)
+			if fs := Check("ticket.md", []byte(body), "t-abcd"); len(fs) != 1 || fs[0].Rule != c.rule {
+				t.Errorf("%q + %q: want one %s finding, got %v", c.old, sp, c.rule, fs)
+			}
+		}
+	}
+}
+
 // Malformed input gives findings, never a panic, and every finding points at a real line.
 func TestMalformedInputNeverPanics(t *testing.T) {
-	shapes := []string{"", "\x00\x00\x00", "---", "---\n", "---\nid: t-", " ## Criteria \n- [ ] x", "   \n\t\n  ", "---\nstatus: \x00\n---", "## Verdict", "## Sign-off\nTier:", "| a", "|", "evaluator-run-id:", "graded-head:"}
+	shapes := []string{"", "\x00\x00\x00", "---", "---\n", "---\nid: t-", " ## Criteria \n- [ ] x", "   \n\t\n  ", "---\nstatus: \x00\n---", "## Verdict", "## Sign-off\nTier:", "| a", "|", "evaluator-run-id:", "graded-head:", "---\nstatus: open \n---", " \n## Sign-off "}
 	for _, name := range Files {
 		for _, s := range shapes {
 			n := len(lines([]byte(s)))
