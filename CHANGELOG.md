@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-11-25
+
+- Added: after a late fix, `sprint check-evidence` accepts `scripts/test.sh --only` re-runs of just the suites `tests/suite-map.txt` selects for the changed files in place of a full-suite re-stamp, and prints the exact stamp as a `hint:` line under the stale log; a path the map sends to the full suite, an edit to the map itself or a graded head other than `HEAD` still needs the full run (t-ef9c).
+
 ## [0.86.0] - 2026-11-25
 
 - Added: `sprint validate <id|path>` checks a ticket's artifacts (ticket.md, acceptance.md, plan.md, eval-report.md, review-notes.md) against one schema, strict on the lines canon parses and silent on prose, and prints `<path>:<line>: <rule>: <problem>; allowed: <shape>` per broken line (exit 0 ok, 1 findings, 2 unreadable). `sprint pre-gate-check` shows the same as an advisory `artifacts` field. The schema lives in canon-go (`internal/artifact`); the existing readers move onto it one by one (t-c2de).
