@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.1] - 2026-11-25
+
+- Fixed: go-checks CI is green again: `TestAPIv1EventsStreamCutsAStalledClient` now runs the stream over a `net.Pipe`, so the write-deadline cut no longer depends on the OS's socket buffers. It had failed on every Linux run since v0.85.1. Test only, no behavior change (t-1775).
+
 ## [0.89.0] - 2026-11-25
 
 - Added: `sprint next <id>` now walks the close too: it names the next close step (wrapup gates, reviewer, security-review, mutation sweep, the new `test-stamp` step, evaluator) and a `missed:` line for each earlier one not done. `sprint gate-prompt <id> reviewer|evaluator` refuses (exit 1, `missed:` lines, no prompt) while an earlier step's output is missing, so the evaluator cannot go out before security-review, the sweep and a fresh full-suite stamp. The default pipeline gained the `test-stamp` node, so a ticket approved before this update needs `sprint approve` again before its close. Needs this release's canon-go: run `canon update` (t-a4e8).
