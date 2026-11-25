@@ -81,6 +81,7 @@ run_checks() {
   [[ "$(tstat t-lv04)" == "closed None True" ]] || fail "$label: closed on main, bound by divergence only: want closed, no docs_from; got $(tstat t-lv04)"
   # ... and the doc route reads main's copy, not the stale worktree's (the card and the docs never show two states)
   [[ "$(curl -s "$base/api/doc/t-lv04/plan.md")" != *"stale worktree plan"* ]] || fail "$label: closed on main: /api/doc served the stale worktree plan"
+  # shellcheck disable=SC2043  # one other terminal status today; the loop keeps the status:id shape
   for st in cancelled:t-lv06; do   # the other terminal status a lane shows (archived never reaches /api/tickets), bound by divergence only
     [[ "$(tstat "${st#*:}")" == "${st%%:*} None"* ]] || fail "$label: ${st%%:*} on main: want main's status, no docs_from; got $(tstat "${st#*:}")"
   done
@@ -112,7 +113,7 @@ run_checks() {
   grep -q 'board edit' "$wtf" || fail "$label: the worktree copy was not written"
   [[ "$(sha "$mainf")" == "$main_before" ]] || fail "$label: main's copy must be untouched by a live write"
   [[ "$(pj etag)" == "$(sha "$wtf")" && "$(etag_of acceptance.md)" == "$(sha "$wtf")" ]] || fail "$label: the returned etag must be sha256 of the new file"
-  [[ -z "$(ls -A "$wt/.tickets/t-lv01" | grep -F '.board-' || true)" ]] || fail "$label: a temp file was left behind"
+  ! compgen -G "$wt/.tickets/t-lv01/.board-*" >/dev/null || fail "$label: a temp file was left behind"
   code="$(post t-lv01/acceptance.md "{\"content\":\"again\",\"base_hash\":\"$wt_before\"}")"      # the old etag is now stale
   [[ "$code" == 409 ]] || fail "$label: a used-up base_hash must be stale, got $code"
   # 2c. A doc the worktree lacks is created there with base_hash 'absent' (and never in main).
