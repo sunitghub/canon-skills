@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 13:58
+learnings-sweep last run: 11-25-2026 16:42
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-25 | [t-1775](.tickets/t-1775/learnings.md) | To test a write deadline, remove the buffer: over loopback TCP the cut's timing was the OS's (green on the Mac, red 4/4 on Linux CI), and a 1 KB send-buffer cap still dripped writes inside the deadline (0.17-2.2 s, 1/20 timed out); `net.Pipe` cut at 0.11 s 30/30. | UNPROMOTED |
 | 2026-11-25 | [t-a4e8](.tickets/t-a4e8/learnings.md) | A walker rule that reads a field must read the same occurrence its owner does: `review.done` took `Tier: bugfix` from any `## Sign-off`, so a second Sign-off released the evaluator with no review, while `plan.tier` reads only the first (break-it catch, fixed f410ae7d). The reviewer also noted that `eval.verdict` holds on a `fail:` line; `sprint complete` still refuses it. | UNPROMOTED |
 | 2026-11-25 | [t-2bfe](.tickets/t-2bfe/learnings.md) | A verdict parser that only reported before becomes a gate once approval reads it: `spec.verdict` took only a bare READY/GAPS word, so a ran check written `GAPS: three findings` was refused as "has not run" (reviewer catch, fixed e8606065) — when a lax reader starts blocking, re-check the shapes real reports use. | UNPROMOTED |
 | 2026-11-25 | [t-ef9c](.tickets/t-ef9c/learnings.md) | A two-way pin was claimed but only one way was checked: the runner-text label parse was "pinned equal to `--list`" while the test only asserted every `--list` label is parsed (superset), so an invented label would pass (reviewer, low; wording fixed) — say which direction a parity pin checks. | UNPROMOTED |
