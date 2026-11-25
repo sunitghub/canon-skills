@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-11-25
+
+- Added: `sprint next <id>` prints the one next step up to plan approval, and names any earlier step that was skipped; `sprint approve` now refuses while the spec check has not run (no `spec-review.md` verdict) on a pipeline that has it on, and leaves plan.md unchanged. Lite tickets and projects with `off: [spec-check]` approve as before. Approval is read only from the `Approved: sha256:` pin that `sprint approve` writes, never a hand-ticked box: in `sprint start`, the close, `sprint-headless`, the PR gate and `tkt send-issue` (which runs `sprint approve` on a ticked, unpinned plan and stops when it refuses). Needs this release's canon-go: run `canon update` (t-2bfe).
+
 ## [0.87.0] - 2026-11-25
 
 - Added: after a late fix, `sprint check-evidence` accepts `scripts/test.sh --only` re-runs of just the suites `tests/suite-map.txt` selects for the changed files in place of a full-suite re-stamp, and prints the exact stamp as a `hint:` line under the stale log; a path the map sends to the full suite, an edit to the map itself or a graded head other than `HEAD` still needs the full run (t-ef9c).
