@@ -549,8 +549,7 @@ func TestAPIv1EventsStreamCutsAStalledClient(t *testing.T) {
 	v1StreamWrite = 100 * time.Millisecond
 	f.append("2026-11-10", strings.Repeat(f.line(1, f.proj), 10))
 	ln := &pipeListener{conns: make(chan net.Conn), done: make(chan struct{})}
-	srv := httptest.NewUnstartedServer(http.HandlerFunc(handle))
-	srv.Listener = ln
+	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: http.HandlerFunc(handle)}} // no loopback socket of its own to leak
 	srv.Start()
 	t.Cleanup(srv.Close)
 	client, server := net.Pipe()
