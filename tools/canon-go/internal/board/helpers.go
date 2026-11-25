@@ -22,6 +22,7 @@
 //	sprint-check machine [--json]                  this machine's OS, chip, cores and RAM in one line, no hostname (t-c542; evidence.sh)
 //	sprint-check caps [--json] [--table <file>] <name|path> [path] | caps --list   a capped file's use against tools/caps.tsv (t-19bb)
 //	sprint-check validate <ticket dir | artifact file>   the artifact schema's findings, file:line: rule (t-c2de); exit 0 ok, 1 findings, 2 unreadable
+//	sprint-check walk <ticket dir> [--at <node>]   the next pipeline node and the missed ones (t-2bfe); exit 0, 1 a miss before --at's node, 2 unreadable
 package board
 
 import (
@@ -30,6 +31,7 @@ import (
 	"canon/internal/artifact"
 	"canon/internal/common"
 	"canon/internal/events"
+	"canon/internal/walk"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -123,6 +125,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return capsCLI(args[1:], stdout, stderr), true
 	case "validate": // t-c2de: the artifact schema's findings for a ticket folder or one artifact; read-only
 		return validateCLI(args[1:], stdout, stderr), true
+	case "walk": // t-2bfe: the next pipeline node for a ticket and the earlier ones passed over (pipeline.sh resolve --full on stdin); read-only
+		return walk.Run(args[1:], stdin, stdout, stderr), true
 	case "machine":
 		return machineCLI(args[1:], stdout, stderr), true
 	case "recent":

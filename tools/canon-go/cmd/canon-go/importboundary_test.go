@@ -13,7 +13,7 @@ import (
 // A deliberate new edge or a new package is one line here, in the same diff, so the reviewer sees it (t-ca0e). Each
 // port from tools/sprint and tools/tkt lands as its own package with a row, never a file inside board or daemon.
 var allowedInternalImports = map[string][]string{
-	"board":      {"artifact", "common", "events", "machine", "settings", "transcript"},
+	"board":      {"artifact", "common", "events", "machine", "settings", "transcript", "walk"},
 	"daemon":     {"common", "events", "term", "transcript"},
 	"term":       {"events", "settings"},
 	"events":     {"machine", "settings"},

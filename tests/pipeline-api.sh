@@ -61,7 +61,8 @@ assert_eq "pipeline: ok (14 nodes)" "$out"
   start_out="$("$SPRINT" start "tab wrote this")"
   id="$(printf '%s\n' "$start_out" | awk '/Sprint started:/ { print $3 }')"
   printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n## Approach\ntest\n' > ".tickets/$id/plan.md"
-  "$SPRINT" approve "$id" >/dev/null
+  spec_verdict ".tickets/$id"
+  SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_BIN="$BIN" "$SPRINT" approve "$id" >/dev/null
   pin="$(sed -n 's/^Pipeline: sha256:[0-9a-f]* //p' ".tickets/$id/plan.md")"
   [[ "$pin" == "off=mutation-test wrapup=doc-audit,code-reviewer,code-simplifier" ]] || { echo "FAIL: pipeline-api: sprint approve pinned: $pin" >&2; exit 1; }
 ) || fail "pipeline-api: sprint approve did not pin what the tab wrote"

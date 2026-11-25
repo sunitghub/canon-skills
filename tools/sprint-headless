@@ -95,8 +95,9 @@ if ! git -C "$ROOT" ls-files --error-unmatch "$PLAN_FILE" "$ACCEPTANCE_FILE" >/d
   exit 1
 fi
 
-if ! grep -q '^\s*-\s*\[x\]\s*Plan approved' "$PLAN_FILE"; then
-  echo "Error: $ID's plan.md has no checked 'Plan approved' box — headless mode requires the durable human sign-off to already be recorded." >&2
+# t-2bfe: the approval is sprint approve's pin, never a hand-ticked box
+if ! grep -qE '^[[:space:]]*Approved:[[:space:]]*sha256:[0-9a-f]{64} ' "$PLAN_FILE"; then
+  echo "Error: $ID's plan.md has no 'Approved: sha256:' pin — headless mode requires the durable human sign-off (sprint approve $ID) to already be recorded." >&2
   exit 1
 fi
 

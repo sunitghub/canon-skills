@@ -54,7 +54,7 @@ assert_contains "$out" "
 Model: opus (Admin Reviewer default, claude)"
 assert_contains "$err" "gate-prompt: dispatch canon-reviewer with model: opus"
 COPILOT_CLI=1 gp speccheck
-assert_contains "$out" "You are canon's advisory spec checker for ticket $id"
+assert_contains "$out" "You are canon's spec checker for ticket $id"
 assert_contains "$out" "Follow .agents/skills/sprint/reference/spec-check.md for this ticket."
 assert_contains "$out" "
 Model: claude-haiku-5.5 (Admin Spec check default, copilot)"

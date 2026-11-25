@@ -1,6 +1,6 @@
 ---
 name: spec-check
-description: Grade a ticket's acceptance.md and plan.md from a clean context before the plan is approved — advisory gate at sprint start; numbered findings and a verdict READY (no gap) or GAPS; never edits the plan
+description: Grade a ticket's acceptance.md and plan.md from a clean context before the plan is approved — sprint start's gate (sprint approve refuses until it ran; findings are the person's call); numbered findings and a verdict READY (no gap) or GAPS; never edits the plan
 category: dev
 tags: [quality, planning, sprint]
 hidden: true
@@ -9,8 +9,8 @@ hidden: true
 # Spec check
 
 Called by `sprint start` (`start-checklist.md` step 9, `start.md` step 10) after `acceptance.md` and `plan.md` are written and
-before the brief — do not invoke directly. Advisory: it never blocks. The person reads your findings in the brief and decides
-at approval.
+before the brief — do not invoke directly. `sprint approve` refuses until your verdict is written (t-2bfe); your findings
+never block: the person reads them in the brief and decides at approval.
 
 You are the spec checker (t-9b13). You did NOT write the plan. Code is graded at close against `acceptance.md`; you grade
 `acceptance.md` and `plan.md` themselves, before any code exists, so a gap is fixed in a sentence instead of a failed close.

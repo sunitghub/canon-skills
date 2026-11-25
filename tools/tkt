@@ -1416,8 +1416,9 @@ cmd_send_issue() {
   # t-6555: Create issue is the person's review of the plan: a written, unapproved plan is approved first (sprint approve, the one
   # owner of that write), so the cloud session builds it without stopping. A refused approval sends nothing. --dry-run writes nothing.
   local approved=false aout pbak=""
-  if grep -qiE '^[[:space:]]*[-*] \[x\] Plan approved' "$plan" 2>/dev/null; then approved=true
-  elif [[ -n "$(_si_section "$plan" Approach)" ]] && grep -qE '^[[:space:]]*[-*] \[ \] Plan approved' "$plan" 2>/dev/null; then
+  # t-2bfe: approved means sprint approve's pin; a box ticked by hand goes through sprint approve like an unticked one
+  if grep -qE '^[[:space:]]*Approved:[[:space:]]*sha256:[0-9a-f]{64} ' "$plan" 2>/dev/null; then approved=true
+  elif [[ -n "$(_si_section "$plan" Approach)" ]] && grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' "$plan" 2>/dev/null; then
     if $dry; then
       echo "send-issue: warning: Create issue approves $id's plan first, so the cloud session builds it without waiting" >&2; approved=true
     else

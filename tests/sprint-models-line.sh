@@ -32,7 +32,7 @@ PY
 ECONOMY=(plan:claude=claude-sonnet-5-5 build:claude=claude-haiku-5-5 plan:copilot=claude-sonnet-5.5 build:copilot=claude-haiku-5.5)
 fm() { awk -v k="$2" -F': *' '$1 == k { print $2; exit }' ".tickets/$1/ticket.md"; }
 end() { "$TKT" close "$1" --no-sprint >/dev/null; }   # one active sprint at a time: end each before the next start (approve reads only plan.md)
-signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [ ] Plan approved\n\n## Approach\nx\n' "$2" > ".tickets/$1/plan.md"; }
+signoff() { printf '# Plan\n\n## Sign-off\n%s\n\n- [ ] Plan approved\n\n## Approach\nx\n' "$2" > ".tickets/$1/plan.md"; spec_verdict ".tickets/$1"; }
 
 # 1. Copilot CLI outside the Cockpit, Economy: the line names Copilot's display names, and the ticket and event record the run
 reg "${ECONOMY[@]}"

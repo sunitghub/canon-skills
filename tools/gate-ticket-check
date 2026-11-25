@@ -23,7 +23,7 @@ fi
 
 tdir=".tickets/$id"
 plan="$(git show "$base:$tdir/plan.md" 2>/dev/null || true)"
-if grep -q '^\s*-\s*\[x\]\s*Plan approved' <<<"$plan"; then
+if grep -qE '^[[:space:]]*Approved:[[:space:]]*sha256:[0-9a-f]{64} ' <<<"$plan"; then   # t-2bfe: sprint approve's pin, never a hand-ticked box
   changed="$(git diff --name-only "$base" HEAD -- "$tdir/ticket.md" "$tdir/plan.md" "$tdir/acceptance.md")"
   if [[ -n "$changed" ]]; then
     echo "::error::$id's plan was already approved on the base branch; this PR changes its graded docs: $(printf '%s' "$changed" | tr '\n' ' ')- change approved criteria in their own reviewed PR."

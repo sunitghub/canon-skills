@@ -27,6 +27,7 @@ Do the thing.
 ## Files
 - tools/sprint
 PLAN
+spec_verdict ".tickets/$id"   # t-2bfe: approve waits for the spec check; its refusal is tested below
 
 # The gate is called directly: a full `sprint complete` needs reviewer/evaluator reports.
 # eval, not source <(...): macOS's bash 3.2 sources nothing from a process substitution.
@@ -61,10 +62,10 @@ assert_contains "$out" "sprint approve $id"
 assert_eq "1" "$(grep -c '^Approved:' "$plan")"
 gate >/dev/null || fail "re-approve must make the plan gate pass"
 
-# 6. legacy tick (no Approved: line) passes with a warning
+# 6. t-2bfe: a ticked box with no Approved: pin is not approved (it used to pass with a warning, t-0865)
 sed -i.bak '/^Approved:/d' "$plan"; rm -f "$plan.bak"
-out="$(gate)" || fail "a ticked box with no pin must pass"
-assert_contains "$out" "WARNING"
+if out="$(gate)"; then fail "a ticked box with no pin must refuse the close"; fi
+assert_contains "$out" "Sprint $id cannot close: plan.md has no 'Approved: sha256:' pin; run sprint approve $id."
 
 # 7. approve refuses a missing id, a missing plan, and a plan with no approval box
 out="$(run_fail "$SPRINT" approve)"; assert_contains "$out" "Usage: sprint approve"
@@ -101,12 +102,13 @@ echo 'no markers' > HANDOFF.md; out="$(approve_with '`HANDOFF.md`')"
 # an older board (no `caps` in --help) is never asked: it would take the word for a port and serve
 stub="$(mktemp -d)"; trap 'rm -rf "$project" "$stub"' EXIT
 printf '#!/usr/bin/env bash\n[[ "$1" == --help ]] && { echo "usage: sprint-check [port]"; exit 0; }\ntouch "%s/called"; sleep 30\n' "$stub" > "$stub/board"; chmod +x "$stub/board"
-handoff 75; out="$(SPRINT_CHECK_BIN="$stub/board" approve_with '`HANDOFF.md`')"
-assert_eq "" "$(caplines "$out")"; [[ ! -e "$stub/called" ]] || fail "an older board was called with caps"
-assert_grep '^- \[x\] Plan approved' "$plan"
-# no board binary at all: approve still ticks and pins (the --help call fails under set -e)
-out="$(SPRINT_CHECK_BIN="$stub/missing" approve_with '`HANDOFF.md`')" || fail "approve failed with no board binary"
-assert_eq "" "$(caplines "$out")"
+# t-2bfe: an older board has no walk either, so approve refuses before any caps call, naming canon update, nothing written
+handoff 75; set +e; out="$(SPRINT_CHECK_BIN="$stub/board" approve_with '`HANDOFF.md`' 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "has no walk (run canon update)"; [[ ! -e "$stub/called" ]] || fail "an older board was called"
+assert_grep '^- \[ \] Plan approved' "$plan"
+# no board binary at all: the same refusal (the --help call fails under set -e)
+set +e; out="$(SPRINT_CHECK_BIN="$stub/missing" approve_with '`HANDOFF.md`' 2>&1)"; code=$?; set -e
+assert_eq 1 "$code"; assert_contains "$out" "has no walk (run canon update)"; assert_grep '^- \[ \] Plan approved' "$plan"
 # a CRLF plan.md still names its files
 printf '# Plan\r\n\r\n## Sign-off\r\n- [ ] Plan approved\r\n\r\n## Approach\r\nstep one\r\n\r\n## Files\r\n- HANDOFF.md\r\n' > "$plan"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$("$SPRINT" approve "$id")")"
@@ -135,32 +137,33 @@ signoff "Tier: normal | Build model: --dangerously-skip-permissions"
 assert_eq "" "$(buildline "$(COCKPIT_TICKET='' "$SPRINT" approve "$id")")"
 assert_grep '^- \[x\] Plan approved' "$plan"
 
-# t-d826: approve names a spec check that never ran (stderr; approval stands, exit 0): only when the pipeline runs it for this ticket
-specwarn() { set +e; err="$("$@" approve "$id" 2>&1 >/dev/null)"; code=$?; set -e; }
-nowarn() { [[ "$err" != *"spec check never ran"* ]] || fail "sprint approve warned about the spec check $1: $err"; }
+# t-2bfe: approve refuses while the spec check has not run (it was t-d826's warning, read past twice on Windows Copilot): exit 1,
+# the missed line naming the fix, plan.md byte for byte as it was. Only when the pipeline runs it for this ticket (Lite and off: skip).
+try() { set +e; err="$("$@" approve "$id" 2>&1 >/dev/null)"; code=$?; set -e; }
+refused() { assert_eq 1 "$code"; assert_eq "$before" "$(cksum < "$plan")"; assert_contains "$err" "$1"; }
 printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
-signoff "Tier: normal"; rm -f ".tickets/$id/spec-review.md"
-specwarn "$SPRINT"
-assert_eq 0 "$code"; assert_grep '^- \[x\] Plan approved' "$plan"
-assert_contains "$err" "sprint approve: warning: the spec check never ran for $id (no .tickets/$id/spec-review.md)"
-assert_contains "$err" "\`sprint gate-prompt $id speccheck\`"; assert_contains "$err" "Approval stands"
-[[ "$err" != *relay-report* ]] || fail "the warning names the Copilot relay outside Copilot: $err"
-signoff "Tier: normal"; COPILOT_CLI=1 specwarn "$SPRINT"
-assert_contains "$err" "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck"
-printf '# Spec check: %s\n' "$id" > ".tickets/$id/spec-review.md"
-signoff "Tier: normal"; specwarn "$SPRINT"; assert_eq 0 "$code"; nowarn "with a spec-review.md"
+signoff "Tier: normal"; rm -f ".tickets/$id/spec-review.md"; before="$(cksum < "$plan")"
+try "$SPRINT"; refused "sprint approve: $id is not approved: a step before approval has not run (nothing written)"
+assert_contains "$err" "missed: spec-check — the spec check has not run: dispatch canon-spec-checker with sprint gate-prompt $id speccheck"
+[[ "$err" != *relay-report* ]] || fail "the refusal names the Copilot relay outside Copilot: $err"
+COPILOT_CLI=1 try "$SPRINT"; refused "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck"
+printf '# Spec check: %s\n\n## Verdict\nREADY | GAPS — <one sentence>\n' "$id" > ".tickets/$id/spec-review.md"   # the unfilled template
+try "$SPRINT"; refused "missed: spec-check"
+spec_verdict ".tickets/$id"; try "$SPRINT"; assert_eq 0 "$code"; assert_grep '^Approved: sha256:' "$plan"
 rm -f ".tickets/$id/spec-review.md"
-"$TKT" demo "$id" on >/dev/null; signoff "Tier: normal"; specwarn "$SPRINT"; nowarn "on a Lite ticket (skip_on: lite)"
+"$TKT" demo "$id" on >/dev/null; signoff "Tier: normal"; try "$SPRINT"; assert_eq 0 "$code"   # Lite: skip_on: lite
 "$TKT" demo "$id" off >/dev/null
 awk 'NR == 1 || !d && /^---$/ { if (NR > 1) { print "manual: true"; d = 1 } } { print }' ".tickets/$id/ticket.md" > "$plan.tk" && mv "$plan.tk" ".tickets/$id/ticket.md"
-signoff "Tier: normal"; specwarn "$SPRINT"; assert_contains "$err" "spec check never ran"   # canon's default skips it for Lite only
+signoff "Tier: normal"; before="$(cksum < "$plan")"; try "$SPRINT"; refused "missed: spec-check"   # canon's default skips it for Lite only
 sed -i.bak '/^manual: true$/d' ".tickets/$id/ticket.md" && rm -f ".tickets/$id/ticket.md.bak"
 mkdir -p canon-config; printf 'extends: canon-default\noff: [spec-check]\n' > canon-config/pipeline.yaml
-signoff "Tier: normal"; specwarn "$SPRINT"; assert_eq 0 "$code"; nowarn "when the project's pipeline turns it off"
+signoff "Tier: normal"; try "$SPRINT"; assert_eq 0 "$code"   # the project's pipeline turns it off
+printf 'not: [a, valid\n' > canon-config/pipeline.yaml   # a pipeline the reader refuses: never read as "nothing to check"
+signoff "Tier: normal"; before="$(cksum < "$plan")"; try "$SPRINT"; refused "sprint approve: "
 rm -rf canon-config
-# an install with no tools/pipeline.sh cannot say whether it is due: no warning, never a guess
+# an install with no tools/pipeline.sh cannot check: refused, never a guess
 nopipe="$(mktemp -d)"; copy_canon_tree "$nopipe"; rm -f "$nopipe/tools/pipeline.sh"
-signoff "Tier: normal"; specwarn "$nopipe/tools/sprint"; rm -rf "$nopipe"
-assert_eq 0 "$code"; nowarn "with no tools/pipeline.sh"; assert_grep '^- \[x\] Plan approved' "$plan"
+signoff "Tier: normal"; before="$(cksum < "$plan")"; try "$nopipe/tools/sprint"; rm -rf "$nopipe"
+refused "cannot check the steps before approval"
 
 echo "sprint-approve: ok"

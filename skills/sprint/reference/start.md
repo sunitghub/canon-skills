@@ -264,15 +264,15 @@ Start checklist — rules that need no reference read (each owned by the step na
 
 9. **Impact analysis for high-risk work.** Read `skills/sprint/reference/impact-analysis.md` and run the full impact analysis process. Writes `## Impact Assessment` to `plan.md` and required mitigation tests to `acceptance.md ## Test Plan`. Resolve any human checkpoint before implementation.
 
-10. **Sprint brief.** First the **spec check** (t-9b13): once `acceptance.md` and `plan.md` are written, dispatch the advisory
-   spec checker, unless `tools/pipeline.sh resolve --full --project <root>` says `spec-check` is off or one of the ticket's options is in
+10. **Sprint brief.** First the **spec check** (t-9b13): once `acceptance.md` and `plan.md` are written, dispatch the
+   spec checker (`sprint approve` refuses until its verdict is written, t-2bfe), unless `tools/pipeline.sh resolve --full --project <root>` says `spec-check` is off or one of the ticket's options is in
    its `skip_on` column (today `lite`: a `demo: true` ticket). Delete an old `.tickets/<id>/spec-review.md` first (a failed re-run must not leave the last verdict), then
    `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role speccheck`; the `Agent` tool with
    `subagent_type: "canon-spec-checker"` (fallback `general-purpose`), given `sprint gate-prompt <id> speccheck`'s output verbatim
    (t-63c6: it names spec-check.md, the `Model:` line and the absolute report path, or under Copilot the write-no-file rule; add
    nothing of your own); under Copilot `sprint relay-report <id> speccheck` then saves the review; then `sprint gate-snapshot post …` (exit 1: stop and show the person what it names,
    as for a close gate) and `sprint subagent-log --agent-id <id>
-   --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: the one `sprint gate-prompt` names on stderr (`sprint gate-model`, t-c723): a ticket's `Gate model:`, else Admin > Model tiers' Spec check default for the agent; none means omit it (the agent file's floor). It never blocks and you never apply its findings yourself: put them in the brief, and the person decides. A failed or
+   --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: the one `sprint gate-prompt` names on stderr (`sprint gate-model`, t-c723): a ticket's `Gate model:`, else Admin > Model tiers' Spec check default for the agent; none means omit it (the agent file's floor). Its findings never block and you never apply them yourself: put them in the brief, and the person decides. A failed or
    refused dispatch is said in the brief, not retried in a loop. Then produce:
    - What this sprint accomplishes (one sentence)
    - Tier: trivial skipped / normal / high-risk, with the reason

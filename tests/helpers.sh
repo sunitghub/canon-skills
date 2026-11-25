@@ -120,6 +120,18 @@ cap_check() {
   [[ $rc -eq 0 && "$out" == *" left" ]] || fail "cap: $out"
 }
 
+# spec_verdict <ticket dir> — t-2bfe: write a spec check's verdict, so `sprint approve` (which refuses until the spec check ran)
+# approves in a fixture that is not about the spec check.
+spec_verdict() { printf '# Spec check: %s\n\n## Verdict\nREADY — fixture\n' "$(basename "$1")" > "$1/spec-review.md"; }
+
+# pin_plan <plan.md> — t-2bfe: tick the box and add the pin `sprint approve` writes (the real ## Approach digest, read with tools/sprint's
+# own functions), for a fixture that needs an approved plan but is not about approving (approve needs a spec check and canon-go walk).
+pin_plan() {
+  local d; d="$( eval "$(sed -n '/^_acceptance_section()/,/^}/p;/^_approach_digest()/,/^}/p' "$SPRINT")"; _approach_digest "$1" )"
+  [[ "$d" =~ ^[0-9a-f]{64}$ ]] || fail "pin_plan: no digest for $1"
+  awk -v pin="Approved: sha256:$d 2026-11-25T00:00:00Z" '!done && /^[[:space:]]*[-*] \[[ xX]\] Plan approved/ { sub(/\[ \]/, "[x]"); print; print pin; done = 1; next } { print }' "$1" > "$1.pin" && mv "$1.pin" "$1"
+}
+
 # use_fresh_board <dir> — build the board into <dir> and export SPRINT_CHECK_BIN to it (t-b62a: skills.sh's settings edits and
 # sprint-headless run the board binary's helpers, and the fetched binary may be older than the tools under test).
 use_fresh_board() {

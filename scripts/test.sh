@@ -74,6 +74,7 @@ tests=(
   "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/sprint-approve.sh"
+  "$ROOT/tests/sprint-next.sh"
   "$ROOT/tests/sprint-second-eval.sh"
   "$ROOT/tests/sprint-manual-merged.sh"
   "$ROOT/tests/sprint-gate-model.sh"
@@ -274,7 +275,7 @@ skipped() {
   if (( PLAN )); then LABELS+=("$1"); KINDS+=(skip); CMDS+=(""); return 0; fi
   printf '==> %s\n' "$1"
 }
-go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/artifact ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term ./internal/transcript); }   # t-8020: one module
+go_board() { (cd "$ROOT/tools/canon-go" && go test ./cmd/... ./internal/artifact ./internal/board ./internal/common ./internal/events ./internal/settings ./internal/term ./internal/transcript ./internal/walk); }   # t-8020: one module
 go_daemon() { (cd "$ROOT/tools/canon-go" && go test ./internal/daemon); }
 
 run_all() {

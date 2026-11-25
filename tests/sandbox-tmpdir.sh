@@ -6,6 +6,7 @@
 
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # t-2bfe: sprint approve runs canon-go walk
 
 [[ "$(uname -s)" == Darwin ]] || { echo "sandbox-tmpdir: skipped (macOS only; GNU mktemp already honours TMPDIR)"; exit 0; }
 command -v sandbox-exec >/dev/null 2>&1 || { echo "sandbox-tmpdir: skipped (no sandbox-exec)"; exit 0; }
@@ -50,6 +51,7 @@ Do the thing.
 ## Files
 - todo.js
 PLAN
+spec_verdict ".tickets/$id"
 out="$(sb "$SPRINT" approve "$id" 2>&1)" || fail "sprint approve failed in the sandbox: $out"
 assert_contains "$out" "pinned ## Approach"
 

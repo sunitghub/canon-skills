@@ -22,6 +22,7 @@ new_sprint() {   # start a sprint here with a plan that waits for `sprint approv
   local out; out="$("$SPRINT" start "pipeline coverage")"
   ID="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
   printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [ ] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"
+  spec_verdict ".tickets/$ID"
 }
 override() { mkdir -p canon-config; printf '%b' "$1" > canon-config/pipeline.yaml; }
 close_docs() {   # close_docs <extra Wrapup Gates rows, printf %b> <extra summary lines, printf %b>: everything a close needs but a gate report
@@ -136,14 +137,14 @@ out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "unsupported line"
 
 # ── a ticket approved before the pin (no Pipeline: line): a notice, no drift check, still closes ──
 new_project; new_sprint
-printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"
+printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"; pin_plan ".tickets/$ID/plan.md"   # t-2bfe: approval is the pin
 close_docs '' ''
 out="$("$SPRINT" complete 2>&1)"
 assert_contains "$out" "plan.md has no 'Pipeline:' pin"
 assert_contains "$out" "Sprint completed: $ID"
 # ...and a removed node on such a ticket still needs its row, summary line and event
 new_project; override 'extends: canon-default\noff: [mutation-test]\n'; new_sprint
-printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"
+printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"; pin_plan ".tickets/$ID/plan.md"   # t-2bfe: approval is the pin
 close_docs '' ''
 out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "| mutation-test | skipped | removed in this project's pipeline |"
 close_docs "$ROW_MT" 'Pipeline: removed mutation-test\n'
@@ -155,7 +156,7 @@ pins=('' 'x' 'zzzzzzzzzzzz off=- wrapup=a' '000000000000 off=$(touch EXECUTED) w
   "$(printf 'a%.0s' $(seq 1 5000))" $'000000000000 off=-\r wrapup=x' '`touch EXECUTED`' '000000000000 off=- wrapup=-; touch EXECUTED')
 for pin in "${pins[@]}"; do
   new_project; new_sprint
-  printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nPipeline: sha256:%s\n## Approach\ntest\n' "$pin" > ".tickets/$ID/plan.md"
+  printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nPipeline: sha256:%s\n## Approach\ntest\n' "$pin" > ".tickets/$ID/plan.md"; pin_plan ".tickets/$ID/plan.md"   # t-2bfe: approval is the pin
   close_docs '' ''
   before="$(fingerprint)"; rc=0
   out="$("$SPRINT" complete 2>&1)" || rc=$?
@@ -173,7 +174,7 @@ done
 
 # ── a broken default (the resolver refuses): the close refuses with the resolver's own line and nothing else changes ──
 new_project; new_sprint
-printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"
+printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$ID/plan.md"; pin_plan ".tickets/$ID/plan.md"   # t-2bfe: approval is the pin
 close_docs '' ''
 override 'off: [break-it]\n'   # no `extends: canon-default`
 before="$(fingerprint)"
@@ -222,7 +223,7 @@ assert_contains "$out" "Fix canon-config/pipeline.yaml (or restore it); a locked
 # a malformed pin is refused outright (never only noticed), including one with junk in front of a well-shaped pin
 for pin in 'x' 'junk 000000000000 off=- wrapup=code-simplifier,code-reviewer,doc-audit' '000000000000 off=- wrapup=a;'; do
   new_project; new_sprint
-  printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nPipeline: sha256:%s\n## Approach\ntest\n' "$pin" > ".tickets/$ID/plan.md"
+  printf '# Plan\n## Sign-off\nTier: normal | Risk: low\n- [x] Plan approved\nPipeline: sha256:%s\n## Approach\ntest\n' "$pin" > ".tickets/$ID/plan.md"; pin_plan ".tickets/$ID/plan.md"   # t-2bfe: approval is the pin
   close_docs '' ''
   out="$(run_fail "$SPRINT" complete)"
   assert_contains "$out" "'Pipeline:' pin is malformed"
@@ -259,13 +260,17 @@ assert_grep '^- \[ \] Plan approved \(elsewhere\)$' ".tickets/$ID/plan.md"
 assert_grep '^- \[ \] Plan approved \(before\)$' ".tickets/$ID/plan.md"
 assert_eq "1" "$(grep -c '^- \[x\] Plan approved$' ".tickets/$ID/plan.md")"
 
-# ── an install with no pipeline.sh (an older one): the gate is skipped, approve writes no pin, nothing refuses ──
+# ── an install with no pipeline.sh (a damaged one): approve cannot walk, so it refuses and writes nothing (t-2bfe, fail-closed);
+# a plan approved before the file went closes with the Pipeline gate skipped ──
 T2="$(mktemp -d)"; DIRS+=("$T2"); cp "$ROOT"/tools/* "$T2/" 2>/dev/null || true; rm -f "$T2/pipeline.sh"
 SPRINT_REAL="$SPRINT"; SPRINT="$T2/sprint"
 new_project; override 'extends: canon-default\noff: [eval]\n'   # a file the resolver would refuse; without a resolver it is not read
 new_sprint
-"$SPRINT" approve "$ID" >/dev/null
-[[ -z "$(pin_of)" ]] || fail "sprint approve wrote a Pipeline pin with no pipeline.sh in the install: $(pin_of)"
+before="$(shasum ".tickets/$ID/plan.md")"
+out="$(run_fail "$SPRINT" approve "$ID")"
+assert_contains "$out" "no tools/pipeline.sh (run canon update)"; assert_eq "$before" "$(shasum ".tickets/$ID/plan.md")"
+pin_plan ".tickets/$ID/plan.md"
+[[ -z "$(pin_of)" ]] || fail "a Pipeline pin with no pipeline.sh in the install: $(pin_of)"
 close_docs '' ''
 out="$("$SPRINT" complete 2>&1)"
 assert_contains "$out" "Sprint completed: $ID"

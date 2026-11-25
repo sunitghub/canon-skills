@@ -372,6 +372,7 @@ Add _gate_plan_signoff to tools/sprint and tests.
 - tools/sprint
 - tests/sprint.sh
 EOF
+pin_plan ".tickets/$id/plan.md"   # t-2bfe: approval is the pin
 
 # Visual-embed gate — a bare/backticked visual filename with no real image
 # embed anywhere in plan.md must block close, naming the offending path —
@@ -582,6 +583,7 @@ Tier: Normal | Risk: low
 ## Approach
 test
 EOF
+pin_plan ".tickets/$fresh_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$fresh_id/eval-report.md" <<'EOF'
 evaluator-run-id: 1000000000-absent-test
 Model: test-model
@@ -659,6 +661,7 @@ cat > ".tickets/$ms_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$ms_id/plan.md"   # t-2bfe: approval is the pin
 # 1000000000000 ms ÷ 1000 = 1000000000 s (2001-09-09T01:46:40Z)
 cat > ".tickets/$ms_id/eval-report.md" <<'EOF'
 evaluator-run-id: 1000000000000-mstest
@@ -684,6 +687,7 @@ cat > ".tickets/$model_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$model_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$model_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -925,6 +929,7 @@ cat > ".tickets/$override_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$override_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$override_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -979,6 +984,7 @@ cat > ".tickets/$unwaived_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$unwaived_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$unwaived_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -1021,6 +1027,7 @@ cat > ".tickets/$wrongword_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$wrongword_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$wrongword_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -1153,6 +1160,7 @@ Tier: bugfix | Risk: single logic file + covering test
 ## Approach
 Fix the off-by-one in the split calc; the covering test asserts the independent invariant.
 EOF
+pin_plan ".tickets/$bugfix_id/plan.md"   # t-2bfe: approval is the pin
 
 # Tier: bugfix + no eval-report → must be BLOCKED (bugfix keeps the binding evaluator)
 bugfix_no_eval="$(run_fail "$SPRINT" complete)"
@@ -1306,6 +1314,7 @@ cat > ".tickets/$consist_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$consist_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$consist_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -1401,6 +1410,7 @@ cat > ".tickets/$consist2_id/plan.md" <<'EOF'
 ## Approach
 test
 EOF
+pin_plan ".tickets/$consist2_id/plan.md"   # t-2bfe: approval is the pin
 cat > ".tickets/$consist2_id/acceptance.md" <<'EOF'
 # Acceptance
 ## Criteria
@@ -1489,7 +1499,7 @@ tx_cfg="$(mktemp -d)"
   gate_ticket() { # starts a sprint with every doc valid except the report; sets gid
     local out; out="$("$SPRINT" start "transcript gate $1")"
     gid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
-    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$gid/plan.md"
+    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$gid/plan.md"; pin_plan ".tickets/$gid/plan.md"
     printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ".tickets/$gid/acceptance.md"
     printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$gid/summary.md"
     printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$stamp" > .claude/subagent-runs.jsonl
@@ -1685,7 +1695,7 @@ fr_project="$(make_project)"
   fr_ticket() { # starts a sprint with every doc valid except the report; sets fid
     local out; out="$("$SPRINT" start "stale eval $1")"
     fid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
-    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$fid/plan.md"
+    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$fid/plan.md"; pin_plan ".tickets/$fid/plan.md"
     printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ".tickets/$fid/acceptance.md"
     printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$fid/summary.md"
     printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$stamp" > .claude/subagent-runs.jsonl
@@ -1810,7 +1820,7 @@ grep -q 'ARTIFACT_PATHS' "$ROOT/scripts/install-hooks.sh" && fail "scripts/insta
 # t-1b74: shared fixture for the repository-shape cases below
 fr_gate_docs() { # <ticket dir> <jsonl file> <run-id> <graded-head>
   local t="$1"
-  printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > "$t/plan.md"
+  printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > "$t/plan.md"; pin_plan "$t/plan.md"
   printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ""$t/acceptance.md""
   printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > "$t/summary.md"
   printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$2"

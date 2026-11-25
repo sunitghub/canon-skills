@@ -40,7 +40,7 @@ The board uses a core while idle.
 <!-- What is true when this is done? -->")"
 d=".tickets/$id"
 printf '# Acceptance\n\n## Criteria\nThe checklist of behavior that must be true before the sprint can close.\n<!-- Add items -->\n\n- [ ] Idle CPU under 5%%\n  over 60 s\n\n## Test Plan\n- [ ] Measure before and after\n\n## QA\nEdge cases and sign-off.\n- [ ] Tested locally\n\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n\n## Results\nAll criteria met on the first run.\n' > "$d/acceptance.md"
-printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
+printf '# Plan\n\n## Sign-off\n- [x] Plan approved\nApproved: sha256:43d7c9469079310e0bfe31799a0170730f74a7137ad6882ac29f3d4849b2148e 2026-11-25T10:00:00Z\n\n## Approach\n1. Profile the idle board.\n2. Fix the hot loop.\n```\n<!-- kept: inside a fence -->\n## Files\n```\n<!-- dropped: outside a fence -->\n3. Measure again.\n\n## Files\n`server.py`\n\n## Decisions\n- none\n' > "$d/plan.md"
 printf '# Research: x\n\n- The board polls every 8 s.\n' > "$d/research.md"
 sig() { cksum < "$d/ticket.md"; }
 
@@ -682,6 +682,7 @@ cd "$project"
 idq="$("$TKT" create "Unapproved plan" -t task -p 3)"
 printf '# Acceptance\n\n## Criteria\n- [ ] It works\n\n## Test Plan\n- [ ] Check it\n\n## QA\n- [ ] Tested locally\n' > ".tickets/$idq/acceptance.md"
 printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\n<!-- Describe how you will implement this. -->\n1. Do it.\n' > ".tickets/$idq/plan.md"
+spec_verdict ".tickets/$idq"   # t-2bfe: the send's sprint approve waits for the spec check
 pq="$(cksum < ".tickets/$idq/plan.md")"
 "$TKT" send-issue "$idq" --dry-run > "$stub/q.out" 2> "$stub/q.err" || fail "t-6555: the dry run failed: $(cat "$stub/q.err")"
 assert_eq "$pq" "$(cksum < ".tickets/$idq/plan.md")"   # a preview writes nothing
@@ -706,6 +707,13 @@ rc=0; out="$("$TKT" send-issue "$idr" 2>&1)" || rc=$?
 rm -rf canon-config
 [[ "$rc" == 1 ]] || fail "t-6555: a refused approval should exit 1: $out"; assert_contains "$out" "could not approve $idr's plan, so nothing was sent"
 [[ "$(writes)" == 0 ]] || fail "t-6555: a refused approval still called gh: $(cat "$STUB_LOG")"; assert_eq "$pr" "$(cksum < ".tickets/$idr/plan.md")"
+# t-2bfe: a box ticked by hand is not approval: the send runs sprint approve, which refuses while the spec check has not run, and sends nothing
+printf '# Plan\n\n## Sign-off\n- [x] Plan approved\n\n## Approach\n1. Do it.\n' > ".tickets/$idr/plan.md"; pr="$(cksum < ".tickets/$idr/plan.md")"
+rm -f ".tickets/$idr/spec-review.md"; : > "$STUB_LOG"
+rc=0; out="$("$TKT" send-issue "$idr" 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "t-2bfe: a hand-ticked plan with no spec check should exit 1: $out"
+assert_contains "$out" "could not approve $idr's plan, so nothing was sent: missed: spec-check"
+[[ "$(writes)" == 0 ]] || fail "t-2bfe: a refused approval still called gh: $(cat "$STUB_LOG")"; assert_eq "$pr" "$(cksum < ".tickets/$idr/plan.md")"
 idz="$("$TKT" create "Nothing written" -t task -p 3)"
 "$TKT" send-issue "$idz" --dry-run > "$stub/z.out" 2> "$stub/z.err" || fail "t-6555: the empty dry run failed: $(cat "$stub/z.err")"
 assert_grep '^send-issue: needs: plan$' "$stub/z.err"; assert_grep '^send-issue: needs: acceptance$' "$stub/z.err"

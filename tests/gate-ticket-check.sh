@@ -14,11 +14,13 @@ doc() { mkdir -p "$WORK/r/.tickets/$1"; printf '%s\n' "$3" > "$WORK/r/.tickets/$
 approved_plan='# Plan
 ## Sign-off
 Tier: normal | Risk: x
-- [x] Plan approved — proceed to implementation'
+- [x] Plan approved — proceed to implementation
+Approved: sha256:43d7c9469079310e0bfe31799a0170730f74a7137ad6882ac29f3d4849b2148e 2026-11-25T00:00:00Z'
 doc t-aaaa ticket.md "id: t-aaaa"; doc t-aaaa plan.md "$approved_plan"; doc t-aaaa acceptance.md "- [ ] C1"
 doc t-bbbb ticket.md "id: t-bbbb"                                              # created on main, not yet planned
 doc t-dddd plan.md "$(printf '# Plan\n- [ ] Plan approved — proceed to implementation\n')"     # planned, not approved
 doc t-eeee plan.md "Note: once signed off, - [x] Plan approved goes on its own line."  # prose, not the checkbox
+doc t-ffff plan.md "$(printf '# Plan\n## Sign-off\n- [x] Plan approved — proceed to implementation\n')"     # t-2bfe: ticked by hand, no pin
 g add -A; g commit -q -m base; BASE="$(g rev-parse HEAD)"
 
 run() {  # run <body> → sets out, rc
@@ -53,7 +55,7 @@ run "Closes: t-aaaa"
 # 4. No approved plan on the base (created there, planned in the PR) and a ticket new in the PR: graded, with a warning.
 g checkout -q -B pr "$BASE"; doc t-bbbb plan.md "$approved_plan"; doc t-bbbb acceptance.md "- [ ] C1"; doc t-cccc ticket.md "id: t-cccc"
 g add -A; g commit -qm plan
-for t in t-bbbb t-cccc t-dddd t-eeee; do
+for t in t-bbbb t-cccc t-dddd t-eeee t-ffff; do   # t-ffff: a hand-ticked box is not "approved on base" (t-2bfe)
   run "Closes: $t"
   [[ $rc -eq 0 && "$out" == *"::warning::$t's plan and criteria were authored in this PR"* && "$out" == *"id=$t"* ]] || fail "$t authored in the PR: rc=$rc $out"
 done

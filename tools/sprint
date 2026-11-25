@@ -162,8 +162,8 @@ Ticket: $tdir/ticket.md
 Agent next steps:
 1. Read DECISIONS.md, HANDOFF.md, and ticket.md.
 2. Fill in acceptance.md — add criteria and test-plan checklist items.
-$(if grep -qiE '^[[:space:]]*[-*] \[x\] Plan approved' "$tdir/plan.md" 2>/dev/null; then
-  echo "3. The plan in plan.md is already approved (its Sign-off is ticked): build it without waiting for another approval."   # t-6555: sent approved
+$(if _acceptance_section "Sign-off" "$tdir/plan.md" 2>/dev/null | grep -E '^[[:space:]]*Approved:[[:space:]]*sha256:[0-9a-f]{64} ' >/dev/null; then
+  echo "3. The plan in plan.md is already approved (its Sign-off has the Approved pin): build it without waiting for another approval."   # t-6555: sent approved; t-2bfe: the pin, never a hand-ticked box
 else
   echo "3. Fill in plan.md — write the approach, then wait for explicit approval before coding."
 fi)
@@ -485,12 +485,13 @@ _gate_plan_signoff() {
     echo "Check the approval box in plan.md before closing."
     return 1
   fi
-  # t-0865: the box is pinned to ## Approach by `sprint approve`; a ticked box with no pin (approved before this) warns.
+  # t-0865: the box is pinned to ## Approach by `sprint approve`. t-2bfe: the pin is the approval; a box ticked by hand is not.
   local pinned now
   pinned="$(_acceptance_section "Sign-off" "$plan" | sed -n 's/^[[:space:]]*Approved:[[:space:]]*sha256:\([0-9a-f]*\).*/\1/p' | tail -1)"
   if [[ -z "$pinned" ]]; then
-    echo "[sprint] WARNING: plan.md has no 'Approved: sha256:' pin, so Approach drift is unchecked; run sprint approve $id."
-    return 0
+    echo "Sprint $id cannot close: plan.md has no 'Approved: sha256:' pin; run sprint approve $id."
+    echo "A ticked box alone is not an approval: sprint approve writes the pin after the person approves the plan."
+    return 1
   fi
   now="$(_approach_digest "$plan")"
   if [[ "$now" != "$pinned" ]]; then
@@ -688,6 +689,20 @@ cmd_approve() {
   signoff="$(_acceptance_section "Sign-off" "$plan")"
   grep -qE '^[[:space:]]*[-*] \[[ xX]\] Plan approved' <<< "$signoff" \
     || { echo "sprint approve: plan.md has no '- [ ] Plan approved' box under ## Sign-off" >&2; exit 1; }
+  # t-2bfe: every earlier ON pipeline node's produces must hold (the spec check's verdict); a skipped step or a check that cannot
+  # run is not approved, nothing written. This replaced t-d826's warning, which an agent read past twice (t-a5fc, t-6x4z).
+  local wout wrc=0
+  wout="$(_walk "$root" "$root/.tickets/$id" --at approve-plan)" || wrc=$?
+  if (( wrc == 1 )); then
+    echo "sprint approve: $id is not approved: a step before approval has not run (nothing written)" >&2
+    printf '%s\n' "$wout" >&2
+    if [[ "$wout" == *"missed: spec-check "* && "$(_report_harness)" == copilot ]]; then
+      echo "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck" >&2
+    fi
+    exit 1
+  elif (( wrc != 0 )); then
+    echo "sprint approve: cannot check the steps before approval, so $id is not approved (nothing written): $wout" >&2; exit 1
+  fi
   digest="$(_approach_digest "$plan")"
   # t-7e76: the project's pipeline is pinned with the plan; a pipeline the resolver refuses is not approved (nothing written)
   pstate="$(_pipeline_state "$root")" || prc=$?
@@ -720,32 +735,29 @@ cmd_approve() {
   handoff_recent "$root"
   _handoff_mark "$(dirname "$plan")"   # t-10ac: what the Handoff narrative reads now, to notice at close that nobody refreshed it
   cap_headroom "$(worktree_root 2>/dev/null || echo "$root")" "$plan" sprint "$id" plan   # t-cc88: a capped file this plan lists that is nearly full (t-c990: and its event)
-  # t-d826: a spec check that never ran is named here, the last point before code (advisory: approval stands). On the Windows Copilot
-  # run the session presented its brief with no spec check and said so only when asked.
-  if [[ ! -f "$root/.tickets/$id/spec-review.md" ]] && _spec_check_due "$root" "$root/.tickets/$id/ticket.md"; then
-    echo "sprint approve: warning: the spec check never ran for $id (no .tickets/$id/spec-review.md). It runs before the brief (start-checklist.md step 9): dispatch canon-spec-checker with \`sprint gate-prompt $id speccheck\`'s output. Approval stands: the spec check is advisory." >&2
-    [[ "$(_report_harness)" != copilot ]] || echo "sprint approve: under Copilot, when it returns: sprint relay-report $id speccheck" >&2
-  fi
 }
 
-# _spec_check_due <root> <ticket.md> — t-d826: true when the project's pipeline runs the spec check for this ticket (start.md step 10's
-# rule): the spec-check row of `pipeline.sh resolve --full` is on and, when its skip_on lists lite, the ticket is not Lite (demo: true;
-# canon's row lists only lite, and a project cannot change a node's skip_on). Not due when the pipeline cannot be read: never a guess.
-_spec_check_due() {
-  local root="$1" tk="$2" full row on skip o
-  local -a opts=()
-  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>/dev/null)" || return 1
-  row="$(awk -F'\t' '$2 == "spec-check" && !n { print; n = 1 }' <<< "$full")"
-  [[ -n "$row" ]] || return 1
-  on="$(cut -f4 <<< "$row")"; skip="$(cut -f10 <<< "$row")"
-  [[ "$on" == on ]] || return 1
-  [[ "$skip" == - || -z "$skip" ]] || IFS=, read -r -a opts <<< "$skip"
-  for o in ${opts[@]+"${opts[@]}"}; do
-    case "$o" in
-      lite) [[ "$(get_field "$tk" demo 2>/dev/null)" != true ]] || return 1 ;;
-    esac
-  done
-  return 0
+# _walk <root> <ticket dir> [--at <node>] — t-2bfe: canon-go walk over this project's resolved pipeline (pipeline.sh, the one reader).
+# Exit is walk's: 0, 1 (a missed node before --at's node), 2 (unreadable). A pipeline the reader refuses, or a canon-go with no walk, is 2
+# with one line naming the fix: a check that cannot run never reads as passed.
+_walk() {
+  local root="$1" tdir="$2" full b; shift 2
+  [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || { echo "this install has no tools/pipeline.sh (run canon update)"; return 2; }
+  full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>&1)" || { printf '%s\n' "${full##*$'\n'}"; return 2; }
+  b="$(board_has 'walk <ticket dir')" || { echo "this install's canon-go has no walk (run canon update)"; return 2; }
+  "$b" walk "$tdir" "$@" <<< "$full" 2>&1
+}
+
+# cmd_next <id> — t-2bfe: the one next step of the ticket's pipeline (up to approval in this slice; t-6a4d walks the close), after a
+# `missed:` line for each earlier ON step whose output is not there. Exit 0, or 2 when the walk cannot run.
+cmd_next() {
+  local id="${1:-}" root out rc=0
+  [[ $# -eq 1 && "$id" =~ ^t-[a-z0-9]{4}$ ]] || { echo "usage: sprint next <ticket-id>" >&2; exit 2; }
+  root="$(project_root)"
+  [[ -d "$root/.tickets/$id" ]] || { echo "sprint next: no ticket folder .tickets/$id" >&2; exit 2; }
+  out="$(_walk "$root" "$root/.tickets/$id")" || rc=$?
+  (( rc == 0 )) || { echo "sprint next: $out" >&2; exit 2; }
+  printf '%s\n' "$out"
 }
 
 _gate_plan_content() {
@@ -2122,7 +2134,7 @@ cmd_gate_prompt() {
   title="$(LC_ALL=C awk 'sub(/^# /, "") { print; exit }' "$tdir/ticket.md" 2>/dev/null || true)"
   harness="$(_report_harness)"
   case "$role" in
-    speccheck) file=spec-check.md name=spec-review.md marker="# Spec check: $id" label="advisory spec checker" ;;
+    speccheck) file=spec-check.md name=spec-review.md marker="# Spec check: $id" label="spec checker" ;;
     reviewer) file=review.md name=review-notes.md marker="# Review Notes" label="advisory reviewer" ;;
     evaluator) file=eval.md name=eval-report.md marker="evaluator-run-id:" label="binding evaluator" ;;
     evaluator2) file=eval.md name=eval-report-2.md marker="evaluator-run-id:" label="second evaluator" ;;
@@ -2757,6 +2769,7 @@ main() {
     current) cmd_current ;;
     status) cmd_status "$@" ;;
     approve) cmd_approve "$@" ;;
+    next) cmd_next "$@" ;;
     recent) cmd_recent "$@" ;;
     complete) cmd_complete "$@" ;;
     suggest-tier) cmd_suggest_tier "$@" ;;

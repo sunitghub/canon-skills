@@ -5,6 +5,7 @@
 # changes or appears. A main checkout's own links keep working (user, 2026-11-15: worktrees only).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
+use_fresh_board "$(mktemp -d)"   # t-2bfe: sprint approve runs canon-go walk
 
 W="$(cd "$(command mktemp -d "${TMPDIR:-/tmp}/wt-write-links.XXXXXX")" && pwd -P)"
 # t-c206: the sweep runs gate-snapshot.sh pre ~80 times; unpinned, each scope went to the real /tmp registry (a parallel suite's
@@ -32,6 +33,7 @@ echo base > f.txt; printf '# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current
 git add f.txt HANDOFF.md; git commit -qm base
 id="$("$TKT" create "Planted" -t task)"
 printf '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [ ] Plan approved\n\n## Approach\nx\n' > ".tickets/$id/plan.md"
+spec_verdict ".tickets/$id"
 awk '/^---$/ && ++n == 2 { print "github: acme/app#21" } { print }' ".tickets/$id/ticket.md" > "$W/t.md" && mv "$W/t.md" ".tickets/$id/ticket.md"   # land needs it
 git add -f .tickets; git commit -qm "chore: ticket"
 WT="$W/wt"; git worktree add -q "$WT" -b feat/w

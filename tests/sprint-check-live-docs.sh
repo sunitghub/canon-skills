@@ -164,7 +164,7 @@ run_checks() {
   # 2i. End to end with the PRODUCTION gate code (extracted from tools/sprint, not re-implemented): what the board writes
   # into a worktree ticket is exactly what `sprint complete` reads.
   prod_fn() { awk -v n="$1" '$0 ~ "^" n "\\(\\) \\{" {p=1} p {print} p && /^}/ {exit}' "$ROOT/tools/sprint"; }
-  { for f in _acceptance_section _gate_acceptance_sections _gate_no_unchecked _gate_plan_signoff; do prod_fn "$f"; done; } > "$TMP/$kind/gates.sh"
+  { for f in _acceptance_section _approach_digest _gate_acceptance_sections _gate_no_unchecked _gate_plan_signoff; do prod_fn "$f"; done; } > "$TMP/$kind/gates.sh"
   [[ "$(grep -c '^_gate_' "$TMP/$kind/gates.sh")" -ge 3 ]] || fail "$label: could not extract the production gate functions"
   # shellcheck disable=SC1090
   source "$TMP/$kind/gates.sh"
@@ -181,7 +181,11 @@ run_checks() {
   if _gate_plan_signoff t-lv01 "$pl" >/dev/null; then fail "$label: the gate must reject an unapproved plan the board wrote"; fi
   code="$(post t-lv01/plan.md "$(jbody $'# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nx' "$(etag_of plan.md)")")"
   [[ "$code" == 200 ]] || fail "$label: board approval of the plan failed ($code)"
-  _gate_plan_signoff t-lv01 "$pl" >/dev/null || fail "$label: the gate must accept the approval the board wrote"
+  # t-2bfe: a box ticked in the board's editor is not approval; sprint approve's pin is
+  if out="$(_gate_plan_signoff t-lv01 "$pl")"; then fail "$label: the gate must refuse a board-ticked box with no pin"; fi
+  [[ "$out" == *"no 'Approved: sha256:' pin"* ]] || fail "$label: the refusal must name the missing pin: $out"
+  pin_plan "$pl"
+  _gate_plan_signoff t-lv01 "$pl" >/dev/null || fail "$label: the gate must accept a pinned approval in the file the board wrote"
   [[ -f "$repo/.tickets/t-lv01/plan.md" ]] && fail "$label: main's plan.md must still not exist"
 
   # 2j. Malformed-input fuzz (seeded, ~250 cases): wrong types, empty, huge, CRLF and binary, hostile names, broken JSON. Every

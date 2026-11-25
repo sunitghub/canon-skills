@@ -23,7 +23,7 @@ assert_gate_notice() { # <output> <file> <evaluator|reviewer>: the same notice t
 
 gate_ticket() { # a sprint with every doc valid except the report; sets gid
   gid="$("$SPRINT" start "copilot gate $1" | awk '/Sprint started:/ { print $3 }')"
-  printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$gid/plan.md"
+  printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$gid/plan.md"; pin_plan ".tickets/$gid/plan.md"   # t-2bfe
   printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ".tickets/$gid/acceptance.md"
   printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$gid/summary.md"
   printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .claude/subagent-runs.jsonl

@@ -72,6 +72,7 @@ printf '# Acceptance\n\n## Criteria\n- [ ] Idle CPU under 5%%\n\n## Test Plan\n-
 # t-6555: a written but unapproved plan, with the skeleton's comment under ## Approach: the send approves it (sprint approve), and the pin
 # must still match in the cloud once import-issue rebuilds plan.md from the issue
 printf '# Plan\n\n## Sign-off\nTier: normal\n\n- [ ] Plan approved\n\n## Approach\n<!-- Describe how you will implement this. Keep this heading unchanged. -->\n1. Profile it.\n# a note in the plan, not a part\n2. Fix it.\n\n## Files\n`server.py`\n' > "$d/plan.md"
+spec_verdict "$d"   # t-2bfe: the send approves, and approve waits for the spec check
 printf '# Research: x\n\n- Polls every 8 s.\n' > "$d/research.md"
 sout="$("$TKT" send-issue "$id")"
 assert_contains "$sout" "approved $id's plan"
@@ -110,9 +111,10 @@ for h in Sign-off Approach Files; do assert_eq "$(sec "$A/$d/plan.md" "$h")" "$(
 assert_grep '^- \[x\] Plan approved$' "$e/plan.md"            # sprint start kept the approved plan
 # t-6555: the pin survived the trip: sprint approve recomputes the cloud copy's Approach digest, and it is the laptop's
 assert_grep "^Approved: sha256:$pin_laptop " "$e/plan.md"
+spec_verdict "$e"   # the issue carries no spec-review.md (t-2bfe: approve waits for one; noted on t-6a4d)
 (cd "$B" && "$SPRINT" approve "$id" >/dev/null) || fail "t-6555: sprint approve failed in the cloud copy"
 assert_eq "$pin_laptop" "$(sed -n 's/^Approved: sha256:\([0-9a-f]*\) .*/\1/p' "$e/plan.md")"
-assert_contains "$(cat "$W/import.out")" "already approved (its Sign-off is ticked): build it without waiting"
+assert_contains "$(cat "$W/import.out")" "already approved (its Sign-off has the Approved pin): build it without waiting"
 assert_grep '^2. Fix it.$' "$e/plan.md"                        # a top-level "# " line in a section is content, not a part
 assert_grep '^- Polls every 8 s.$' "$e/research.md"
 

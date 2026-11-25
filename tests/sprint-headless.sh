@@ -116,14 +116,18 @@ after="$(git -C "$WORK" rev-parse HEAD)"
 
 (cd "$WORK" && git add -f ".tickets/t-aaaa/")
 out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
-assert_contains "$out" "Plan approved"
+assert_contains "$out" "no 'Approved: sha256:' pin"
+# t-2bfe: a box ticked by hand (no pin) is not approved either
+sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-aaaa/plan.md"; rm -f "$WORK/.tickets/t-aaaa/plan.md.bak"
+(cd "$WORK" && git add -f ".tickets/t-aaaa/")
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "no 'Approved: sha256:' pin"
 
 # ── 4. Approved, no --base-ref, and no default resolves (t-54e5) ────────
 # With no --base-ref/$GITHUB_BASE_REF the tools default to origin/main → main;
 # WORK has neither (branch is `work`, no remote), so it errors clearly instead.
 
-sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-aaaa/plan.md"
-rm -f "$WORK/.tickets/t-aaaa/plan.md.bak"
+pin_plan "$WORK/.tickets/t-aaaa/plan.md"
 (cd "$WORK" && git add -f ".tickets/t-aaaa/")
 out="$(cd "$WORK" && GITHUB_BASE_REF='' run_fail "$SPRINT_HEADLESS" t-aaaa)"
 assert_contains "$out" "could not resolve a default base ref"
@@ -300,8 +304,7 @@ mkdir -p "$WORK/skills/sprint"
 seed_ticket t-bugf
 (cd "$WORK" && "$ROOT/tools/tkt" ci t-bugf on >/dev/null)
 sed -i.bak 's/Tier: trivial | Risk: fixture/Tier: bugfix | Risk: single logic file + covering test/' "$WORK/.tickets/t-bugf/plan.md"
-sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-bugf/plan.md"
-rm -f "$WORK/.tickets/t-bugf/plan.md.bak"
+rm -f "$WORK/.tickets/t-bugf/plan.md.bak"; pin_plan "$WORK/.tickets/t-bugf/plan.md"
 (cd "$WORK" && git add -f ".tickets/t-bugf/" && git commit -q -m "seed t-bugf bugfix")
 
 PROMPT_CAPTURE="$(mktemp)"
@@ -376,6 +379,7 @@ fixture
 ## Decisions
 - none
 EOF
+  pin_plan "$WORK/.tickets/t-mdl1/plan.md"
 }
 
 mkdir -p "$WORK/skills/sprint"
