@@ -176,7 +176,7 @@ type proposal struct {
 }
 
 // buildProposal compares what the sources found with the registry. A model is offered when no registry entry (active or legacy) has its id.
-// Same line, higher version replaces the highest lower active one; a line the registry has no match for is never mapped. The registry's own
+// Same line, higher version replaces the highest lower active one, counting the other adds (t-f094); a line neither has is never mapped. The registry's own
 // active entries where a newer active one of the same line exists are offered for retirement, so a registry that already holds both
 // Sonnet 5 and Sonnet 5.5 can be tidied without a fetch.
 func buildProposal(doc map[string]any, finds []found) proposal {
@@ -200,10 +200,10 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 			all = append(all, reg{id, fmt.Sprint(m["name"]), ver, line, common.IsLegacy(m), prov})
 		}
 	}
-	best := func(prov, line string, below []int) *reg { // the highest active entry of the line, strictly below `below` when given
+	best := func(pool []reg, prov, line string, below []int) *reg { // the highest active entry of the line, strictly below `below` when given
 		var b *reg
-		for i := range all {
-			r := &all[i]
+		for i := range pool {
+			r := &pool[i]
 			if r.prov != prov || r.legacy || r.line != line || (below != nil && !versionLess(r.ver, below)) {
 				continue
 			}
@@ -226,13 +226,21 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		return false
 	}
 	p := proposal{Add: []proposalEntry{}, Retire: []retireEntry{}, Current: []string{}}
+	// t-f094: an add replaces the highest lower model of its line among the registry and the other adds, so X.1 and X.2 found together
+	// chain X -> X.1 -> X.2 instead of both replacing X
+	withAdds := append([]reg{}, all...)
+	for _, f := range finds {
+		if line, ver, ok := lineAndVersion(f.ID); ok && !have[f.ID] {
+			withAdds = append(withAdds, reg{f.ID, f.Name, ver, line, false, f.Provider})
+		}
+	}
 	for _, f := range finds {
 		if have[f.ID] {
 			continue
 		}
 		e := proposalEntry{found: f}
 		if line, ver, ok := lineAndVersion(f.ID); ok {
-			if old := best(f.Provider, line, ver); old != nil {
+			if old := best(withAdds, f.Provider, line, ver); old != nil {
 				e.Replaces, e.ReplacesAll, e.Gate = old.id, old.name, gateDefault(old.id)
 			}
 		}
@@ -243,9 +251,11 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 		if r.legacy || r.line == "" {
 			continue
 		}
-		newest := best(r.prov, r.line, nil) // never nil: r itself is an active entry of this line
+		newest := best(all, r.prov, r.line, nil) // never nil: r itself is an active entry of this line
 		if versionLess(r.ver, newest.ver) {
 			p.Retire = append(p.Retire, retireEntry{r.id, r.name, newest.id, newest.name, gateDefault(r.id)})
+		} else if versionLess(r.ver, best(withAdds, r.prov, r.line, nil).ver) {
+			continue // t-f094: an add of its line is newer, so it is not current (the add's own row replaces it)
 		} else {
 			p.Current = append(p.Current, r.name)
 		}
@@ -257,6 +267,8 @@ func buildProposal(doc map[string]any, finds []found) proposal {
 
 // applyProposal adds the chosen models first (so a model exists before anything moves to it), then retires each old one in favour of its
 // replacement. adds are checked like any registry entry; a retire pair goes through retireModel, the one place aliases and defaults move.
+// t-f094: the pairs are one batch: a pair whose target another pair retires (X -> X.1, X.1 -> X.2) goes straight to the end of the chain
+// (X -> X.2), in any order. A cycle or one old with two targets is refused; the caller saves nothing on an error (registryMove).
 func applyProposal(doc map[string]any, adds []map[string]any, retire [][2]string) error {
 	models, _ := doc["models"].(map[string]any)
 	for _, a := range adds {
@@ -280,8 +292,31 @@ func applyProposal(doc map[string]any, adds []map[string]any, retire [][2]string
 		list, _ := models[prov].([]any)
 		models[prov] = append(list, entry)
 	}
+	next := map[string]string{}
+	var olds []string
 	for _, r := range retire {
-		if err := retireModel(doc, r[0], r[1]); err != nil {
+		if cur, dup := next[r[0]]; dup {
+			if cur != r[1] {
+				return fmt.Errorf("%s cannot be retired onto both %s and %s", r[0], cur, r[1])
+			}
+			continue
+		}
+		next[r[0]] = r[1]
+		olds = append(olds, r[0])
+	}
+	for _, old := range olds {
+		to, seen := next[old], map[string]bool{old: true}
+		for {
+			if seen[to] {
+				return fmt.Errorf("the retire steps for %s go round in a circle", old)
+			}
+			after, chained := next[to]
+			if !chained {
+				break
+			}
+			seen[to], to = true, after
+		}
+		if err := retireModel(doc, old, to); err != nil {
 			return err
 		}
 	}

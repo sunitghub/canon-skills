@@ -550,3 +550,34 @@ func TestRecordOnFreshKeepsAChangeMadeDuringTheFetch(t *testing.T) {
 		t.Errorf("only the unchanged source gets a check time: %v", s)
 	}
 }
+
+// t-f094: protects /api/admin/model-tiers/apply (main.go: registryMove(applyProposal)): a batch refused after its adds and some retires
+// have changed the in-memory registry leaves the saved file byte-identical.
+func TestApplyRouteRefusalWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", dir)
+	user := filepath.Join(dir, "cockpit", "model-tiers.json")
+	seed := filepath.Join(dir, "seed.json")
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	raw, _ := json.Marshal(regDoc())
+	if err := os.WriteFile(seed, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if res := registryMove(func(doc map[string]any) error { return retireModel(doc, "claude-sonnet-5", "claude-sonnet-5-5") }); res["ok"] != true {
+		t.Fatalf("setup: %v", res)
+	}
+	before, _ := os.ReadFile(user)
+	add := []map[string]any{{"id": "claude-sonnet-5-6", "provider": "anthropic", "name": "Claude Sonnet 5.6"}}
+	for name, pairs := range map[string][][2]string{
+		"a cycle":         {{"claude-sonnet-5-5", "claude-sonnet-5-6"}, {"claude-sonnet-5-6", "claude-sonnet-5-5"}},
+		"one old, two to": {{"claude-sonnet-5-5", "claude-sonnet-5-6"}, {"claude-sonnet-5-5", "claude-opus-5-5"}},
+	} {
+		res := registryMove(func(doc map[string]any) error { return applyProposal(doc, add, pairs) })
+		after, _ := os.ReadFile(user)
+		if res["ok"] != false || string(before) != string(after) {
+			t.Errorf("%s: refused and nothing written: %v", name, res)
+		}
+	}
+}

@@ -15919,6 +15919,71 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     }
   });
 
+  test('Model Tiers: a chained retire applies in one batch: Retire onto a model an add replaces lands on the add (t-f094)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const add = { provider: 'anthropic', id: 'claude-haiku-5-6', name: 'Claude Haiku 5.6', input_price: 0.1, output_price: 0.5, price_known: true,
+        replaces: 'claude-haiku-5-5', replaces_name: 'Claude Haiku 5.5' };
+      const retire = { old: 'claude-haiku-4-5-20251001', old_name: 'Claude Haiku 4.5', new: 'claude-haiku-5-5', new_name: 'Claude Haiku 5.5' };
+      await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub({ add: [add], retire: [retire], current: [] })) }));
+      let applied = null;
+      await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      const start = JSON.parse(canonical);
+      start.defaults.light.claude = 'claude-haiku-4-5-20251001';   // the old model holds a default, so the chain has something to move
+      expect((await page.request.post(BASE + '/api/admin/model-tiers', { data: start })).ok()).toBe(true);
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      const prop = page.locator('#mt-proposal .mt-prop');
+      const row = prop.locator('label.mt-chg', { has: page.locator('[data-sel="t:claude-haiku-4-5-20251001"]') });
+      await expect(row).toContainText('move to Claude Haiku 5.6');
+      await prop.locator('[data-sel="a:claude-haiku-5-6"]').uncheck();             // without the add, the row's own target holds
+      await expect(row).toContainText('Claude Haiku 5.5 is already in your registry');
+      await prop.locator('[data-sel="a:claude-haiku-5-6"]').check();
+      await prop.locator('[data-sel="r:claude-haiku-5-6"]').check();
+      await expect(row).toContainText('move to Claude Haiku 5.6');
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 3 selected');
+      await prop.locator('.mt-prop-apply').click();
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);           // applied: a refusal keeps the proposal open
+      expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-6' }, { old: 'claude-haiku-4-5-20251001', new: 'claude-haiku-5-5' }]);
+      const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      expect(reg.defaults.light.claude).toBe('claude-haiku-5-6');
+      await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-admin').click();   // NOTICED: the pickers' options refresh only on load
+      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.6');
+      const h = id => reg.models.anthropic.find(m => m.id === id);
+      expect([h('claude-haiku-4-5-20251001').legacy, h('claude-haiku-5-5').legacy, h('claude-haiku-5-6').legacy]).toEqual([true, true, undefined]);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  test('Model Tiers: unticking the middle add of a chain sends its successor onto the model it would have replaced (t-f094)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const a1 = { provider: 'anthropic', id: 'claude-haiku-5-6', name: 'Claude Haiku 5.6', input_price: 0.1, output_price: 0.5, price_known: true, replaces: 'claude-haiku-5-5', replaces_name: 'Claude Haiku 5.5' };
+      const a2 = { provider: 'anthropic', id: 'claude-haiku-5-7', name: 'Claude Haiku 5.7', input_price: 0.1, output_price: 0.5, price_known: true, replaces: 'claude-haiku-5-6', replaces_name: 'Claude Haiku 5.6' };
+      await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub({ add: [a1, a2], retire: [], current: [] })) }));
+      let applied = null;
+      await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      const prop = page.locator('#mt-proposal .mt-prop');
+      await prop.locator('[data-sel="a:claude-haiku-5-6"]').uncheck();
+      await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 2 selected');
+      await prop.locator('.mt-prop-apply').click();
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
+      expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-7' }]);
+      expect((await (await page.request.get(BASE + '/api/admin/model-tiers')).json()).defaults.light.claude).toBe('claude-haiku-5-7');
+      await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-admin').click();
+      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.7');
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
   // t-d40b slice 1. Protects Admin > Model Tiers: Remove of the model that holds a Claude Code alias or a default asks where they go
   // (the board does the move), a retired model sits in Legacy and Restore brings it back, and a registry with an alias nobody holds
   // says so and offers one click to bind it.

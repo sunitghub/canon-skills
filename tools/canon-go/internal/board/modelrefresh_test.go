@@ -117,7 +117,8 @@ func TestBuildProposal(t *testing.T) {
 	if len(p.Retire) != 1 || p.Retire[0].Old != "claude-sonnet-5" || p.Retire[0].New != "claude-sonnet-5-5" || !p.Retire[0].Gate {
 		t.Errorf("retire: %+v", p.Retire)
 	}
-	if strings.Join(p.Current, ",") != "Claude Haiku 4.5,Claude Opus 5.5,Claude Sonnet 5.5,GPT-6 Luna,GPT-6 Sol" {
+	// t-f094: Haiku 4.5 and GPT-6 Sol are replaced by adds in this proposal, so they are not current
+	if strings.Join(p.Current, ",") != "Claude Opus 5.5,Claude Sonnet 5.5,GPT-6 Luna" {
 		t.Errorf("current: %v", p.Current)
 	}
 	// a replacement that would change the gate model is flagged on its add row too
@@ -153,6 +154,90 @@ func TestApplyProposalAddsBeforeItRetires(t *testing.T) {
 	}
 	if err := applyProposal(proposalDoc(), nil, [][2]string{{"claude-sonnet-5", "nope"}}); err == nil {
 		t.Error("a retire onto a model that does not exist should be refused")
+	}
+}
+
+// t-f094: one Apply that retires X onto X.1 and X.1 onto X.2 ends every alias and default on X.2 (defaults are shown on the Claude line: an
+// OpenAI entry holds none for the registry agent), whatever order the pairs come in;
+// with the X.2 add and its pair left out, X goes to X.1. Expected values are worked out by hand in the ticket's plan.md.
+func TestApplyProposalResolvesAChainedRetire(t *testing.T) {
+	sol := func() map[string]any {
+		doc := proposalDoc()
+		m := doc["models"].(map[string]any)
+		m["openai"] = append(m["openai"].([]any), map[string]any{"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol"})
+		return doc
+	}
+	add62 := map[string]any{"id": "gpt-6.2-sol", "provider": "openai", "name": "GPT-6.2 Sol", "input_price": 1.0, "output_price": 2.0}
+	for name, pairs := range map[string][][2]string{
+		"ui order": {{"gpt-6.1-sol", "gpt-6.2-sol"}, {"gpt-6-sol", "gpt-6.1-sol"}},
+		"reverse":  {{"gpt-6-sol", "gpt-6.1-sol"}, {"gpt-6.1-sol", "gpt-6.2-sol"}},
+	} {
+		doc := sol()
+		if err := applyProposal(doc, []map[string]any{add62}, pairs); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if entry(t, doc, "gpt-6-sol")["legacy"] != true || entry(t, doc, "gpt-6.1-sol")["legacy"] != true || entry(t, doc, "gpt-6.2-sol")["legacy"] != nil {
+			t.Errorf("%s: 6 and 6.1 legacy, 6.2 active: %v", name, doc["models"])
+		}
+		if !modelTiersValid(doc) {
+			t.Errorf("%s: the applied registry must be valid", name)
+		}
+	}
+	haiku := func() map[string]any {
+		doc := proposalDoc()
+		m := doc["models"].(map[string]any)
+		m["anthropic"] = append(m["anthropic"].([]any), map[string]any{"id": "claude-haiku-5-5", "name": "Claude Haiku 5.5", "alias": ""})
+		return doc
+	}
+	add56 := map[string]any{"id": "claude-haiku-5-6", "provider": "anthropic", "name": "Claude Haiku 5.6", "input_price": 0.1, "output_price": 0.5}
+	doc := haiku()
+	if err := applyProposal(doc, []map[string]any{add56}, [][2]string{{"claude-haiku-5-5", "claude-haiku-5-6"}, {"claude-haiku-4-5-20251001", "claude-haiku-5-5"}}); err != nil {
+		t.Fatal(err)
+	}
+	if entry(t, doc, "claude-haiku-5-6")["alias"] != "haiku" || defaultOf(doc, "light", "claude") != "claude-haiku-5-6" || !modelTiersValid(doc) {
+		t.Errorf("haiku alias and the light default end on 5.6: %v %v", doc["models"], doc["defaults"])
+	}
+	doc = haiku() // the 5.6 add and its replace unticked: the retire row's own target holds
+	if err := applyProposal(doc, nil, [][2]string{{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}}); err != nil {
+		t.Fatal(err)
+	}
+	if entry(t, doc, "claude-haiku-5-5")["alias"] != "haiku" || entry(t, doc, "claude-haiku-5-5")["legacy"] != nil || defaultOf(doc, "light", "claude") != "claude-haiku-5-5" {
+		t.Errorf("without the add, 4.5 moves to 5.5, which stays active: %v", doc["models"])
+	}
+	doc = haiku() // the same pair twice is one step
+	if err := applyProposal(doc, nil, [][2]string{{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-4-5-20251001", "claude-haiku-5-5"}}); err != nil {
+		t.Errorf("an identical pair sent twice should collapse: %v", err)
+	}
+	for name, pairs := range map[string][][2]string{
+		"a cycle":                     {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-5-5", "claude-haiku-4-5-20251001"}},
+		"one old with two targets":    {{"claude-haiku-4-5-20251001", "claude-haiku-5-5"}, {"claude-haiku-4-5-20251001", "claude-opus-5-5"}},
+		"a pair retargeted to itself": {{"claude-haiku-4-5-20251001", "claude-haiku-4-5-20251001"}},
+	} {
+		if err := applyProposal(haiku(), nil, pairs); err == nil {
+			t.Errorf("%s should be refused", name)
+		}
+	}
+}
+
+// t-f094: with registry {X} and finds X.1 and X.2, each add replaces the highest lower model of its line among the registry and the other adds.
+func TestBuildProposalChainsAddsOfOneLine(t *testing.T) {
+	p := buildProposal(proposalDoc(), []found{{Provider: "openai", ID: "gpt-6.2-sol", Name: "GPT-6.2 Sol"}, {Provider: "openai", ID: "gpt-6.1-sol", Name: "GPT-6.1 Sol"}})
+	by := map[string]string{}
+	for _, e := range p.Add {
+		by[e.ID] = e.Replaces
+	}
+	if by["gpt-6.1-sol"] != "gpt-6-sol" || by["gpt-6.2-sol"] != "gpt-6.1-sol" {
+		t.Errorf("6.1 replaces 6, 6.2 replaces 6.1: %v", by)
+	}
+	for _, c := range p.Current {
+		if c == "GPT-6 Sol" {
+			t.Errorf("a model an add replaces is not current: %v", p.Current)
+		}
+	}
+	doc := proposalDoc()
+	adds := []map[string]any{{"id": "gpt-6.1-sol", "provider": "openai", "name": "a"}, {"id": "gpt-6.2-sol", "provider": "openai", "name": "b"}}
+	if err := applyProposal(doc, adds, [][2]string{{"gpt-6-sol", "gpt-6.1-sol"}, {"gpt-6.1-sol", "gpt-6.2-sol"}}); err != nil || entry(t, doc, "gpt-6.1-sol")["legacy"] != true || entry(t, doc, "gpt-6.2-sol")["legacy"] != nil {
+		t.Errorf("everything ticked ends on 6.2: %v %v", err, doc["models"])
 	}
 }
 

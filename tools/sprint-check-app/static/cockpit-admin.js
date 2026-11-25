@@ -527,7 +527,11 @@ function mtRenderProposal(){
   if(!mtProp){ el.innerHTML=''; return; }
   const n=mtApplyCount(), none=!mtProp.add.length&&!mtProp.retire.length;
   const addRows=mtProp.add.map(a=>`<label class="mt-chg"><input type="checkbox" data-sel="a:${escAttr(a.id)}"${mtSel['a:'+a.id]?' checked':''}><span><b>Add ${esc(a.name)}</b>${(a.price_from||!a.price_known)?' <span class="mt-tag warn">confirm price</span>':''}<small>${esc(a.id)} \u00b7 ${esc(mtPriceNote(a))}</small></span></label>${a.replaces?`<label class="mt-chg sub"${mtSel['a:'+a.id]?'':' style="opacity:.45"'}><input type="checkbox" data-sel="r:${escAttr(a.id)}"${mtSel['r:'+a.id]&&mtSel['a:'+a.id]?' checked':''}${mtSel['a:'+a.id]?'':' disabled'}><span><b>Replaces ${esc(a.replaces_name)}</b>${a.changes_gate_model?' <span class="mt-tag warn">changes the gate model</span>':''}<small>Moves its alias and any default to ${esc(a.name)}; the old entry goes to Legacy.</small></span></label>`:''}`).join('');
-  const retRows=mtProp.retire.map(x=>`<label class="mt-chg"><input type="checkbox" data-sel="t:${escAttr(x.old)}"${mtSel['t:'+x.old]?' checked':''}><span><b>Retire ${esc(x.old_name)}</b>${x.changes_gate_model?' <span class="mt-tag warn">changes the gate model</span>':''}<small>${esc(x.new_name)} is already in your registry; its alias and defaults move there and the old entry goes to Legacy.</small></span></label>`).join('');
+  const chain={}; mtPairs().retire.forEach(r=>{ chain[r.old]=r.new; });
+  const endOf=id=>{ const seen=new Set([id]); while(chain[id]&&!seen.has(chain[id])){ id=chain[id]; seen.add(id); } return id; };   // t-f094: where Apply sends it
+  const retRows=mtProp.retire.map(x=>{ const end=endOf(x.new), endA=end!==x.new&&mtProp.add.find(a=>a.id===end);
+    const note=endA?`${esc(x.new_name)} is replaced by ${esc(endA.name)} in this batch; its alias and defaults move to ${esc(endA.name)} and the old entry goes to Legacy.`:`${esc(x.new_name)} is already in your registry; its alias and defaults move there and the old entry goes to Legacy.`;
+    return `<label class="mt-chg"><input type="checkbox" data-sel="t:${escAttr(x.old)}"${mtSel['t:'+x.old]?' checked':''}><span><b>Retire ${esc(x.old_name)}</b>${x.changes_gate_model?' <span class="mt-tag warn">changes the gate model</span>':''}<small>${note}</small></span></label>`; }).join('');
   const cur=mtProp.current.length?`<div class="mt-prop-h">Already current</div>${mtProp.current.map(c=>`<div class="mt-chg"><span>\u2713</span><span><b>${esc(c)}</b><small>no newer model of its line</small></span></div>`).join('')}`:'';
   el.innerHTML=`<div class="mt-prop" role="group" aria-label="Refresh proposal"><header><b>${none?'Nothing new found':[mtProp.add.length?mtProp.add.length+' new model'+(mtProp.add.length===1?'':'s'):'',mtProp.retire.length?mtProp.retire.length+' to retire':''].filter(Boolean).join(', ')}</b><span class="mt-tag">nothing is saved until you apply</span></header>${addRows}${retRows}${cur}<footer><span>Adding comes first, so a model exists before anything moves to it. A ticket that pins a model id is never changed. Saved to this machine's registry, not the tracked seed.</span><button type="button" class="mt-prop-dismiss b-close">Dismiss</button>${none?'':`<button type="button" class="mt-prop-apply b-primary"${n?'':' disabled'}>Apply ${n} selected</button>`}</footer></div>`;
   el.querySelectorAll('[data-sel]').forEach(b=>b.addEventListener('change',()=>{ mtSel[b.dataset.sel]=b.checked; if(b.dataset.sel.startsWith('a:')&&!b.checked) mtSel['r:'+b.dataset.sel.slice(2)]=false; mtRenderProposal(); }));
@@ -536,15 +540,22 @@ function mtRenderProposal(){
 }
 function mtApplyCount(){
   if(!mtProp) return 0;
-  const adds=mtProp.add.filter(a=>mtSel['a:'+a.id]);
-  return adds.length+adds.filter(a=>a.replaces&&mtSel['r:'+a.id]).length+mtProp.retire.filter(x=>mtSel['t:'+x.old]).length;
+  const {adds,retire}=mtPairs();
+  return adds.length+retire.length;
 }
-async function mtApply(){
-  const adds=mtProp.add.filter(a=>mtSel['a:'+a.id]);
+// The ticked adds and the retire pairs Apply sends. A replace whose old model is another add left unticked moves to the model that add
+// would have replaced (t-f094), so no pair names a model that is never added; the board resolves chains (X -> X.1 -> X.2) itself.
+function mtPairs(){
+  const adds=mtProp.add.filter(a=>mtSel['a:'+a.id]), byId={};
+  mtProp.add.forEach(a=>{ byId[a.id]=a; });
   const seen=new Set(), retire=[];
   const pair=(o,nw)=>{ if(!seen.has(o)){ seen.add(o); retire.push({old:o,new:nw}); } };
-  adds.forEach(a=>{ if(a.replaces&&mtSel['r:'+a.id]) pair(a.replaces,a.id); });
+  adds.forEach(a=>{ if(!a.replaces||!mtSel['r:'+a.id]) return; let o=a.replaces; const hop=new Set(); while(o&&byId[o]&&!mtSel['a:'+o]&&!hop.has(o)){ hop.add(o); o=byId[o].replaces; } if(o&&!(byId[o]&&!mtSel['a:'+o])) pair(o,a.id); });
   mtProp.retire.forEach(x=>{ if(mtSel['t:'+x.old]) pair(x.old,x.new); });
+  return {adds,retire};
+}
+async function mtApply(){
+  const {adds,retire}=mtPairs();
   const n=mtApplyCount();
   try{
     const res=await mtPost('/api/admin/model-tiers/apply',{add:adds.map(a=>({id:a.id,provider:a.provider,name:a.name,input_price:a.input_price,output_price:a.output_price})),retire});
