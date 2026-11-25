@@ -40,7 +40,7 @@ assert_eq 2 "$code"; assert_contains "$out" "usage: sprint validate" "sprint val
 run ""
 assert_eq 2 "$code"; assert_contains "$out" "usage: sprint validate" "sprint validate: an empty argument is a usage error"
 run -x
-assert_eq 2 "$code"; assert_contains "$out" "usage: canon-go validate" "sprint validate: a flag reaches canon-go as a usage error"
+assert_eq 2 "$code"; assert_eq "usage: canon-go validate <ticket dir | artifact file>" "$out" "sprint validate: a flag reaches canon-go as a usage error, and only that"
 # Only a bare id is a ticket id: a folder path ending in one and a relative file under one are paths
 run "$T"
 assert_eq 0 "$code"; assert_eq "artifacts: ok (2 files)" "$out"

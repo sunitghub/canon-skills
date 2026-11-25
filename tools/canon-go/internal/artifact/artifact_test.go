@@ -49,6 +49,8 @@ var refusals = []refusal{
 	{"acceptance.md", "- [x] Tested locally", "- [x]", "acceptance.box", 15},
 	{"acceptance.md", "| skipped | no logic", "| skip | no logic", "acceptance.wrapup-row", 0},
 	{"acceptance.md", "| no logic file changed |", "| — |", "acceptance.wrapup-row", 0},
+	{"acceptance.md", "| no logic file changed |", "| - |", "acceptance.wrapup-row", 0},
+	{"acceptance.md", "| no logic file changed |", "|  |", "acceptance.wrapup-row", 0},
 	{"acceptance.md", "| mutation-test | skipped | no logic file changed |", "| mutation-test | ran |", "acceptance.wrapup-row", 0},
 	{"plan.md", "## Sign-off\n", "## Signoff\n", "plan.signoff", 1},
 	{"plan.md", "**Tier**: Normal.", "Tier: trivial-adjacent", "plan.tier", 0},
@@ -159,7 +161,7 @@ func TestUserPicks(t *testing.T) {
 func TestProseIsNeverChecked(t *testing.T) {
 	long := strings.Repeat("word ", 2000)
 	extra := map[string]string{
-		"ticket.md":       strings.Replace(valid["ticket.md"], "tags:", "worktree_preference: \"x\"\ngithub: 12\nfuture_key: anything at all\n  - an indented list item\ntags:", 1) + "\n## Any heading\n" + long + "\n",
+		"ticket.md":       strings.Replace(valid["ticket.md"], "tags:", "worktree_preference: \"x\"\ngithub: 12\nfuture_key: anything at all\n  - an indented list item\n  - status: a list item, not a key\ntags:", 1) + "\n## Any heading\n" + long + "\n",
 		"acceptance.md":   valid["acceptance.md"] + "\n## Notes\n- [y not a box under Notes\n### Criteria\n_italic_ **bold** " + long + "\n",
 		"plan.md":         valid["plan.md"] + "\n## Decisions\n- Tier: normal, high-risk or trivial-adjacent are words here\n" + long + "\n",
 		"eval-report.md":  valid["eval-report.md"] + "\n## Per criterion\n- pass: a bullet, not a verdict line\n**Model:** in bold is prose\n" + long + "\n",
@@ -340,7 +342,7 @@ func TestEveryAllowedValueAndEveryStrictKey(t *testing.T) {
 func TestStrictLinesAreAnchored(t *testing.T) {
 	prose := map[string]string{
 		"plan.md":         strings.Replace(valid["plan.md"], "\n\n## Approach", "\nNotes on the frontier: none\nNot Approved: yet\nSee Pipeline: later\nWe said - [v] Plan approved\n\n## Approach", 1),
-		"acceptance.md":   strings.Replace(valid["acceptance.md"], "- [ ] one", "- [ ] one\ntext - [y] inline", 1) + "see the table | below |\n| a\\|b | ran | escaped pipe |\n",
+		"acceptance.md":   strings.Replace(valid["acceptance.md"], "- [ ] one", "- [ ] one\ntext - [y] inline", 1) + "see the table | below |\n| a\\|b | ran | escaped pipe |\n| docs | ran | \\| |\n| path | ran | C:\\|\n",
 		"eval-report.md":  valid["eval-report.md"] + "see evaluator-run-id: x\na Model: x\nthe graded-head: zz\n  ```\nfail: indented fence\n  ```\n",
 		"review-notes.md": strings.Replace(valid["review-notes.md"], "## Verdict", "Prose about ## Verdict here\nmaybe\n\n## Verdict", 1),
 	}
