@@ -40,7 +40,7 @@ fi
 if [[ ! -f "$MAP" ]]; then printf 'ALL\tno tests/suite-map.txt\n'; exit 0; fi
 
 # t-ef9c: evidence.sh check names a copy of the graded runner instead, because check runs nothing from the tree it judges: the labels are
-# its `"$ROOT/<label>"` lines and `suite <label> …` lines, read as text (tests/evidence.sh pins them equal to --list on canon's runner).
+# its `"$ROOT/<label>"` lines and `suite <label> …` lines, read as text (tests/evidence.sh pins that they include every --list label on canon's runner).
 if [[ -n "${CANON_SUITE_RUNNER:-}" ]]; then
   LABELS="$(sed -nE -e 's#^  "\$ROOT/([A-Za-z0-9._/-]+)"$#\1#p' -e 's#^  suite ([A-Za-z0-9._/-]+) .*#\1#p' -- "$CANON_SUITE_RUNNER")" || { echo "covering-suites: cannot read $CANON_SUITE_RUNNER" >&2; exit 1; }
   [[ -n "$LABELS" ]] || { echo "covering-suites: $CANON_SUITE_RUNNER names no suite" >&2; exit 1; }
