@@ -22,6 +22,9 @@ unset COPILOT_CLI   # t-4084: likewise Copilot CLI (it sets COPILOT_CLI=1 for it
 # t-1cfc, t-ce0b: a suite run from a pre-commit hook (an install that predates the t-ce0b fix) inherits git's GIT_DIR / GIT_INDEX_FILE, and every
 # `git init` / `git commit` in a temp dir then acts on the real repository. No suite wants them.
 unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
+# t-a4e8: the full-suite stamp runs in a clone with CANON_TICKETS_DIR=<project>/.tickets (complete-checklist.md step 3), so a fixture
+# ticket would be looked up in the real project. A suite that needs it sets it per command.
+unset CANON_TICKETS_DIR
 export CLAUDE_CONFIG_DIR="/nonexistent-canon-test-claude-config"
 # t-eeb5: send-issue fetches origin's branch (the unrelated-history check), and test projects point origin at https://github.com/acme/app.git:
 # no suite may reach GitHub. git may use only the file transport (local paths, and URLs a suite's insteadOf or git wrapper rewrites to
