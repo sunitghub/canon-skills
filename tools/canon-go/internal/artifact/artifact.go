@@ -90,7 +90,7 @@ func Validate(path string) ([]Finding, int, error) {
 			if _, err := os.Lstat(p); errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			fs, err := validateFile(p, name, filepath.Base(filepath.Clean(path)))
+			fs, err := validateFile(p, name, folderName(path))
 			if err != nil {
 				return nil, n, err
 			}
@@ -103,11 +103,19 @@ func Validate(path string) ([]Finding, int, error) {
 	if !knownFile(name) {
 		return nil, 0, fmt.Errorf("%s: %w", path, ErrNotArtifact)
 	}
-	fs, err := validateFile(path, name, filepath.Base(filepath.Dir(filepath.Clean(path))))
+	fs, err := validateFile(path, name, folderName(filepath.Dir(path)))
 	if err != nil {
 		return nil, 0, err
 	}
 	return fs, 1, nil
+}
+
+// folderName is the base name of dir made absolute, so `validate .` inside a ticket folder still names it.
+func folderName(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	return filepath.Base(dir)
 }
 
 func knownFile(name string) bool {

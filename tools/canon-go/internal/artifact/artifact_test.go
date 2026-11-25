@@ -235,6 +235,23 @@ func TestValidateFolderAndFiles(t *testing.T) {
 	}
 }
 
+// A relative path still names the ticket folder for the id rule (reviewer, t-c2de: `validate .` inside the folder).
+func TestValidateRelativePathKeepsFolderName(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "t-abcd")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ticket.md"), []byte(valid["ticket.md"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	for _, p := range []string{".", "ticket.md"} {
+		if fs, _, err := Validate(p); err != nil || len(fs) != 0 {
+			t.Fatalf("Validate(%q): got %v %v", p, fs, err)
+		}
+	}
+}
+
 func TestValidateRefusesLinksAndHugeFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "t-abcd")
 	if err := os.Mkdir(dir, 0o755); err != nil {
