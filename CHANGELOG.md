@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-11-25
+
+- Added: `sprint next <id>` now walks the close too: it names the next close step (wrapup gates, reviewer, security-review, mutation sweep, the new `test-stamp` step, evaluator) and a `missed:` line for each earlier one not done. `sprint gate-prompt <id> reviewer|evaluator` refuses (exit 1, `missed:` lines, no prompt) while an earlier step's output is missing, so the evaluator cannot go out before security-review, the sweep and a fresh full-suite stamp. The default pipeline gained the `test-stamp` node, so a ticket approved before this update needs `sprint approve` again before its close. Needs this release's canon-go: run `canon update` (t-a4e8).
+
 ## [0.88.0] - 2026-11-25
 
 - Added: `sprint next <id>` prints the one next step up to plan approval, and names any earlier step that was skipped; `sprint approve` now refuses while the spec check has not run (no `spec-review.md` verdict) on a pipeline that has it on, and leaves plan.md unchanged. Lite tickets and projects with `off: [spec-check]` approve as before. Approval is read only from the `Approved: sha256:` pin that `sprint approve` writes, never a hand-ticked box: in `sprint start`, the close, `sprint-headless`, the PR gate and `tkt send-issue` (which runs `sprint approve` on a ticked, unpinned plan and stops when it refuses). Needs this release's canon-go: run `canon update` (t-2bfe).
