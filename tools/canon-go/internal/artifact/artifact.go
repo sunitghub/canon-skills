@@ -285,8 +285,7 @@ func (c *checker) ticket(ls []string, folder string) {
 	}
 	for _, k := range []string{"id", "status", "type", "priority"} {
 		if _, ok := seen[k]; !ok {
-			id := map[string]string{"id": "ticket.id", "status": "ticket.status", "type": "ticket.type", "priority": "ticket.priority"}[k]
-			c.add(1, id, "no `"+k+":` key")
+			c.add(1, "ticket."+k, "no `"+k+":` key")
 		}
 	}
 }
