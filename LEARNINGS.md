@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 01:50
+learnings-sweep last run: 11-25-2026 00:04
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-25 | [t-ef9c](.tickets/t-ef9c/learnings.md) | A two-way pin was claimed but only one way was checked: the runner-text label parse was "pinned equal to `--list`" while the test only asserted every `--list` label is parsed (superset), so an invented label would pass (reviewer, low; wording fixed) — say which direction a parity pin checks. | UNPROMOTED |
 | 2026-11-25 | [t-c2de](.tickets/t-c2de/learnings.md) | A Go reader of a line the shell also parses must trim as the shell does: `strings.TrimSpace` is Unicode-aware, so `status: open<NBSP>` validated ok while the shell's exact compare reads a different value (evaluator attempt 1 fail; fixed with an ASCII-only trim); the reviewer also caught `filepath.Base` of a relative path naming the folder `.`. | UNPROMOTED |
 | 2026-11-24 | [t-ca0e](.tickets/t-ca0e/learnings.md) | A `go list` import guard sees only the host GOOS and non-test imports: a `_windows.go` edge and a board `_test.go` importing daemon both passed until the graph was listed per GOOS (darwin, linux, windows) with `.TestImports`/`.XTestImports` (code-reviewer and reviewer catches). | UNPROMOTED |
 | 2026-11-24 | [t-9a2b](.tickets/t-9a2b/learnings.md) | A rule stated only in docs is not a guard: "G112 is never excluded" sat in the excludes file, the doc and the criteria, but nothing refused a `G112` line, and the plant that proves the timeout check would go green once G112 was excluded (routed to t-ca0e). | UNPROMOTED |
@@ -80,7 +81,4 @@ learnings-sweep last run: 11-25-2026 01:50
 | 2026-11-16 | [t-925a](.tickets/t-925a/learnings.md) | A test that runs a gate tool must pin its registry too: tests/worktree-write-links.sh registered gate scopes in the real /tmp registry, so a parallel test's uninstall refused and the user's own canon update would have for 2 h; earlier suites passed on timing (t-c206). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-16 | [t-7e8c](.tickets/t-7e8c/learnings.md) | A rule that says a line is always required collides with a gotcha that says stop: an Opus executor obeyed both and printed a `lean` verdict for a repo it never audited; an eval case on the stop path found it, so put the exception next to the rule. | `promoted → standards/skill-setup-std.md` |
 | 2026-11-15 | [t-2a95](.tickets/t-2a95/learnings.md) | Before choosing among a ticket's suggested fixes, find the actual writer: the ticket blamed handoff_recent (main only) while the post-grade HANDOFF.md change was the wrapup narrative; and two allow-lists for one question (record vs merge) had already drifted, so one predicate both read | `dismissed (covered: standards/efficiency.md)` |
-| 2026-11-15 | [t-3786](.tickets/t-3786/learnings.md) | One DOM element shared by every tab is owned by the active tab only if every tab change syncs it; a Terminal pane's tab beside a session tab is the exception (the reviewer caught the blank host half). And a revert-proof copy without node_modules and .tickets fails every board-spec mutant: run a comment-only control first | `dismissed (covered: tools/sprint-check-app/CLAUDE.md)` |
-| 2026-11-15 | [t-420c](.tickets/t-420c/learnings.md) | A preview that a later run acts on must pin what it showed (origin's tip): the run fetched again after the confirm and could push a merge nobody saw; and a refusal changing a shared message needs a grep of every parser, spec and test that reads it | `promoted → standards/efficiency-notes.md` |
-| 2026-11-15 | [t-f5fa](.tickets/t-f5fa/learnings.md) | A save-time check of saved user data against the live registry blocks unrelated writes once the registry moves (retire refused): check shape at save, validity at use; and an undo branch after a helper that already reloaded state deletes real data | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
