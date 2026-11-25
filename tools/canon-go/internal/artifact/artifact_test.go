@@ -526,6 +526,26 @@ func TestHoldsCloseNodes(t *testing.T) {
 	want("review.done", In{}, false) // no Sign-off: nothing says the reviewer is skipped
 	write("plan.md", strings.Replace(valid["plan.md"], "**Tier**: Normal.", "**Tier**: bugfix", 1))
 	want("review.done", In{}, true) // the bold form the Sign-off template writes
+	write("plan.md", strings.Replace(valid["plan.md"], "**Tier**: Normal. | Risk: low | Gate model: haiku\n", "Tier: planned\nTier: bugfix\n", 1))
+	want("review.done", In{}, false) // a malformed plan.tier is not a bugfix plan
+	write("plan.md", strings.Replace(valid["plan.md"], "**Tier**: Normal.", "Tier: bugfix", 1))
+	want("plan.approved-stamp", In{}, true)
+	write("plan.md", strings.Replace(valid["plan.md"], "Pipeline: sha256", "Approved: by hand\nPipeline: sha256", 1))
+	want("plan.approved-stamp", In{}, false) // a malformed stamp beside a good one is refused
+	if ok, err := Holds(dir, "acceptance.wrapup-row", In{}); ok || err == nil || !strings.Contains(err.Error(), "no node") {
+		t.Errorf("wrapup-row with no node: %v, %v; want false and an error naming it", ok, err)
+	}
+	if ok, err := Holds(dir, "no.such-rule", In{}); ok || err == nil {
+		t.Errorf("unknown rule: %v, %v; want false and an error", ok, err)
+	}
+	if err := os.Remove(filepath.Join(dir, "plan.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(dir, "acceptance.md"), filepath.Join(dir, "plan.md")); err == nil {
+		if ok, err := Holds(dir, "review.done", In{}); ok || err == nil {
+			t.Errorf("review.done on a linked plan.md: %v, %v; want false and an error", ok, err)
+		}
+	}
 
 	want("eval.verdict", In{}, false)
 	write("eval-report.md", valid["eval-report.md"])

@@ -229,6 +229,9 @@ func TestUnreadableIsExit2(t *testing.T) {
 		{"--evidence bad name", pipe("on"), ok, []string{"--evidence", "Test sh"}},
 		{"--evidence empty", pipe("on"), ok, []string{"--evidence", ""}},
 		{"--evidence no value", pipe("on"), ok, []string{"--at", "eval", "--evidence"}},
+		{"--evidence trailing junk", pipe("on"), ok, []string{"--evidence", "test-sh;x"}},
+		{"--evidence over the cap", pipe("on"), ok, []string{"--evidence", strings.Repeat("a", 4097)}},
+		{"unknown flag", pipe("on"), ok, []string{"--bogus", "test-sh"}},
 		{"bad with", strings.Replace(pipe("on"), "\treviewer\n", "\tReviewer\n", 1), ok, nil},
 	}
 	for _, c := range cases {
@@ -253,6 +256,20 @@ func TestUnreadableIsExit2(t *testing.T) {
 	}
 	if got, code := run(dir, pipe("on"), "--at", "approve-plan"); code != 2 {
 		t.Errorf("a linked spec-review.md: exit %d %q, want 2", code, got)
+	}
+}
+
+// A bad argument shape names the usage, and a flag never stands in for the ticket dir; --evidence at the cap is still read.
+func TestArgShapes(t *testing.T) {
+	dir := ticket(t, map[string]string{"ticket.md": ticketMD})
+	for _, args := range [][]string{{dir, "--bogus", "x"}, {"--evidence", "test-sh", "x"}, {"-x"}} {
+		var out, errb bytes.Buffer
+		if code := Run(args, strings.NewReader(pipe("on")), &out, &errb); code != 2 || !strings.HasPrefix(errb.String(), "usage: canon-go walk <ticket dir>") {
+			t.Errorf("%v: exit %d %q, want 2 and the usage line", args, code, errb.String())
+		}
+	}
+	if got, code := run(dir, pipe("on"), "--evidence", strings.Repeat("a", 4096)); code != 0 || !strings.Contains(got, "next:") {
+		t.Errorf("--evidence at the cap: exit %d %q, want 0 and a next line", code, got)
 	}
 }
 
