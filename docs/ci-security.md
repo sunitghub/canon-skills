@@ -131,7 +131,8 @@ generated it, and moves to a newer one only when someone deletes the file and ru
 `canon-gate.yml` files are never rewritten by the board.
 
 Bumping: take the checkout SHA as for the workflows above; the CLI version from `npm view @anthropic-ai/claude-code
-version`. Change the template, then re-run `tests/ci-security-config.sh`.
+version`. Change the template, then re-run `tests/ci-security-config.sh`. A CLI bump also re-runs the settings probe in
+[Who can reach the gate's API key](#who-can-reach-the-gates-api-key-t-4e5c).
 
 Node is not an npm package, so Dependabot and the security-review gate do not see it, and the runner image's own Node is
 not canon's to trust (the `ubuntu-24.04` image of 2026-10-12 shipped 22.23.3, a patch below the fix). To bump it: take the
@@ -143,6 +144,47 @@ release assets (falling back to nodejs.org) and checks only the version it ends 
 controls. Nothing opens a PR for this: the weekly report (below) watches the pin and fails when a security release of
 its line is newer, and you bump it by hand. A project that already has a `canon-gate.yml` keeps its old Node
 step until it deletes the file and runs Set up CI gate again.
+
+## Who can reach the gate's API key (t-4e5c)
+
+The gate step holds `ANTHROPIC_API_KEY` in its environment while an agent reads the PR. Before you recommend the gate
+for a repo, know who can get at that key:
+
+- **Fork PRs get no secret.** On `pull_request`, GitHub does not pass repo secrets to a run from a fork, so the grade
+  fails with no key. A private repo can turn on "Send secrets to workflows from fork pull requests" in its Actions
+  settings. Keep it off: with it on, anyone who forks the repo can read the key (next point).
+- **Anyone who can push a branch can read the key, and no template change closes that.** On `pull_request`, the
+  workflow file comes from the PR's own merge ref, so a same-repo PR can rewrite `canon-gate.yml` to print the key.
+  Treat the key as readable by every writer:
+  - give the gate a dedicated, spend-capped key (its own Console workspace with a spend limit), never a personal or
+    shared key;
+  - or move the secret into a GitHub Environment with required reviewers. Then a run waits for someone to approve it,
+    and the points below are what still stands between an approved run and the key.
+- **GITHUB_TOKEN never reaches the agent.** It is read-only (`permissions: contents: read`), it is not in the gate
+  step's `env:`, and both checkouts use `persist-credentials: false`, so it is not in `.git/config` either.
+- **The PR's own Claude Code configuration no longer loads.** `sprint-headless` and `sprint-headless-eval` run
+  `claude -p` with `--setting-sources user --strict-mcp-config`, in CI and on your machine alike.
+  - Before this, in a probe on the pinned CLI (2.1.309), four PR-controlled files ran a command with the key in its
+    environment: a hook in `.claude/settings.json`, a hook in `.claude/settings.local.json`, an `apiKeyHelper`, and an
+    `.mcp.json` server with `enableAllProjectMcpServers`. `.claude/agents` loaded too. With the two flags, none of
+    them ran or loaded. The probe is `.tickets/t-4e5c/evidence/probe.sh`; re-run it when you bump the CLI pin.
+  - A project's `env` setting is gone with them: a headless run no longer takes a proxy or model from
+    `.claude/settings.json`. Your own `~/.claude/settings.json` still applies.
+  - `.claude/skills` is replaced with canon's own in CI (the template's "Make canon skills resolvable" step).
+  - Still loaded: the PR's `CLAUDE.md`. It is read as instructions, so a PR can try to sway the grade with it; a
+    person should still read a passing verdict on a PR they do not trust.
+  - Not probed: the PR's `.claude/commands`, rules files, and a `CLAUDE.md` `@import` of a path outside the project.
+- **The agent has no network tool; the runner does have network access.** The gate allows only Read, Grep, Glob, LS,
+  Agent and Bash limited to canon's own `git-read` and `subagent-log.sh` at absolute paths (t-89b0, t-5ff5). There is
+  no WebFetch and no plain Bash. GitHub-hosted runners have open egress, so this rests on the tool list, not on the
+  network.
+- **Open: Read can leave the project.** The probe read a file outside the checkout. On a Linux runner,
+  `/proc/self/environ` holds the key, and a prompt-injected PR could steer the model to quote it into the report, which
+  goes to the job log. Log masking only hides the literal value, so an encoded copy shows. Tracked in `t-5d68`
+  (confine the file tools with `--bare` or deny rules, verified in a real Actions run).
+- **Existing gates keep the old behavior.** A project's `canon-gate.yml` checks out the canon release that wrote it
+  (`ref: v<VERSION>`). It gets these flags only after this release ships and someone deletes the file and runs
+  Set up CI gate again.
 
 ## Run it locally
 
