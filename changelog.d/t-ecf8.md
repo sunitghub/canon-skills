@@ -1,0 +1,1 @@
+- Fixed: `sprint eval-verdict` no longer resets `eval_fail_count` to 0 on a pass, so the field keeps every evaluator fail a ticket had and the board's type-outcome badge stops counting reworked tickets as clean. The retry budget now stops at 3 fails on the ticket, not 3 in a row (t-ecf8).

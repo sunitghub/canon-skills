@@ -126,8 +126,8 @@ for bad in "verdict: pass — all criteria met" "**pass:** all met" "## pass" "P
   assert_eq 1 "$(count)"
 done
 verdict "Everything should pass"; assert_eq 0 "$rc"; assert_eq 2 "$(count)"               # no verdict-like line: counted as before
-verdict "pass: all met"; assert_eq 0 "$rc"; assert_eq 0 "$(count)"
-verdict "fail: x"; assert_eq 0 "$rc"; assert_eq 1 "$(count)"
+verdict "pass: all met"; assert_eq 0 "$rc"; assert_eq 2 "$(count)"                       # t-ecf8: a pass keeps the count
+verdict "fail: x"; assert_eq 0 "$rc"; assert_eq 3 "$(count)"
 assert_contains "$(cat "$ROOT/agents/canon-evaluator.md")" "starts the line with \`pass:\` or \`fail:\`"
 
 # t-597f: protects every close gate dispatch from a land worktree (no .tickets/ of its own: the main checkout's, t-cd06). The docs'

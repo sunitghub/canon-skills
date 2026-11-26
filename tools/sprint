@@ -2325,12 +2325,13 @@ cmd_eval_compare() {
 }
 
 # cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
-# eval_fail_count field: increments on a fail (or missing/malformed verdict),
-# resets to 0 on pass. Called explicitly by the agent right after reading
+# eval_fail_count field: increments on a fail (or missing/malformed verdict);
+# a pass leaves it unchanged, so the field is the ticket's lifetime fail count
+# (t-ecf8: a reset on pass zeroed every closed ticket, and the board read 0 as clean). Called explicitly by the agent right after reading
 # eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
 # explicit post-dispatch call — not a hook, so it works whether or not the
 # orchestrating agent goes on to invoke `sprint complete` itself. Prints the
-# resulting count and a retry-budget-exhausted notice at 3, but never blocks
+# resulting count and, on a fail at 3 or more, a retry-budget-exhausted notice, but never blocks
 # on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
 # t-c723: a report with no `pass:`/`fail:` line but a verdict in another shape (`verdict: pass —`, `**pass:**`, `## pass`) is refused
 # (exit 1) naming the line it needs, and the count is left alone: the grade may be right, only its line is wrong.
@@ -2361,16 +2362,14 @@ cmd_eval_verdict() {
     echo "Sprint $id: eval-report.md has a verdict line in the wrong shape; it must start the line with \`pass: <one-line summary>\` or \`fail: <one-line summary>\` (no \`verdict:\`, bold or heading). eval_fail_count is unchanged: ask the evaluator to fix that line." >&2
     exit 1
   fi
-  if grep -qE '^pass:' "$report"; then
-    new=0
-  else
-    new=$((current + 1))
-  fi
+  local failed=0
+  grep -qE '^pass:' "$report" || failed=1
+  new=$((current + failed))
 
   set_or_add_field "$ticket_file" eval_fail_count "$new"
   echo "$id: eval_fail_count=$new"
-  if (( new >= 3 )); then
-    echo "Sprint $id: evaluator has failed $new times in a row — retry budget exhausted. Diagnose the root cause outside the automated loop, or set eval_override: true with a dated waiver to close anyway." >&2
+  if (( failed && new >= 3 )); then
+    echo "Sprint $id: evaluator has failed $new times on this ticket — retry budget exhausted. Diagnose the root cause outside the automated loop, or set eval_override: true with a dated waiver to close anyway." >&2
   fi
 }
 

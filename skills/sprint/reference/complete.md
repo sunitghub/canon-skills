@@ -564,9 +564,9 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    **Manual QA (t-aa24).** A user's by-hand testing is evidence the evaluator can only see if it is recorded: `.tickets/<id>/evidence/manual-qa.md`, written by `sprint manual-qa <id> --by "<who>" --step "<what>|pass" [--step "<what>|fail|n/a" ...]` (header: `HEAD <sha> <UTC time>`, `By: <who> on <machine>`, one table row per step; it refuses an empty record, a bad result, more than 60 steps, a symlink). `sprint check-evidence` lists it (fresh by `evidence.sh`'s own rule for logs, which ignores the evidence-neutral files, `sprint evidence neutral` lists them; stale, failing or malformed is refused) and refuses to clear the dispatch while a criterion tagged `[manual]` in `acceptance.md ## Criteria` has no fresh record, printing the criterion and the command: ask the user what they tested and what they saw, record it, and re-run the pre-flight. Paste the pre-flight's output into the evaluator's prompt so it never depends on memory that a record exists; the evaluator reads it as the user's own report (`eval.md` step 5b), grades the `[manual]` criteria it covers from it plus one cheap spot check, and says so in Findings. A criterion or a Test Plan line that a reviewer's fix changes is amended in `acceptance.md` in the same step: the evaluator grades what is written (t-154b: correct code failed on a criterion nobody updated, a second 6.7-minute run).
 
    **Retry budget.** Before dispatching, read `eval_fail_count` from `.tickets/<id>/ticket.md`
-   (absent on tickets predating this field means 0). If it is already 3, do not dispatch
+   (absent on tickets predating this field means 0). If it is already 3 or more, do not dispatch
    another evaluator subagent. Instead, stop here and tell the human explicitly:
-   "Evaluator has failed 3 times in a row — retry budget exhausted. Either diagnose the root
+   "Evaluator has failed 3 times on this ticket — retry budget exhausted. Either diagnose the root
    cause outside this automated loop, or set `eval_override: true` with a dated waiver (see
    acceptance.md) to close anyway." This is a soft, informational nudge against blind
    auto-retries on a stubborn finding — it does not change `_gate_eval_report_verdict`'s close
@@ -598,9 +598,10 @@ change that needs a release (the daemon, the Go board, the headless helper), a h
    **Record the verdict.** Immediately after reading `.tickets/<id>/eval-report.md`'s verdict
    line, run `sprint eval-verdict <id>` (bare — it's on PATH, same as `sprint`/`tkt`). This
    writes the outcome into `ticket.md`'s `eval_fail_count` field — incrementing on `fail`,
-   resetting to `0` on `pass` — so the retry-budget check above sees real state on the *next*
+   leaving it unchanged on `pass` — so the retry-budget check above sees real state on the *next*
    `sprint complete` invocation, regardless of whether this one goes on to reach step 9's CLI
-   call. Do this even when the verdict is `pass`, to reset the counter. See
+   call. Run it on a `pass` too: the field is the ticket's lifetime fail count, which the board's
+   type-outcome badge and audits read (t-ecf8). See
    `standards/ticket-layout.md`'s `eval_fail_count` field contract for the full mechanics. A verdict line in another shape
    (`verdict: pass —`, bold, a heading) is refused, exit 1, with the count unchanged: ask the same evaluator to fix only that line
    (t-c723).

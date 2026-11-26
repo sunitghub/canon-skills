@@ -101,7 +101,7 @@ assert_contains "$out" "eval-report.md differs between this worktree ($WT/.ticke
 assert_contains "$out" "t-abcd: eval_fail_count=1"      # still the worktree's copy: the line says so, it does not change the count
 out="$(ev_verdict "$WT/.tickets")"; assert_contains "$out" "eval-report.md differs"   # from a subfolder too
 cp "$ev_main/eval-report.md" "$WT/.tickets/t-abcd/eval-report.md"
-out="$(ev_verdict "$WT")"; [[ "$out" == "t-abcd: eval_fail_count=0" ]] || fail "identical reports must stay quiet: $out"
+out="$(ev_verdict "$WT")"; [[ "$out" == "t-abcd: eval_fail_count=2" ]] || fail "identical reports must stay quiet: $out"   # two stale fails above; a pass keeps them (t-ecf8)
 printf 'evaluator-run-id: 0-0\nfail: stale old failure\n' > "$WT/.tickets/t-abcd/eval-report.md"
 out="$(ev_verdict "$WORK")"; [[ "$out" == "t-abcd: eval_fail_count=0" ]] || fail "the main checkout must stay quiet: $out"
 mv "$ev_main/eval-report.md" "$ev_main/eval-report.md.off"
