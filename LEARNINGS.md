@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 13:55
+learnings-sweep last run: 11-26-2026 16:34
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-ecf8](.tickets/t-ecf8/learnings.md) | The full suite was stamped as `full-suite`, but test-stamp accepts only `test-sh.log`: check-evidence said ok and gate-prompt refused, forcing a second ~9 min run. One rule should own "is this the full suite" (t-b5a6) | UNPROMOTED |
 | 2026-11-26 | [t-1386](.tickets/t-1386/learnings.md) | A capped doc at its limit (start-checklist.md, 900 words) makes every new rule cost a trim elsewhere; the trims dropped wording no plan listed, so record each dropped phrase in plan.md Deviations before the gates (the reviewer found three) | UNPROMOTED |
 | 2026-11-26 | [t-8ce6](.tickets/t-8ce6/learnings.md) | Moving a path out of the release zip needs a sweep of every shipped relative link to it, README too: the docs/plugins.md samples link was fixed but README.md:81 stayed dead in a zip install until the reviewer grepped | UNPROMOTED |
 | 2026-11-26 | [t-9bc6](.tickets/t-9bc6/learnings.md) | A scripted replace appended a `// comment` mid-line in a dense one-liner and swallowed the `toast()` after it; 44/44 specs stayed green because none asserted the toast, and only the evaluator caught it: end a one-line edit by checking every statement after the insertion point is still code | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-26-2026 13:55
 | 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | `dismissed` |
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-16 | [t-d600](.tickets/t-d600/learnings.md) | A scheduled-only security check lets releases ship a known-vulnerable pin between runs (Node 22.23.5 found five days late, after two releases): run the same check as a release refusal, so the release path owns the freshness | `promoted → standards/efficiency-notes.md` |
-| 2026-11-16 | [t-788f](.tickets/t-788f/learnings.md) | A Test Plan line ticked for a test that was moved or never written fails the evaluator: when a planned test changes place, reword the line to name the file it went to before ticking it, and feed the close its real upstream record (merge-pr's merged:), not a hand-written one | `promoted → skills/sprint/reference/start.md` |
 <!-- canon:learnings:END -->
