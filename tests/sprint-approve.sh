@@ -44,6 +44,27 @@ assert_contains "$(event_line plan.approved "$id")" '"tier":"normal"'
 assert_grep "· $id · plan approved \(normal\)$" HANDOFF.md
 assert_contains "$("$SPRINT" recent)" "· $id · plan approved (normal)"
 
+# 1b. t-1386: approve prints the pinned Approach and the graded Criteria back verbatim (comment lines dropped), then the re-approve line,
+# so a commitment only the chat brief carried shows as missing before the build
+acc=".tickets/$id/acceptance.md"; savedplan="$(cat "$plan")"
+printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\n<!-- template hint -->\n- Formula guard: prefix = + - @ with '"'"'\n\n## Files\n- x\n' > "$plan"
+printf '# Acceptance\n\n## Criteria\n<!-- crit hint -->\n- [ ] When export runs, a cell starting with = gets a leading quote\n\n## Test Plan\n- [ ] t\n' > "$acc"
+out="$("$SPRINT" approve "$id")"
+assert_contains "$out" "You approved this ## Approach (the build follows it; the close checks it is unchanged):"$'\n'"- Formula guard: prefix = + - @ with '"
+assert_contains "$out" "...and these ## Criteria (what the evaluator grades):"$'\n'"- [ ] When export runs, a cell starting with = gets a leading quote"
+assert_contains "$out" "Anything your brief promised that is not above lives only in chat: add it to plan.md or acceptance.md, then run sprint approve $id again."
+[[ "$out" != *"hint -->"* ]] || fail "a comment line was echoed: $out"
+[[ "$out" != *"- [ ] t"* ]] || fail "the Test Plan was echoed as Criteria: $out"
+# an empty Approach, empty Criteria, then no acceptance.md: (empty) / (none), exit 0, the pin written
+printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\n<!-- only a hint -->\n\n## Files\n- x\n' > "$plan"
+printf '# Acceptance\n\n## Criteria\n<!-- hint -->\n\n## Test Plan\n- [ ] t\n' > "$acc"
+out="$("$SPRINT" approve "$id")" || fail "approve failed on an empty Approach"
+assert_contains "$out" "unchanged):"$'\n'"(empty)"; assert_contains "$out" "grades):"$'\n'"(none)"; assert_grep '^Approved: sha256:' "$plan"
+rm -f "$acc"; sed -i.bak '/^Approved:/d; s/^- \[x\] Plan approved/- [ ] Plan approved/' "$plan"; rm -f "$plan.bak"
+out="$("$SPRINT" approve "$id")" || fail "approve failed with no acceptance.md"
+assert_contains "$out" "grades):"$'\n'"(none)"; assert_grep '^Approved: sha256:' "$plan"
+printf '%s\n' "$savedplan" > "$plan"; "$SPRINT" approve "$id" >/dev/null
+
 # 2. unchanged Approach passes
 gate >/dev/null || fail "unchanged Approach must pass the plan gate"
 
@@ -79,6 +100,7 @@ out="$(run_fail "$SPRINT" approve)"; assert_contains "$out" "Usage: sprint appro
 out="$(run_fail "$SPRINT" approve t-nope)"; assert_contains "$out" "no plan.md"
 printf '# Plan\n\n## Sign-off\nTier: normal\n\n## Approach\nx\n\n## Files\n- [ ] Plan approved\n' > "$plan"   # box outside ## Sign-off
 out="$(run_fail "$SPRINT" approve "$id")"; assert_contains "$out" "no '- [ ] Plan approved' box"
+[[ "$out" != *"You approved"* ]] || fail "a refused approve echoed the plan: $out"
 
 # 8. trailing spaces on Approach lines do not change the pin
 printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n' > "$plan"
@@ -90,7 +112,7 @@ gate >/dev/null || fail "trailing spaces in Approach must not trip the plan gate
 # tools/caps.tsv); exactly 10%, no row, an absent capped file and an older board print nothing; a failed read says so.
 handoff() { { echo '<!-- canon:handoff:BEGIN -->'; for ((i = 0; i < $1; i++)); do echo "line $i"; done; echo '<!-- canon:handoff:END -->'; } > HANDOFF.md; }
 approve_with() { printf '# Plan\n\n## Sign-off\n- [ ] Plan approved\n\n## Approach\nstep one\n\n## Files\n%s\n' "$1" > "$plan"; "$SPRINT" approve "$id"; }
-caplines() { grep -v '^Approved \|Build model\|^Models (' <<< "$1" || true; }   # t-3425: the Build model line is checked below; t-2a21: the Models line in sprint-models-line.sh
+caplines() { awk '/^You approved this ## Approach/ { e = 1 } !e; /^Anything your brief promised/ { e = 0 }' <<< "$1" | grep -v '^Approved \|Build model\|^Models (' || true; }   # t-1386: the echo is checked in 1b   # t-3425: the Build model line is checked below; t-2a21: the Models line in sprint-models-line.sh
 echo notes > notes.md
 handoff 75; out="$(approve_with '`HANDOFF.md`, `notes.md` (new)')"
 assert_eq "HANDOFF.md: 75 of 80 lines, 5 left: make room first" "$(caplines "$out")"
@@ -146,8 +168,8 @@ assert_grep '^- \[x\] Plan approved' "$plan"
 
 # t-2bfe: approve refuses while the spec check has not run (it was t-d826's warning, read past twice on Windows Copilot): exit 1,
 # the missed line naming the fix, plan.md byte for byte as it was. Only when the pipeline runs it for this ticket (Lite and off: skip).
-try() { set +e; err="$("$@" approve "$id" 2>&1 >/dev/null)"; code=$?; set -e; }
-refused() { assert_eq 1 "$code"; assert_eq "$before" "$(cksum < "$plan")"; assert_contains "$err" "$1"; }
+try() { set +e; err="$("$@" approve "$id" 2>&1)"; code=$?; set -e; }
+refused() { assert_eq 1 "$code"; assert_eq "$before" "$(cksum < "$plan")"; assert_contains "$err" "$1"; [[ "$err" != *"You approved"* ]] || fail "a refused approve echoed the plan: $err"; }
 printf '{}' > "$CANON_HOME/cockpit/model-tiers.json"
 signoff "Tier: normal"; rm -f ".tickets/$id/spec-review.md"; before="$(cksum < "$plan")"
 try "$SPRINT"; refused "sprint approve: $id is not approved: a step before approval has not run (nothing written)"

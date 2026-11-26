@@ -680,6 +680,20 @@ cmd_pre_gate_check() {
   return "$rc"
 }
 
+# _approve_echo <id> <plan.md> <acceptance.md> — t-1386: the pinned Approach and the graded Criteria, printed back verbatim (comment
+# lines dropped), so a commitment that lived only in the chat brief shows as missing before the build. A missing acceptance.md is (none).
+_approve_echo() {
+  local body
+  echo "You approved this ## Approach (the build follows it; the close checks it is unchanged):"
+  body="$(_acceptance_section "Approach" "$2" | grep -vE '^[[:space:]]*<!--.*-->[[:space:]]*$' | grep -vE '^[[:space:]]*$' || true)"
+  printf '%s\n' "${body:-(empty)}"
+  echo "...and these ## Criteria (what the evaluator grades):"
+  body=""
+  [[ -f "$3" ]] && body="$(_acceptance_section "Criteria" "$3" | grep -vE '^[[:space:]]*<!--.*-->[[:space:]]*$' | grep -vE '^[[:space:]]*$' || true)"
+  printf '%s\n' "${body:-(none)}"
+  echo "Anything your brief promised that is not above lives only in chat: add it to plan.md or acceptance.md, then run sprint approve $1 again."
+}
+
 cmd_approve() {
   local id="${1:-}" root plan digest stamp tmp signoff pstate="" prc=0
   [[ -n "$id" ]] || { echo "Usage: sprint approve <ticket-id>" >&2; exit 1; }
@@ -719,6 +733,7 @@ cmd_approve() {
     { print }' "$plan" > "$tmp" && { wt_write_ok "$plan" || { rm -f "$tmp"; exit 1; }; } && cat "$tmp" > "$plan"   # t-f7e6
   rm -f "$tmp"
   echo "Approved $id: pinned ## Approach as sha256:${digest:0:12} at $stamp"
+  _approve_echo "$id" "$plan" "$root/.tickets/$id/acceptance.md"
   _stage_model_line build "$plan"
   # t-2a21: the Models line again (the Sign-off is filled now); a preset changed since start is recorded
   local run_agent run_summary run_preset ticket="$root/.tickets/$id/ticket.md" started

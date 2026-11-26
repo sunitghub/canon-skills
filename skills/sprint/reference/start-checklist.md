@@ -15,23 +15,23 @@ names for a case that applies.
 
 1. **Start:** `sprint start <ticket-id>` with the real id (a title only when no ticket exists). Then read the
    ticket's `ticket.md`, `acceptance.md`, `plan.md` and `research.md`. A template-only description is not
-   "unspecified" when acceptance.md or plan.md hold the contract. Read an existing plan.md and acceptance.md before
-   writing either. If the start is refused (non-zero exit), write no planning file for that ticket and stop. Resuming an in_progress ticket:
+   "unspecified" when acceptance.md or plan.md hold the contract. If the start is refused, write no planning file for that ticket and stop. Resuming an in_progress ticket:
    `sprint continue <id>`, then carry on from the first unchecked item.
 2. **Skill check:** `tools/skills.sh list`; use a skill that covers the work.
-3. **Tier:** normal or high-risk (`skills/sprint/SKILL.md` "Workflow tiers"). Never trivial or bugfix at
-   start: those are close-time downgrades.
+3. **Tier:** normal or high-risk (`skills/sprint/SKILL.md` "Workflow tiers"). Never trivial or bugfix:
+   those are close-time downgrades.
 4. **Context:** `DECISIONS.md`: read the rows `sprint start` printed as related (`sprint decisions related <file or t-id>` for more), never the whole file, for a constraint or conflict, skipping fragments
    marked `superseded-by:`; `HANDOFF.md`; `LEARNINGS.md` (when `sprint start` says 5 or more rows are UNPROMOTED, tell the user and offer `/promote-learnings`); closed tickets that touched the files you will
    change.
-5. **Research:** inspect the files and callers; confirm the ticket's premise in the code (the bug reproduces, the thing is missing); write a few bullets in `research.md` before the approach.
+5. **Research:** inspect the files and callers; confirm the ticket's premise in the code (the bug reproduces, the thing is missing); note a few bullets in `research.md` first.
 6. **acceptance.md:**
    - `## Criteria`: binary conditions naming the exact field, value or output. Never cite `summary.md` or
-     `eval-report.md`, which do not exist when the evaluator grades. A gitignored file
+     `eval-report.md` (not yet written when graded). A gitignored file
      (`DECISIONS.md`) is named as such, with "read it directly".
      A behavior criterion may read `When <trigger>, <system> <does response>.`; a doc or file stays free text. Ask about an ambiguous trigger, never guess it.
-   - A criterion that needs a machine the grader does not have (the Windows VM) fails as not-run: plan it as a
-     checklist item on a separate follow-up ticket (t-e566, t-353a).
+     A design guard the brief names is a criterion, or no gate grades it (t-1386).
+   - A criterion that needs a machine the grader does not have (the Windows VM) fails as not-run: put it on a
+     follow-up ticket (t-e566, t-353a).
    - A criterion only a person can judge starts with `[manual]` (`sprint manual-qa` records it). A fix changing a criterion amends it, same step.
    - `## Test Plan`: a command or check per criterion. Each line names the prod path it protects (a shipped
      command, a board or daemon route a user hits, the release, or a close gate); a test with no prod path, or
@@ -40,16 +40,16 @@ names for a case that applies.
      `sprint evidence stamp <id> <name> -- <command>` on a clean tracked tree.
    - A new `tests/*.sh` is added to `scripts/test.sh` in the same commit (`scripts/test.sh --list` prints its label): an unregistered file never runs (t-a6d9 will lint it; t-0b89, t-014f; class: new-test-not-registered; id: P-071).
 7. **plan.md:** `## Approach` (lean, re-read after every compaction), `## Files`, `## Decisions` (answer
-   each ticket open question or write `carried forward: <question>`), and the tier with a one-line reason.
+   each ticket open question or write `carried forward: <question>`), and the tier with its reason.
    If the project registered efficiency, name the `standards/efficiency-notes.md` sections this ticket
    touches and read only those. Name the number it moves and its target, or say why there is none.
-8. **Perspective check:** one question each as user, security and architect; put any concern in the brief.
-9. **Spec check:** before the brief and approval (not Lite): `sprint gate-prompt <id> speccheck`; Copilot: `sprint relay-report <id> speccheck`.
+8. **Perspective check:** one question each as user, security and architect; concerns go in the brief.
+9. **Spec check:** (not Lite) `sprint gate-prompt <id> speccheck`; Copilot: `sprint relay-report <id> speccheck`.
 10. **Brief:** goal; tier, reason; applicable DECISIONS
    entries, conflicts called out; files; impact or "normal tier — no high-risk triggers"; checkpoint;
    criteria, Test Plan verbatim; spec findings; questions answered; blockers.
 11. **Wait for explicit approval.** No code before it. Fill `## Sign-off` (`Tier: <tier> | Risk: …`)
-    then `sprint approve <id>` (ticks "Plan approved", pins `## Approach`). User model picks: `| Gate model:` (gates), `| Build model:`; Cockpit: end the turn after.
+    then `sprint approve <id>` (ticks the box, pins `## Approach`); read its echo against the brief: a gap goes in the file, re-approved before building. User model picks: `| Gate model:` (gates), `| Build model:`; Cockpit: end the turn after.
 
 ## While building
 
