@@ -15946,6 +15946,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(prop.locator('.mt-prop-apply')).toHaveText('Apply 3 selected');
       await prop.locator('.mt-prop-apply').click();
       await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);           // applied: a refusal keeps the proposal open
+      await expect(page.locator('#toast')).toContainText('Saved 3 changes');        // Apply confirms what it saved (t-9bc6: a comment once swallowed this call)
       expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-6' }, { old: 'claude-haiku-4-5-20251001', new: 'claude-haiku-5-5' }]);
       const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
       expect(reg.defaults.light.claude).toBe('claude-haiku-5-6');
