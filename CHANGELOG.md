@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.10] - 2026-11-26
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Fixed: the board opens every file it reads or writes under a root (ticket docs, images, `.feature` files, visual uploads, tags and Lite/Manual toggles, ACTIVE, screenshots, live worktree docs, cockpit docs, `/static/`, themes) through Go's `os.Root`, so a folder swapped for a link after the path check can no longer move the read or write outside the root; an absolute symlink inside `.tickets` is now refused too (a relative one still works) (t-2800).
+- Fixed: `tools/go-checks.sh` refuses a `G112` line in `.gosec-excludes` (exit 2), and the pre-gate line says which linters ran: `go-checks ok (staticcheck + gosec)`, `(gosec only)` or `(staticcheck only)` (t-2800).
+
 ## [0.89.9] - 2026-11-26
 
 - Fixed: `sprint evidence stamp` refuses a full-suite run (`scripts/test.sh`, optionally `--jobs N`) stamped under any name but `test-sh`, before it runs, and names the `test-sh` command; `sprint check-evidence` hints the same re-stamp for an already-written one. The close's test-stamp step reads only `test-sh.log`, so a `full-suite` stamp cost a second full run (t-b5a6).
