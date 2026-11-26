@@ -2008,11 +2008,11 @@ func setBoolFrontmatter(lines []string, field string, want bool) []string {
 // writeBoolField toggles a boolean frontmatter field (`demo`, or `manual` since t-51c6) on an existing ticket. Returns true if the ticket
 // exists (idempotent). t-64a0: the byte layout is pinned by tests/sprint-check-api.sh.
 func writeBoolField(id, field string, want bool, root string) bool {
-	path := findTicketPath(id, root)
-	if path == "" {
+	loc, ok := ticketLoc(id, root)
+	if !ok {
 		return false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := loc.read()
 	if err != nil {
 		return false
 	}
@@ -2024,7 +2024,7 @@ func writeBoolField(id, field string, want bool, root string) bool {
 	kept := setBoolFrontmatter(strings.Split(text[m[2]:m[3]], "\n"), field, want)
 	updated := "---\n" + strings.Join(kept, "\n") + "\n---\n" + text[m[1]:]
 	if updated != text {
-		if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+		if err := loc.write([]byte(updated)); err != nil {
 			return false
 		}
 	}
@@ -2268,18 +2268,26 @@ func writeCIWorkflow() map[string]any {
 	return map[string]any{"ok": true, "path": rel}
 }
 
-func replaceTicket(id string, root string, fn func(string) string) bool {
+// ticketLoc is findTicketPath as a rootLoc: the main copy's ticket.md, read and written through the tickets folder's
+// os.Root, not the path findTicketPath checked (t-2800).
+func ticketLoc(id string, root string) (rootLoc, bool) {
 	path := findTicketPath(id, root)
 	if path == "" {
-		return false
+		return rootLoc{}, false
 	}
-	// t-2800: the read and the write go through the tickets folder's os.Root, not the path findTicketPath checked
 	td := ticketsDirForRoot(root)
 	rel, err := filepath.Rel(td, path)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return rootLoc{}, false
+	}
+	return rootLoc{dir: td, rel: rel}, true
+}
+
+func replaceTicket(id string, root string, fn func(string) string) bool {
+	loc, ok := ticketLoc(id, root)
+	if !ok {
 		return false
 	}
-	loc := rootLoc{dir: td, rel: rel}
 	raw, err := loc.read()
 	if err != nil {
 		return false

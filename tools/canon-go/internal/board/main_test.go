@@ -589,19 +589,22 @@ func TestTicketDocAbsoluteInRootLinkRefusedRelativeServed(t *testing.T) {
 // t-2800: the swap test. afterPathCheck runs after the path check and before the I/O; it swaps the ticket folder for a
 // link to an outside folder. Every route must refuse, leave the outside canary as it was and create nothing outside.
 // Falsifier: the I/O back on os.* with the joined path (rootLoc.do opening nothing) makes these writes land outside.
-func swapTicketFolderAfterCheck(t *testing.T, folder string) string {
+// swapTicketFolderAfterCheck swaps folder for a link out just before the route's at-th rootLoc call (1-based).
+func swapTicketFolderAfterCheck(t *testing.T, folder string, at int) string {
 	t.Helper()
 	outside := t.TempDir()
 	writeFile(t, filepath.Join(outside, "plan.md"), "canary")
 	writeFile(t, filepath.Join(outside, "visuals", "a.png"), "canary")
+	writeFile(t, filepath.Join(outside, "ticket.md"), swapTicketCanary)
 	t.Cleanup(func() { afterPathCheck = nil })
-	swapped := false
+	calls, parked := 0, t.TempDir()
 	afterPathCheck = func() {
-		if swapped {
+		calls++
+		if calls != at {
 			return
 		}
-		swapped = true
-		if err := os.Rename(folder, folder+".moved"); err != nil {
+		// parked outside the root: a copy left under .tickets would be found by findTicketPath's scan, legitimately
+		if err := os.Rename(folder, filepath.Join(parked, "moved")); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Symlink(outside, folder); err != nil {
@@ -616,6 +619,9 @@ func assertOutsideUntouched(t *testing.T, outside string) {
 	if b, _ := os.ReadFile(filepath.Join(outside, "plan.md")); string(b) != "canary" {
 		t.Fatalf("the outside canary changed: %q", b)
 	}
+	if b, _ := os.ReadFile(filepath.Join(outside, "ticket.md")); string(b) != swapTicketCanary {
+		t.Fatalf("the outside ticket.md changed: %q", b)
+	}
 	var n int
 	filepath.WalkDir(outside, func(p string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -623,34 +629,59 @@ func assertOutsideUntouched(t *testing.T, outside string) {
 		}
 		return nil
 	})
-	if n != 2 {
-		t.Fatalf("files outside the root: %d, want the 2 canaries", n)
+	if n != 3 {
+		t.Fatalf("files outside the root: %d, want the 3 canaries", n)
 	}
 }
 
 func TestTicketDocSwapAfterCheckRefused(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		run  func() bool // true when the I/O succeeded
+		name  string
+		calls int         // rootLoc calls the route makes: pinned, so an I/O moved back to os.* (no seam) fails here too
+		run   func() bool // true when the I/O succeeded
 	}{
-		{"doc write", func() bool { return writeDoc("t-swap/plan.md", "pwned", "") }},
-		{"doc read", func() bool { c, _, ok := readDocWithEtag("t-swap/plan.md", ""); return ok && c == "canary" }},
-		{"visual write", func() bool {
+		{"doc write", 1, func() bool { return writeDoc("t-swap/plan.md", "pwned", "") }},
+		{"doc read", 2, func() bool { c, _, ok := readDocWithEtag("t-swap/plan.md", ""); return ok && c == "canary" }},
+		{"visual write", 2, func() bool {
 			r := writeVisual("t-swap", "a.png", base64.StdEncoding.EncodeToString([]byte("pwned")), "")
 			return r["ok"] == true
 		}},
+		// break-it (t-2800 close): the main copy's tags and demo/manual writes read ticket.md after findTicketPath's check
+		{"tags write", 3, func() bool { return writeTags("t-swap", []string{"pwned"}, "") }},
+		{"demo write", 3, func() bool { return writeBoolField("t-swap", "demo", true, "") }},
+		{"ticket replace", 3, func() bool { return replaceTicket("t-swap", "", func(s string) string { return s + "pwned\n" }) }},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		// Swap before each rootLoc call the route makes in turn, so the last read or write is graded, not only the
+		// first check (reviewer, t-2800 close). The call count comes from an unswapped run and must match tc.calls.
+		setup := func(t *testing.T) {
 			setupTestProject(t)
 			writeFile(t, filepath.Join(ticketsDir, "t-swap", "plan.md"), "mine")
-			outside := swapTicketFolderAfterCheck(t, filepath.Join(ticketsDir, "t-swap"))
-			if tc.run() {
-				t.Fatalf("%s went through a ticket folder swapped for a link out", tc.name)
-			}
-			assertOutsideUntouched(t, outside)
+			writeFile(t, filepath.Join(ticketsDir, "t-swap", "ticket.md"), "---\nid: t-swap\nstatus: open\n---\n# mine\n")
+		}
+		var calls int
+		t.Run(tc.name+"/count", func(t *testing.T) {
+			setup(t)
+			t.Cleanup(func() { afterPathCheck = nil })
+			afterPathCheck = func() { calls++ }
+			tc.run()
 		})
+		if calls != tc.calls {
+			t.Fatalf("%s made %d rootLoc calls, want %d", tc.name, calls, tc.calls)
+		}
+		for at := 1; at <= calls; at++ {
+			t.Run(fmt.Sprintf("%s/swap-at-%d", tc.name, at), func(t *testing.T) {
+				setup(t)
+				outside := swapTicketFolderAfterCheck(t, filepath.Join(ticketsDir, "t-swap"), at)
+				if tc.run() {
+					t.Fatalf("%s went through a ticket folder swapped for a link out", tc.name)
+				}
+				assertOutsideUntouched(t, outside)
+			})
+		}
 	}
 }
+
+const swapTicketCanary = "---\nid: t-swap\nstatus: open\n---\n# canary\n"
 
 // t-bdb0: the install's tools folder from the binary's path, the one rule main (toolsDir), integrity (integrityRoot) and the
 // CLI helpers (cliCanonRoot) share. Protects the board finding app.html and the manifest in both install layouts.
@@ -2692,7 +2723,7 @@ func TestLiveDocSwapAfterCheckRefused(t *testing.T) {
 	if derr != nil {
 		t.Fatalf("a plain worktree ticket folder was refused: %+v", derr)
 	}
-	outside := swapTicketFolderAfterCheck(t, filepath.Join(wt, ".tickets", "t-swap"))
+	outside := swapTicketFolderAfterCheck(t, filepath.Join(wt, ".tickets", "t-swap"), 1)
 	if err := target.atomicWrite([]byte("pwned")); err == nil {
 		t.Fatal("the live doc write went through a ticket folder swapped for a link out of the worktree")
 	}
@@ -2707,7 +2738,7 @@ func TestRootIOGuardedFunctionsUseNoOSFileCalls(t *testing.T) {
 		"writeDoc": true, "readDocWithEtag": true, "dedupeVisualName": true, "writeVisual": true, "legacyDocTarget": true,
 		"replaceTicket": true, "findTicketPath": true, "updateActive": true, "liveTargetFrom": true, "liveDocEtagOf": true,
 		"writeLiveDoc": true, "liveActivePath": true, "liveSetActive": true, "writeLiveTicket": true, "cockpitDocs": true,
-		"serveStatic": true, "themeRead": true,
+		"serveStatic": true, "themeRead": true, "ticketLoc": true, "writeBoolField": true, "writeTags": true,
 	}
 	// Lstat/Stat stay allowed: liveTargetFrom's plain-folder policy is an Lstat on purpose; it is not the I/O.
 	banned := map[string]bool{"ReadFile": true, "WriteFile": true, "Open": true, "OpenFile": true, "MkdirAll": true,
@@ -2728,7 +2759,11 @@ func TestRootIOGuardedFunctionsUseNoOSFileCalls(t *testing.T) {
 			return true
 		})
 	}
-	for _, d := range f.Decls {
+	tags, err := parser.ParseFile(token.NewFileSet(), "tags.go", nil, 0) // writeTags
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range append(f.Decls, tags.Decls...) {
 		fd, ok := d.(*ast.FuncDecl)
 		if !ok {
 			continue

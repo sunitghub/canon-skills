@@ -108,11 +108,11 @@ func setTagsLine(lines []string, tags []string) []string {
 
 // writeTags replaces an existing ticket's tags (main checkout copy). It returns false when the ticket or its frontmatter is missing.
 func writeTags(id string, tags []string, root string) bool {
-	path := findTicketPath(id, root)
-	if path == "" {
+	loc, ok := ticketLoc(id, root) // t-2800: through the tickets folder's os.Root
+	if !ok {
 		return false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := loc.read()
 	if err != nil {
 		return false
 	}
@@ -123,7 +123,7 @@ func writeTags(id string, tags []string, root string) bool {
 	}
 	updated := "---\n" + strings.Join(setTagsLine(strings.Split(text[m[2]:m[3]], "\n"), tags), "\n") + "\n---\n" + text[m[1]:]
 	if updated != text {
-		return atomicWriteFile(path, []byte(updated)) == nil
+		return loc.atomicWrite([]byte(updated)) == nil
 	}
 	return true
 }
