@@ -62,6 +62,10 @@ assert_eq 2 "$code"
 printf 'XG104 a reason\n' > "$M/.gosec-excludes"
 run "$FAKE:$NOLINT" --require "$M"
 assert_eq 2 "$code"; assert_contains "$out" ".gosec-excludes:1: needs" "go-checks: a line not starting with G<nnn> refused"
+# t-2800: G112 is never excluded, even with a reason
+printf 'G104 a reason\nG112 a reason\n' > "$M/.gosec-excludes"
+run "$FAKE:$NOLINT" --require "$M"
+assert_eq 2 "$code"; assert_contains "$out" ".gosec-excludes:2: G112 is never excluded" "go-checks: a G112 exclude refused"
 # a last line without a newline still counts
 printf 'G104 a reason\nG304 another reason' > "$M/.gosec-excludes"
 run "$FAKE:$NOLINT" --require "$M"

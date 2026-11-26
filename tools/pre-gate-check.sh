@@ -5,7 +5,7 @@
 #   non-zero (the stamped log then ends `exit 1`, which `sprint check-evidence` refuses). A MISSING tool is never a
 #   pass: the line says `<tool> skipped | no <tool>`.
 #   A project with tests/gate-cases/ also runs the gate eval set (gate-cases.sh run) and says `gate cases N/N`; a failing case is non-zero (t-2178).
-#   t-9a2b: also advisory, `go-checks ok|findings (advisory)|skipped`: tools/go-checks.sh (staticcheck + gosec) on the changed Go packages.
+#   t-9a2b: also advisory, `go-checks ok (<tools that ran>)|findings (advisory)|skipped`: tools/go-checks.sh (staticcheck + gosec) on the changed Go packages.
 #   Advisory only (never a refusal): symbols declared in a changed file and referenced nowhere (dead-code-scan.sh
 #   --changed), and every changed file the scan cannot read ("not scanned").
 #   t-835f: also advisory, a `size` field: `planned N files, changed M, +A/-D` from the same diff, with `unplanned:` (a changed file plan.md's
@@ -173,7 +173,7 @@ run_checks() {
   fi
   if ((${#gd[@]})); then
     if command -v go >/dev/null 2>&1; then
-      local bad=0 mod rel lint=0 lbad=0 lmods=() lpkgs=() i
+      local bad=0 mod rel lint=0 lbad=0 lmods=() lpkgs=() i ran
       for d in "${gd[@]}"; do
         mod="$d"; while [[ "$mod" != . && ! -f "$mod/go.mod" ]]; do mod="$(dirname "$mod")"; done
         [[ -f "$mod/go.mod" ]] || continue
@@ -189,7 +189,9 @@ run_checks() {
         for i in "${!lmods[@]}"; do
           lint=1; out="$("$SCRIPT_DIR/go-checks.sh" "${lmods[$i]}" "${lpkgs[$i]}" 2>&1)" || { lbad=1; adv+="$out"$'\n'; }
         done
-        if ((lbad)); then line+=" | go-checks findings (advisory)"; elif ((lint)); then line+=" | go-checks ok"; fi
+        # t-2800: say which linters ran, so one missing tool is not read as both clean
+        ran="staticcheck + gosec"; type -P staticcheck >/dev/null || ran="gosec only"; type -P gosec >/dev/null || ran="staticcheck only"
+        if ((lbad)); then line+=" | go-checks findings (advisory)"; elif ((lint)); then line+=" | go-checks ok ($ran)"; fi
       fi
     else line+=" | go vet skipped | no go"; fi
   fi

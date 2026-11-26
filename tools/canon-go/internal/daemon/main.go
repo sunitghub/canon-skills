@@ -162,7 +162,7 @@ type session struct {
 	done          chan struct{}
 	reaped        chan struct{} // t-86fe: closed once the agent process has exited and been waited for
 	doneOnce      sync.Once
-	bg            sync.WaitGroup // t-183f: readLoop + waitExit (+ the Copilot watcher, t-77ba), so teardown can wait until they stop writing
+	bg            sync.WaitGroup // t-183f: readLoop + waitExit (+ the Copilot watcher, t-77ba); only the test teardown waits on it (main_test.go), production exit does not
 	closeOnce     sync.Once      // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
 	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
@@ -1153,7 +1153,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
 	s.snapshotAdd(se)
-	// t-77ba: the Copilot watcher joins bg in the same Add, before any goroutine can drop the count to 0, so teardown waits for it too
+	// t-77ba: the Copilot watcher joins bg in the same Add, before any goroutine can drop the count to 0; only the test teardown waits on bg, so it covers the watcher too
 	n := 2
 	if copilotLog != "" {
 		n = 3
@@ -1825,7 +1825,7 @@ func (s *server) baselineIfNoGit(root, id string) {
 }
 
 // recordChangesAsync runs recordChangesIfNoGit off the caller's path. It joins the session's bg group so
-// teardown (and tests) can wait for it to stop writing into the ticket folder — the session may
+// only the test teardown waits on it (production exit does not) before removing the ticket folder — the session may
 // already be gone from s.sessions by then, so the server counts them too.
 func (s *server) recordChangesAsync(se *session) {
 	se.bg.Add(1)

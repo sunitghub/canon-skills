@@ -3,7 +3,7 @@
 # the one owner of both command lines: .github/workflows/go-checks.yml runs it with --require, tools/pre-gate-check.sh without.
 #   gosec's -exclude= list comes from <module-dir>/.gosec-excludes when present (`G<nnn> <reason>` per line, # comments);
 #   a module without the file gets gosec's defaults, so canon's own reasons never mute another project's module.
-# Exit: 0 clean; 1 a finding; 2 a usage error, a .gosec-excludes line without a reason, or (with --require) a missing tool.
+# Exit: 0 clean; 1 a finding; 2 a usage error, a .gosec-excludes line without a reason or naming G112, or (with --require) a missing tool.
 # Without --require a missing tool prints `<tool> skipped | not installed` and is not a finding.
 # go-checks.sh --fuzz <module-dir> <seconds> — t-c2de: every `func Fuzz…(f *testing.F)` in the module's _test.go files, one
 # `go test -fuzz` per target (it refuses a pattern matching two). Exit 0 all passed, 1 a target failed, 2 a usage error or no target.
@@ -38,6 +38,9 @@ if [[ -f "$mod/.gosec-excludes" ]]; then
     [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
     if [[ ! "$line" =~ ^(G[0-9]{3})[[:space:]]+[^[:space:]] ]]; then
       echo "go-checks: $mod/.gosec-excludes:$n: needs 'G<nnn> <reason>': $line" >&2; exit 2
+    fi
+    if [[ "${BASH_REMATCH[1]}" == G112 ]]; then # t-2800: the plant that proves the gosec step can fail (docs/ci-security.md)
+      echo "go-checks: $mod/.gosec-excludes:$n: G112 is never excluded" >&2; exit 2
     fi
     excl+="${excl:+,}${BASH_REMATCH[1]}"
   done < "$mod/.gosec-excludes"

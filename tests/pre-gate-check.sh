@@ -96,7 +96,7 @@ chmod +x "$FAKE/staticcheck" "$FAKE/gosec"
 reset
 mkdir -p gomod; printf 'module m\n\ngo 1.21\n' > gomod/go.mod; printf 'package m\n\nfunc A() {}\n' > gomod/a.go; commit
 set +e; out="$(cd "$R" && PATH="$FAKE:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
-assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok" "pre-gate-check: clean go-checks line"
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok (staticcheck + gosec)" "pre-gate-check: clean go-checks line names both tools"
 rm -rf ".tickets/$ID/evidence"
 set +e; out="$(cd "$R" && FAKE_GOSEC_FIND=1 PATH="$FAKE:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
 assert_eq 0 "$code"   # advisory: a finding never changes the exit code
@@ -110,7 +110,11 @@ assert_eq 0 "$code"; assert_contains "$out" "| go-checks skipped | no staticchec
 FAKE1="$WORK/fakelint1"; mkdir -p "$FAKE1"; cp "$FAKE/gosec" "$FAKE1/gosec"
 rm -rf ".tickets/$ID/evidence"
 set +e; out="$(cd "$R" && PATH="$FAKE1:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
-assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok" "pre-gate-check: one linter installed still runs go-checks"
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok (gosec only)" "pre-gate-check: one linter installed still runs go-checks and says which"
+FAKE2="$WORK/fakelint2"; mkdir -p "$FAKE2"; cp "$FAKE/staticcheck" "$FAKE2/staticcheck"
+rm -rf ".tickets/$ID/evidence"
+set +e; out="$(cd "$R" && PATH="$FAKE2:$NOLINT" PRE_GATE_BASE="$BASE" bash "$PG" "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "| go-checks ok (staticcheck only)" "pre-gate-check: staticcheck alone is named"
 
 # --- shellcheck absent from PATH: skipped, never a pass ---
 reset
