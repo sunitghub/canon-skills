@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.3] - 2026-11-26
+
+- Fixed: in a `tkt land` worktree, `sprint next` and `sprint gate-prompt <id> evaluator` no longer report `missed: test-stamp` for a fresh full-suite stamp, so the evaluator runs on land closes again (broken since v0.89.0). The close walk reads evidence from the checkout you run it in, as `sprint check-evidence` does, and the gate prompt's `Repo:` line names that worktree and its branch, not the main checkout. The report still goes to the main checkout's `.tickets/<id>/` (t-f8e9).
+
 ## [0.89.2] - 2026-11-26
 
 - Fixed: Admin > Model Tiers > Refresh no longer fails on Apply with "… is legacy; pick an active model" when one step retires a model onto one that another step replaces (GPT-6 Sol -> GPT-6.1 Sol while GPT-6.2 Sol replaces 6.1). Apply now sends each retired model straight to the last model of the chain, and it refuses a circular or conflicting batch without writing anything. Each new model replaces the newest older model of its line, including another new model, and "Already current" no longer lists a model the same proposal replaces. A Retire row names the model its alias and defaults will end on (t-f094).
