@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 16:34
+learnings-sweep last run: 11-26-2026 16:35
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-2800](.tickets/t-2800/learnings.md) | The os.Root sweep listed its routes by hand and missed two same-shape writers in another file (writeTags in tags.go, writeBoolField); only break-it found them, and the swap seam graded only the first rootLoc call until each route pinned its call count | UNPROMOTED |
 | 2026-11-26 | [t-ecf8](.tickets/t-ecf8/learnings.md) | The full suite was stamped as `full-suite`, but test-stamp accepts only `test-sh.log`: check-evidence said ok and gate-prompt refused, forcing a second ~9 min run. One rule should own "is this the full suite" (t-b5a6) | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-26 | [t-1386](.tickets/t-1386/learnings.md) | A capped doc at its limit (start-checklist.md, 900 words) makes every new rule cost a trim elsewhere; the trims dropped wording no plan listed, so record each dropped phrase in plan.md Deviations before the gates (the reviewer found three) | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-26 | [t-8ce6](.tickets/t-8ce6/learnings.md) | Moving a path out of the release zip needs a sweep of every shipped relative link to it, README too: the docs/plugins.md samples link was fixed but README.md:81 stayed dead in a zip install until the reviewer grepped | `dismissed (covered: standards/efficiency-notes.md)` |
