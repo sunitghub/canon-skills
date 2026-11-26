@@ -48,6 +48,23 @@ assert_contains "$err" "gate-prompt: dispatch canon-reviewer with no model (its 
 assert_contains "$err" "gate-prompt: if the gate returns its report instead of writing it (the Plan fallback): sprint relay-report $id reviewer"
 absent "$out" "Under Copilot CLI"
 
+# 1b. t-f8e9: a land worktree (no .tickets/ of its own, the main checkout holds the ticket) on a commit main does not have: the
+# prompt names that checkout and its branch, the report stays in the main checkout, and a test-sh stamped there lets the evaluator run
+(
+  git worktree add -q "$W/wt" -b land/x
+  cd "$W/wt"
+  echo wt > wt.txt; git add wt.txt; git commit -q -m wt
+  gp reviewer
+  assert_eq 0 "$code"
+  assert_contains "$out" "Repo: $W/wt, branch land/x."
+  assert_contains "$out" "Write your report to $project/$t/review-notes.md and return its verdict line."
+  "$SPRINT" evidence stamp "$id" test-sh -- true >/dev/null 2>&1 || fail "the test-sh stamp in the worktree failed"
+  gp evaluator
+  assert_eq 0 "$code"
+  assert_contains "$out" "Repo: $W/wt, branch land/x."
+)
+"$SPRINT" evidence stamp "$id" test-sh -- true >/dev/null 2>&1 || fail "the test-sh re-stamp in the main checkout failed"
+
 # 2. Admin's pick is the Model line and the model to pass; under Copilot: .agents/skills, the whole-report rule, the relay and `name`
 reg '{"defaults":{"reviewer":{"claude":"claude-opus-5-5","copilot":"claude-sonnet-5.5"},"evaluator":{"claude":"claude-sonnet-5-5","copilot":"claude-sonnet-5.5"},"speccheck":{"claude":"claude-sonnet-5-5","copilot":"claude-haiku-5.5"},"evaluator2":{"claude":"claude-opus-5-5","copilot":"gpt-6-luna"}},'"$MODELS"'}'
 gp reviewer

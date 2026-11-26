@@ -747,13 +747,15 @@ _evidence_ok() {
 # Exit is walk's: 0, 1 (a missed node before --at's node), 2 (unreadable). A pipeline the reader refuses, or a canon-go with no walk, is 2
 # with one line naming the fix: a check that cannot run never reads as passed. t-a4e8: with an evidence/test-sh.log, the logs
 # evidence.sh reports ok go in as --evidence (evidence.sh is the one owner of freshness); with none, evidence.sh is not run.
+# t-f8e9: it runs in the caller's checkout, as check-evidence does: in a land worktree <root> is the main checkout, whose HEAD is not
+# the stamped one, so every log read stale there.
 _walk() {
   local root="$1" tdir="$2" full b out line ev=""; shift 2
   [[ -x "$SCRIPT_DIR/pipeline.sh" ]] || { echo "this install has no tools/pipeline.sh (run canon update)"; return 2; }
   full="$("$SCRIPT_DIR/pipeline.sh" resolve --full --project "$root" 2>&1)" || { printf '%s\n' "${full##*$'\n'}"; return 2; }
   b="$(board_has 'walk <ticket dir> [--at <node>] [--evidence')" || { echo "this install's canon-go has no walk (run canon update)"; return 2; }
   if [[ -f "$tdir/evidence/test-sh.log" ]]; then
-    out="$(cd "$root" && CANON_TICKETS_DIR="$(dirname "$tdir")" "$SCRIPT_DIR/evidence.sh" check "$(basename "$tdir")" 2>&1)" \
+    out="$(CANON_TICKETS_DIR="$(dirname "$tdir")" "$SCRIPT_DIR/evidence.sh" check "$(basename "$tdir")" 2>&1)" \
       || { echo "evidence.sh check could not read the evidence: ${out##*$'\n'}"; return 2; }
     while IFS= read -r line; do
       _evidence_ok "$line" || continue
@@ -2139,13 +2141,15 @@ _gate_prompt_model() {
 # report heading, the verdict line, the Model line), and each loss cost a full gate run. The protocol file owns the report's shape: the
 # prompt names it and the report's first line only. stdout is the prompt; stderr is the dispatch line and the step after the gate.
 cmd_gate_prompt() {
-  local id="${1:-}" role="${2:-}" tdir root branch title harness file name marker label m mline proto ev rc=0
+  local id="${1:-}" role="${2:-}" tdir root repo branch title harness file name marker label m mline proto ev rc=0
   local usage="Usage: sprint gate-prompt <id> <speccheck|reviewer|evaluator|evaluator2>"
   [[ -n "$id" && "$role" =~ ^(speccheck|reviewer|evaluator|evaluator2)$ ]] || { echo "$usage" >&2; exit 1; }
   tdir="$(ticket_dir_for "$id")"
   [[ -f "$tdir/ticket.md" && -f "$tdir/plan.md" ]] || { echo "gate-prompt: no ticket $id with a plan.md here." >&2; echo "$usage" >&2; exit 1; }
   tdir="$(cd "$tdir" && pwd -P)"; root="$(cd "$(project_root)" && pwd -P)"
-  branch="$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  # t-f8e9: the checkout the gate grades (a land worktree's, not the main checkout that holds the ticket); the report stays in tdir
+  repo="$(worktree_root 2>/dev/null)" || repo="$root"
+  branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
   title="$(LC_ALL=C awk 'sub(/^# /, "") { print; exit }' "$tdir/ticket.md" 2>/dev/null || true)"
   harness="$(_report_harness)"
   case "$role" in
@@ -2182,7 +2186,7 @@ cmd_gate_prompt() {
       exit 1
     fi
   fi
-  echo "You are canon's $label for ticket $id ($title). Repo: $root, branch $branch."
+  echo "You are canon's $label for ticket $id ($title). Repo: $repo, branch $branch."
   echo
   echo "Follow $proto for this ticket."
   echo "$mhint"

@@ -67,6 +67,17 @@ _evidence_ok "covered test-sh.log exit=1 (HEAD abc1234)" || fail "a covered log 
 ! _evidence_ok "stale test-sh.log exit=0 (HEAD abc1234)" || fail "a stale log is ok"
 [[ "$(grep -c '_evidence_ok "\$line"' "$SPRINT")" == 2 ]] || fail "check-evidence and the walk must share _evidence_ok"
 
+# 4c. t-f8e9: a land worktree (no .tickets/ of its own, the main checkout holds the ticket): a test-sh stamped at its HEAD, which
+# main does not contain, is fresh there, so the walk reads it from the caller's checkout, not the main one
+(
+  git worktree add -q "$stub/wt" -b land/x
+  cd "$stub/wt"
+  echo wt > wt.txt; git add wt.txt; git commit -q -m wt
+  "$SPRINT" evidence stamp "$id" test-sh -- true >/dev/null 2>&1 || fail "the test-sh stamp in the worktree failed"
+  out="$("$SPRINT" next "$id")"
+  assert_eq "next: eval (agent) — no eval-report.md verdict: dispatch canon-evaluator with sprint gate-prompt $id evaluator (complete-checklist.md step 3)" "$out"
+)
+
 # 5. a pipeline the reader refuses: exit 2 naming the file, no next line
 mkdir -p canon-config; printf 'extends: canon-default\noff: [nope]\n' > canon-config/pipeline.yaml
 set +e; out="$("$SPRINT" next "$id" 2>&1)"; code=$?; set -e
