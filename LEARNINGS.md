@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 16:35
+learnings-sweep last run: 11-26-2026 17:21
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-4e5c](.tickets/t-4e5c/learnings.md) | A security doc claimed what the old-flags probe "showed" (.claude/agents loaded) when the run died before it could show it (apiKeyHelper swapped the key); only the reviewer caught it: claim only what a probe log actually records | UNPROMOTED |
 | 2026-11-26 | [t-2800](.tickets/t-2800/learnings.md) | The os.Root sweep listed its routes by hand and missed two same-shape writers in another file (writeTags in tags.go, writeBoolField); only break-it found them, and the swap seam graded only the first rootLoc call until each route pinned its call count | UNPROMOTED |
 | 2026-11-26 | [t-ecf8](.tickets/t-ecf8/learnings.md) | The full suite was stamped as `full-suite`, but test-stamp accepts only `test-sh.log`: check-evidence said ok and gate-prompt refused, forcing a second ~9 min run. One rule should own "is this the full suite" (t-b5a6) | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-26 | [t-1386](.tickets/t-1386/learnings.md) | A capped doc at its limit (start-checklist.md, 900 words) makes every new rule cost a trim elsewhere; the trims dropped wording no plan listed, so record each dropped phrase in plan.md Deviations before the gates (the reviewer found three) | `dismissed (covered: standards/efficiency-notes.md)` |
