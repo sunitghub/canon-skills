@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.2] - 2026-11-26
+
+- Fixed: Admin > Model Tiers > Refresh no longer fails on Apply with "… is legacy; pick an active model" when one step retires a model onto one that another step replaces (GPT-6 Sol -> GPT-6.1 Sol while GPT-6.2 Sol replaces 6.1). Apply now sends each retired model straight to the last model of the chain, and it refuses a circular or conflicting batch without writing anything. Each new model replaces the newest older model of its line, including another new model, and "Already current" no longer lists a model the same proposal replaces. A Retire row names the model its alias and defaults will end on (t-f094).
+
 ## [0.89.1] - 2026-11-25
 
 - Fixed: go-checks CI is green again: `TestAPIv1EventsStreamCutsAStalledClient` now runs the stream over a `net.Pipe`, so the write-deadline cut no longer depends on the OS's socket buffers. It had failed on every Linux run since v0.85.1. Test only, no behavior change (t-1775).
