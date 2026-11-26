@@ -243,9 +243,12 @@ if [[ "$CACHE_HIT" -eq 1 ]]; then
   RESULT_TEXT="$(gate_cache_get "$ROOT" "$CACHE_KEY")"
 else
   set +e
+  # t-4e5c: the graded tree is untrusted: its .claude/settings*.json (hooks, apiKeyHelper, env), .mcp.json and .claude/agents
+  # would run commands with the API key in their environment, so only the user's own settings load.
   RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
     --output-format json \
     --permission-mode dontAsk \
+    --setting-sources user --strict-mcp-config \
     ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
     --allowedTools "Agent" "$GIT_READ_ALLOW" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
   INVOKE_STATUS=$?

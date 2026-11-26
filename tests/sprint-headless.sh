@@ -501,6 +501,18 @@ check_log_path "install as project, sprint-headless" "./tools/subagent-log.sh" "
 check_log_path "install as project, sprint-headless-eval" "./tools/subagent-log.sh" "" -- "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD
 rm -f "$WORK/tools"
 
+# 14f5. t-4e5c: the graded tree's .claude/settings*.json, .mcp.json and .claude/agents never load (their hooks, apiKeyHelper
+# and MCP servers ran commands with the API key in env), in CI (pinned) and local runs alike. Protects canon-gate.yml's grade.
+for pin in "$PIN" ""; do
+  for gate in sprint-headless sprint-headless-eval; do
+    : > "$CAP_ARGS"
+    if [[ "$gate" == sprint-headless ]]; then cmd=("$SPRINT_HEADLESS" t-mdl1); else cmd=("$SPRINT_HEADLESS_EVAL" specs/x.md); fi
+    (cd "$WORK" && CANON_GATE_SKILLS="$pin" PATH="$STUB_CAP_DIR:$PATH" run_ok "${cmd[@]}" --base-ref HEAD >/dev/null)
+    [[ $'\n'"$(<"$CAP_ARGS")"$'\n' == *$'\n<<ARG>>--setting-sources\n<<ARG>>user\n'* ]] || fail "t-4e5c $gate (pin '${pin:-none}'): must pass --setting-sources user"
+    grep -qxF "<<ARG>>--strict-mcp-config" "$CAP_ARGS" || fail "t-4e5c $gate (pin '${pin:-none}'): must pass --strict-mcp-config"
+  done
+done
+
 # 14g. sprint-headless-eval --model invalid → hard-fail before claude
 : > "$CAP_ARGS"
 out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model 'bad;model')"
