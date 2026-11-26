@@ -204,4 +204,4 @@ if [[ "$(id -u)" != 0 ]]; then
 fi
 echo "release-zip-slim: the size bound counts file bytes (folders and tiny files cost nothing), rounds up, fails past $SIZE_CAP_KB KB (tools/caps.tsv) and reports a folder it cannot read"
 
-echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/ or the developer-only files, or losing the tour images each fails the check)"
+echo "release-zip-slim: ok (revert checks: dropping scripts/ or go.mod, forgetting tests/, bench/ or the developer-only files, shipping the CI lint, LEARNINGS, PRs/samples, dotfiles, research docs, release scripts or dev runners, or losing the tour images each fails the check)"
