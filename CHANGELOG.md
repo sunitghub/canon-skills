@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.5] - 2026-11-26
+
+- Fixed: Admin > Model Tiers keeps the Defaults pickers current after Refresh > Apply and Remove/Retire: a newly added default shows at once and a retired model is no longer offered, with no page reload (t-9bc6).
+
 ## [0.89.4] - 2026-11-26
 
 - Fixed: the dim text of third-party themes (Dracula, Catppuccin, Nord and the rest of the ◐ Theme menu) now reads at least 4.5:1 on the page, panel and border colours; it was 1.9 to 3.8:1. canon picks the dimmest shade that passes all three, and falls back to the theme's own muted colour when none does. Canon Dark and Light are unchanged (t-1f4a).
