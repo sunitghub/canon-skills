@@ -1,0 +1,1 @@
+- Fixed: the dim text of third-party themes (Dracula, Catppuccin, Nord and the rest of the ◐ Theme menu) now reads at least 4.5:1 on the page, panel and border colours; it was 1.9 to 3.8:1. canon picks the dimmest shade that passes all three, and falls back to the theme's own muted colour when none does. Canon Dark and Light are unchanged (t-1f4a).

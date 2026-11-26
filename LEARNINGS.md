@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 21:55
+learnings-sweep last run: 11-25-2026 22:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-1f4a](.tickets/t-1f4a/learnings.md) | In the Claude cloud container eight suites (pipeline, sprint, canon-cli, canon-uninstall, …) fail on clean main too, so a cloud close cannot stamp test-sh: land it (`tkt land`) and stamp on the Mac; and an exit code read through `\| tail` is tail's, which once reported a failed `npm test` as passing | UNPROMOTED |
 | 2026-11-26 | [t-f8e9](.tickets/t-f8e9/learnings.md) | In a `tkt land` worktree a close step has two roots: the ticket folder is the main checkout's (`project_root`), the commit under review is the worktree's; a HEAD read or Repo line taken after `cd "$root"` grades main, so every stamped log read stale and the evaluator was refused on every land close since v0.89.0 | UNPROMOTED |
 | 2026-11-25 | [t-f094](.tickets/t-f094/learnings.md) | A seen-set walk needs a case whose cycle does not pass through the start (a lead-in X -> Y -> Z -> Y): the 2-cycle and self-pair cases passed with the guard broken, and only the mutation sweep found it; a loop guard's test should also run under a short `-timeout` so a regression fails instead of hanging | UNPROMOTED |
 | 2026-11-25 | [t-1775](.tickets/t-1775/learnings.md) | To test a write deadline, remove the buffer: over loopback TCP the cut's timing was the OS's (green on the Mac, red 4/4 on Linux CI), and a 1 KB send-buffer cap still dripped writes inside the deadline (0.17-2.2 s, 1/20 timed out); `net.Pipe` cut at 0.11 s 30/30. | UNPROMOTED |
