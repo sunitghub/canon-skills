@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.4] - 2026-11-26
+
+- Fixed: the dim text of third-party themes (Dracula, Catppuccin, Nord and the rest of the ◐ Theme menu) now reads at least 4.5:1 on the page, panel and border colours; it was 1.9 to 3.8:1. canon picks the dimmest shade that passes all three, and falls back to the theme's own muted colour when none does. Canon Dark and Light are unchanged (t-1f4a).
+
 ## [0.89.3] - 2026-11-26
 
 - Fixed: in a `tkt land` worktree, `sprint next` and `sprint gate-prompt <id> evaluator` no longer report `missed: test-stamp` for a fresh full-suite stamp, so the evaluator runs on land closes again (broken since v0.89.0). The close walk reads evidence from the checkout you run it in, as `sprint check-evidence` does, and the gate prompt's `Repo:` line names that worktree and its branch, not the main checkout. The report still goes to the main checkout's `.tickets/<id>/` (t-f8e9).
