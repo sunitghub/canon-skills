@@ -100,6 +100,8 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
     for (const [slot, v] of [['bg', '--bg'], ['surface', '--surface'], ['accent', '--accent'], ['ok', '--col-done'], ['bad', '--col-discarded']]) {
       assert.strictEqual(norm(t.c[slot]), norm(value(decls, v)), `${t.name} ${slot} equals tokens.css ${v}`);
     }
+    // t-1f4a: Canon's own --text-dim (tokens.css owns it, derive() does not) keeps the same 4.5:1 floor
+    for (const surf of [t.c.bg, t.c.surface]) assert.ok(contrast(norm(value(decls, '--text-dim')), surf) >= 4.5, `${t.name} tokens.css --text-dim < 4.5 on ${surf}`);
   }
   assert.deepStrictEqual(THEMES.map(t => t.id).sort(), ['canon-dark', 'canon-light', 'catppuccin-latte', 'catppuccin-mocha', 'dracula', 'gruvbox-dark', 'nord', 'tokyo-night'], 'the eight built-ins');
 
