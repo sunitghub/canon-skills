@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-25-2026 22:20
+learnings-sweep last run: 11-26-2026 05:14
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-9bc6](.tickets/t-9bc6/learnings.md) | A scripted replace appended a `// comment` mid-line in a dense one-liner and swallowed the `toast()` after it; 44/44 specs stayed green because none asserted the toast, and only the evaluator caught it: end a one-line edit by checking every statement after the insertion point is still code | UNPROMOTED |
 | 2026-11-26 | [t-1f4a](.tickets/t-1f4a/learnings.md) | In the Claude cloud container eight suites (pipeline, sprint, canon-cli, canon-uninstall, …) fail on clean main too, so a cloud close cannot stamp test-sh: land it (`tkt land`) and stamp on the Mac; and an exit code read through `\| tail` is tail's, which once reported a failed `npm test` as passing | UNPROMOTED |
 | 2026-11-26 | [t-f8e9](.tickets/t-f8e9/learnings.md) | In a `tkt land` worktree a close step has two roots: the ticket folder is the main checkout's (`project_root`), the commit under review is the worktree's; a HEAD read or Repo line taken after `cd "$root"` grades main, so every stamped log read stale and the evaluator was refused on every land close since v0.89.0 | UNPROMOTED |
 | 2026-11-25 | [t-f094](.tickets/t-f094/learnings.md) | A seen-set walk needs a case whose cycle does not pass through the start (a lead-in X -> Y -> Z -> Y): the 2-cycle and self-pair cases passed with the guard broken, and only the mutation sweep found it; a loop guard's test should also run under a short `-timeout` so a regression fails instead of hanging | UNPROMOTED |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-25-2026 22:20
 | 2026-11-16 | [t-fcb1](.tickets/t-fcb1/learnings.md) | A word trim to hold a doc's cap rewords text tests may pin: grep tests/ for every phrase the trim changes (sprint-checklists.sh pins close step 10's "a push that succeeded"; only the full-suite stamp caught it) | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-16 | [t-d8af](.tickets/t-d8af/learnings.md) | Bash `$(…)` drops NUL bytes, so `[ -n "$(tail -c1 f)" ]` calls a NUL-ended file newline-ended and the next append is glued on; count with `tail -c1 f \| wc -l`. And macOS grep reads a NUL file as binary (no match) while Git Bash's GNU grep matches, so the same file behaves differently per platform. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-16 | [t-c206](.tickets/t-c206/learnings.md) | macOS `mktemp -d` with no template ignores TMPDIR, so pinning TMPDIR does not keep a child tool's scratch dirs inside a test's folder: clean them from what the tool recorded, and pin every registry the tool writes. | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-16 | [t-925a](.tickets/t-925a/learnings.md) | A test that runs a gate tool must pin its registry too: tests/worktree-write-links.sh registered gate scopes in the real /tmp registry, so a parallel test's uninstall refused and the user's own canon update would have for 2 h; earlier suites passed on timing (t-c206). | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->

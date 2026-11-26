@@ -1,0 +1,1 @@
+- Fixed: Admin > Model Tiers keeps the Defaults pickers current after Refresh > Apply and Remove/Retire: a newly added default shows at once and a retired model is no longer offered, with no page reload (t-9bc6).
