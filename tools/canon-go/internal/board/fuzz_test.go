@@ -32,11 +32,11 @@ func FuzzTheme(f *testing.F) {
 		f.Add([]byte(s))
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		p := filepath.Join(t.TempDir(), "x.json")
-		if err := os.WriteFile(p, data, 0o600); err != nil {
+		d := t.TempDir()
+		if err := os.WriteFile(filepath.Join(d, "x.json"), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		th, reason := themeRead(p)
+		th, reason := themeRead(d, "x.json")
 		if (reason == "") == (th.Name == "") {
 			t.Fatalf("theme %+v with reason %q: want exactly one", th, reason)
 		}

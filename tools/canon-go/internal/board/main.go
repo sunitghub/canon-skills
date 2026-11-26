@@ -525,7 +525,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if screenshotPathRe.MatchString(path) {
-			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
+			body, err := (rootLoc{dir: projectRoot, rel: strings.TrimPrefix(path, "/")}).read()
+			if err != nil {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			serveBytes(w, body, mime.TypeByExtension(filepath.Ext(path)))
 			return
 		}
 		if m := apiCommitRe.FindStringSubmatch(path); m != nil {
@@ -564,11 +569,16 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			ticketID, relpath := m[1], unescape(m[2])
 			p, ok := safeTicketDocIn(ticketID+"/"+relpath, root, imageExts...)
-			if !ok || !exists(p) {
+			if !ok {
 				http.NotFound(w, r)
 				return
 			}
-			serveFile(w, p, mime.TypeByExtension(filepath.Ext(p)))
+			body, err := p.read()
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			serveBytes(w, body, mime.TypeByExtension(filepath.Ext(p.rel)))
 			return
 		}
 		if m := apiTicketFeatureRe.FindStringSubmatch(path); m != nil {
@@ -579,11 +589,11 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			ticketID, relpath := m[1], unescape(m[2])
 			p, ok := safeTicketDocIn(ticketID+"/"+relpath, root, ".feature")
-			if !ok || !exists(p) {
+			if !ok {
 				http.NotFound(w, r)
 				return
 			}
-			data, err := os.ReadFile(p)
+			data, err := p.read()
 			if err != nil {
 				http.NotFound(w, r)
 				return
@@ -2035,14 +2045,14 @@ func canonicalTicketID(id string, root string) string {
 // updateActive mirrors tkt's set_active/clear_active_if: in_progress claims
 // ACTIVE, any other status clears it if this ticket currently holds it.
 func updateActive(canonicalID, status string, root string) {
-	activePath := filepath.Join(ticketsDirForRoot(root), "ACTIVE")
+	active := rootLoc{dir: ticketsDirForRoot(root), rel: "ACTIVE"}
 	if status == "in_progress" {
-		os.WriteFile(activePath, []byte(canonicalID+"\n"), 0644)
+		active.write([]byte(canonicalID + "\n"))
 		return
 	}
-	if raw, err := os.ReadFile(activePath); err == nil {
+	if raw, err := active.read(); err == nil {
 		if strings.TrimSpace(string(raw)) == canonicalID {
-			os.Remove(activePath)
+			active.remove()
 		}
 	}
 }
@@ -2065,10 +2075,7 @@ func writeDoc(docFile, content string, root string) bool {
 			return false
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		return false
-	}
-	return os.WriteFile(p, []byte(strings.TrimSpace(content)+"\n"), 0644) == nil
+	return p.write([]byte(strings.TrimSpace(content)+"\n")) == nil
 }
 
 // t-626d: behaviour pinned by tests/sprint-check-api.sh.
@@ -2095,7 +2102,7 @@ func dedupeVisualName(ticketID, filename string, root string) string {
 		if !ok {
 			return ""
 		}
-		if !exists(target) {
+		if !target.exists() {
 			return candidate
 		}
 		candidate = fmt.Sprintf("%s-%d%s", stem, n, ext)
@@ -2117,10 +2124,7 @@ func writeVisual(ticketID, filename, dataB64 string, root string) map[string]any
 	if !ok {
 		return map[string]any{"ok": false}
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-		return map[string]any{"ok": false}
-	}
-	if os.WriteFile(target, raw, 0644) != nil {
+	if target.write(raw) != nil {
 		return map[string]any{"ok": false}
 	}
 	return map[string]any{"ok": true, "filename": name}
@@ -2269,7 +2273,14 @@ func replaceTicket(id string, root string, fn func(string) string) bool {
 	if path == "" {
 		return false
 	}
-	raw, err := os.ReadFile(path)
+	// t-2800: the read and the write go through the tickets folder's os.Root, not the path findTicketPath checked
+	td := ticketsDirForRoot(root)
+	rel, err := filepath.Rel(td, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return false
+	}
+	loc := rootLoc{dir: td, rel: rel}
+	raw, err := loc.read()
 	if err != nil {
 		return false
 	}
@@ -2277,15 +2288,14 @@ func replaceTicket(id string, root string, fn func(string) string) bool {
 	if next == string(raw) {
 		return false
 	}
-	return os.WriteFile(path, []byte(next), 0644) == nil
+	return loc.write([]byte(next)) == nil
 }
 
 func findTicketPath(id string, root string) string {
 	td := ticketsDirForRoot(root)
-	candidates := []string{filepath.Join(td, id, "ticket.md"), filepath.Join(td, id+".md")}
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			return c
+	for _, rel := range []string{filepath.Join(id, "ticket.md"), id + ".md"} {
+		if (rootLoc{dir: td, rel: rel}).exists() {
+			return filepath.Join(td, rel)
 		}
 	}
 	for _, p := range ticketPaths(root) {
@@ -2314,26 +2324,23 @@ func readDocWithEtag(docFile string, root string) (string, string, bool) {
 	}
 	// t-e78b: a worktree-bound ticket's docs come from that worktree's copy.
 	if live {
-		clean := filepath.Clean(filepath.FromSlash(docFile))
-		if !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "..") && strings.ToLower(filepath.Ext(clean)) == ".md" {
-			if target, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(dir), clean)); err == nil {
-				if rel, err := filepath.Rel(dir, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-					if raw, err := os.ReadFile(target); err == nil {
-						return string(raw), etag, true
-					}
-				}
+		// t-2800: through the ticket folder as a nested root of the worktree, so a link out of it is refused at the read
+		parts := strings.SplitN(filepath.ToSlash(filepath.Clean(filepath.FromSlash(docFile))), "/", 2)
+		if len(parts) == 2 && parts[0] != ".." && !strings.HasPrefix(parts[1], "../") && !filepath.IsAbs(parts[1]) && strings.ToLower(filepath.Ext(parts[1])) == ".md" {
+			if raw, err := (rootLoc{dir: wtPath, sub: ".tickets/" + parts[0], rel: parts[1]}).read(); err == nil {
+				return string(raw), etag, true
 			}
 		}
 	}
 	p, ok := safeTicketDoc2(docFile, root)
-	if !ok || !exists(p) {
+	if !ok || !p.exists() {
 		if legacy, legacyOK := legacyDocTarget(docFile, root); legacyOK {
 			p = legacy
 		} else {
 			return "", "", false
 		}
 	}
-	raw, err := os.ReadFile(p)
+	raw, err := p.read()
 	if !live {
 		etag = docEtag(raw)
 	}
@@ -2353,11 +2360,13 @@ func hasDotDotSegment(doc string) bool {
 }
 
 // Behaviour pinned by tests/sprint-check-api.sh: re-run it after a change.
-func safeTicketDoc2(docFile string, root string) (string, bool) {
+func safeTicketDoc2(docFile string, root string) (rootLoc, bool) {
 	return safeTicketDocIn(docFile, root)
 }
 
-func safeTicketDocIn(docFile string, root string, exts ...string) (string, bool) {
+// safeTicketDocIn is the lexical check only (relative, no "..", an allowed extension); a link that leaves the tickets
+// folder is refused by the os.Root the returned rootLoc opens at the moment of the read or write (t-2800).
+func safeTicketDocIn(docFile string, root string, exts ...string) (rootLoc, bool) {
 	td := ticketsDirForRoot(root)
 	if len(exts) == 0 {
 		exts = []string{".md"}
@@ -2371,75 +2380,24 @@ func safeTicketDocIn(docFile string, root string, exts ...string) (string, bool)
 			break
 		}
 	}
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || !extOK {
-		return "", false
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || !extOK {
+		return rootLoc{}, false
 	}
-	p := filepath.Join(td, clean)
-	rel, err := filepath.Rel(td, p)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", false
-	}
-	if !containedAfterSymlinksIn(p, td) {
-		return "", false
-	}
-	return p, true
+	return rootLoc{dir: td, rel: clean}, true
 }
 
-// containedAfterSymlinks resolves symlinks on the deepest existing ancestor
-// of p (walking upward past any not-yet-created components — an EXISTING
-// intermediate directory further up the chain could be a symlink, so a
-// single-level parent check is not enough) and confirms the result still
-// lies within ticketsDir. This is the Go equivalent of Python's
-// Path.resolve(strict=False)-based containment check.
-//
-// Resolution failure is ALWAYS treated as unsafe (reject), never as "nothing
-// to escape through" — that includes a dangling symlink at the leaf itself
-// (Lstat succeeds on the symlink, but EvalSymlinks fails because its target
-// doesn't exist): an attacker-planted dangling symlink pointing outside
-// ticketsDir must not be treated as safe just because its target is missing
-// *right now* — os.WriteFile on such a path creates the target on write,
-// landing outside ticketsDir. The walk-up only exists so a legitimately
-// not-yet-created leaf (and its not-yet-created parent directories) doesn't
-// spuriously fail; it always bottoms out at an existing entity — worst case
-// ticketsDir itself, which always exists in practice — so EvalSymlinks on
-// whatever the walk finds should never fail for a legitimate write.
-func containedAfterSymlinksIn(p string, td string) bool {
-	target := p
-	for {
-		if _, err := os.Lstat(target); err == nil {
-			break
-		}
-		parent := filepath.Dir(target)
-		if parent == target {
-			break // reached filesystem root without finding anything that exists
-		}
-		target = parent
-	}
-	resolved, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		return false // exists per Lstat but can't be resolved — reject, never assume safe
-	}
-	root, err := filepath.EvalSymlinks(td)
-	if err != nil {
-		root = td
-	}
-	rel, err := filepath.Rel(root, resolved)
-	return err == nil && !strings.HasPrefix(rel, "..")
-}
-
-func legacyDocTarget(docFile string, root string) (string, bool) {
+func legacyDocTarget(docFile string, root string) (rootLoc, bool) {
 	td := ticketsDirForRoot(root)
 	safe := filepath.Base(filepath.FromSlash(docFile))
-	if filepath.Ext(safe) != ".md" {
-		return "", false
+	if filepath.Ext(safe) != ".md" || safe == ".." {
+		return rootLoc{}, false
 	}
 	if m := ticketDocNameRe.FindStringSubmatch(safe); m != nil {
-		folderTicket := filepath.Join(td, m[1], "ticket.md")
-		if exists(folderTicket) {
-			return filepath.Join(td, m[1], m[2]+".md"), true
+		if (rootLoc{dir: td, rel: filepath.Join(m[1], "ticket.md")}).exists() {
+			return rootLoc{dir: td, rel: filepath.Join(m[1], m[2]+".md")}, true
 		}
 	}
-	return filepath.Join(td, safe), true
+	return rootLoc{dir: td, rel: safe}, true
 }
 
 // t-1699: compiled once at start-up, not on every request or ticket line.
@@ -3079,51 +3037,53 @@ type liveDocErr struct {
 
 // liveDocTargetFrom returns the file a board write to docFile would replace in the bound worktree, or why not.
 // dir is liveWorktreeFull's resolved <worktree>/.tickets/<id>; wtPath is the worktree itself.
-func liveDocTargetFrom(docFile, dir, wtPath string) (string, *liveDocErr) {
+func liveDocTargetFrom(docFile, dir, wtPath string) (rootLoc, *liveDocErr) {
 	return liveTargetFrom(docFile, dir, wtPath, liveDocNames)
 }
 
 // liveTargetFrom is liveDocTargetFrom for an arbitrary exact-name allowlist (t-8be2: a bound ticket's own ticket.md).
-func liveTargetFrom(docFile, dir, wtPath string, names map[string]bool) (string, *liveDocErr) {
+// The Lstat checks are the policy (a plain folder, no link at all); the returned rootLoc, rooted at the worktree with the
+// ticket folder as a nested root, is what makes a swap after them harmless (t-2800).
+func liveTargetFrom(docFile, dir, wtPath string, names map[string]bool) (rootLoc, *liveDocErr) {
 	bad := &liveDocErr{http.StatusBadRequest, "bad_doc", "that doc can't be written from the board"}
 	parts := strings.Split(docFile, "/")
 	// The raw name, compared exactly: NTFS ignores a trailing dot or space and treats `:` as a stream, so a
 	// normalised comparison would let `plan.md.`, `plan.md::$DATA` or `TICKET~1.MD` through.
 	if strings.ContainsAny(docFile, "\\:\x00") || len(parts) != 2 || parts[0] == "" || parts[0] == "." || parts[0] == ".." {
-		return "", bad
+		return rootLoc{}, bad
 	}
 	name := strings.ToLower(parts[1])
 	if !names[name] {
-		return "", bad
+		return rootLoc{}, bad
 	}
 	trust := &liveDocErr{http.StatusForbidden, "unsafe_path", "that ticket folder is not a plain folder inside its worktree"}
 	realWT, err := filepath.EvalSymlinks(wtPath)
 	if err != nil {
-		return "", trust
+		return rootLoc{}, trust
 	}
 	ticketsDir := filepath.Join(wtPath, ".tickets")
 	tDir := filepath.Join(ticketsDir, parts[0])
 	for _, q := range []string{ticketsDir, tDir} {
 		fi, err := os.Lstat(q)
 		if err != nil || !fi.IsDir() || fi.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
-			return "", trust // a symlink or a junction (reparse point), however Lstat reports it
+			return rootLoc{}, trust // a symlink or a junction (reparse point), however Lstat reports it
 		}
 	}
 	// Belt and braces: the resolved folder must be exactly where the worktree says it is.
 	if !common.SamePath(dir, filepath.Join(realWT, ".tickets", parts[0])) {
-		return "", trust
+		return rootLoc{}, trust
 	}
-	target := filepath.Join(dir, name)
-	if fi, err := os.Lstat(target); err == nil && !fi.Mode().IsRegular() {
-		return "", trust
+	target := rootLoc{dir: wtPath, sub: ".tickets/" + parts[0], rel: name}
+	if fi, err := target.lstat(); err == nil && !fi.Mode().IsRegular() {
+		return rootLoc{}, trust
 	}
 	return target, nil
 }
 
 // liveDocEtagOf is "absent" ONLY when the file does not exist: any other read error (permissions, a Windows sharing
 // violation) must not read as absent, or a write with base_hash "absent" would bypass the guard.
-func liveDocEtagOf(target string) (string, error) {
-	raw, err := os.ReadFile(target)
+func liveDocEtagOf(target rootLoc) (string, error) {
+	raw, err := target.read()
 	if errors.Is(err, os.ErrNotExist) {
 		return docEtagAbsent, nil
 	}
@@ -3131,41 +3091,6 @@ func liveDocEtagOf(target string) (string, error) {
 		return "", err
 	}
 	return docEtag(raw), nil
-}
-
-// atomicWriteFile writes via a temp file in the same folder and a rename, so no reader ever sees a half-written
-// doc. Windows refuses to replace a file another process has open, so the rename is retried briefly.
-func atomicWriteFile(target string, data []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".board-*.tmp")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	_, werr := tmp.Write(data)
-	if werr == nil {
-		werr = tmp.Sync()
-	}
-	if cerr := tmp.Close(); werr == nil {
-		werr = cerr
-	}
-	if werr != nil {
-		os.Remove(name)
-		return werr
-	}
-	mode := os.FileMode(0o644) // a new doc; an existing one keeps the mode it had
-	if fi, err := os.Stat(target); err == nil {
-		mode = fi.Mode().Perm()
-	}
-	_ = os.Chmod(name, mode)
-	var rerr error
-	for i := 0; i < 6; i++ {
-		if rerr = os.Rename(name, target); rerr == nil {
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	os.Remove(name)
-	return rerr
 }
 
 // writeLiveDoc handles POST /api/doc/<doc> for a worktree-bound ticket. handled is false for an unbound one.
@@ -3193,14 +3118,14 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 	defer liveDocMu.Unlock()
 	cur, rerr := liveDocEtagOf(target)
 	if rerr != nil {
-		return fail(http.StatusInternalServerError, "read_failed", "couldn't read "+filepath.Base(target)+" to check it hasn't changed — is another program holding it open? Try again")
+		return fail(http.StatusInternalServerError, "read_failed", "couldn't read "+target.base()+" to check it hasn't changed — is another program holding it open? Try again")
 	}
 	if base == "" || base != cur {
-		return fail(http.StatusConflict, "stale", filepath.Base(target)+" changed since you read it — reload it and try again")
+		return fail(http.StatusConflict, "stale", target.base()+" changed since you read it — reload it and try again")
 	}
 	data := []byte(strings.TrimSpace(content) + "\n")
-	if err := atomicWriteFile(target, data); err != nil {
-		return fail(http.StatusInternalServerError, "write_failed", "couldn't save "+filepath.Base(target)+" — is another program holding it open? Try again")
+	if err := target.atomicWrite(data); err != nil {
+		return fail(http.StatusInternalServerError, "write_failed", "couldn't save "+target.base()+" — is another program holding it open? Try again")
 	}
 	return true, http.StatusOK, map[string]any{"ok": true, "etag": docEtag(data)}
 }
@@ -3245,20 +3170,20 @@ func liveBodyOf(text string) string {
 }
 
 // liveActivePath is <worktree>/.tickets/ACTIVE when it is safe to write or remove (absent or a plain file).
-func liveActivePath(wtPath string) (string, bool) {
-	p := filepath.Join(wtPath, ".tickets", "ACTIVE")
-	if fi, err := os.Lstat(p); err == nil && !fi.Mode().IsRegular() {
-		return "", false
+func liveActivePath(wtPath string) (rootLoc, bool) {
+	p := rootLoc{dir: wtPath, sub: ".tickets", rel: "ACTIVE"}
+	if fi, err := p.lstat(); err == nil && !fi.Mode().IsRegular() {
+		return rootLoc{}, false
 	}
 	return p, true
 }
 
 // liveSetActive is tkt's set_active / clear_active_if on the worktree's own file.
-func liveSetActive(active, id, status string) error {
+func liveSetActive(active rootLoc, id, status string) error {
 	if status == "in_progress" {
-		return atomicWriteFile(active, []byte(id+"\n"))
+		return active.atomicWrite([]byte(id + "\n"))
 	}
-	raw, err := os.ReadFile(active)
+	raw, err := active.read()
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
@@ -3266,7 +3191,7 @@ func liveSetActive(active, id, status string) error {
 		return err
 	}
 	if strings.TrimSpace(string(raw)) == id {
-		return os.Remove(active)
+		return active.remove()
 	}
 	return nil
 }
@@ -3285,7 +3210,8 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	if derr != nil {
 		return fail(derr.status, derr.code, derr.msg)
 	}
-	var newStatus, oldStatus, newBody, active string
+	var newStatus, oldStatus, newBody string
+	var active rootLoc
 	switch kind {
 	case "status":
 		var isStr bool
@@ -3310,7 +3236,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	}
 	liveDocMu.Lock()
 	defer liveDocMu.Unlock()
-	raw, rerr := os.ReadFile(target)
+	raw, rerr := target.read()
 	if errors.Is(rerr, os.ErrNotExist) {
 		return fail(http.StatusNotFound, "not_found", "that ticket has no ticket.md in its worktree")
 	}
@@ -3363,7 +3289,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	}
 	var werr error
 	if updated != text {
-		werr = atomicWriteFile(target, data)
+		werr = target.atomicWrite(data)
 	}
 	if werr == nil && kind == "status" {
 		werr = liveSetActive(active, id, newStatus)
@@ -3689,18 +3615,13 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	if !isWorktree {
 		return nil, false
 	}
-	tickets := filepath.Join(cwdReal, ".tickets")
+	// t-2800: the worktree is the root, so a .tickets or ticket folder linked out of it is refused at the read
 	read := func(rel string) any {
-		p := filepath.Join(tickets, filepath.FromSlash(rel))
-		if r, err := filepath.Rel(tickets, p); err != nil || strings.HasPrefix(r, "..") {
+		clean := filepath.Clean(filepath.FromSlash(rel))
+		if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
 			return nil
 		}
-		if resolved, err := filepath.EvalSymlinks(p); err == nil {
-			if r2, err2 := filepath.Rel(tickets, resolved); err2 != nil || strings.HasPrefix(r2, "..") {
-				return nil
-			}
-		}
-		b, err := os.ReadFile(p)
+		b, err := (rootLoc{dir: cwdReal, sub: ".tickets", rel: clean}).read()
 		if err != nil {
 			return nil
 		}
@@ -3709,7 +3630,7 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	// t-e371: + the gates' reports, which the Sprint progress card reads for a verdict no event recorded
 	out := map[string]any{}
 	folder := false
-	if fi, err := os.Stat(filepath.Join(tickets, ticketID)); err == nil && fi.IsDir() {
+	if fi, err := (rootLoc{dir: cwdReal, sub: ".tickets", rel: ticketID}).stat(); err == nil && fi.IsDir() {
 		folder = true
 	}
 	for _, slug := range []string{"plan", "acceptance", "spec-review", "review-notes", "eval-report"} {
@@ -3720,7 +3641,7 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 		}
 	}
 	var handoff any
-	if b, err := os.ReadFile(filepath.Join(cwdReal, "HANDOFF.md")); err == nil {
+	if b, err := (rootLoc{dir: cwdReal, rel: "HANDOFF.md"}).read(); err == nil {
 		handoff = string(b)
 	}
 	out["handoff"] = handoff
@@ -5591,12 +5512,14 @@ func serveStatic(w http.ResponseWriter, r *http.Request, name string) {
 		http.NotFound(w, r)
 		return
 	}
-	real, err := filepath.EvalSymlinks(filepath.Join(dir, name))
-	if err != nil || real != filepath.Join(dir, name) {
+	// t-2800: a plain file in static/ (no link at all), read through the folder's os.Root
+	loc := rootLoc{dir: dir, rel: name}
+	if fi, err := loc.lstat(); err != nil || !fi.Mode().IsRegular() {
 		http.NotFound(w, r)
 		return
 	}
-	if fi, err := os.Stat(real); err != nil || !fi.Mode().IsRegular() {
+	body, err := loc.read()
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
@@ -5605,7 +5528,7 @@ func serveStatic(w http.ResponseWriter, r *http.Request, name string) {
 		ctype = "text/javascript; charset=utf-8"
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	serveFile(w, real, ctype)
+	serveBytes(w, body, ctype)
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {
@@ -5614,6 +5537,11 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	serveBytes(w, body, contentType)
+}
+
+// serveBytes is serveFile for bytes a caller read through an os.Root (t-2800).
+func serveBytes(w http.ResponseWriter, body []byte, contentType string) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -5838,8 +5766,9 @@ func themeCheck(data any) (userTheme, string) {
 }
 
 // themeRead: one directory entry -> the theme, or a reason. Checks run in server.py's order.
-func themeRead(path string) (userTheme, string) {
-	st, err := os.Lstat(path)
+func themeRead(dir, name string) (userTheme, string) {
+	loc := rootLoc{dir: dir, rel: name} // t-2800: read through the themes folder's os.Root
+	st, err := loc.lstat()
 	if err != nil {
 		return userTheme{}, "cannot be read"
 	}
@@ -5849,7 +5778,7 @@ func themeRead(path string) (userTheme, string) {
 	if !st.Mode().IsRegular() {
 		return userTheme{}, "not a regular file"
 	}
-	f, err := themeOpen(path)
+	f, err := loc.openNonblock()
 	if err != nil {
 		return userTheme{}, "cannot be read"
 	}
@@ -5943,7 +5872,7 @@ func listThemes() themeList {
 			out.Rejected = append(out.Rejected, rejectedTheme{n, "file name must be lowercase letters, digits and dashes (at most 30)"})
 			continue
 		}
-		t, reason := themeRead(filepath.Join(d, n))
+		t, reason := themeRead(d, n)
 		if reason != "" {
 			out.Rejected = append(out.Rejected, rejectedTheme{n, reason})
 			continue

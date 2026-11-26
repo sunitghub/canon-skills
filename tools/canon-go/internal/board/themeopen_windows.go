@@ -9,3 +9,6 @@ import "os"
 func themeOpen(path string) (*os.File, error) {
 	return os.Open(path)
 }
+
+// nonblockFlag: none on Windows (rootLoc.openNonblock, t-2800).
+const nonblockFlag = 0

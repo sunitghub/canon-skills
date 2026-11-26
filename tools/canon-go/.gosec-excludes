@@ -6,7 +6,7 @@ G122 path from a variable in a walk callback; repo-path reads are guarded (Lstat
 G204 exec with a variable command or args; canon always passes separate args and never runs a shell
 G301 0755 directories under the project or canon's state dir, readable like git's own
 G302 0644 logs and settings under the project or canon's state dir, readable like git's own; secrets are written 0600
-G304 path from a variable; repo-path reads are guarded (t-ca73) and slice 3 (os.Root) moves root-served files, not all of these
+G304 path from a variable; repo-path reads are guarded (t-ca73); files the board serves under a root open through os.Root (t-2800)
 G306 0644 project files (tickets, docs, settings), readable like git's own; secrets are written 0600
 G702 taint form of G204: the same exec calls with separate args, no shell
-G703 taint form of G304: the same path reads, guarded per t-ca73
+G703 taint form of G304: the same path reads, guarded per t-ca73; board root-served files through os.Root (t-2800)

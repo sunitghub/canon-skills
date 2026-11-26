@@ -3,6 +3,7 @@ package board
 import (
 	"bytes"
 	"canon/internal/machine"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"go/ast"
@@ -427,6 +428,22 @@ func TestResolveAppHTMLFallsBackToSourceWorkingDir(t *testing.T) {
 	}
 }
 
+// t-2800: safeTicketDocIn is the lexical check; a link that leaves the tickets folder is refused by the os.Root the
+// rootLoc opens at the read or write. These are the old containedAfterSymlinks cases, graded at the I/O.
+func ticketDocRead(docFile string, exts ...string) ([]byte, bool) {
+	loc, ok := safeTicketDocIn(docFile, "", exts...)
+	if !ok {
+		return nil, false
+	}
+	b, err := loc.read()
+	return b, err == nil
+}
+
+func ticketDocWrite(docFile string, data string) bool {
+	loc, ok := safeTicketDocIn(docFile, "")
+	return ok && loc.write([]byte(data)) == nil
+}
+
 func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
 	setupTestProject(t)
 	outsideDir := t.TempDir()
@@ -441,8 +458,8 @@ func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDocIn("t-symv/visuals/evil.png", "", ".png"); ok {
-		t.Fatal("safeTicketDoc accepted a symlink escaping ticketsDir")
+	if _, ok := ticketDocRead("t-symv/visuals/evil.png", ".png"); ok {
+		t.Fatal("a ticket doc read followed a symlink escaping ticketsDir")
 	}
 }
 
@@ -451,12 +468,8 @@ func TestSafeTicketDocAcceptsLegitimateNestedPath(t *testing.T) {
 	realFile := filepath.Join(ticketsDir, "t-legt", "visuals", "real.png")
 	writeFile(t, realFile, "\x89PNG\r\n\x1a\n")
 
-	p, ok := safeTicketDocIn("t-legt/visuals/real.png", "", ".png")
-	if !ok {
-		t.Fatal("safeTicketDoc rejected a legitimate nested real file")
-	}
-	if p != realFile {
-		t.Fatalf("safeTicketDoc = %q, want %q", p, realFile)
+	if b, ok := ticketDocRead("t-legt/visuals/real.png", ".png"); !ok || string(b) != "\x89PNG\r\n\x1a\n" {
+		t.Fatalf("a legitimate nested real file was not read (ok=%v %q)", ok, b)
 	}
 }
 
@@ -466,8 +479,8 @@ func TestSafeTicketDocFeatureExtScoping(t *testing.T) {
 	setupTestProject(t)
 	realFile := filepath.Join(ticketsDir, "t-feat", "features", "spec.feature")
 	writeFile(t, realFile, "Scenario: x\n  Given a\n")
-	if p, ok := safeTicketDocIn("t-feat/features/spec.feature", "", ".feature"); !ok || p != realFile {
-		t.Fatalf("safeTicketDoc rejected a legitimate nested .feature (ok=%v p=%q)", ok, p)
+	if b, ok := ticketDocRead("t-feat/features/spec.feature", ".feature"); !ok || string(b) != "Scenario: x\n  Given a\n" {
+		t.Fatalf("a legitimate nested .feature was not read (ok=%v %q)", ok, b)
 	}
 
 	tm := filepath.Join(ticketsDir, "t-feat", "ticket.md")
@@ -481,8 +494,8 @@ func TestSafeTicketDocFeatureExtScoping(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(ticketsDir, "t-feat", "features", "evil.feature")); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := safeTicketDocIn("t-feat/features/evil.feature", "", ".feature"); ok {
-		t.Fatal("safeTicketDoc accepted a symlink .feature escaping ticketsDir")
+	if _, ok := ticketDocRead("t-feat/features/evil.feature", ".feature"); ok {
+		t.Fatal("a .feature read followed a symlink escaping ticketsDir")
 	}
 }
 
@@ -492,19 +505,17 @@ func TestSafeTicketDocAllowsFreshWriteWithNonexistentLeaf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, ok := safeTicketDocIn("t-newf/plan.md", "")
-	if !ok {
-		t.Fatal("safeTicketDoc rejected a fresh write to a not-yet-created file")
+	if !ticketDocWrite("t-newf/plan.md", "fresh") {
+		t.Fatal("a fresh write to a not-yet-created file was refused")
 	}
-	if p != filepath.Join(ticketsDir, "t-newf", "plan.md") {
-		t.Fatalf("safeTicketDoc = %q, unexpected path", p)
+	if b, err := os.ReadFile(filepath.Join(ticketsDir, "t-newf", "plan.md")); err != nil || string(b) != "fresh" {
+		t.Fatalf("fresh write landed wrong: %q %v", b, err)
 	}
 }
 
 // A single-level "check only the immediate parent" fix would miss this: the
 // leaf AND its immediate parent both don't exist yet, but an EXISTING
-// symlinked directory two levels up already escapes ticketsDir. The guard
-// must walk up to the deepest existing ancestor, not just one level.
+// symlinked directory two levels up already escapes ticketsDir.
 func TestSafeTicketDocRejectsSymlinkEscapeTwoLevelsUpWithNonexistentLeaf(t *testing.T) {
 	setupTestProject(t)
 	outsideDir := t.TempDir()
@@ -513,16 +524,16 @@ func TestSafeTicketDocRejectsSymlinkEscapeTwoLevelsUpWithNonexistentLeaf(t *test
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDocIn("evil-symlink-dir/newticket/newfile.md", ""); ok {
-		t.Fatal("safeTicketDoc accepted a path through an existing symlinked ancestor two levels up, with a nonexistent leaf and parent")
+	if ticketDocWrite("evil-symlink-dir/newticket/newfile.md", "x") {
+		t.Fatal("a write went through an existing symlinked ancestor two levels up, with a nonexistent leaf and parent")
+	}
+	if entries, _ := os.ReadDir(outsideDir); len(entries) != 0 {
+		t.Fatalf("the refused write created %d entries outside ticketsDir", len(entries))
 	}
 }
 
-// A dangling symlink (the symlink itself exists, but its target does not)
-// makes filepath.EvalSymlinks fail — a fix that treats resolution failure as
-// "nothing to escape through" would incorrectly allow this, even though
-// os.WriteFile on such a path creates the target on write, landing outside
-// ticketsDir the moment something is actually written.
+// A dangling symlink (the symlink itself exists, but its target does not):
+// a write through it would create the target outside ticketsDir.
 func TestSafeTicketDocRejectsDanglingSymlinkAtLeaf(t *testing.T) {
 	setupTestProject(t)
 	outsideDir := t.TempDir()
@@ -534,8 +545,11 @@ func TestSafeTicketDocRejectsDanglingSymlinkAtLeaf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDocIn("t-dang/evil.md", ""); ok {
-		t.Fatal("safeTicketDoc accepted a dangling symlink whose target lies outside ticketsDir")
+	if ticketDocWrite("t-dang/evil.md", "x") {
+		t.Fatal("a write went through a dangling symlink whose target lies outside ticketsDir")
+	}
+	if _, err := os.Lstat(filepath.Join(outsideDir, "not-created-yet.md")); err == nil {
+		t.Fatal("the refused write created the dangling link's outside target")
 	}
 }
 
@@ -545,12 +559,96 @@ func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p, ok := safeTicketDocIn("t-deep/sub/brandnew.md", "")
-	if !ok {
-		t.Fatal("safeTicketDoc rejected a fresh write through a real, existing, non-symlinked parent chain")
+	if !ticketDocWrite("t-deep/sub/brandnew.md", "deep") {
+		t.Fatal("a fresh write through a real, existing, non-symlinked parent chain was refused")
 	}
-	if p != filepath.Join(ticketsDir, "t-deep", "sub", "brandnew.md") {
-		t.Fatalf("safeTicketDoc = %q, unexpected path", p)
+	if b, err := os.ReadFile(filepath.Join(ticketsDir, "t-deep", "sub", "brandnew.md")); err != nil || string(b) != "deep" {
+		t.Fatalf("fresh write landed wrong: %q %v", b, err)
+	}
+}
+
+// t-2800: os.Root refuses an absolute link even when its target is inside the tickets folder (the old guard allowed
+// it); a relative in-root link is still followed.
+func TestTicketDocAbsoluteInRootLinkRefusedRelativeServed(t *testing.T) {
+	setupTestProject(t)
+	writeFile(t, filepath.Join(ticketsDir, "t-lnk", "plan.md"), "plan")
+	if err := os.Symlink(filepath.Join(ticketsDir, "t-lnk", "plan.md"), filepath.Join(ticketsDir, "t-lnk", "abs.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("plan.md", filepath.Join(ticketsDir, "t-lnk", "rel.md")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ticketDocRead("t-lnk/abs.md"); ok {
+		t.Fatal("an absolute in-root link was read (os.Root refuses it)")
+	}
+	if b, ok := ticketDocRead("t-lnk/rel.md"); !ok || string(b) != "plan" {
+		t.Fatalf("a relative in-root link was not read (ok=%v %q)", ok, b)
+	}
+}
+
+// t-2800: the swap test. afterPathCheck runs after the path check and before the I/O; it swaps the ticket folder for a
+// link to an outside folder. Every route must refuse, leave the outside canary as it was and create nothing outside.
+// Falsifier: the I/O back on os.* with the joined path (rootLoc.do opening nothing) makes these writes land outside.
+func swapTicketFolderAfterCheck(t *testing.T, folder string) string {
+	t.Helper()
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "plan.md"), "canary")
+	writeFile(t, filepath.Join(outside, "visuals", "a.png"), "canary")
+	t.Cleanup(func() { afterPathCheck = nil })
+	swapped := false
+	afterPathCheck = func() {
+		if swapped {
+			return
+		}
+		swapped = true
+		if err := os.Rename(folder, folder+".moved"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, folder); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return outside
+}
+
+func assertOutsideUntouched(t *testing.T, outside string) {
+	t.Helper()
+	if b, _ := os.ReadFile(filepath.Join(outside, "plan.md")); string(b) != "canary" {
+		t.Fatalf("the outside canary changed: %q", b)
+	}
+	var n int
+	filepath.WalkDir(outside, func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() {
+			n++
+		}
+		return nil
+	})
+	if n != 2 {
+		t.Fatalf("files outside the root: %d, want the 2 canaries", n)
+	}
+}
+
+func TestTicketDocSwapAfterCheckRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func() bool // true when the I/O succeeded
+	}{
+		{"doc write", func() bool { return writeDoc("t-swap/plan.md", "pwned", "") }},
+		{"doc read", func() bool { c, _, ok := readDocWithEtag("t-swap/plan.md", ""); return ok && c == "canary" }},
+		{"visual write", func() bool {
+			r := writeVisual("t-swap", "a.png", base64.StdEncoding.EncodeToString([]byte("pwned")), "")
+			return r["ok"] == true
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupTestProject(t)
+			writeFile(t, filepath.Join(ticketsDir, "t-swap", "plan.md"), "mine")
+			outside := swapTicketFolderAfterCheck(t, filepath.Join(ticketsDir, "t-swap"))
+			if tc.run() {
+				t.Fatalf("%s went through a ticket folder swapped for a link out", tc.name)
+			}
+			assertOutsideUntouched(t, outside)
+		})
 	}
 }
 
@@ -2578,5 +2676,103 @@ func TestManualWritesLikeDemo(t *testing.T) {
 	}
 	if writeBoolField("t-zzzz", "manual", true, "") {
 		t.Fatalf("an unknown ticket must not report success")
+	}
+}
+
+// t-2800: the live worktree write (writeLiveDoc's target) after liveTargetFrom's Lstat policy passed: the ticket folder
+// swapped for a link out of the worktree is refused by the nested root.
+func TestLiveDocSwapAfterCheckRefused(t *testing.T) {
+	wt := t.TempDir()
+	writeFile(t, filepath.Join(wt, ".tickets", "t-swap", "plan.md"), "mine")
+	realWT, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, derr := liveDocTargetFrom("t-swap/plan.md", filepath.Join(realWT, ".tickets", "t-swap"), wt)
+	if derr != nil {
+		t.Fatalf("a plain worktree ticket folder was refused: %+v", derr)
+	}
+	outside := swapTicketFolderAfterCheck(t, filepath.Join(wt, ".tickets", "t-swap"))
+	if err := target.atomicWrite([]byte("pwned")); err == nil {
+		t.Fatal("the live doc write went through a ticket folder swapped for a link out of the worktree")
+	}
+	assertOutsideUntouched(t, outside)
+}
+
+// t-2800: the board routes that read or write a request path under a root do it through rootLoc, never os.* on a
+// joined path. Protects the doc, image, feature, visual, ticket, ACTIVE, screenshot, live, cockpit, static and theme
+// routes from a later edit that brings back a check-then-use window.
+func TestRootIOGuardedFunctionsUseNoOSFileCalls(t *testing.T) {
+	guarded := map[string]bool{
+		"writeDoc": true, "readDocWithEtag": true, "dedupeVisualName": true, "writeVisual": true, "legacyDocTarget": true,
+		"replaceTicket": true, "findTicketPath": true, "updateActive": true, "liveTargetFrom": true, "liveDocEtagOf": true,
+		"writeLiveDoc": true, "liveActivePath": true, "liveSetActive": true, "writeLiveTicket": true, "cockpitDocs": true,
+		"serveStatic": true, "themeRead": true,
+	}
+	// Lstat/Stat stay allowed: liveTargetFrom's plain-folder policy is an Lstat on purpose; it is not the I/O.
+	banned := map[string]bool{"ReadFile": true, "WriteFile": true, "Open": true, "OpenFile": true, "MkdirAll": true,
+		"Rename": true, "CreateTemp": true, "Remove": true}
+	f, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	var bad []string
+	inspectOS := func(owner string, n ast.Node) {
+		ast.Inspect(n, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok {
+				if id, ok := sel.X.(*ast.Ident); ok && id.Name == "os" && banned[sel.Sel.Name] {
+					bad = append(bad, owner+": os."+sel.Sel.Name)
+				}
+			}
+			return true
+		})
+	}
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		if guarded[fd.Name.Name] {
+			seen[fd.Name.Name] = true
+			inspectOS(fd.Name.Name, fd.Body)
+		}
+	}
+	// the image, feature and screenshot routes are inline in the handler: the bodies of their if-blocks
+	ast.Inspect(f, func(n ast.Node) bool {
+		is, ok := n.(*ast.IfStmt)
+		if !ok {
+			return true
+		}
+		hdr := []ast.Node{is.Cond}
+		if is.Init != nil {
+			hdr = append(hdr, is.Init) // `if m := apiTicketImageRe.FindStringSubmatch(path); m != nil`
+		}
+		for _, h := range hdr {
+			ast.Inspect(h, func(c ast.Node) bool {
+				if id, ok := c.(*ast.Ident); ok {
+					switch id.Name {
+					case "apiTicketImageRe", "apiTicketFeatureRe", "screenshotPathRe":
+						seen[id.Name] = true
+						inspectOS(id.Name+" route", is.Body)
+					}
+				}
+				return true
+			})
+		}
+		return true
+	})
+	for name := range guarded {
+		if !seen[name] {
+			t.Errorf("guarded function %s not found in main.go (renamed? update this list)", name)
+		}
+	}
+	for _, re := range []string{"apiTicketImageRe", "apiTicketFeatureRe", "screenshotPathRe"} {
+		if !seen[re] {
+			t.Errorf("route %s not found in main.go", re)
+		}
+	}
+	if len(bad) > 0 {
+		t.Fatalf("os file calls on a guarded path (use rootLoc): %v", bad)
 	}
 }

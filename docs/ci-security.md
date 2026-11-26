@@ -199,7 +199,7 @@ A rule is excluded for the whole module only when one reason holds at every site
 row in the table below: `tests/go-checks.sh` fails when one is missing. A single finding is not excluded. Instead it gets
 `// #nosec G<nnn> -- <reason>` (gosec) or `//lint:ignore <check> <reason>` (staticcheck) on its own line. G112 (a server
 without `ReadHeaderTimeout`) is never excluded: both servers set it, and it is the plant that proves the gosec step can fail.
-Reviewed with the user on 2026-11-24; the counts are as of then.
+Reviewed with the user on 2026-11-24; the counts are as of then, except G304 and G703, re-measured 2026-11-26 (t-2800).
 
 | Rule | Sites | Why it is excluded |
 |---|---|---|
@@ -208,10 +208,10 @@ Reviewed with the user on 2026-11-24; the counts are as of then.
 | G204 | 43 | exec with a variable command or args. canon always passes separate args and never runs a shell. |
 | G301 | 26 | 0755 directories under the project or canon's state dir, readable like git's own. |
 | G302 | 4 | 0644 logs and settings, readable like git's own. Secrets are written 0600. |
-| G304 | 115 | A path from a variable. Repo-path reads are guarded (t-ca73). The os.Root slice (t-9a2b's follow-up) moves the files the board serves under a root, not all of these. |
+| G304 | 107 | A path from a variable. Repo-path reads are guarded (t-ca73). The files the board serves or writes under a root (ticket docs, images, visuals, live worktree docs, static, themes) open through `os.Root` (t-2800); the rest are canon's own state, logs and scan reads. |
 | G306 | 20 | 0644 project files (tickets, docs, settings), readable like git's own. Secrets are written 0600. |
 | G702 | 10 | The taint form of G204: the same exec calls with separate args and no shell (all 10 read). |
-| G703 | 83 | The taint form of G304: the same path reads, guarded per t-ca73. |
+| G703 | 57 | The taint form of G304: the same path reads, guarded per t-ca73; the board's root-served files open through `os.Root` (t-2800). |
 
 Line-level exceptions (each reason sits on the line itself):
 
