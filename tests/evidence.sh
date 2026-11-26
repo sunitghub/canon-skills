@@ -912,7 +912,7 @@ late src/p.txt tests/a.sh; only " --only tests/a.sh --only tests/d.sh"; mev; ass
 late src/q.txt; mev; assert_contains "$out" "  hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only -- scripts/test.sh --only tests/b.sh --only tests/c.sh --only tests/d.sh"
 only " --only tests/b.sh" test-sh-only.log; mev
 assert_contains "$out" "  hint: to cover it, stamp the missing suites: sprint evidence stamp $ID test-sh-only2 -- scripts/test.sh --only tests/c.sh --only tests/d.sh"
-only " --only tests/c.sh --only tests/d.sh" test-sh-only2.log; mev; assert_contains "$(mline full.log)" "covered full.log exit=0"; [[ "$out" != *"hint:"* ]] || fail "evidence: t-ef9c: a covered log carries a hint: $out"
+only " --only tests/c.sh --only tests/d.sh" test-sh-only2.log; mev; assert_contains "$(mline full.log)" "covered full.log exit=0"; [[ "$out" != *"hint: to cover it"* ]] || fail "evidence: t-ef9c: a covered log carries a re-run hint: $out"
 # stays stale: one selected suite missing (C3), the pin missing, an ALL path, an unmapped path, a self-edit of the map, its reader or the pins
 MSG="a re-run missing tests/c.sh"; late src/q.txt; only " --only tests/b.sh --only tests/d.sh"; mstale
 MSG="a re-run missing the pin"; late src/q.txt; only " --only tests/b.sh --only tests/c.sh"; mstale
@@ -950,5 +950,54 @@ got_sel="$(cd "$ROOT" && CANON_SUITE_RUNNER="$ROOT/scripts/test.sh" bash tools/c
 [[ "$(grep -c $'^ALL\t' <<< "$got_sel" || true)" -eq 0 ]] || fail "evidence: t-ef9c: a --list label fell to ALL under the runner-text labels: $(grep $'^ALL\t' <<< "$got_sel")"
 while IFS= read -r l; do grep -qxF -- "$l" <<< "$(awk -F'\t' '$1 == "LABEL" { print $2 }' <<< "$got_sel")" || fail "evidence: t-ef9c: runner-text labels miss --list label $l"; done <<< "$want_labels"
 echo "evidence: a late fix's full-suite log is covered by re-runs of exactly the suites tests/suite-map.txt selects (t-ef9c)"
+
+# --- t-b5a6: a full suite is stamped as test-sh, the one name the close's test-stamp reads ------------------------------------------
+# prod path: `sprint evidence stamp` (the close's full-suite stamp) and `sprint check-evidence`. A stub board records events, so "no event"
+# is proved against a stub that does record the accepted stamp.
+reset_repo
+cat > "$WORK/evboard" <<'STUB'
+#!/usr/bin/env bash
+if [[ "${1-}" == --help ]]; then echo "event <kind>"; exit 0; fi
+printf '%s\n' "$*" >> "${0%/*}/events.txt"
+STUB
+chmod +x "$WORK/evboard"
+evb() { set +e; out="$(cd "$REPO" && SPRINT_CHECK_BIN="$WORK/evboard" bash "$EV" "$@" 2>&1)"; code=$?; set -e; }
+for cmd in "scripts/test.sh" "bash scripts/test.sh" "./scripts/test.sh" "scripts/test.sh --jobs 4"; do
+  for name in full-suite test-sh-only suite; do
+    rm -f "$WORK/events.txt"; before="$(snap)"
+    # shellcheck disable=SC2086
+    evb stamp "$ID" "$name" -- $cmd
+    assert_eq 125 "$code"
+    assert_contains "$out" "evidence: a full-suite run is stamped as test-sh (the close's test-stamp reads only test-sh.log): sprint evidence stamp $ID test-sh -- $cmd"
+    assert_eq "$before" "$(snap)"; [[ ! -e "$ED/$name.log" ]] || fail "evidence: t-b5a6: a refused stamp wrote $name.log"
+    [[ ! -e "$WORK/events.txt" ]] || fail "evidence: t-b5a6: a refused stamp logged an event: $(cat "$WORK/events.txt")"
+  done
+done
+# accepted: test-sh itself, a --only re-run under any name,
+# a wrapped runner (not full_re) and any other command
+mkdir -p scripts; printf '#!/usr/bin/env bash\necho suite "$@"\n' > scripts/test.sh; chmod +x scripts/test.sh; git add scripts; git commit -qm runner
+rm -f "$WORK/events.txt"
+evb stamp "$ID" test-sh -- scripts/test.sh; assert_eq 0 "$code"; assert_file_exists "$ED/test-sh.log"
+assert_contains "$(cat "$WORK/events.txt")" "name=test-sh"   # the stub records events: the refusals above logged none
+evb stamp "$ID" test-sh-only -- scripts/test.sh --only tests/a.sh; assert_eq 0 "$code"; assert_file_exists "$ED/test-sh-only.log"
+evb stamp "$ID" wrapped -- bash -c scripts/test.sh; assert_eq 0 "$code"; assert_file_exists "$ED/wrapped.log"
+evb stamp "$ID" other -- true; assert_eq 0 "$code"; assert_file_exists "$ED/other.log"
+echo "evidence: a full suite under any name but test-sh is refused before it runs; other stamps run (t-b5a6)"
+
+# check: a reusable full-suite log under another name gets the hint; none with test-sh.log, or for a stale or failing log
+H="$(git rev-parse HEAD)"; T="2026-11-26T10:00:00Z"
+hint="  hint: test-stamp reads only test-sh.log: stamp the full suite as test-sh: sprint evidence stamp $ID test-sh -- scripts/test.sh"
+rm -rf "$ED"; mkdir -p "$ED"; printf 'HEAD %s %s\n$ scripts/test.sh --jobs 2\nok\nexit 0\n' "$H" "$T" > "$ED/full-suite.log"
+ev check "$ID"; assert_eq 0 "$code"
+assert_eq "$hint" "$(printf '%s\n' "$out" | grep -A1 '^fresh full-suite.log exit=0 ' | sed -n 2p)"   # right after its own line, which is unchanged
+printf 'HEAD %s %s\n$ scripts/test.sh --only tests/a.sh\nexit 0\n' "$H" "$T" > "$ED/only.log"
+ev check "$ID"; assert_count 1 "hint: test-stamp reads only" <(printf '%s\n' "$out")   # a --only re-run is not the full suite
+cp "$ED/full-suite.log" "$ED/test-sh.log"; ev check "$ID"; [[ "$out" != *"hint: test-stamp"* ]] || fail "evidence: t-b5a6: hint printed although test-sh.log exists: $out"
+rm "$ED/test-sh.log"; printf 'HEAD %s %s\n$ scripts/test.sh\nFAILED: tests/a.sh\nexit 1\n' "$H" "$T" > "$ED/full-suite.log"
+ev check "$ID"; [[ "$out" != *"hint: test-stamp"* ]] || fail "evidence: t-b5a6: hint printed for a failing log: $out"
+printf 'HEAD %s %s\n$ scripts/test.sh\nok\nexit 0\n' "$C1" "$T" > "$ED/full-suite.log"
+ev check "$ID"; [[ "$(printf '%s\n' "$out" | grep '^[a-z]* full-suite.log')" == stale* ]] || fail "evidence: t-b5a6: setup: the old log is not stale: $out"
+[[ "$out" != *"hint: test-stamp"* ]] || fail "evidence: t-b5a6: hint printed for a stale log: $out"
+echo "evidence: check hints a full suite stamped under another name only while it is reusable and test-sh.log is missing (t-b5a6)"
 
 echo "evidence: ok"

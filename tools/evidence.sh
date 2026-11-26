@@ -50,6 +50,10 @@ die() { echo "evidence: $*" >&2; exit 2; }
 
 id_re='^t-[a-z0-9]{4}$'
 LATE_STAMPS="mutant-sweep test-sh board-spec"   # t-c923: the costly stamps; one taken before the reviewer is stale once its fixes land (t-07b9 measured 6.2 h of 18.8 h)
+# t-2ce8: a full-suite log (`scripts/test.sh`, optionally `--jobs N`) and a suite re-run (the same plus one or more `--only <label>`);
+# t-b5a6: stamp refuses a full suite under any name but test-sh, the one name the close's test-stamp reads
+full_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?$'
+only_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?( --only [A-Za-z0-9._/-]+)+$'
 mode="${1-}"
 [[ "$mode" == stamp || "$mode" == check || "$mode" == scope-audit || "$mode" == neutral ]] || usage
 shift
@@ -237,6 +241,10 @@ if [[ "$mode" == stamp ]]; then
   [[ ! -L "$log" ]] || refuse "$log is a symlink"
   [[ ! -e "$log" || -f "$log" ]] || refuse "$log is not a plain file"
   wt_write_ok "$log" || refuse "a link or junction is on the path to $log in this worktree (t-f7e6)"
+  cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
+  if [[ "$name" != test-sh && "\$ $cmd_text" =~ $full_re ]]; then
+    refuse "a full-suite run is stamped as test-sh (the close's test-stamp reads only test-sh.log): sprint evidence stamp $id test-sh -- $cmd_text"
+  fi
   if tracked_dirty; then refuse "tracked files differ from HEAD: commit first, because a stamp names the commit that was tested"; fi
   canon_setup_notes
   head_sha="$(git -C "$root" rev-parse HEAD)"
@@ -246,7 +254,6 @@ if [[ "$mode" == stamp ]]; then
   fi
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
-  cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
   os="$(machine_line)" && [[ -n "$os" ]] || os="$(uname -srm 2>/dev/null)" || os=unknown   # t-c542: canon-go machine, else uname
   printf 'HEAD %s %s\n$ %s\n# on %s; bash %s.%s.%s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" "${os:-unknown}" \
     "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" "${BASH_VERSINFO[2]}" > "$tmp"
@@ -434,9 +441,6 @@ covered_by() {
   return 0   # the caller assigns this under set -e
 }
 
-# t-2ce8: a full-suite log (`scripts/test.sh`, optionally `--jobs N`) and a suite re-run (the same plus one or more `--only <label>`)
-full_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?$'
-only_re='^\$ (bash )?(\./)?scripts/test\.sh( --jobs [1-9][0-9]{0,2})?( --only [A-Za-z0-9._/-]+)+$'
 # is_suite <label> — 0 when the graded head's scripts/test.sh runs <label> as a suite: a `"$ROOT/<label>"` line of tests=( or a
 # `suite <label> ` line. Read from git, never run: check executes nothing from the tree it judges.
 is_suite() {
@@ -547,6 +551,10 @@ for i in "${!FILES[@]}"; do
       IFS='|' read -r a what n <<< "$g"
       LINES[$i]="covered $(safe "${FILES[$i]##*/}") exit=${CODES[$i]} (HEAD ${STAMPS[$i]}; $what; re-run at ${graded:0:7} by $(safe "$a") over $n suite(s))${SHOWNS[$i]}"
     fi
+  fi
+  # t-b5a6: a full suite the evaluator could reuse, under a name the close's test-stamp does not read
+  if [[ ! -e "$edir/test-sh.log" ]] && { [[ "${KINDS[$i]}" == fresh && "${CODES[$i]}" == 0 ]] || [[ "${LINES[$i]}" == "covered "* ]]; } && [[ "$(line2_of "${FILES[$i]}")" =~ $full_re ]]; then
+    LINES[$i]+=$'\n'"  hint: test-stamp reads only test-sh.log: stamp the full suite as test-sh: sprint evidence stamp $id test-sh -- scripts/test.sh"
   fi
   echo "${LINES[$i]}"
 done
