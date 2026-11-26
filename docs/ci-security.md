@@ -166,8 +166,8 @@ for a repo, know who can get at that key:
   `claude -p` with `--setting-sources user --strict-mcp-config`, in CI and on your machine alike.
   - Before this, in a probe on the pinned CLI (2.1.309), four PR-controlled files ran a command with the key in its
     environment: a hook in `.claude/settings.json`, a hook in `.claude/settings.local.json`, an `apiKeyHelper`, and an
-    `.mcp.json` server with `enableAllProjectMcpServers`. `.claude/agents` loaded too. With the two flags, none of
-    them ran or loaded. The probe is `.tickets/t-4e5c/evidence/probe.sh`; re-run it when you bump the CLI pin.
+    `.mcp.json` server with `enableAllProjectMcpServers`. With the two flags, none of
+    them ran, and a PR's `.claude/agents` file did not load either. The probe is `.tickets/t-4e5c/evidence/probe.sh`; re-run it when you bump the CLI pin.
   - A project's `env` setting is gone with them: a headless run no longer takes a proxy or model from
     `.claude/settings.json`. Your own `~/.claude/settings.json` still applies.
   - `.claude/skills` is replaced with canon's own in CI (the template's "Make canon skills resolvable" step).
