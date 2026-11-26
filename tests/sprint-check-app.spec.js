@@ -15949,8 +15949,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-6' }, { old: 'claude-haiku-4-5-20251001', new: 'claude-haiku-5-5' }]);
       const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
       expect(reg.defaults.light.claude).toBe('claude-haiku-5-6');
-      await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-admin').click();   // NOTICED: the pickers' options refresh only on load
-      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.6');
+      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.6');   // no reload: Apply refreshes the pickers' options (t-9bc6)
       const h = id => reg.models.anthropic.find(m => m.id === id);
       expect([h('claude-haiku-4-5-20251001').legacy, h('claude-haiku-5-5').legacy, h('claude-haiku-5-6').legacy]).toEqual([true, true, undefined]);
     } finally {
@@ -15977,8 +15976,33 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
       expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-7' }]);
       expect((await (await page.request.get(BASE + '/api/admin/model-tiers')).json()).defaults.light.claude).toBe('claude-haiku-5-7');
-      await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-admin').click();
-      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.7');
+      await expect(page.locator('#mt-step-light select option:checked')).toHaveText('Claude Haiku 5.7');   // no reload (t-9bc6)
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  // t-9bc6 (folded from the t-f094 review). Protects POST /api/admin/model-tiers/apply from Admin > Model Tiers: a retargeted add and a
+  // ticked Retire row naming the same old model send one pair for it, the add's (mtPairs' first-wins), never two the board would refuse.
+  test('Model Tiers: a retargeted add and a Retire row on the same old model send one pair, the add\'s (t-9bc6)', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      const a1 = { provider: 'anthropic', id: 'claude-haiku-5-6', name: 'Claude Haiku 5.6', input_price: 0.1, output_price: 0.5, price_known: true, replaces: 'claude-haiku-5-5', replaces_name: 'Claude Haiku 5.5' };
+      const a2 = { provider: 'anthropic', id: 'claude-haiku-5-7', name: 'Claude Haiku 5.7', input_price: 0.1, output_price: 0.5, price_known: true, replaces: 'claude-haiku-5-6', replaces_name: 'Claude Haiku 5.6' };
+      const retire = { old: 'claude-haiku-5-5', old_name: 'Claude Haiku 5.5', new: 'claude-sonnet-5-5', new_name: 'Claude Sonnet 5.5' };
+      await page.route('**/api/admin/model-tiers/refresh', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify(refreshStub({ add: [a1, a2], retire: [retire], current: [] })) }));
+      let applied = null;
+      await page.route('**/api/admin/model-tiers/apply', async route => { applied = JSON.parse(route.request().postData()); await route.continue(); });
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('#mt-sources .mt-rf-all').click();
+      const prop = page.locator('#mt-proposal .mt-prop');
+      await prop.locator('[data-sel="a:claude-haiku-5-6"]').uncheck();             // 5.7 now lands on 5.5, which the Retire row also names
+      await expect(prop.locator('[data-sel="t:claude-haiku-5-5"]')).toBeChecked();
+      await prop.locator('.mt-prop-apply').click();
+      await expect(page.locator('#mt-proposal .mt-prop')).toHaveCount(0);
+      expect(applied.retire).toEqual([{ old: 'claude-haiku-5-5', new: 'claude-haiku-5-7' }]);
     } finally {
       await restoreModelTiers(page, canonical);
     }
@@ -16008,6 +16032,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await expect(page.locator('.mt-grid .mt-card[data-id="claude-sonnet-5"]')).toHaveCount(0);
       await expect(page.locator('.mt-legacy summary')).toHaveText('Legacy \u00b7 1');
       await expect(page.locator('#mt-step-evaluator select option:checked')).toHaveText('Claude Sonnet 5.5');
+      await expect(page.locator('#mt-step-evaluator select option', { hasText: /^Claude Sonnet 5$/ })).toHaveCount(0);   // the retired model leaves the pickers without a reload (t-9bc6)
       await expect(page.locator('.mt-card[data-id="claude-sonnet-5-5"] .mt-card-id').nth(1)).toContainText('sonnet');
       await expect(page.locator('#mt-alias-alert .mt-alert')).toHaveCount(0);
       const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();

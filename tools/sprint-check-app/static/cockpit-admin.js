@@ -439,7 +439,7 @@ async function mtMove(action,body){
     const res=await mtPost('/api/admin/model-tiers/'+action,body);
     if(res.old){ toast(MT_OLD_BOARD); return false; }
     if(!res.ok){ toast(res.error||"Couldn't change the registry"); await mtLoad(); return false; }
-    mtData=res.data; mtMoving=null; return true;
+    mtData=res.data; mtMoving=null; await mtLoadOptions(); return true;   // a retire makes a model legacy, which the pickers no longer offer
   }catch(e){ toast("Couldn't reach the board"); await mtLoad(); return false; }
 }
 function mtRenderMove(){
@@ -561,7 +561,7 @@ async function mtApply(){
     const res=await mtPost('/api/admin/model-tiers/apply',{add:adds.map(a=>({id:a.id,provider:a.provider,name:a.name,input_price:a.input_price,output_price:a.output_price})),retire});
     if(res.old){ toast(MT_OLD_BOARD); return; }
     if(!res.ok){ toast(res.error||"Couldn't apply"); await mtLoad(); return; }
-    mtData=res.data; mtProp=null; mtSel={}; mtRender(); toast('Saved '+n+' change'+(n===1?'':'s'));
+    mtData=res.data; mtProp=null; mtSel={}; await mtLoadOptions(); mtRender();   // an add or a moved default changes what the pickers offer (t-9bc6) toast('Saved '+n+' change'+(n===1?'':'s'));
   }catch(e){ toast("Couldn't reach the board"); await mtLoad(); }
 }
 async function mtRemoveModel(id){
