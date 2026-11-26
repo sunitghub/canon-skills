@@ -2730,6 +2730,70 @@ func TestLiveDocSwapAfterCheckRefused(t *testing.T) {
 	assertOutsideUntouched(t, outside)
 }
 
+// t-2800: rootLoc.atomicWrite is the live doc, live ticket.md, ACTIVE and tags write. It replaces by rename (a hard
+// link to the old file keeps the old bytes), keeps an existing file's mode, makes a new one 0644, leaves no temp file,
+// and a missing root or nested root is an error, not a write elsewhere (mutation sweep at the t-2800 close).
+func TestRootLocAtomicWriteAndErrors(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "sub", "old.md"), "old")
+	if err := os.Chmod(filepath.Join(dir, "sub", "old.md"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(dir, "sub", "old.md"), filepath.Join(dir, "link.md")); err != nil {
+		t.Fatal(err)
+	}
+	old := rootLoc{dir: dir, sub: "sub", rel: "old.md"}
+	if err := old.atomicWrite([]byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := old.read(); string(b) != "new" {
+		t.Fatalf("atomicWrite wrote %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "link.md")); string(b) != "old" {
+		t.Fatalf("atomicWrite changed the file in place (hard link now %q): it must rename a temp file over it", b)
+	}
+	if fi, _ := os.Stat(filepath.Join(dir, "sub", "old.md")); fi == nil || fi.Mode().Perm() != 0600 {
+		t.Fatalf("an existing file's mode must be kept: %v", fi)
+	}
+	fresh := rootLoc{dir: dir, sub: "sub", rel: "fresh.md"}
+	if err := fresh.atomicWrite([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if fi, _ := fresh.stat(); fi == nil || fi.Mode().Perm() != 0644 {
+		t.Fatalf("a new file must be 0644: %v", fi)
+	}
+	ents, _ := os.ReadDir(filepath.Join(dir, "sub"))
+	for _, e := range ents {
+		if strings.HasPrefix(e.Name(), ".board-") || strings.HasSuffix(e.Name(), ".tmp") {
+			t.Fatalf("a temp file was left behind: %s", e.Name())
+		}
+	}
+	if len(ents) != 2 {
+		t.Fatalf("files in sub/: %d, want old.md and fresh.md", len(ents))
+	}
+	for name, l := range map[string]rootLoc{
+		"missing root":        {dir: filepath.Join(dir, "nope"), rel: "a.md"},
+		"missing nested root": {dir: dir, sub: "nope", rel: "a.md"},
+	} {
+		if err := l.atomicWrite([]byte("x")); err == nil {
+			t.Errorf("%s: atomicWrite must fail", name)
+		}
+		if err := l.write([]byte("x")); err == nil {
+			t.Errorf("%s: write must fail", name)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "nope")); !os.IsNotExist(err) {
+		t.Fatalf("a failed write created %s", filepath.Join(dir, "nope"))
+	}
+	// write creates missing parent folders inside the root
+	if err := (rootLoc{dir: dir, rel: "a/b/c.md"}).write([]byte("deep")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "a", "b", "c.md")); string(b) != "deep" {
+		t.Fatalf("write into missing folders wrote %q", b)
+	}
+}
+
 // t-2800: the board routes that read or write a request path under a root do it through rootLoc, never os.* on a
 // joined path. Protects the doc, image, feature, visual, ticket, ACTIVE, screenshot, live, cockpit, static and theme
 // routes from a later edit that brings back a check-then-use window.

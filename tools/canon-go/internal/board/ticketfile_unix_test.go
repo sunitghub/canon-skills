@@ -78,4 +78,9 @@ func TestThemeReadThroughRootFIFOSwapAndSymlink(t *testing.T) {
 	if _, reason := themeRead(d, "b.json"); reason != "symbolic links are not read" {
 		t.Fatalf("a symlinked theme: reason %q", reason)
 	}
+	// and a plain valid theme is still read through the root (mutation sweep: a dropped open went unnoticed)
+	writeFile(t, filepath.Join(d, "c.json"), fuzzTheme)
+	if th, reason := themeRead(d, "c.json"); reason != "" || th.Name == "" {
+		t.Fatalf("a valid theme: %+v, reason %q", th, reason)
+	}
 }
