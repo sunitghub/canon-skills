@@ -1,1 +1,0 @@
-- Fixed: `sprint evidence stamp` refuses a full-suite run (`scripts/test.sh`, optionally `--jobs N`) stamped under any name but `test-sh`, before it runs, and names the `test-sh` command; `sprint check-evidence` hints the same re-stamp for an already-written one. The close's test-stamp step reads only `test-sh.log`, so a `full-suite` stamp cost a second full run (t-b5a6).

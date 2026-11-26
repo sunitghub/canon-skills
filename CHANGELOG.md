@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.9] - 2026-11-26
+
+- Fixed: `sprint evidence stamp` refuses a full-suite run (`scripts/test.sh`, optionally `--jobs N`) stamped under any name but `test-sh`, before it runs, and names the `test-sh` command; `sprint check-evidence` hints the same re-stamp for an already-written one. The close's test-stamp step reads only `test-sh.log`, so a `full-suite` stamp cost a second full run (t-b5a6).
+
 ## [0.89.8] - 2026-11-26
 
 - Fixed: `sprint eval-verdict` no longer resets `eval_fail_count` to 0 on a pass, so the field keeps every evaluator fail a ticket had and the board's type-outcome badge stops counting reworked tickets as clean. The retry budget now stops at 3 fails on the ticket, not 3 in a row (t-ecf8).
