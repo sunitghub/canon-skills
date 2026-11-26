@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 05:14
+learnings-sweep last run: 11-26-2026 06:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-8ce6](.tickets/t-8ce6/learnings.md) | Moving a path out of the release zip needs a sweep of every shipped relative link to it, README too: the docs/plugins.md samples link was fixed but README.md:81 stayed dead in a zip install until the reviewer grepped | UNPROMOTED |
 | 2026-11-26 | [t-9bc6](.tickets/t-9bc6/learnings.md) | A scripted replace appended a `// comment` mid-line in a dense one-liner and swallowed the `toast()` after it; 44/44 specs stayed green because none asserted the toast, and only the evaluator caught it: end a one-line edit by checking every statement after the insertion point is still code | UNPROMOTED |
 | 2026-11-26 | [t-1f4a](.tickets/t-1f4a/learnings.md) | In the Claude cloud container eight suites (pipeline, sprint, canon-cli, canon-uninstall, …) fail on clean main too, so a cloud close cannot stamp test-sh: land it (`tkt land`) and stamp on the Mac; and an exit code read through `\| tail` is tail's, which once reported a failed `npm test` as passing | UNPROMOTED |
 | 2026-11-26 | [t-f8e9](.tickets/t-f8e9/learnings.md) | In a `tkt land` worktree a close step has two roots: the ticket folder is the main checkout's (`project_root`), the commit under review is the worktree's; a HEAD read or Repo line taken after `cd "$root"` grades main, so every stamped log read stale and the evaluator was refused on every land close since v0.89.0 | UNPROMOTED |
@@ -79,8 +80,4 @@ learnings-sweep last run: 11-26-2026 05:14
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-11-16 | [t-d600](.tickets/t-d600/learnings.md) | A scheduled-only security check lets releases ship a known-vulnerable pin between runs (Node 22.23.5 found five days late, after two releases): run the same check as a release refusal, so the release path owns the freshness | `promoted → standards/efficiency-notes.md` |
 | 2026-11-16 | [t-788f](.tickets/t-788f/learnings.md) | A Test Plan line ticked for a test that was moved or never written fails the evaluator: when a planned test changes place, reword the line to name the file it went to before ticking it, and feed the close its real upstream record (merge-pr's merged:), not a hand-written one | `promoted → skills/sprint/reference/start.md` |
-| 2026-11-16 | [t-c723](.tickets/t-c723/learnings.md) | A new test that writes a shared-home file ($CANON_HOME/cockpit/model-tiers.json) races any suite writing the same file in the parallel full run: pin a private CANON_HOME in every test that writes Admin's registry, and prove it by running the pair side by side on one shared home | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-16 | [t-fcb1](.tickets/t-fcb1/learnings.md) | A word trim to hold a doc's cap rewords text tests may pin: grep tests/ for every phrase the trim changes (sprint-checklists.sh pins close step 10's "a push that succeeded"; only the full-suite stamp caught it) | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-16 | [t-d8af](.tickets/t-d8af/learnings.md) | Bash `$(…)` drops NUL bytes, so `[ -n "$(tail -c1 f)" ]` calls a NUL-ended file newline-ended and the next append is glued on; count with `tail -c1 f \| wc -l`. And macOS grep reads a NUL file as binary (no match) while Git Bash's GNU grep matches, so the same file behaves differently per platform. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-16 | [t-c206](.tickets/t-c206/learnings.md) | macOS `mktemp -d` with no template ignores TMPDIR, so pinning TMPDIR does not keep a child tool's scratch dirs inside a test's folder: clean them from what the tool recorded, and pin every registry the tool writes. | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
