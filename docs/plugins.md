@@ -107,7 +107,7 @@ values are cut.
 
 ## Samples
 
-[`samples/events/tail-closes`](../samples/events/tail-closes/README.md) is a small reader that follows these files by the rules above (name order, resume by file name and offset, drop a seen `id`). It is a sample to copy; canon never runs it.
+[`samples/events/tail-closes`](https://github.com/sunitghub/canon-skills/blob/main/samples/events/tail-closes/README.md) is a small reader that follows these files by the rules above (name order, resume by file name and offset, drop a seen `id`). It is a sample to copy; canon never runs it.
 
 ## Guarantees
 

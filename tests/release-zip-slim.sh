@@ -49,6 +49,12 @@ cap_problem() {
 }
 size_problem() { cap_problem release-zip "$1"; }
 
+# The working copy's exclusion list, read the way scripts/integrity-list.sh reads it (one owner: release-zip.sh). A broken build under test
+# never changes it, so a dropped exclusion shows as an extra file.
+slim_line="$(grep -m1 '^SLIM_EXCLUDE=(' "$ROOT/scripts/release-zip.sh")" || fail "release-zip-slim: scripts/release-zip.sh has no one-line SLIM_EXCLUDE"
+[[ "$slim_line" =~ ^SLIM_EXCLUDE=\(([A-Za-z0-9._/\ @+-]+)\)$ ]] || fail "release-zip-slim: SLIM_EXCLUDE is not one line scripts/integrity-list.sh can read: $slim_line"
+read -r -a SLIM <<< "${BASH_REMATCH[1]}"
+
 # check_zip <zip> <unpack folder>: prints the problems found, one per line (nothing = a good zip)
 check_zip() {
   local zip="$1" u="$2" full="${3:-}" top p f n
@@ -58,7 +64,14 @@ check_zip() {
   [[ ! -e "$top/tests" ]] || echo "tests/ is in the zip"
   [[ ! -e "$top/bench" ]] || echo "bench/ is in the zip"   # t-e85f: canon's own benchmarks, run from a clone
   [[ ! -e "$top/tools/canon-go/cmd" && ! -e "$top/tools/canon-go/internal" ]] || echo "the Go source is in the zip"
-  [[ ! -e "$top/tools/vendored.tsv" && ! -e "$top/tools/sprint-check-app/CLAUDE.md" && ! -e "$top/docs/research-path-and-rule-standards.md" && ! -e "$top/scripts/changelog-release.sh" && ! -e "$top/changelog.d" && ! -e "$top/tools/canon-go/.gosec-excludes" && ! -e "$top/.github/workflows/go-checks.yml" ]] || echo "a developer-only file is in the zip"   # t-7299; t-9915's research report (about 40 KB no tool reads: it took the zip over its 4224 KB cap)
+  [[ ! -e "$top/tools/vendored.tsv" && ! -e "$top/tools/sprint-check-app/CLAUDE.md" && ! -e "$top/docs/research-path-and-rule-standards.md" && ! -e "$top/scripts/changelog-release.sh" && ! -e "$top/changelog.d" && ! -e "$top/tools/canon-go/.gosec-excludes" ]] || echo "a developer-only file is in the zip"   # t-7299; t-9915's research report (about 40 KB no tool reads: it took the zip over its 4224 KB cap)
+  # t-8ce6: what an installed canon never reads (each reader reads the project's copy or canon's git checkout); named here, not read from the script
+  for p in .github LEARNINGS.md LEARNINGS-archive.md PRs samples .npmignore .git-blame-ignore-revs docs/canon-subagents.md docs/strict-agent-route.md \
+           scripts/release.sh scripts/release-daemon.sh scripts/release-zip.sh scripts/integrity-list.sh scripts/check-binaries-released.sh \
+           scripts/check-release-live.sh scripts/check-vendored.sh scripts/test.sh scripts/test-hermetic.sh scripts/render-slides.sh \
+           scripts/workshop-install.sh scripts/build-zip.sh; do
+    [[ ! -e "$top/$p" ]] || echo "$p is in the zip (t-8ce6: no install reads it)"
+  done
   n="$( (cd "$top/meta" 2>/dev/null && find . -type f | wc -l | tr -d ' ') || echo 0)"
   # 2. what the install reads is there: the board's tour images (named by app.html itself) ...
   local shots; shots="$(grep -o 'src="/meta/screenshots/[A-Za-z0-9_.-]*"' "$top/tools/sprint-check-app/app.html" | sed 's#.*/##; s#"$##' | sort -u)"
@@ -89,10 +102,14 @@ agents/canon-reviewer.md	the close-gate reviewer
 standards/efficiency.md	the global standards file skills add imports
 docs/setup.md	linked from the tools' messages
 tools/sprint-check-app/app.html	the board page (its tour images are checked above)
+scripts/install-hooks.sh	tools/skills/cmd-init.sh runs it from the install
+scripts/gen-cmd-wrapper.sh	the installed pre-commit hook names it
+extensions/pi/handoff.ts	tools/hooks-lib.sh copies it into Pi
+CONTRIBUTING.md	README.md links it
 REQ
   # 3. everything else shipped is byte-identical to the tag, and nothing but the exclusions is missing
   local want got
-  want="$(tree_files | grep -vE '^(tests/|bench/|tools/canon-go/cmd/|tools/canon-go/internal/|tools/canon-go/\.gosec-excludes$|\.github/workflows/go-checks\.yml$|tools/vendored\.tsv$|tools/sprint-check-app/CLAUDE\.md$|docs/research-path-and-rule-standards\.md$|scripts/changelog-release\.sh$|changelog\.d/)' | grep -vE '^meta/' || true)"
+  want="$(tree_files | while IFS= read -r f; do for x in "${SLIM[@]}"; do [[ "$f" == "$x" || "$f" == "$x"/* ]] && continue 2; done; echo "$f"; done | grep -vE '^meta/' || true)"
   got="$(cd "$top" && find . -type f | sed 's#^\./##' | grep -v '^meta/' | LC_ALL=C sort)"
   [[ "$(printf '%s\n' "$want" | LC_ALL=C sort)" == "$got" ]] || echo "the files outside meta/ differ from the tag's tree minus the exclusions"
   if [[ -n "$full" ]]; then   # one git call per file: only for the zip the test expects to be good
@@ -144,10 +161,16 @@ bad() {   # bad <name> <sed expression on the script>
 }
 bad also-scripts 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(scripts tests #'
 bad also-gomod  's#tools/canon-go/cmd tools/canon-go/internal #tools/canon-go #'
-bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md docs/research-path-and-rule-standards\.md scripts/changelog-release\.sh changelog\.d\)#)#'
+bad ship-devfiles 's# tools/vendored\.tsv tools/sprint-check-app/CLAUDE\.md docs/research-path-and-rule-standards\.md scripts/changelog-release\.sh changelog\.d # #'
 bad forgot-tests 's#^SLIM_EXCLUDE=\(tests #SLIM_EXCLUDE=(#'
-bad ship-ci-lint 's# tools/canon-go/\.gosec-excludes \.github/workflows/go-checks\.yml##'   # t-9a2b: canon's own CI lint files
+bad ship-ci-lint 's# tools/canon-go/\.gosec-excludes \.github # #'   # t-9a2b: canon's own CI lint files
 bad forgot-bench 's#^SLIM_EXCLUDE=\(tests bench #SLIM_EXCLUDE=(tests #'   # t-e85f: P-046, a revert per rule
+bad ship-learnings 's# LEARNINGS\.md LEARNINGS-archive\.md # #'   # t-8ce6: a revert per rule (P-046)
+bad ship-dev-folders 's# PRs samples # #'
+bad ship-dotfiles 's# \.npmignore \.git-blame-ignore-revs # #'
+bad ship-research-docs 's# docs/canon-subagents\.md docs/strict-agent-route\.md # #'
+bad ship-release-scripts 's# scripts/release\.sh scripts/release-daemon\.sh scripts/release-zip\.sh scripts/integrity-list\.sh scripts/check-binaries-released\.sh scripts/check-release-live\.sh scripts/check-vendored\.sh # #'
+bad ship-dev-runners 's# scripts/test\.sh scripts/test-hermetic\.sh scripts/render-slides\.sh scripts/workshop-install\.sh scripts/build-zip\.sh\)#)#'
 bad no-keep-shots 's#^  keep_shots="\$\(git .*$#  keep_shots=""#'
 # the size bound measures bytes, not disk blocks, and can fail: filler that costs blocks but no bytes leaves the reading alone, real bytes push it over the cap
 fat="$WORK/fat"; cp -R "$WORK/u1" "$fat"; ft="$fat/canon-9.9.9"; base_kb="$(unpacked_kb "$ft")"

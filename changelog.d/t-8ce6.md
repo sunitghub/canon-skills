@@ -1,0 +1,1 @@
+- Changed: the release zip leaves out what an installed canon never reads: canon's own LEARNINGS files, `PRs/`, `samples/`, `.github/`, two repo dotfiles, two research notes and the maintainer's release and test scripts. A zip install has 28 fewer files and 7 fewer top-level entries, and the size caps go down (4600 KB, 300 files); a git-clone install keeps everything (t-8ce6).

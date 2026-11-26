@@ -45,7 +45,7 @@ echo "release-zip: prints one manifest line equal to the zip's own hash and the 
 
 # Content: the committed tree under canon-0.3.0/, nothing from the working tree.
 if names="$(zip_names "$OUT/canon-0.3.0.zip")"; then
-  want="$(git -C "$R" ls-tree -r --name-only v0.3.0 | sed 's#^#canon-0.3.0/#' | LC_ALL=C sort)"
+  want="$(git -C "$R" ls-tree -r --name-only v0.3.0 | grep -vx 'scripts/release-zip.sh' | sed 's#^#canon-0.3.0/#' | LC_ALL=C sort)"   # t-8ce6: SLIM_EXCLUDE drops the script itself
   assert_eq "$want" "$(printf '%s\n' "$names" | LC_ALL=C sort)"
   refute=$(printf '%s\n' "$names" | grep -c 'untracked.txt\|late.txt' || true); assert_eq "0" "$refute"
   echo "release-zip: holds exactly the tag's committed files under canon-0.3.0/ (dirty and untracked files absent)"

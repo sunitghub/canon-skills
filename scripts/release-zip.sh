@@ -31,9 +31,20 @@ else die "no sha256sum or shasum on this machine"; fi
 #                                   go.mod and go.sum stay (tools/cloud-env.sh reads the pinned toolchain from go.mod)
 #   tools/vendored.tsv, tools/sprint-check-app/CLAUDE.md   read only by canon's own CI (check-vendored) and its developers (t-7299)
 #   scripts/changelog-release.sh, changelog.d   the maintainer's release-commit step and its pending entries (t-5ed4); no install reads them
-#   tools/canon-go/.gosec-excludes, .github/workflows/go-checks.yml   canon's own CI lint (t-9a2b); tools/go-checks.sh ships (pre-gate runs it)
+#   tools/canon-go/.gosec-excludes   canon's own CI lint (t-9a2b); tools/go-checks.sh ships (pre-gate runs it)
 #   bench/                    canon's own cost benchmarks (t-e85f), run by its developers from a clone; no install reads them
-SLIM_EXCLUDE=(tests bench tools/canon-go/cmd tools/canon-go/internal tools/canon-go/.gosec-excludes .github/workflows/go-checks.yml tools/vendored.tsv tools/sprint-check-app/CLAUDE.md docs/research-path-and-rule-standards.md scripts/changelog-release.sh changelog.d)
+#   (t-8ce6: each checked for readers; every one below reads the PROJECT's copy or canon's git checkout, never the install)
+#   LEARNINGS.md, LEARNINGS-archive.md   canon's own lessons; the Logbook, tkt, sprint and evidence.sh read the project's root
+#   PRs, samples              the canon-skills PR log (pr-review, run in canon's repo) and copy-me samples canon never runs
+#   .github                   canon's own CI workflows (the board's CI-gate button copies its own template, never a .github file)
+#   .npmignore, .git-blame-ignore-revs   repo dotfiles (promotedreport.go reads the project's .git-blame-ignore-revs)
+#   docs/canon-subagents.md, docs/strict-agent-route.md   contributor research no tool, skill or doc links
+#   scripts/{release,release-daemon,release-zip,integrity-list,check-binaries-released,check-release-live,check-vendored}.sh   the
+#       maintainer's release steps (tkt push-main runs the checkout's copy); scripts/{test,test-hermetic,render-slides,workshop-install}.sh
+#       canon's own runners (sprint and covering-suites run the PROJECT's scripts/test.sh); scripts/build-zip.sh only a .git clone's
+#       post-commit hook runs. scripts/install-hooks.sh, gen-cmd-wrapper.sh and pre-commit-hook-template.sh ship: the install runs or names them.
+# SLIM_EXCLUDE stays ONE line: scripts/integrity-list.sh reads it with a one-line pattern.
+SLIM_EXCLUDE=(tests bench tools/canon-go/cmd tools/canon-go/internal tools/canon-go/.gosec-excludes .github tools/vendored.tsv tools/sprint-check-app/CLAUDE.md docs/research-path-and-rule-standards.md scripts/changelog-release.sh changelog.d LEARNINGS.md LEARNINGS-archive.md PRs samples .npmignore .git-blame-ignore-revs docs/canon-subagents.md docs/strict-agent-route.md scripts/release.sh scripts/release-daemon.sh scripts/release-zip.sh scripts/integrity-list.sh scripts/check-binaries-released.sh scripts/check-release-live.sh scripts/check-vendored.sh scripts/test.sh scripts/test-hermetic.sh scripts/render-slides.sh scripts/workshop-install.sh scripts/build-zip.sh)
 tag_ref="refs/tags/$tag"
 keep_shots=""   # the screenshots the board's page names, read from the same tag so the list cannot drift from app.html
 if git -C "$REPO_ROOT" cat-file -e "$tag_ref:tools/sprint-check-app/app.html" 2>/dev/null; then
