@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 06:20
+learnings-sweep last run: 11-26-2026 13:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-26 | [t-1386](.tickets/t-1386/learnings.md) | A capped doc at its limit (start-checklist.md, 900 words) makes every new rule cost a trim elsewhere; the trims dropped wording no plan listed, so record each dropped phrase in plan.md Deviations before the gates (the reviewer found three) | UNPROMOTED |
 | 2026-11-26 | [t-8ce6](.tickets/t-8ce6/learnings.md) | Moving a path out of the release zip needs a sweep of every shipped relative link to it, README too: the docs/plugins.md samples link was fixed but README.md:81 stayed dead in a zip install until the reviewer grepped | UNPROMOTED |
 | 2026-11-26 | [t-9bc6](.tickets/t-9bc6/learnings.md) | A scripted replace appended a `// comment` mid-line in a dense one-liner and swallowed the `toast()` after it; 44/44 specs stayed green because none asserted the toast, and only the evaluator caught it: end a one-line edit by checking every statement after the insertion point is still code | UNPROMOTED |
 | 2026-11-26 | [t-1f4a](.tickets/t-1f4a/learnings.md) | In the Claude cloud container eight suites (pipeline, sprint, canon-cli, canon-uninstall, …) fail on clean main too, so a cloud close cannot stamp test-sh: land it (`tkt land`) and stamp on the Mac; and an exit code read through `\| tail` is tail's, which once reported a failed `npm test` as passing | UNPROMOTED |
