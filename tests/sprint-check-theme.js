@@ -116,6 +116,22 @@ assert.strictEqual(boot({ page: 'board', embedded: false, stored: SB(J({ mode: '
     }
   }
 
+  // t-1f4a: --text-dim is text (the board and Cockpit read it in 26 `color:` rules), so it holds 4.5:1 on every surface it
+  // sits on (--bg, --panel, --border-muted) and is the dimmest shade that does; the expected hexes pin that (not just c.muted)
+  const DIM = { 'catppuccin-latte': '#5d6078', 'catppuccin-mocha': '#a2a9c3', 'tokyo-night': '#96a1c9', nord: '#b6bcc7', dracula: '#70b5c7', 'gruvbox-dark': '#bcad92' };
+  const within1 = (a, b) => [1, 3, 5].every(i => Math.abs(parseInt(a.slice(i, i + 2), 16) - parseInt(b.slice(i, i + 2), 16)) <= 1);
+  for (const t of THEMES.filter(x => !x.css)) {
+    const d = derive(t), dim = d.shell['--text-dim'], bm = d.shell['--border-muted'];
+    for (const [surf, what] of [[t.c.bg, '--bg'], [t.c.surface, '--panel'], [bm, '--border-muted']]) {
+      assert.ok(contrast(dim, surf) >= 4.5, `${t.name} --text-dim ${dim} on ${what} ${contrast(dim, surf).toFixed(2)} < 4.5`);
+    }
+    assert.ok(within1(dim, DIM[t.id]), `${t.name} --text-dim ${dim} is not the dimmest passing shade ${DIM[t.id]}`);
+    assert.strictEqual(d.board['--text-dim'], dim, `${t.name} board --text-dim equals the shell's`);
+  }
+  // a user theme whose muted already fails on a surface: no dimming, never lighter than muted, no throw
+  const weak = derive({ id: 'weak', name: 'Weak', mode: 'dark', c: { ...THEMES.find(x => x.id === 'nord').c, muted: '#5a5f6a' } });
+  assert.strictEqual(weak.shell['--text-dim'], '#5a5f6a', 'failing muted: --text-dim is c.muted itself');
+
   // ── 4b. derive() sets every variable the CSS needs ──
   const statics = fs.readdirSync(STATIC);
   const read = (re) => statics.filter(f => re.test(f)).map(f => [f, fs.readFileSync(path.join(STATIC, f), 'utf8')]);

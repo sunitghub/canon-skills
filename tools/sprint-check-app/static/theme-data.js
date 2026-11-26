@@ -42,13 +42,21 @@ const alpha = (h, a) => `rgba(${rgb(h).join(',')},${a})`;
 // text on a fill: whichever of the theme's own text and bg reads better on it
 export const ink = (c, fill) => (contrast(c.text, fill) >= contrast(c.bg, fill) ? c.text : c.bg);
 
+// t-1f4a: --text-dim is text, so it holds 4.5:1 on every surface it sits on (--bg, --panel, --border-muted): the dimmest
+// step from muted toward bg (0.5 down to 0) that does; muted itself when even that fails (never lighter than muted)
+const dimText = (c) => {
+  const surfaces = [c.bg, c.surface, mix(c.surface, c.border, 0.5)];
+  for (let i = 50; i >= 0; i--) { const v = mix(c.muted, c.bg, i / 100); if (surfaces.every(s => contrast(v, s) >= 4.5)) return v; }
+  return c.muted;
+};
+
 // derive(theme) -> { shell, board }: the shell's and the board's variables. The `--th-*` names are set only here:
 // the CSS reads them as var(--th-x, <Canon's colour>), so Canon, which never sets them, keeps its exact colours.
 export function derive(t) {
   const c = t.c, dark = t.mode === 'dark';
   const shared = {
     '--bg': c.bg, '--border': c.border, '--border-hover': mix(c.border, c.muted, 0.3), '--border-muted': mix(c.surface, c.border, 0.5),
-    '--text': c.text, '--text-body': c.body, '--text-muted': c.muted, '--text-dim': mix(c.muted, c.bg, 0.5),
+    '--text': c.text, '--text-body': c.body, '--text-muted': c.muted, '--text-dim': dimText(c),
     '--accent': c.accent, '--col-done': c.ok, '--col-progress': c.info, '--col-discarded': c.bad,
     '--st-need': c.bad, '--st-work': c.warn, '--st-done': c.info, '--st-idle': c.ok,
   };
