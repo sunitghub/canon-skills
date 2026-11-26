@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.6] - 2026-11-26
+
+- Changed: the release zip leaves out what an installed canon never reads: canon's own LEARNINGS files, `PRs/`, `samples/`, `.github/`, two repo dotfiles, two research notes and the maintainer's release and test scripts. A fresh zip install has 28 fewer files and 7 fewer top-level entries, and the size caps go down (4600 KB, 300 files). A Windows install that updates in place keeps its old copies of these (the update copies over the folder without removing files); a git-clone install keeps everything (t-8ce6).
+
 ## [0.89.5] - 2026-11-26
 
 - Fixed: Admin > Model Tiers keeps the Defaults pickers current after Refresh > Apply and Remove/Retire: a newly added default shows at once and a retired model is no longer offered, with no page reload (t-9bc6).
