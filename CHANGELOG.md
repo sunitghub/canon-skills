@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.7] - 2026-11-26
+
+- Fixed: `sprint approve` prints the plan's `## Approach` and the acceptance `## Criteria` back after pinning them, then says how to fix a gap, so a commitment the brief made only in chat shows before the build instead of going unbuilt and ungraded. The start checklist now says a design guard named in the brief is a Criteria line (t-1386).
+
 ## [0.89.6] - 2026-11-26
 
 - Changed: the release zip leaves out what an installed canon never reads: canon's own LEARNINGS files, `PRs/`, `samples/`, `.github/`, two repo dotfiles, two research notes and the maintainer's release and test scripts. A fresh zip install has 28 fewer files and 7 fewer top-level entries, and the size caps go down (4600 KB, 300 files). A Windows install that updates in place keeps its old copies of these (the update copies over the folder without removing files); a git-clone install keeps everything (t-8ce6).
