@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.89.8] - 2026-11-26
+
+- Fixed: `sprint eval-verdict` no longer resets `eval_fail_count` to 0 on a pass, so the field keeps every evaluator fail a ticket had and the board's type-outcome badge stops counting reworked tickets as clean. The retry budget now stops at 3 fails on the ticket, not 3 in a row (t-ecf8).
+
 ## [0.89.7] - 2026-11-26
 
 - Fixed: `sprint approve` prints the plan's `## Approach` and the acceptance `## Criteria` back after pinning them, then says how to fix a gap, so a commitment the brief made only in chat shows before the build instead of going unbuilt and ungraded. The start checklist now says a design guard named in the brief is a Criteria line (t-1386).
