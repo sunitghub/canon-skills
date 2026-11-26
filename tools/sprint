@@ -684,12 +684,12 @@ cmd_pre_gate_check() {
 # lines dropped), so a commitment that lived only in the chat brief shows as missing before the build. A missing acceptance.md is (none).
 _approve_echo() {
   local body
+  _echo_lines() { [[ -f "$2" ]] || return 0; _acceptance_section "$1" "$2" | grep -vE '^[[:space:]]*(<!--.*-->)?[[:space:]]*$' || true; }
   echo "You approved this ## Approach (the build follows it; the close checks it is unchanged):"
-  body="$(_acceptance_section "Approach" "$2" | grep -vE '^[[:space:]]*<!--.*-->[[:space:]]*$' | grep -vE '^[[:space:]]*$' || true)"
+  body="$(_echo_lines "Approach" "$2")"
   printf '%s\n' "${body:-(empty)}"
   echo "...and these ## Criteria (what the evaluator grades):"
-  body=""
-  [[ -f "$3" ]] && body="$(_acceptance_section "Criteria" "$3" | grep -vE '^[[:space:]]*<!--.*-->[[:space:]]*$' | grep -vE '^[[:space:]]*$' || true)"
+  body="$(_echo_lines "Criteria" "$3")"
   printf '%s\n' "${body:-(none)}"
   echo "Anything your brief promised that is not above lives only in chat: add it to plan.md or acceptance.md, then run sprint approve $1 again."
 }
