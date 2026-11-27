@@ -34,13 +34,16 @@ awk '/^---$/ && ++n == 2 { print "github: Acme/App#21" } { print }' "$f" > "$W/t
 eval_ok() { printf 'evaluator-run-id: 1-1\ngraded-head: %s\n## Verdict\npass: all met\n' "${1:-$PRHEAD}" > ".tickets/$id/eval-report.md"; }
 eval_ok
 
-# The stub gh: pr list prints $W/prlist (what --jq would leave: PR numbers); pr view prints the TSV for STUB_* fields, or
-# the merge commit; pr merge logs its arguments and the directory it ran in.
+# The stub gh: pr list prints one "number<TAB>state<TAB>head" line per number in $W/prlist, what real gh's --jq @tsv prints
+# (t-da4c), and refuses a call that does not search for "Fixes #" or filter on the body into TSV; pr view prints the TSV for
+# STUB_* fields, or the merge commit; pr merge logs its arguments and the directory it ran in.
 mkdir "$W/bin"; cat > "$W/bin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1 $2" in
-  "pr list")  [[ -n "${STUB_NO_OPEN:-}" && "$*" == *"--state open"* ]] || cat "$STUB_W/prlist" ;;   # t-f9b1: the PR is merged, none open
+  "pr list")  [[ "$*" == *"--search Fixes #"* && "$*" == *"--jq "*"select(.body"*"@tsv"* ]] || { echo "stub gh: unrecognized pr list call: $*" >&2; exit 9; }
+              [[ -n "${STUB_NO_OPEN:-}" && "$*" == *"--state open"* ]] \
+                || awk 'NF { printf "%s\tOPEN\theadsha000000000000000000000000000000000\n", $1 }' "$STUB_W/prlist" ;;   # t-f9b1: the PR is merged, none open
   "pr view")  [[ -n "${STUB_VIEW_FAIL:-}" && "$*" != *mergeCommit* ]] && { echo "HTTP 502" >&2; exit 1; }
               if [[ "$*" == *"--json state,headRefOid,baseRefName"* ]]; then   # t-7c89: tkt merged's read of a PR merged outside merge-pr
                 [[ -n "${STUB_RM_FAIL:-}" ]] && { echo "HTTP 502" >&2; exit 1; }
@@ -230,10 +233,17 @@ echo "pr-ready: marks only the ticket's own open same-repo draft ready (t-a463)"
 if command -v script >/dev/null 2>&1; then
 # The prompt: "n" runs nothing and merges nothing; "y" runs the tests and merges. A pseudo-terminal answers it (script(1):
 # BSD and util-linux spellings).
-tty_run() { local a="$1"; shift
-  # The pipe stays open a while: BSD script sends EOF to the terminal as soon as its input closes, before the prompt reads.
-  if script --version >/dev/null 2>&1 < /dev/null; then { printf '%s\n' "$a"; sleep 3; } | script -qec "$(printf '%q ' "$@")" /dev/null
-  else { printf '%s\n' "$a"; sleep 3; } | script -q /dev/null "$@"; fi; }
+tty_run() { local a="$1"; shift; local mark="$W/tty.done" rc=0
+  # The input stays open until script exits: BSD script sends EOF to the terminal as soon as its input closes, before the
+  # prompt reads. Bounded at 30 s (t-da4c: was a fixed sleep 3, which every short run waited out).
+  rm -f "$mark" "$W/tty.stuck"
+  { printf '%s\n' "$a"; for _ in $(seq 300); do [[ -e "$mark" ]] && exit 0; sleep 0.1; done; touch "$W/tty.stuck"; } | {
+    r=0
+    if script --version >/dev/null 2>&1 < /dev/null; then script -qec "$(printf '%q ' "$@")" /dev/null || r=$?
+    else script -q /dev/null "$@" || r=$?; fi
+    touch "$mark"; exit "$r"; } || rc=$?
+  [[ ! -e "$W/tty.stuck" ]] || fail "tty_run: script did not exit within 30 s"
+  return "$rc"; }
 : > "$STUB_LOG"; before="$(sig)"; rm -f "$W/ran"
 out="$(tty_run n "$TKT" merge-pr "$id" 2>&1)" || true
 assert_contains "$out" "PR #7 (acme/app): 1 file changed"
@@ -257,8 +267,8 @@ assert_grep '^merged: mergesha0000000000000000000000000000000000$' "$f"
 grep -q '^pr list' "$STUB_LOG" || fail "the PR was not found by its Fixes line"
 # On a terminal the progress line is rewritten in place (carriage return), every 2 s.
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
-out="$(tty_run y "$TKT" merge-pr "$id" --pr 7 --test 'echo tty step; sleep 5' 2>&1)" || fail "tty progress run failed: $out"
-[[ "$out" == *$'\r'"merge-pr: running echo tty step; sleep 5 on main + PR #7… 0m0"*"(tty step)"* ]] || fail "no in-place progress on a terminal: $(printf '%q' "$out")"
+out="$(tty_run y "$TKT" merge-pr "$id" --pr 7 --test 'echo tty step; sleep 3' 2>&1)" || fail "tty progress run failed: $out"
+[[ "$out" == *$'\r'"merge-pr: running echo tty step; sleep 3 on main + PR #7… 0m0"*"(tty step)"* ]] || fail "no in-place progress on a terminal: $(printf '%q' "$out")"
 else
   echo "tkt-merge-pr: SKIPPED the prompt cases: no script(1) here for a pseudo-terminal" >&2
   sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"; "$TKT" merge-pr "$id" --yes > /dev/null 2>&1 || fail "merge-pr --yes failed"
@@ -303,16 +313,19 @@ refuses "--yes with --check" "do not go together" -- --pr 7 --yes --check
 
 # Progress while the tests run: without a terminal a plain line every CANON_PROGRESS_SECONDS, naming the newest log line.
 : > "$STUB_LOG"
-out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo step one; sleep 3; printf "old\rstep \033[1mtwo\033[0m\n"; sleep 2' 2>&1)" || fail "a slow suite run failed: $out"
+out="$(CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo step one; sleep 2; printf "old\rstep \033[1mtwo\033[0m\n"; sleep 2' 2>&1)" || fail "a slow suite run failed: $out"
 assert_contains "$out" "(step one)"; assert_contains "$out" "(step two)"   # after the last \r, escape sequences removed
 assert_contains "$out" "passed in 0m0"
 [[ "$out" != *$'\r'* ]] || fail "progress used carriage returns without a terminal"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # t-a36b: merge-pr's own pacing variable never reaches the code under test (the board sets it; a suite's stub may log it).
 : > "$STUB_LOG"; rm -f "$W/progress-env"
-CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo "${CANON_PROGRESS_SECONDS-unset}" > "$STUB_W/progress-env"' >/dev/null 2>&1 \
+CANON_PROGRESS_SECONDS=1 "$TKT" merge-pr "$id" --pr 7 --yes --test 'echo "${CANON_PROGRESS_SECONDS-unset}" > "$STUB_W/progress-env"; pwd -P > "$STUB_W/cwd"' >/dev/null 2>&1 \
   || fail "a run with CANON_PROGRESS_SECONDS set failed"
 assert_eq "unset" "$(cat "$W/progress-env" 2>/dev/null)"
+# t-da4c: the test command runs in merge-pr's scratch clone of main + PR, never in the project checkout it was started from.
+cwd="$(cat "$W/cwd" 2>/dev/null)"; tmpr="$(cd "$TMPDIR" && pwd -P)"; projr="$(cd "$P" && pwd -P)"
+[[ "$cwd" == "$tmpr"/* && "$cwd" != "$projr" && "$cwd" != "$projr"/* ]] || fail "the test command ran in $cwd, not a scratch clone under $tmpr"
 sed -i.bak '/^merged: /d' "$f" && rm -f "$f.bak"
 # t-e523: before the test log has a line, the progress line ends at the time, with no empty "()".
 : > "$STUB_LOG"
