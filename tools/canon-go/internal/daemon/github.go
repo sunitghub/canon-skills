@@ -24,7 +24,7 @@ const ghSSHRefuse = `canon_ssh_off() { echo "canon: SSH is off in this session (
 
 // ghCredHelper answers git's `get` with the session's GH_TOKEN; store and erase do nothing. printf, not echo: sh's echo expands
 // backslash escapes, so a token holding `\n` would add its own protocol lines (t-393e break-it).
-const ghCredHelper = `!f() { test "$1" = get || return 0; printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"; }; f`
+const ghCredHelper = `!f() { test "$1" = get || return 0; printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"; }; f` // #nosec G101 -- a git helper that prints $GH_TOKEN at run time; no secret in source
 
 // ghNoToken is GH_TOKEN when the session has no token: gh reads its Keychain login even with an empty GH_CONFIG_DIR (seen with gh
 // 2.103.3: `gh auth token` still printed it), and a set GH_TOKEN wins over that. GitHub refuses it as bad credentials.
