@@ -220,3 +220,31 @@ func TestRootFilesOverCap(t *testing.T) {
 		t.Errorf("an over-cap AGENTS.md was read: %v", s)
 	}
 }
+
+// t-f172 sweep: the safe readers still read regular files: a bound ticket's .cockpit-cwd locks it, a closed ticket says so,
+// the gate mode comes from ticket.md, a HANDOFF.md of exactly the cap is served, and each root reads its own HANDOFF.md.
+func TestRepoFilesRegularStillRead(t *testing.T) {
+	root := setupTestProject(t)
+	dir := writeTicket(t, root, "t-f172")
+	writeFile(t, filepath.Join(dir, "ticket.md"), "---\nid: t-f172\nstatus: closed\ngate: eval\n---\n# x\n")
+	writeFile(t, filepath.Join(dir, ".cockpit-cwd"), "/some/worktree\n")
+	if s := worktreeLockStatus("t-f172", root); s["locked"] != true || s["cwd"] != "/some/worktree" {
+		t.Errorf("worktreeLockStatus = %v", s)
+	}
+	if r := interruptedReason("t-f172", root, root, "claude"); r != "ticket is closed" {
+		t.Errorf("interruptedReason = %q", r)
+	}
+	if g := ticketGate("t-f172"); g != "eval" {
+		t.Errorf("ticketGate = %q", g)
+	}
+	at := "## Current Focus\n"
+	writeFile(t, filepath.Join(root, "HANDOFF.md"), at+strings.Repeat("x", ticketFileMax-len(at)))
+	if h := loadHandoff(root); len(h["raw"].(string)) != ticketFileMax {
+		t.Errorf("a HANDOFF.md of exactly the cap: %d bytes served", len(h["raw"].(string)))
+	}
+	other := t.TempDir()
+	writeFile(t, filepath.Join(other, "HANDOFF.md"), "## Current Focus\nother\n")
+	if h := loadHandoff(other); !strings.Contains(h["raw"].(string), "other") {
+		t.Errorf("loadHandoff(other root) = %q", h["raw"])
+	}
+}

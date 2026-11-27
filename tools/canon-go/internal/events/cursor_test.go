@@ -445,6 +445,10 @@ func TestEachInReportsAnOverCapGzippedDay(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "too large") || strings.Join(got, ",") != "1" {
 		t.Errorf("over cap: err %v, events %v", err, got)
 	}
+	dayMaxBytes = int64(len(first)) + 64 // exactly the day's size: not over
+	if err := EachIn(gz, func(Event) {}); err != nil {
+		t.Errorf("at the cap: %v", err)
+	}
 	dayMaxBytes = old
 	if err := EachIn(gz, func(Event) {}); err != nil {
 		t.Errorf("under cap: %v", err)
