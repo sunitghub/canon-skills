@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.6] - 2026-11-27
+
+- Tests: `scripts/test.sh` now fails a run (exit 1, naming the count and the first line) if any suite wrote an event about its own test folder into your real `~/.canon/events` log, or into the log you pinned with `CANON_HOME`. It only reads the log. One test that did this is fixed, so gate insights and token metrics stop counting fake tickets from test runs. Events already in your log stay; cleaning them is t-94c5 (t-e042).
+
 ## [0.90.5] - 2026-11-27
 
 - Standards: `standards/efficiency.md` now asks agents to end a reply that reports work with one line naming what was skipped or unchecked and any risk you must know, and says minimal code never cuts validation at trust boundaries, error handling that prevents data loss, security or accessibility. Projects get both lines through their existing import of the file (t-bd81).
