@@ -273,6 +273,12 @@ assert_contains "$out" "sync-issues: 2 created"
 for n in 51 52 53 54 55 58 59; do [[ -z "$(grep -rl "^github: acme/app#$n\$" .tickets || true)" ]] || fail "an untrusted author's #$n became a ticket"; done
 for n in 56 57; do [[ -n "$(grep -rl "^github: acme/app#$n\$" .tickets || true)" ]] || fail "a trusted author's #$n made no ticket: $out"; done
 [[ "$(grep -c 'issues?labels=canon' "$STUB_LOG")" == 7 && "$(wc -l < "$STUB_LOG" | tr -d ' ')" == 7 ]] || fail "one listing per run (7 runs), nothing else: $(cat "$STUB_LOG")"
+# An author field that does not decode stops the run before anything is written (mutation sweep: its exit 1 -> 0 survived).
+printf '61\tissue\tcanon\t!!not*base64\t%s\t%s\n' "$(printf T | base64)" "$(printf b | base64)" > "$stub/list"
+before="$(snap)"; rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
+[[ "$rc" == 1 ]] || fail "an undecodable author field should exit 1, got $rc: $err"
+assert_contains "$err" "sync-issues: could not decode issue #61 from the listing"
+assert_eq "$before" "$(snap)"
 # The real --jq (needs jq): a REST-shaped fixture with every association shape, a null user and a missing field, plus a few hundred
 # random shapes (control bytes, CR, spaces, unicode, ../). Output stays one JSON object; only the three associations are waiting.
 if command -v jq >/dev/null 2>&1; then
