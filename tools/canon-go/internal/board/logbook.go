@@ -1,10 +1,14 @@
 package board
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-c6bb: the Logbook is the board's read-only view of a project's HANDOFF.md and LEARNINGS.md (t-7f7c: also PROMOTED.md, DECISIONS.md, LEARNINGS-archive.md). The route serves each file's text
@@ -31,9 +35,19 @@ func readLogbookFile(root, name string) map[string]any {
 	if fi.Size() > logbookMaxBytes {
 		return map[string]any{"error": name + " is larger than 4 MB"}
 	}
-	raw, err := os.ReadFile(p)
+	f, ofi, err := common.OpenRegular(p) // t-f172: a FIFO swapped in after the Lstat is refused, never blocks
+	if errors.Is(err, common.ErrNotRegular) || errors.Is(err, common.ErrChanged) {
+		return map[string]any{"error": name + " is not a regular file"}
+	} else if err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, logbookMaxBytes+1))
 	if err != nil {
 		return map[string]any{"error": err.Error()}
+	}
+	if ofi.Size() > logbookMaxBytes || len(raw) > logbookMaxBytes {
+		return map[string]any{"error": name + " is larger than 4 MB"}
 	}
 	return map[string]any{"text": string(raw), "mtime": fi.ModTime().UTC().Format(time.RFC3339)}
 }

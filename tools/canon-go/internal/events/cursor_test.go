@@ -428,3 +428,25 @@ func TestOpenDayAt(t *testing.T) {
 		t.Errorf("an offset past the end of a gzipped day: end %d err %v", end, err)
 	}
 }
+
+// Prod path: the board's machine view, gate insights and /api/v1 events read a day through EachIn (t-f172): a .gz day over
+// dayMaxBytes uncompressed is reported "too large", not read short in silence; raw bytes count, so a junk tail past the cap
+// counts too. ReadSince over the same day keeps its old result.
+func TestEachInReportsAnOverCapGzippedDay(t *testing.T) {
+	_, dir := logWith(t, map[string]string{})
+	gz := filepath.Join(dir, "2026-11-01.jsonl.gz")
+	first := evLine(1, "/p")
+	writeGz(t, gz, first+strings.Repeat("x", 64)) // a valid line, then a junk tail cut mid-line
+	old := dayMaxBytes
+	dayMaxBytes = int64(len(first)) + 8
+	defer func() { dayMaxBytes = old }()
+	var got []string
+	err := EachIn(gz, func(ev Event) { got = append(got, strings.TrimLeft(ev.ID, "0")) })
+	if err == nil || !strings.Contains(err.Error(), "too large") || strings.Join(got, ",") != "1" {
+		t.Errorf("over cap: err %v, events %v", err, got)
+	}
+	dayMaxBytes = old
+	if err := EachIn(gz, func(Event) {}); err != nil {
+		t.Errorf("under cap: %v", err)
+	}
+}

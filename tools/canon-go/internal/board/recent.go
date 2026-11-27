@@ -261,7 +261,7 @@ func handoffBlockOnly(dir, xy string) bool {
 	if xy != " M" {
 		return false
 	}
-	work, err := os.ReadFile(filepath.Join(dir, "HANDOFF.md"))
+	work, err := (rootLoc{dir: dir, rel: "HANDOFF.md"}).read() // t-f172
 	if err != nil {
 		return false
 	}

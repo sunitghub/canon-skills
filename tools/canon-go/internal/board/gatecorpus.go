@@ -2,6 +2,7 @@ package board
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"canon/internal/common"
 )
 
 // canon-go gate-corpus (t-a05d stage 1): what the closed tickets' gate reports say, counted from their FIXED shapes only. The reviewer's triage
@@ -101,9 +104,19 @@ func gcoRead(path string) ([]string, string) {
 	if fi.Size() > gcoMaxFile {
 		return nil, "larger than 256 KB"
 	}
-	b, err := os.ReadFile(path)
+	f, ofi, err := common.OpenRegular(path) // t-f172: a FIFO swapped in after the Lstat is refused, never blocks
+	if errors.Is(err, common.ErrNotRegular) || errors.Is(err, common.ErrChanged) {
+		return nil, "not a regular file"
+	} else if err != nil {
+		return nil, "unreadable"
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, gcoMaxFile+1))
 	if err != nil {
 		return nil, "unreadable"
+	}
+	if ofi.Size() > gcoMaxFile || len(b) > gcoMaxFile {
+		return nil, "larger than 256 KB"
 	}
 	txt := strings.TrimPrefix(string(b), "\ufeff")
 	return strings.Split(strings.ReplaceAll(txt, "\r\n", "\n"), "\n"), ""

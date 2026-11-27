@@ -1602,11 +1602,11 @@ func loadTickets(root string) []ticket {
 }
 
 func loadHandoff(root string) map[string]any {
-	hf := handoffFile
+	loc := rootLoc{dir: filepath.Dir(handoffFile), rel: filepath.Base(handoffFile)}
 	if root != "" {
-		hf = filepath.Join(root, "HANDOFF.md")
+		loc = rootLoc{dir: root, rel: "HANDOFF.md"} // t-f172: a link out of the project is refused, a FIFO does not block
 	}
-	raw, err := os.ReadFile(hf)
+	raw, err := loc.read()
 	if err != nil {
 		return map[string]any{"focus": nil, "raw": ""}
 	}
@@ -2743,7 +2743,7 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 			if !scanTicketSafe(fmt.Sprint(e["path"]), id) {
 				continue // t-9c87: never read a status through a link or junction an agent made in the worktree
 			}
-			raw, err := os.ReadFile(filepath.Join(tdir, id, "ticket.md"))
+			raw, err := readTicketFile(filepath.Join(tdir, id, "ticket.md"))
 			if err != nil {
 				continue
 			}
@@ -2992,7 +2992,7 @@ func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, stri
 		return "", "", "", false
 	}
 	var cand map[string]any
-	if raw, err := os.ReadFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
+	if raw, err := readTicketFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
 		if cwd := strings.TrimSpace(string(raw)); cwd != "" {
 			if common.SamePath(cwd, root) {
 				return "", "", "", false // t-1aa7: bound to the main checkout: no worktree, and no divergence guess
@@ -3382,7 +3382,7 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		}
 		// Read the bytes BEFORE parsing: an etag older than the text shown can only make a save stale, never let
 		// it overwrite a newer write.
-		raw, rerr := os.ReadFile(filepath.Join(dir, "ticket.md"))
+		raw, rerr := readTicketFile(filepath.Join(dir, "ticket.md"))
 		if rerr != nil {
 			continue
 		}
@@ -3423,7 +3423,7 @@ func anyLiveCandidate(tickets []ticket, root string) bool {
 		if d, ok := t["branch_divergence"].(map[string]any); ok && d["where"] == "worktree" && d["status"] == "in_progress" {
 			return true
 		}
-		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+		if raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" && linkedWorktreeOf(cwd, wtDir) {
 				return true
 			}
@@ -3511,7 +3511,7 @@ func worktreeDirty(path string) bool {
 // ticketFM returns the status from a ticket.md's frontmatter;
 // ok is false when the file is missing or has no frontmatter.
 func ticketFM(path string) (string, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := readTicketFile(path)
 	if err != nil {
 		return "", false
 	}
@@ -3548,7 +3548,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 			continue
 		}
 		mainStatus[id] = st
-		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+		if raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" {
 				k := common.ResolvedKey(cwd)
 				bound[k] = append(bound[k], id)
@@ -3750,7 +3750,7 @@ func mainDirtyIgnoringRuntime(root string) bool {
 func worktreeLockStatus(ticketID, root string) map[string]any {
 	cwdPath := filepath.Join(ticketsDirForRoot(root), ticketID, ".cockpit-cwd")
 	var cwd any
-	if b, err := os.ReadFile(cwdPath); err == nil {
+	if b, err := readTicketFile(cwdPath); err == nil {
 		if trimmed := strings.TrimSpace(string(b)); trimmed != "" {
 			cwd = trimmed
 		}
@@ -4063,7 +4063,7 @@ func linkSkillsIntoWorktree(path string) {
 }
 
 func worktreeIncludePatterns(root string) []string {
-	data, err := os.ReadFile(filepath.Join(root, ".worktreeinclude"))
+	data, err := (rootLoc{dir: root, rel: ".worktreeinclude"}).read() // t-f172
 	if err != nil {
 		return nil
 	}
@@ -4568,7 +4568,7 @@ func interruptedReason(id, root, cwd, agent string) string {
 	if strings.HasPrefix(id, "s-") {
 		return "scratch session — its conversation can't be resumed; its changes stay in " + cwd
 	}
-	b, err := os.ReadFile(filepath.Join(root, ".tickets", id, "ticket.md"))
+	b, err := readTicketFile(filepath.Join(root, ".tickets", id, "ticket.md"))
 	if err != nil {
 		return "ticket no longer exists in " + root
 	}
@@ -4847,7 +4847,7 @@ func ensureCockpit() map[string]any {
 // ticketGate reads a ticket's headless gate mode ("eval" or "full") from
 // frontmatter. Absent = "full" (the default 3-gate pipeline), mirroring ci.
 func ticketGate(ticketID string) string {
-	raw, err := os.ReadFile(filepath.Join(ticketsDir, ticketID, "ticket.md"))
+	raw, err := readTicketFile(filepath.Join(ticketsDir, ticketID, "ticket.md"))
 	if err != nil {
 		return "full"
 	}
@@ -6282,7 +6282,7 @@ var aiSkillsBlockRe = regexp.MustCompile(`(?s)<!--\s*AI-SKILLS:BEGIN\s*-->(.*?)<
 
 func registeredSkills(root string) []string {
 	names := []string{}
-	raw, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	raw, err := (rootLoc{dir: root, rel: "AGENTS.md"}).read() // t-f172: an in-root link (AGENTS.md -> CLAUDE.md) still reads
 	if err != nil {
 		return names
 	}

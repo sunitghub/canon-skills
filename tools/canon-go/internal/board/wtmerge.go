@@ -36,7 +36,7 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		if r, _ := t["runs"].(string); r == "github" {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd"))
+		raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd"))
 		cwd := strings.TrimSpace(string(raw))
 		if err != nil || cwd == "" {
 			continue

@@ -384,8 +384,18 @@ func DayFiles(home string) []string {
 
 // EachIn calls fn for every valid v1 line of one day file, in append order (t-c542: the ticket's Machines node). Lines that
 // fail the schema, or are longer than any Emit writes, are skipped as Latest skips them.
+// t-f172: a .gz day over dayMaxBytes uncompressed is cut at the cap by openDay's reader; EachIn reports it (as hashDay and copyDay
+// do) instead of a silent short read. The count is raw bytes, so lines cut mid-way or failing the schema count too.
 func EachIn(path string, fn func(Event)) error {
-	_, err := scanDay(path, 0, func(ev Event, _ int64, _ bool) bool { fn(ev); return true })
+	f, err := openDay(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, pos, err := scanReader(f, 0, func(ev Event, _ int64, _ bool) bool { fn(ev); return true })
+	if err == nil && pos > dayMaxBytes {
+		err = errTooBig
+	}
 	return err
 }
 
@@ -399,10 +409,16 @@ func scanDay(path string, from int64, fn func(ev Event, end int64, terminated bo
 		return from, err
 	}
 	defer f.Close()
+	end, _, err = scanReader(f, from, fn)
+	return end, err
+}
+
+// scanReader is scanDay's loop over an open day stream positioned at from; pos is the raw byte offset it stopped at.
+func scanReader(f io.Reader, from int64, fn func(ev Event, end int64, terminated bool) bool) (end, pos int64, err error) {
 	r := bufio.NewReaderSize(f, 4096)
 	var buf []byte
 	long := false
-	pos := from
+	pos = from
 	end = from
 	for {
 		chunk, err := r.ReadSlice('\n')
@@ -421,15 +437,15 @@ func scanDay(path string, from int64, fn func(ev Event, end int64, terminated bo
 		}
 		if !long {
 			if ev, good := parseAny(buf); good && !fn(ev, pos, terminated) {
-				return end, nil
+				return end, pos, nil
 			}
 		}
 		buf, long = buf[:0], false
 		if err == io.EOF {
-			return end, nil
+			return end, pos, nil
 		}
 		if err != nil {
-			return end, err
+			return end, pos, err
 		}
 	}
 }
