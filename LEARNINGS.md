@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 09:11
+learnings-sweep last run: 11-27-2026 11:18
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-27 | [t-adcb](.tickets/t-adcb/learnings.md) | A FIFO-only test set left OpenRegular's identity check and swap branch unkilled, and a socket case that skips on `net.Listen` failure went silent under the sweep's long TMPDIR (macOS 104-byte socket path): give each reject clause its own fixture and never Skip a guard case on setup failure. | UNPROMOTED |
 | 2026-11-27 | [t-fe8d](.tickets/t-fe8d/learnings.md) | Break-it on a confinement fix found the copy still lost a name (`runGitIn`'s TrimSpace cut the leading space off the first `-z` entry) and dropped mode bits (umask on `WriteFile`): a shared trimming helper and the umask both undo a 'keep the name and mode' promise; test with a leading-space name and a 0664 file. | UNPROMOTED |
 | 2026-11-27 | [t-5fd2](.tickets/t-5fd2/learnings.md) | A type/status check written only in the worktree-bound write path left the plain path writing `fmt.Sprint` of the field (`<nil>`, frontmatter injection): put input validation on the field, shared by every path that writes it. | UNPROMOTED |
 | 2026-11-27 | [t-fe22](.tickets/t-fe22/learnings.md) | jq `test("^[A-Z_]+$")` accepts a value ending in one newline (`$` matches before a final newline); only the reviewer and break-it caught it: anchor a whole-value match with `\A..\z`, and fuzz the real jq expression, not a stub that ignores `--jq` | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-27-2026 09:11
 | 2026-11-18 | [t-8990](.tickets/t-8990/learnings.md) | A record step that takes its base from the branch checked out cannot refuse "another branch": derive the base from the default branch (origin/HEAD), or the guard is a tautology (the reviewer caught it publishing a feature branch). | `promoted → standards/efficiency-notes.md` |
 | 2026-11-17 | [t-5273](.tickets/t-5273/learnings.md) | A list shown to the user and the action on it are two reads: when the second finds an item gone (rewritten back), drop it with a line, keep refusing everything else — the exact-name check is what keeps the old guard | `dismissed` |
 | 2026-11-17 | [t-7d84](.tickets/t-7d84/learnings.md) | Parsing a unified diff by skipping every `+++ ` line also skips an added line whose text starts `++ `: read headers only before the first `@@`, and check the parsed count against numstat | `promoted → standards/efficiency-notes.md` |
-| 2026-11-17 | [t-597f](.tickets/t-597f/learnings.md) | A test that passes on its own can fail in the full suite from an inherited env var (CANON_TICKETS_DIR from the stamp): a test that resolves tickets must unset it, and a gate-criteria row written "at close" is missing when the evaluator grades | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
