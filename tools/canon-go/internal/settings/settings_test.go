@@ -751,3 +751,64 @@ func TestCompressSetting(t *testing.T) {
 		t.Errorf("setting one key must keep the other: %v", err)
 	}
 }
+
+// t-393e: github.restricted_projects. Prod path: the daemon's opt-in check at every claude spawn, and `canon github`.
+func TestRestrictedProjects(t *testing.T) {
+	if s := InstallSet(t.TempDir()); s.Schema[GitHubKey].Shareable {
+		t.Fatal("github.restricted_projects must not be Shareable")
+	}
+	for _, bad := range []string{`"x"`, `["relative/x"]`, `["/a/../b"]`, `["/a/"]`, `[""]`, `[1]`, `["/a\u0007b"]`} {
+		home := t.TempDir()
+		write(t, filepath.Join(home, "settings.json"), `{"github":{"restricted_projects":`+bad+`}}`)
+		if _, err := RestrictedRoots(home); err == nil {
+			t.Errorf("%s: accepted, want an error", bad)
+		}
+		if on, err := GitHubRestricted(home, t.TempDir()); !on || err == nil {
+			t.Errorf("%s: restricted=%v err=%v, want restricted with an error (fail closed)", bad, on, err)
+		}
+	}
+	home := t.TempDir()
+	write(t, filepath.Join(home, "settings.json"), "{broken")
+	if on, err := GitHubRestricted(home, t.TempDir()); !on || err == nil {
+		t.Errorf("malformed file: restricted=%v err=%v, want restricted with an error", on, err)
+	}
+	if on, err := GitHubRestricted("", t.TempDir()); !on || err == nil {
+		t.Errorf("no home: restricted=%v err=%v, want restricted with an error", on, err)
+	}
+	if on, err := GitHubRestricted(t.TempDir(), t.TempDir()); on || err != nil {
+		t.Errorf("no file: restricted=%v err=%v, want off", on, err)
+	}
+
+	base := t.TempDir()
+	proj, sibling := filepath.Join(base, "ab"), filepath.Join(base, "abc")
+	for _, d := range []string{proj, sibling} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home = t.TempDir()
+	if _, err := InstallSet(home).SetLocal(GitHubKey, []any{proj}); err != nil {
+		t.Fatal(err)
+	}
+	if on, err := GitHubRestricted(home, proj); !on || err != nil {
+		t.Errorf("listed project: %v %v", on, err)
+	}
+	if on, _ := GitHubRestricted(home, sibling); on {
+		t.Error("a folder sharing the listed path's prefix matched")
+	}
+	if on, _ := GitHubRestricted(home, filepath.Join(base, "gone")); on {
+		t.Error("a missing folder matched")
+	}
+	if runtime.GOOS == "darwin" && strings.HasPrefix(proj, "/var/") {
+		if on, _ := GitHubRestricted(home, "/private"+proj); !on {
+			t.Error("the /private spelling of the listed folder did not match")
+		}
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(proj, link); err != nil {
+		t.Fatal(err)
+	}
+	if on, _ := GitHubRestricted(home, link); !on {
+		t.Error("another spelling (a symlink) of the listed folder did not match")
+	}
+}

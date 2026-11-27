@@ -320,6 +320,37 @@ sprint agent without leaving the browser — no second terminal.
   ticket ids are validated `^t-[a-z0-9]{4}$` and exec'd as an argv slice (never a
   shell); tokens travel via a `0600` state file, never argv. Transport is stdlib
   **SSE (output) + POST (input)** — no WebSocket.
+- **Restricted GitHub access (`t-393e`, opt-in, macOS, Claude sessions):** by default a
+  Cockpit agent has your whole GitHub account, through your saved `gh` login, your git
+  credential helpers (Keychain, or a plain-text `~/.git-credentials` from `store`) and
+  your SSH key. `canon github on` (in the project, or `canon github on <dir>`; in a worktree it
+  records the main checkout) adds the project to `github.restricted_projects` in
+  `~/.canon/settings.json`. That file is install-wide, so a cloned repo cannot switch it on or off.
+  A new Claude session in that project then gets:
+  - an empty `GH_CONFIG_DIR`, so `gh` is not logged in;
+  - no inherited `GH_TOKEN`/`GITHUB_TOKEN`, `SSH_AUTH_SOCK`, askpass or command-line git config;
+  - an empty `credential.helper` in the session's git config, which drops the system, global
+    and repo helpers. Your `~/.gitconfig` is still read, so `user.name` works;
+  - SSH refused with a `canon:` message;
+  - as the one way in, the project's own token from Keychain (service `canon-github`,
+    account the project folder), used by `gh` as `GH_TOKEN` and by git for `https://github.com`.
+  The daemon picks the token by the project folder, never by `origin`, so editing the remote
+  cannot select another project's token. The session's first line says
+  `[canon] GitHub: …` (token in use, none stored, or why the lookup failed), and the activity
+  log gets a `session.github` event with that state, never the token. With no token the
+  session still starts, with GitHub refused. If `settings.json` cannot be read, every Claude
+  session is restricted until you fix it. `canon github status` shows on or off, whether a token
+  is stored, and the line that stores one (`security add-generic-password -U -s canon-github -a
+  '<project>' -w`, which prompts for the token). Use one fine-grained token that covers every
+  repository the project pushes to (canon's own `origin` and `public` are two repositories).
+  `canon github off` restores the old behavior for new sessions; restart a running one.
+  **What it does not do:** this is not containment. An agent with Bash runs as you, so it can
+  still unset these variables, read `~/.git-credentials` or query Keychain. Removing what you
+  saved is yours to do, and canon never changes it:
+  `git config --unset credential.helper` in each repo that uses `store`;
+  delete `~/.git-credentials`; `gh auth logout`; and a passphrase on `~/.ssh/id_*`.
+  pi, Copilot and the Terminal sessions, Windows (Credential Manager) and a board switch are not covered yet.
+  A moved project folder no longer matches, so it shows `off` until you run `on` again.
 - **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS,
   and with interactive `claude` on a Windows 11 VM (2026-09-24). ConPTY keeps
   the output pipe open after the agent exits, so the daemon closes the PTY

@@ -231,6 +231,7 @@ Helpers (used by canon's shell tools; see helpers.go):
   settings <status|add|remove> <settings.json> <allow|deny|additionalDirectories> <rule>...
   event <kind> --project <dir> --source <name> [--actor user|agent|system] key=value...
   log verify | seal        the activity log's day seals (canon log)
+  github on | off | status [<dir>]   restricted GitHub access for the project's Cockpit claude sessions (canon github)
   transcript-report <agent-transcript.jsonl> <first-line-prefix>
   copilot-report [--second] [--record] [--from N] [--to N] <copilot-home> <agent> <ticket> <protocol-file> <first-line-prefix>
   token-spend --project <root> [--worktree <path>]... [--last N] [--ticket <id> [--record]]   per-phase and per-gate token cost (t-0829)

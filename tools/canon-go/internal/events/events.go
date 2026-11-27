@@ -72,6 +72,8 @@ var kinds = map[string][]field{
 	"session.exited": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"reason", 16},
 		{"models", 120}, {"peak_context_pct", 4}, {"tokens_new", 12}, {"turns", 6}},
 	"session.saved": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"by", 16}},
+	// t-393e: a restricted-GitHub session started; state is token | no-token | error | unsupported, never the token itself
+	"session.github": {{"session", 64}, {"ticket", 64}, {"agent", 16}, {"state", 16}},
 	// t-4c09: audit kinds. Ids, numbers and names of non-secret settings only: a sealed day cannot be edited, and a
 	// reader treats the log as untrusted input. No PR or issue title, no imported result text, no token or URL.
 	"plan.approved": {{"ticket", 64}, {"tier", 16}},

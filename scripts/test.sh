@@ -159,6 +159,7 @@ tests=(
   "$ROOT/tests/src-key.sh"
   "$ROOT/tests/events.sh"
   "$ROOT/tests/events-log.sh"
+  "$ROOT/tests/canon-github.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
   "$ROOT/tests/changelog-release.sh"

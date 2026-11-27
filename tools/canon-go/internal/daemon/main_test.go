@@ -8977,7 +8977,7 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		return n
 	}
 	for _, kind := range []string{"claude", ""} {
-		env := sessionEnv(kind, "t-ab12", "sid1", environ)
+		env := sessionEnv(kind, "t-ab12", "sid1", environ, nil)
 		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 0 {
 			t.Errorf("kind %q: want only CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false, got %v", kind, env)
 		}
@@ -8992,7 +8992,7 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 		}
 	}
 	for _, kind := range []string{"pi", "copilot"} {
-		env := sessionEnv(kind, "t-ab12", "sid1", environ)
+		env := sessionEnv(kind, "t-ab12", "sid1", environ, nil)
 		if count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=true") != 1 || count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
 			t.Errorf("kind %q must keep the inherited value untouched: %v", kind, env)
 		}
@@ -9006,7 +9006,7 @@ func TestSessionEnvPromptSuggestions(t *testing.T) {
 			t.Errorf("kind %q: want COCKPIT_AGENT=%s: %v", kind, kind, env)
 		}
 	}
-	if env := sessionEnv("term", "t-ab12", "sid1", environ); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
+	if env := sessionEnv("term", "t-ab12", "sid1", environ, nil); count(env, "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false") != 0 {
 		t.Errorf("the Terminal is not a claude session: %v", env)
 	}
 }

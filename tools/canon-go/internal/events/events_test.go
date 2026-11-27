@@ -178,7 +178,7 @@ func TestHomeAndKinds(t *testing.T) {
 	if got := Home(); got != "/pinned" {
 		t.Errorf("Home() with CANON_HOME = %q", got)
 	}
-	want := "branch.merged budget.exceeded budget.warned build.switch close.confirmed close.started context.threshold eval.compared evidence.stamped gate.cost gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen manual_qa.recorded plan.approved plan.written session.exited session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started step.cost terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
+	want := "branch.merged budget.exceeded budget.warned build.switch close.confirmed close.started context.threshold eval.compared evidence.stamped gate.cost gate.finished gate.rejected gate.started github.merged github.results_imported github.sent github.synced implement.started integrity.restored log.deleted log.pruned machine.seen manual_qa.recorded plan.approved plan.written session.exited session.github session.needs_you session.saved setting.changed sprint.completed sprint.cost sprint.started step.cost terminal.su_denied terminal.su_expired terminal.su_granted terminal.su_prompted terminal.tkt ticket.closed ticket.created ticket.status_changed wrapup.gate_finished wrapup.gate_started"
 	if got := strings.Join(Kinds(), " "); got != want {
 		t.Errorf("kinds %q, want %q", got, want)
 	}
@@ -227,6 +227,7 @@ func TestKindFieldsAndSources(t *testing.T) {
 		"session.needs_you": {"session", "ticket", "agent"},
 		"session.exited":    {"session", "ticket", "agent", "reason", "models", "peak_context_pct", "tokens_new", "turns"},
 		"session.saved":     {"session", "ticket", "agent", "by"},
+		"session.github":    {"session", "ticket", "agent", "state"},
 		// t-4c09 audit kinds
 		"plan.approved":           {"ticket", "tier"},
 		"close.confirmed":         {"ticket", "tier"},

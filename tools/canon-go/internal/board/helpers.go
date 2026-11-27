@@ -136,6 +136,8 @@ func runHelper(args []string, stdin io.Reader, stdout, stderr io.Writer) (code i
 		return 0, true // observer-only: an event never changes the caller's outcome
 	case "log":
 		return logCLI(args[1:], stdout, stderr), true
+	case "github": // t-393e: restricted GitHub access for a project's Cockpit claude sessions
+		return githubCLI(args[1:], stdout, stderr), true
 	case "transcript-report":
 		if len(args) != 3 {
 			fmt.Fprintln(stderr, "usage: sprint-check transcript-report <agent-transcript.jsonl> <first-line-prefix>")

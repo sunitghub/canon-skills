@@ -78,6 +78,10 @@ Usage:
                            sealed, not who wrote it.
   canon log seal           Seal every closed day not sealed yet (the daemon and the first event of
                            each day do this too).
+  canon github on|off|status [<dir>]
+                           Restricted GitHub access (opt-in): the project's Cockpit claude sessions
+                           get no saved gh login, git helper or SSH, only the project's own token
+                           from Keychain. status shows the line that stores the token.
   canon completion <bash|zsh|powershell>
                            Print a completion script. bash: eval "$(canon completion bash)"
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
@@ -520,7 +524,7 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions events sprint stop restart wait update uninstall gate-scope log completion version help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions events sprint stop restart wait update uninstall gate-scope log github completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
@@ -534,6 +538,7 @@ _canon() {
     wait) w="--until --timeout --project --json" ;;
     completion) w="bash zsh powershell" ;;
     log) w="verify seal" ;;
+    github) w="on off status" ;;
     uninstall) w="--dry-run --yes --keep-data --force" ;;
     *) w="" ;;
   esac
@@ -552,11 +557,11 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','events','sprint','stop','restart','wait','update','uninstall','gate-scope','log','completion','version','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','events','sprint','stop','restart','wait','update','uninstall','gate-scope','log','github','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
       'status' { '--json' } 'sessions' { '--json' } 'sprint' { '--json' } 'events' { '--limit','--json' } 'stop' { '--force' } 'restart' { '--force' }
-      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'log' { 'verify','seal' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
+      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'log' { 'verify','seal' } 'github' { 'on','off','status' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
       default { @() } } }
   $cands | Where-Object { $_ -like "$wordToComplete*" } |
     ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
@@ -578,6 +583,13 @@ log_cmd() {
   local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
   case "$h" in *"log verify"*) ;; *) echo "canon log: the board binary ($b) is older than this command; run canon update." >&2; exit 1 ;; esac
   exec "$b" log "$@"
+}
+
+# t-393e: restricted GitHub access; same older-board check as log_cmd.
+github_cmd() {
+  local b h; b="$(board_bin)"; h="$("$b" --help 2>/dev/null)" || h=""
+  case "$h" in *"github on"*) ;; *) echo "canon github: the board binary ($b) is older than this command; run canon update." >&2; exit 1 ;; esac
+  exec "$b" github "$@"
 }
 
 # t-180d: poll the board for one session's state until it's one of the wanted ones (the state is one word: a sed, no JSON parser). Exit 0 reached, 1 timeout, 2 usage.
@@ -825,6 +837,7 @@ main() {
       declare -F gate_scope_clear >/dev/null || { echo "canon gate-scope: this install has no gate-scope-lib.sh; nothing to clear" >&2; exit 1; }
       gate_scope_clear; exit 0 ;;
     log) shift; log_cmd "$@" ;;
+    github) shift; github_cmd "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;

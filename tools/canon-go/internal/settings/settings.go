@@ -7,6 +7,7 @@ package settings
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,8 +16,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -423,6 +426,7 @@ func InstallSet(home string) Set {
 		Schema: Schema{
 			RetentionKey: {Validate: validateRetention, Shareable: false, Default: RetentionDefault},
 			CompressKey:  {Validate: validateBool, Shareable: false, Default: true},
+			GitHubKey:    {Validate: validateRoots, Shareable: false, Default: []string{}},
 		},
 		Local: filepath.Join(home, "settings.json"),
 	}
@@ -457,4 +461,140 @@ func CompressOn(home string) bool {
 		return b
 	}
 	return true
+}
+
+// GitHubKey is github.restricted_projects (t-393e): the project roots whose Cockpit claude sessions get no ambient GitHub
+// access, only that project's own token. Install-wide and never Shareable, so a cloned repo cannot add or remove itself.
+const GitHubKey = "github.restricted_projects"
+
+// MaxRoots bounds github.restricted_projects; a longer list is refused, not truncated.
+const MaxRoots = 64
+
+func validateRoots(v any) (any, error) {
+	bad := fmt.Errorf("must be a list of at most %d absolute, clean folder paths", MaxRoots)
+	list, ok := v.([]any)
+	if !ok || len(list) > MaxRoots {
+		return nil, bad
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		p, ok := e.(string)
+		if !ok || p == "" || len(p) > 4096 || !filepath.IsAbs(p) || filepath.Clean(p) != p || strings.ContainsFunc(p, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			return nil, bad
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// RestrictedRoots is the install's github.restricted_projects. A malformed or unreadable file, or a value that fails its check,
+// is an error, never an empty list: the caller restricts on an error (t-393e fails closed).
+func RestrictedRoots(home string) ([]string, error) {
+	if home == "" {
+		return nil, errors.New("no canon folder (CANON_HOME and the home folder are unknown)")
+	}
+	res, err := InstallSet(home).Load()
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range res.Warnings {
+		if strings.Contains(w, GitHubKey) {
+			return nil, errors.New(w)
+		}
+	}
+	roots, _ := res.Values[GitHubKey].V.([]string)
+	return roots, nil
+}
+
+// SameFolder reports whether a and b are the same existing folder, by file identity (never by spelling: /var and /private/var
+// match, /x/ab and /x/a do not). A path that cannot be stat'ed matches nothing.
+func SameFolder(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil || !fa.IsDir() {
+		return false
+	}
+	fb, err := os.Stat(b)
+	if err != nil || !fb.IsDir() {
+		return false
+	}
+	return os.SameFile(fa, fb)
+}
+
+// GitHubRestricted reports whether the project at root is in github.restricted_projects. On an error it returns true with the
+// error: a settings file canon cannot read never leaves a session unrestricted.
+func GitHubRestricted(home, root string) (bool, error) {
+	roots, err := RestrictedRoots(home)
+	if err != nil {
+		return true, err
+	}
+	for _, r := range roots {
+		if SameFolder(r, root) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// KeychainService is the Keychain item's service name; the account is the project root.
+const KeychainService = "canon-github"
+
+const (
+	GitHubTokenOK     = "token"
+	GitHubNoToken     = "no-token"
+	GitHubError       = "error"
+	GitHubUnsupported = "unsupported"
+)
+
+// GitHubGOOS, KeychainTimeout and SecurityBin are vars so tests can reach the non-darwin branch, a hung read and a stub
+// security on the Mac. SecurityBin is an absolute path: a folder on PATH cannot stand in for it.
+var (
+	GitHubGOOS      = runtime.GOOS
+	KeychainTimeout = 5 * time.Second
+	SecurityBin     = "/usr/bin/security"
+)
+
+// GitHubToken reads the token of the project at root for its restricted Cockpit sessions (t-393e), from Keychain item
+// service KeychainService, account root. Exit 44 is security's "item not found"; every other failure is an error with a
+// reason, never "no token". A token with a control byte or a space is refused: the helper echoes it into git's protocol.
+func GitHubToken(root string) (token, state, reason string) {
+	if GitHubGOOS != "darwin" {
+		return "", GitHubUnsupported, "the token lookup is macOS Keychain only for now"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), KeychainTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, SecurityBin, "find-generic-password", "-s", KeychainService, "-a", root, "-w")
+	cmd.WaitDelay = time.Second // a child that keeps the pipe open cannot hold the spawn past the timeout
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", GitHubError, "the Keychain read timed out"
+	}
+	var ee *exec.ExitError
+	switch {
+	case errors.As(err, &ee) && ee.ExitCode() == 44:
+		return "", GitHubNoToken, "no token stored for this project"
+	case err != nil:
+		return "", GitHubError, "the Keychain read failed: " + ClipReason(err.Error())
+	}
+	tok := strings.TrimRight(string(out), "\r\n")
+	if tok == "" {
+		return "", GitHubNoToken, "no token stored for this project"
+	}
+	if len(tok) > 255 || strings.ContainsFunc(tok, func(r rune) bool { return r <= 0x20 || r == 0x7f }) {
+		return "", GitHubError, "the stored token has unexpected characters"
+	}
+	return tok, GitHubTokenOK, ""
+}
+
+// ClipReason is s with control bytes blanked and cut to 120 bytes: an error shown in a terminal line or an event.
+func ClipReason(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return ' '
+		}
+		return r
+	}, s)
+	if len(s) > 120 {
+		s = s[:120]
+	}
+	return s
 }

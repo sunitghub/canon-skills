@@ -138,6 +138,7 @@ type session struct {
 	pty          pty.Pty
 	cmd          *pty.Cmd
 	hookDir      string    // daemon-owned ephemeral --settings dir; removed when the session ends
+	ghDir        string    // t-393e: a restricted session's empty GH_CONFIG_DIR; removed when the session ends
 	cwd          string    // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
 	ticketsDir   string    // t-ffb9: parent of the session's state dir, resolved once at spawn() — .tickets/ for a ticket, the daemon's scratch dir for a scratch session (t-47f1) — lets debugf (no *server access) find it without re-walking
@@ -860,8 +861,9 @@ const promptSuggestionEnv = "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"
 // sessionEnv is the environment a session's process starts with: the restricted Terminal's own (termEnv); every agent
 // gets COCKPIT_TICKET and COCKPIT_AGENT; a claude session also gets prompt suggestions off, replacing any inherited value.
 // t-25f1: COCKPIT_SESSION is the session id, which tools/work-beat writes into .tickets/ACTIVE.beat so clearOwnBeat can tell
-// this session's beat from another agent's.
-func sessionEnv(kind, ticket, sid string, environ []string) []string {
+// this session's beat from another agent's. t-393e: a claude session in a restricted project (ga non-nil) also gets githubEnv;
+// pi, copilot and term never do (their own rows on the ticket).
+func sessionEnv(kind, ticket, sid string, environ []string, ga *githubAccess) []string {
 	if kind == "term" {
 		return termEnv(environ)
 	}
@@ -881,6 +883,9 @@ func sessionEnv(kind, ticket, sid string, environ []string) []string {
 	env = append(env, "COCKPIT_TICKET="+ticket, "COCKPIT_AGENT="+agent, "COCKPIT_SESSION="+sid)
 	if claude {
 		env = append(env, promptSuggestionEnv+"=false")
+		if ga != nil {
+			env = githubEnv(env, ga)
+		}
 	}
 	return env
 }
@@ -1043,6 +1048,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	sid, tok, statusTok, previewTok := randToken()[:16], randToken(), randToken(), randToken()
 	var args []string
 	var hookDir, convID string
+	var ga *githubAccess // t-393e: set only for a claude session in a restricted project
 	// t-0d67: agent-aware spawn. claude keeps its exact pre-t-0d67 argv (--model,
 	// --settings Notification hook, --session-id/--resume). pi uses documented
 	// flags only and no shell hooks. copilot (t-66b2) mirrors claude's argv shape
@@ -1076,6 +1082,11 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		copilotPick, stage, source = s.sessionModel(projectRoot, ticket, tierAgent(kind)) // t-3425: the stage's model, never Gate model's
 		args = agentSpawnArgs("copilot", ticket, resuming, !resuming && inProgress, copilotSessionID, copilotPick, "")
 	default:
+		// t-393e: before anything else is made, so a refusal leaves nothing to clean up
+		if ga, err = githubAccessFor(projectRoot); err != nil {
+			p.Close()
+			return nil, err
+		}
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
 		// the daemon never writes into the target project. Losing the hook costs the
@@ -1104,10 +1115,17 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	bin := resolveSpawnBin(program)
 	c := p.Command(bin, args...)
 	c.Dir = cwd
-	c.Env = sessionEnv(kind, ticket, sid, os.Environ())
+	c.Env = sessionEnv(kind, ticket, sid, os.Environ(), ga)
+	ghDir := ""
+	if ga != nil {
+		ghDir = ga.ghDir
+	}
 	if err := c.Start(); err != nil {
 		p.Close()
 		os.RemoveAll(hookDir)
+		if ghDir != "" {
+			os.RemoveAll(ghDir)
+		}
 		return nil, err
 	}
 	// t-cd06: best-effort, non-fatal — a logging failure (disk full, read-only
@@ -1115,7 +1133,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.logSessionStart(ticket, cwd, projectRoot)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
-		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
+		hookDir: hookDir, ghDir: ghDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
 		agent: kind, convID: convID, started: time.Now(), copilotResumeAttempt: copilotResuming, copilotLog: copilotLog, stage: stage, model: claudeModel + copilotPick,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
@@ -1128,6 +1146,10 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v bin=%q argv=%q", kind, ticket, cwd, copilotResuming, bin, args)
 	if copilotPick != "" && copilotModel(copilotPick) == "" {
 		se.debugf("spawn model=%s omitted for copilot (no verified Copilot id)", copilotPick)
+	}
+	if ga != nil { // t-393e: before readLoop starts, so the line is the scrollback's first; the state only, never the token
+		se.buf = append(se.buf, ga.notice()...)
+		se.emit("session.github", map[string]string{"state": ga.state})
 	}
 	if stage == "build" && se.model != "" { // t-3425: a Start on an approved plan begins the build on its model
 		se.emit("implement.started", map[string]string{"model": se.model, "tier": stage, "source": source})
@@ -2570,6 +2592,9 @@ func exitStatus(err error) (int, string) {
 func (se *session) cleanup() {
 	if se.hookDir != "" {
 		os.RemoveAll(se.hookDir)
+	}
+	if se.ghDir != "" {
+		os.RemoveAll(se.ghDir)
 	}
 	se.mu.Lock()
 	wt := se.scratchWT
