@@ -15,6 +15,9 @@ export SKILLS_SH_NO_TTY=1
 export GIT_TERMINAL_PROMPT=0
 # t-f182: tkt, sprint and the board append events to $CANON_HOME/events; a test run never writes into the user's own log.
 # One folder for the run, unless the caller pinned one (a test that needs the default sets CANON_HOME= for its child).
+# t-e042: the log a run must leave alone is the one the caller had before this pin (the user's, or a caller's own pin); a suite that
+# drops the pin (unset CANON_HOME) would write there. Read after the run (leak_check below), never written.
+WATCH="${CANON_HOME:-${HOME:-}/.canon}/events"
 if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d "${TMPDIR:-/tmp}/canon-test-home.XXXXXX")"; export CANON_HOME; fi
 
 # t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
@@ -337,11 +340,9 @@ LONGEST=(tests/sprint.sh tests/evidence.sh tests/canon-cli.sh tests/tkt-merge-pr
   tests/canon-packages.sh tests/cloud-round-trip.sh tests/mutant-sweep.sh tools/canon-go/internal/board
   tests/release-daemon-publish.sh)
 run_parallel() {
-  local i n s w t hit
+  local i n s w hit
   local -a B=()
   PLAN=1; run_all; PLAN=0
-  t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
-  RUN="$(mktemp -d "${t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
   export ROOT RUN; export -f go_board go_daemon
   cat > "$RUN/worker.sh" <<'WORKER'
 i="$1"; cmd="$(cat "$RUN/jobs/$i.cmd")"
@@ -406,9 +407,41 @@ fi
 # folder it names that exists). Copied before the run and compared after, so a new writer fails the run whoever it is.
 REGISTRY="$HOME/.config/canon/projects"; REGISTRY_BEFORE="$(mktemp)"
 if [[ -f "$REGISTRY" ]]; then cat "$REGISTRY" > "$REGISTRY_BEFORE"; else rm -f "$REGISTRY_BEFORE"; fi
-trap 'stop_workers; print_timings; rm -f "$REGISTRY_BEFORE"' EXIT
+# t-e042: the run's own folder, for both paths (suite TMPDIRs live under it, so a leaked event names a project inside it), and the size of
+# each watched event file now: the leak check reads only what is appended after it.
 FIRST_RC=0; FAILED=(); XARGS_PID=""; RUN=""
-if (( JOBS == 1 )); then run_all; else run_parallel; fi
+_t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR breaks Go tests that string-compare t.TempDir() paths
+RUN="$(mktemp -d "${_t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
+trap 'stop_workers; print_timings; rm -f "$REGISTRY_BEFORE"' EXIT
+: > "$RUN/watch.before"
+for _f in "$WATCH"/*.jsonl; do
+  [[ -f "$_f" ]] || continue
+  _n="$(wc -c < "$_f" 2>/dev/null | tr -d ' ')" || _n=0   # unreadable now: 0, so the check reads it whole and reports it
+  printf '%s\t%s\n' "${_n:-0}" "$_f" >> "$RUN/watch.before"
+done
+if (( JOBS == 1 )); then export TMPDIR="$RUN/tmp/serial"; mkdir -p "$TMPDIR"; run_all; else run_parallel; fi
+
+# t-e042: read the watched log for events this run added whose project lies under $RUN (the physical path too: /var is /private/var on
+# macOS). A line from another project (the user's board or daemon, running meanwhile) never counts. Prints the verdict; returns 1 on a leak
+# or an unreadable file. Read-only: tail and grep only.
+leak_check() {
+  local f off chunk n total=0 first="" rp
+  rp="$(cd "$RUN" && pwd -P)"
+  for f in "$WATCH"/*.jsonl; do
+    [[ -f "$f" ]] || continue
+    off="$(awk -F'\t' -v p="$f" '$2 == p { print $1; exit }' "$RUN/watch.before")"
+    if ! chunk="$(tail -c "+$(( ${off:-0} + 1 ))" "$f" 2>/dev/null)"; then
+      printf 'test-sh: cannot read event log %s: leak check not run\n' "$f" >&2; return 1
+    fi
+    chunk="$(printf '%s\n' "$chunk" | grep -F -e "\"project\":\"$RUN/" -e "\"project\":\"$rp/" || true)"
+    [[ -n "$chunk" ]] || continue
+    n="$(printf '%s\n' "$chunk" | wc -l | tr -d ' ')"; total=$(( total + n ))
+    [[ -n "$first" ]] || first="$(printf '%s\n' "$chunk" | awk 'NR == 1')"
+  done
+  (( total )) || return 0
+  printf 'test-sh: %s event(s) leaked into %s\n%s\n' "$total" "${WATCH%/events}" "$first" >&2
+  return 1
+}
 
 # Give a server that was just killed a few seconds to actually exit before calling it a leak.
 for _ in 1 2 3 4 5; do
@@ -431,6 +464,7 @@ if [[ -n "${LEAKED_SERVERS// /}" ]]; then
   printf '\nFAIL: the test run left sprint-check servers running (PIDs): %s\n' "$LEAKED_SERVERS" >&2
   exit 1
 fi
+if ! leak_check; then exit 1; fi
 if (( FIRST_RC != 0 )); then exit "$FIRST_RC"; fi
 if (( ONLY_N && ${#TIMES[@]} != ONLY_N )); then   # a wanted suite whose tool (go, node) is absent ran nothing: never a pass
   printf '\nFAIL: --only asked for %s suite(s), %s ran\n' "$ONLY_N" "${#TIMES[@]}" >&2; exit 2
