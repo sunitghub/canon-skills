@@ -1325,7 +1325,7 @@ func readTicketFile(path string) ([]byte, error) {
 	if fi.Size() > ticketFileMax {
 		return nil, fmt.Errorf("%s is larger than 4 MB", filepath.Base(path))
 	}
-	f, err := themeOpen(path) // O_NONBLOCK: a file swapped for a FIFO after the Lstat cannot block
+	f, err := os.OpenFile(path, os.O_RDONLY|common.NonblockFlag, 0) // a file swapped for a FIFO after the Lstat cannot block
 	if err != nil {
 		return nil, err
 	}

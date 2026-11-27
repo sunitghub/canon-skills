@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-2800: a file the board serves or writes under a root is a rootLoc, and every read or write of it opens an *os.Root
@@ -100,10 +102,10 @@ func (l rootLoc) remove() error {
 	return l.do(func(r *os.Root, name string) error { return r.Remove(name) })
 }
 
-// openNonblock opens for reading with the per-OS nonblock flag (themeopen_*.go): a file swapped for a FIFO cannot block.
+// openNonblock opens for reading with the per-OS nonblock flag (common.NonblockFlag): a file swapped for a FIFO cannot block.
 func (l rootLoc) openNonblock() (f *os.File, err error) {
 	err = l.do(func(r *os.Root, name string) error {
-		f, err = r.OpenFile(name, os.O_RDONLY|nonblockFlag, 0)
+		f, err = r.OpenFile(name, os.O_RDONLY|common.NonblockFlag, 0)
 		return err
 	})
 	return f, err
