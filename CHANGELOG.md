@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.3] - 2026-11-27
+
+- Security (board): four reads no longer follow a link out of their folder or hang on a FIFO. A ticket doc, image or `.feature` file that is a FIFO now answers 404 instead of blocking the request, because every read through the tickets folder opens without blocking and reads regular files only. The Why tab no longer shows a decision from a `plan.md` linked outside `.tickets/`. The `.worktreeinclude` copy into a new worktree skips an ignored file linked outside the project, never writes through a linked folder in the new checkout, and now copies non-ASCII and leading-space names (`git ls-files -z`) with the source file's mode, which the umask no longer strips. The skill-eval `report.html` is read through canon's own root, so a run folder swapped for a link after the check answers 404 (t-fe8d).
+
 ## [0.90.2] - 2026-11-27
 
 - Security (board): a doc, description or status save on a ticket not bound to a worktree now refuses a missing or non-text value (400 `bad_content`, it used to save the text `<nil>`) and any status outside open, in_progress, closed, cancelled and archived (400 `bad_status`; a newline in it could add a frontmatter line such as `eval_override: true`). Off-worktree docs and descriptions get the worktree path's 1 MiB limit (400 `too_large`), and every board POST stops reading at the largest visual's size plus 64 KiB (413) (t-5fd2).
