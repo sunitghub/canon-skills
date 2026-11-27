@@ -4,6 +4,8 @@ package common
 
 import (
 	"errors"
+	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -81,5 +83,47 @@ func TestOpenRegularFIFOSwapAfterLstat(t *testing.T) {
 			w.Close() // release the blocked reader
 		}
 		t.Fatal("OpenRegular blocked on a file swapped for a FIFO")
+	}
+}
+
+// t-adcb mutation sweep: OpenRegular's other refusals. A regular file swapped for another regular file is ErrChanged (the
+// identity half of SameRegular); a socket is refused at the Lstat as ErrNotRegular (its open fails with an unrelated
+// error); a missing path is the Lstat's own not-exist error. The texts are the ones seal's errors.Is callers share.
+func TestOpenRegularOtherRefusals(t *testing.T) {
+	if ErrNotRegular.Error() != "not a regular file" || ErrChanged.Error() != "changed while opening" {
+		t.Fatalf("texts: %q %q", ErrNotRegular, ErrChanged)
+	}
+	d := t.TempDir()
+	a, b := filepath.Join(d, "a"), filepath.Join(d, "b")
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte(p), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	la, _ := os.Lstat(a)
+	lb, _ := os.Lstat(b)
+	if SameRegular(la, lb) {
+		t.Fatal("SameRegular matched two different regular files")
+	}
+	t.Cleanup(func() { afterLstat = nil })
+	afterLstat = func() { os.Rename(b, a) }
+	if f, _, err := OpenRegular(a); !errors.Is(err, ErrChanged) {
+		if f != nil {
+			f.Close()
+		}
+		t.Fatalf("a regular file swapped for another: err %v, want ErrChanged", err)
+	}
+	afterLstat = nil
+	if _, _, err := OpenRegular(filepath.Join(d, "missing")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("a missing path: err %v, want not-exist", err)
+	}
+	sock := filepath.Join(d, "s")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Skip("no unix socket:", err)
+	}
+	defer l.Close()
+	if _, _, err := OpenRegular(sock); !errors.Is(err, ErrNotRegular) {
+		t.Fatalf("a socket: err %v, want ErrNotRegular", err)
 	}
 }
