@@ -28,7 +28,10 @@ case "$1 $2" in
                     jq -r "$expr" "$STUB_PULLS_JSON"
                   else printf '%b' "${STUB_PRS_FIXING:-}"; fi ;;
   api\ repos/*/issues/*) [[ "${STUB_FAIL:-}" == api ]] && { echo "HTTP 404: Not Found" >&2; exit 1; }
-                  if [[ "${STUB_CRLF:-}" == 1 ]]; then sed 's/$/\r/' "$STUB_BODY"; else cat "$STUB_BODY"; fi ;;
+                  # t-fe22: the real --jq over a REST-shaped issue (author_association, user.login, body); STUB_ASSOC/STUB_LOGIN pick the author
+                  expr="" prev=""; for a in "$@"; do [[ "$prev" == --jq ]] && expr="$a"; prev="$a"; done
+                  if [[ "${STUB_CRLF:-}" == 1 ]]; then sed 's/$/\r/' "$STUB_BODY"; else cat "$STUB_BODY"; fi \
+                    | jq -Rs --arg a "${STUB_ASSOC-OWNER}" --arg l "${STUB_LOGIN-me}" '{author_association: $a, user: {login: $l}, body: .}' | jq -r "$expr" ;;
   api\ repos/*)   v="${STUB_VIS:-PRIVATE}"; echo "$v" | tr '[:upper:]' '[:lower:]' ;;
   "label create") exit 0 ;;
   "label list")   echo canon ;;
@@ -92,6 +95,32 @@ rc=0; out="$(STUB_FAIL=api "$TKT" import-issue 57 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "a failing gh api should exit 1, got $rc"
 assert_contains "$out" "HTTP 404: Not Found"; assert_contains "$out" "add --body-file <file>"
 [[ ! -e .tickets/$id ]] || fail "a failed import wrote .tickets/$id"
+# t-fe22: an issue read through gh becomes a ticket only when GitHub calls its author OWNER, MEMBER or COLLABORATOR (a cloud session
+# then reads it as instructions). Prod path: tkt import-issue and sprint import-issue (the cloud session's first step). A refusal names
+# the author, offers no way round it, makes one read and writes nothing: no .tickets/ (this clone has none yet), info/exclude, HANDOFF.md.
+printf 'local handoff\n' > HANDOFF.md
+treesnap() { find . -path ./.git/objects -prune -o -type f -print | sort | xargs cksum; }
+before="$(treesnap)"
+for a in NONE CONTRIBUTOR FIRST_TIME_CONTRIBUTOR FIRST_TIMER MANNEQUIN "" owner "OWNER " $'OWNER\r'; do
+  for cmd in "$TKT" "$SPRINT"; do
+    : > "$STUB_LOG"
+    rc=0; out="$(STUB_ASSOC="$a" STUB_LOGIN=$'drive\033[2J\302\233by' "$cmd" import-issue 57 2>&1)" || rc=$?
+    [[ "$rc" != 0 ]] || fail "$cmd import-issue of an issue by '$a' should be refused"
+    want="$a"; [[ "$a" =~ ^[A-Z_]+$ ]] || want=-
+    assert_contains "$out" "issue #57 on acme/app was opened by drive[2Jby ($want), not an owner, member or collaborator"
+    [[ "$out" != *body-file* ]] || fail "the refusal offers --body-file as a way round it: $out"
+    LC_ALL=C grep -q $'\033\|\302\233' <<< "$out" && fail "a control character in the login reached the terminal"
+    assert_eq 1 "$(grep -c 'issues/57' "$STUB_LOG")"   # the author and the text are one read
+    assert_eq "$before" "$(treesnap)"
+  done
+done
+[[ ! -e .tickets ]] || fail "a refused import created .tickets/"
+rm HANDOFF.md
+for a in MEMBER COLLABORATOR; do   # the other trusted associations rebuild the ticket (OWNER is the stub's default, used below)
+  mkdir "$W/trust-$a" && git -C "$W/trust-$a" init -q && git -C "$W/trust-$a" remote add origin https://github.com/acme/app.git
+  assert_eq "$id" "$(cd "$W/trust-$a" && STUB_ASSOC=$a "$TKT" import-issue 57 2>/dev/null)"
+  assert_file_exists "$W/trust-$a/.tickets/$id/plan.md"
+done
 "$SPRINT" import-issue 57 > "$W/import.out"
 e="$B/.tickets/$id"
 grep -qx '/HANDOFF.md' "$B/$(git -C "$B" rev-parse --git-path info/exclude)" || fail "t-b277: sprint import-issue did not pass --cloud (HANDOFF.md not hidden in the cloud clone)"

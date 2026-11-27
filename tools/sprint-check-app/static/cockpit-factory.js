@@ -131,9 +131,9 @@ async function intakeLoad(pid, gen){
   if(!d){ intakeWaiting(res&&res.old?'This board is older than the page. Restart <code>canon</code> (Ctrl+C, then <code>canon</code>) to read the waiting issues.':`<pre>${esc((res&&res.output)||'')}</pre>`); return; }
   repo.textContent=String(d.repo||'—')+' (origin)';
   const w=Array.isArray(d.waiting)?d.waiting:[];
-  // t-9955: labelled issues Sync skips (a ticket already links to them, or canon sent them) are named, so Waiting's count reads true
+  // t-9955: labelled issues Sync skips (a ticket already links to them, canon sent them, or t-fe22 their author is not trusted) are named, so Waiting's count reads true
   const k=Array.isArray(d.skipped)?d.skipped:[];
-  const skipped=!k.length?'':`<div class="fac-skipped">${k.length} already ticket${k.length===1?'':'s'}: `+k.map(x=>{
+  const skipped=!k.length?'':`<div class="fac-skipped">${k.length} skipped: `+k.map(x=>{
     const m=/^already (t-[0-9a-z]+)$/.exec(String(x.reason||''));
     return `#${esc(String(x.issue))} (${esc(m?m[1]:String(x.reason||''))})`;
   }).join(', ')+'</div>';

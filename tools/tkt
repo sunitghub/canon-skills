@@ -1590,8 +1590,28 @@ cmd_import_issue() {
     esac
   done
   [[ "$n" =~ ^[0-9]+$ ]] || { echo "Usage: tkt import-issue <issue number> [--body-file <file>] [--force] [--cloud]" >&2; exit 1; }
-  local root repo="" dir; dir="$(ensure_tickets_dir)"; root="$(dirname "$dir")"
+  # tickets_dir, not ensure_tickets_dir: the read and its author check come first, so a refusal writes nothing (t-fe22)
+  local root repo="" dir; dir="$(tickets_dir)"; root="$(dirname "$dir")"
   repo="$(_gh_origin_repo "$root" import-issue 2>/dev/null)" || repo=""
+  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
+  # shellcheck disable=SC2064  # expand now: $tmp is local
+  trap "rm -rf '$tmp'" EXIT
+  if [[ -n "$bodyf" ]]; then
+    tr -d '\r' < "$bodyf" > "$tmp/body" || { echo "import-issue: cannot read $bodyf" >&2; exit 1; }
+  else
+    [[ -n "$repo" ]] || { echo "import-issue: origin is not a GitHub repo; use --body-file <file>" >&2; exit 1; }
+    # REST, not `gh issue view`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2). t-fe22: line 1 is the author
+    # ("<association> <login>", "-" for an empty one) from the same read as the body, so the text and who wrote it are one snapshot.
+    local err; err="$(gh api "repos/$repo/issues/$n" --jq "$_ISSUE_AUTHOR_JQ"' + "\n" + (.body // "")' 2>&1 > "$tmp/raw")" \
+      || { echo "import-issue: gh could not read issue #$n on $repo: $err" >&2; echo "  Save the issue's text to a file and add --body-file <file>." >&2; exit 1; }
+    local assoc="" login=""; IFS=' ' read -r assoc login _ < <(head -1 "$tmp/raw"; echo) || true   # the raw value decides; only the printed copy is cleaned
+    if ! _trusted_author "$assoc"; then
+      echo "import-issue: issue #$n on $repo was opened by $(_author_text "$login") ($(_author_text "$assoc")), not an owner, member or collaborator of the repo: it is not made a ticket" >&2
+      exit 1
+    fi
+    tail -n +2 "$tmp/raw" | tr -d '\r' > "$tmp/body"
+  fi
+  dir="$(ensure_tickets_dir)"
   # t-b775: in a project that tracks .tickets/ (a cloud clone), canon's per-machine .tickets/.gitignore stays untracked, and claude.ai's
   # stop hook asks to commit every untracked file: hide it from this clone's git status (once), never by committing it.
   local ex; if _tickets_tracked "$root" _ && ex="$(cd "$root" && git rev-parse --path-format=absolute --git-path info/exclude 2>/dev/null)"; then   # reviewer: the file git reads, a linked worktree included
@@ -1604,18 +1624,6 @@ cmd_import_issue() {
   # A tracked one is marked skip-worktree; an untracked or missing one gets an info/exclude line. Never on the person's machine (sync-issues
   # and a plain import run without --cloud): there a hidden HANDOFF.md edit would be lost from view and `tkt worktree-reset` would refuse.
   if $cloud; then _import_hide_canon_files "$root"; fi
-  local tmp; tmp="$(mktemp -d "${TMPDIR:-/tmp}/tkt-import.XXXXXX")"
-  # shellcheck disable=SC2064  # expand now: $tmp is local
-  trap "rm -rf '$tmp'" EXIT
-  if [[ -n "$bodyf" ]]; then
-    tr -d '\r' < "$bodyf" > "$tmp/body" || { echo "import-issue: cannot read $bodyf" >&2; exit 1; }
-  else
-    [[ -n "$repo" ]] || { echo "import-issue: origin is not a GitHub repo; use --body-file <file>" >&2; exit 1; }
-    # REST, not `gh issue view`: a Claude cloud session's GitHub proxy refuses GraphQL (t-35d2).
-    local err; err="$(gh api "repos/$repo/issues/$n" --jq .body 2>&1 > "$tmp/raw")" \
-      || { echo "import-issue: gh could not read issue #$n on $repo: $err" >&2; echo "  Save the issue's text to a file and add --body-file <file>." >&2; exit 1; }
-    tr -d '\r' < "$tmp/raw" > "$tmp/body"
-  fi
   local id hdr type pri title
   id="$(sed -n 's/^<!-- canon:ticket \(t-[a-z0-9]*\) -->$/\1/p' "$tmp/body" | tail -1)"
   [[ -n "$id" ]] || { echo "import-issue: issue #$n has no canon:ticket marker; it was not made by tkt send-issue" >&2; exit 1; }
@@ -1700,6 +1708,14 @@ cmd_import_issue() {
 # cmd_sync_issues [--dry-run] — t-4cd8: open issues on origin labelled `canon` become tickets. The label admits an issue;
 # it does not vouch for text edited after labelling, or set by an issue template, so --dry-run comes first. Each is handed to cmd_import_issue as a send-issue-shaped body
 # under an id generated here, so one parser and its path guards serve both directions. Read-only on GitHub, over REST.
+# t-fe22: who wrote an issue decides whether it may become a ticket (agents read tickets as instructions). One rule for both commands:
+# GitHub's author_association, read in the same call as the text; OWNER, MEMBER and COLLABORATOR pass, anything else (empty: "-") fails.
+# jq itself cleans both halves (an association is [A-Z_]+ or "-", a login keeps login characters), so the space between them is the only one.
+_ISSUE_AUTHOR_JQ='((.author_association // "") | if test("^[A-Z_]+$") then . else "-" end) + " " + ((.user.login // "") | gsub("[^A-Za-z0-9_.\\[\\]-]"; "") | if . == "" then "-" else . end)'
+_trusted_author() { case "$1" in OWNER|MEMBER|COLLABORATOR) return 0 ;; *) return 1 ;; esac; }
+_author_text() {   # _author_text <login or association>: only the characters a GitHub login or association uses reach the terminal
+  local t; t="$(printf '%s' "$1" | LC_ALL=C sed 's/[^][A-Za-z0-9_.-]//g')"; printf '%s' "${t:--}"
+}
 _sync_clean() {   # _sync_clean title|body < text: drops C0 (but a body's tab and newline), DEL and UTF-8 C1 controls
   LC_ALL=C awk -v mode="$1" '{ gsub(/\302[\200-\237]/, ""); gsub(/[\001-\010\013-\037\177]/, "")
     if (mode == "title") { gsub(/[\t\n]/, ""); printf "%s", $0 } else print }'
@@ -1732,17 +1748,22 @@ cmd_sync_issues() {
   local err
   # One listing holds each issue's labels, title and body, so the canon label and the text it vouches for are the same
   # snapshot (no second read that could see an edited body or a removed label). Title and body travel base64-encoded.
-  local q='.[] | select(any(.labels[]; .name == "canon")) | [.number, (if .pull_request then "pr" else "issue" end), ([.labels[].name] | join(",")), (.title | @base64), ((.body // "") | @base64)] | @tsv'
+  local q='.[] | select(any(.labels[]; .name == "canon")) | [.number, (if .pull_request then "pr" else "issue" end), ([.labels[].name] | join(",")), ('"$_ISSUE_AUTHOR_JQ"' | @base64), (.title | @base64), ((.body // "") | @base64)] | @tsv'
   err="$(gh api --paginate "repos/$repo/issues?labels=canon&state=open&per_page=100" --jq "$q" 2>&1 > "$tmp/list")" \
     || { echo "sync-issues: gh could not list issues on $repo: $err" >&2; exit 1; }
   # Decode every issue first, so a bad entry part-way creates nothing.
-  local n kind labels t64 b64 seen=","
-  while IFS=$'\t' read -r n kind labels t64 b64; do
+  local n kind labels a64 t64 b64 assoc login seen=","
+  while IFS=$'\t' read -r n kind labels a64 t64 b64; do
     [[ "$n" =~ ^[0-9]+$ && "$kind" == issue ]] || continue
     case "$seen" in *",$n,"*) continue ;; esac; seen="$seen$n,"   # a paginated listing can repeat an issue: one ticket per issue
     # Each decode is checked on its own: a failed title decode must not hide behind the body's status.
     { printf '%s' "$t64" | base64 --decode > "$tmp/t64-$n" && printf '%s' "$b64" | base64 --decode > "$tmp/b64-$n"; } 2>/dev/null \
       || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
+    # t-fe22: the author ("<association> <login>") is base64 too, so an empty field cannot shift the tab-split columns
+    printf '%s' "$a64" | base64 --decode > "$tmp/a64-$n" 2>/dev/null || { echo "sync-issues: could not decode issue #$n from the listing" >&2; exit 1; }
+    # The trust decision reads the raw association (split on spaces only); only the printed copy is cleaned.
+    assoc=""; login=""; IFS=' ' read -r assoc login _ < <(head -1 "$tmp/a64-$n"; echo) || true
+    { if _trusted_author "$assoc"; then printf 1; else printf 0; fi; printf ' %s %s\n' "$(_author_text "$assoc")" "$(_author_text "$login")"; } > "$tmp/author-$n"
     # Title and body land in ticket.md and on the terminal: no control characters (an ESC sequence can rewrite the
     # screen), C1 included (UTF-8 \302\200-\237); the body keeps its tabs and newlines.
     { _sync_clean title < "$tmp/t64-$n"; printf '\n'; _sync_clean body < "$tmp/b64-$n"; } > "$tmp/issue-$n"
@@ -1768,7 +1789,7 @@ cmd_sync_issues() {
       creatable="$creatable$n,"
     done < "$tmp/todo"
     for want in ${only//,/ }; do
-      [[ "$creatable" == *",$want,"* ]] || { echo "sync-issues: #$want is not waiting (it is not labelled canon, is a pull request, is already a ticket, or came from tkt send-issue); nothing was created" >&2; exit 1; }
+      [[ "$creatable" == *",$want,"* ]] || { echo "sync-issues: #$want is not waiting (it is not labelled canon, is a pull request, is already a ticket, is from an author who is not an owner, member or collaborator, or came from tkt send-issue); nothing was created" >&2; exit 1; }
     done
   fi
   local made=0 title type pri l id linked labs lst blocker
@@ -1784,6 +1805,7 @@ cmd_sync_issues() {
           *) _sync_skip "$n" "already $linked" "$linked" "$lst" ;;
         esac
         continue ;;
+      author*) _sync_skip "$n" "$blocker"; continue ;;
       send-issue) _sync_skip "$n" "made by tkt send-issue: use tkt import-issue $n"; continue ;;
     esac
     if [[ -n "$only" && ",$only," != *",$n,"* ]]; then continue; fi   # ticked-off issues stay waiting
@@ -1832,11 +1854,13 @@ _same_repo() {
   [[ -n "$1" && -n "$2" ]] || return 1
   [[ "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" == "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')" ]]
 }
-# _sync_blocker <issue>: why this run would not make a ticket for it ("linked <ticket> <status>" or "send-issue"), nothing when it
+# _sync_blocker <issue>: why this run would not make a ticket for it ("linked <ticket> <status>", "author …" or "send-issue"), nothing when it
 # would. The one rule behind the skip lines, --only's check and the create loop (the caller's $repo and $tmp).
 _sync_blocker() {
   local k; k="$(awk -v k="$repo#$1" 'tolower($1) == tolower(k) { print $2, $3; exit }' "$tmp/linked")"   # t-59ab: GitHub names ignore case
   if [[ -n "$k" ]]; then echo "linked $k"; return 0; fi
+  local t a; read -r t a k < "$tmp/author-$1"   # t-fe22: before the send-issue check, so a stranger's forged marker is reported as the stranger
+  [[ "$t" == 1 ]] || { echo "author $k is not an owner, member or collaborator ($a)"; return 0; }
   [[ "$(tail -n +2 "$tmp/issue-$1" | grep -c '^<!-- canon:ticket ' || true)" == 0 ]] || echo send-issue
 }
 # _sync_skip <issue> <reason>: a skipped issue, printed, or kept for --json (the caller's $json and $tmp).

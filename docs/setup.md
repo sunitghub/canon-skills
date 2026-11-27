@@ -94,7 +94,9 @@ PowerShell 5.1, PowerShell 7 and Git Bash, run from the project root. The header
 board's header button **GitHub Sync** (`tkt sync-issues`), which stays greyed out until those checks pass. It opens a table
 (Idx, Issue, Reason and a checkbox per row): the issues it would create are ticked, the others are disabled with the reason (a
 ticket that is closed here is marked so you can close its issue on GitHub), and **Create N selected** makes only the ticked
-ones (`tkt sync-issues --only 5,7`). Factory ›
+ones (`tkt sync-issues --only 5,7`). Only an issue whose author GitHub calls OWNER, MEMBER or COLLABORATOR of the repository
+becomes a ticket (agents read tickets as instructions, and on a public repository anyone can open an issue): any other author's
+issue is skipped with that reason, and `tkt import-issue` refuses it. To trust someone, add them as a collaborator. Factory ›
 GitHub's Intake box shows the issues waiting (`tkt sync-issues --dry-run --json`) and when the project last synced.
 
 **Learnings (t-8a0d).** The issue tells the cloud session to leave `LEARNINGS.md` alone (it runs `tkt learn` but not the `learnings-sweep` skill), so its PR cannot conflict there. `tkt import-results` adds the row on your machine, at the top of the table and uncommitted, and says which row or why it added none.

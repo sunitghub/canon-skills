@@ -27,7 +27,10 @@ printf '%s\n' "$*" >> "$STUB_LOG"
 [[ "$1" == api ]] || { echo "unexpected gh call: $*" >&2; exit 9; }
 for a in "$@"; do
   case "$a" in
-    repos/acme/app/issues\?*) [[ "${STUB_FAIL:-}" == list ]] && { echo "HTTP 502" >&2; exit 1; }; cat "$STUB_DIR/list"; exit 0 ;;
+    repos/acme/app/issues\?*) [[ "${STUB_FAIL:-}" == list ]] && { echo "HTTP 502" >&2; exit 1; }
+      # STUB_JSON (t-fe22): run the real --jq over a REST-shaped fixture (gh's --jq is jq syntax), not the prepared TSV
+      if [[ -n "${STUB_JSON:-}" ]]; then expr=""; while [[ $# -gt 0 ]]; do [[ "$1" == --jq ]] && expr="$2"; shift; done; jq -r "$expr" "$STUB_JSON"; exit; fi
+      cat "$STUB_DIR/list"; exit 0 ;;
   esac
 done
 echo "unexpected gh api call: $*" >&2; exit 9
@@ -35,12 +38,13 @@ SH
 chmod +x "$stub/gh"
 export PATH="$stub:$PATH" STUB_LOG="$stub/log" STUB_DIR="$stub"
 
-# mklist <n:kind:labels>...: the listing for those issues, from their issue-N files.
+# mklist <n:kind:labels[:association[:login]]>...: the listing for those issues, from their issue-N files. The author (t-fe22)
+# defaults to OWNER me; it travels base64-encoded as "<association> <login>", the way the real --jq makes it.
 mklist() {
-  local e n kind labels
+  local e n kind labels assoc login
   for e in "$@"; do
-    IFS=: read -r n kind labels <<< "$e"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$n" "$kind" "$labels" \
+    IFS=: read -r n kind labels assoc login <<< "$e"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$kind" "$labels" "$(printf '%s %s' "${assoc:-OWNER}" "${login:-me}" | base64 | tr -d '\n')" \
       "$(head -1 "$stub/issue-$n" | tr -d '\n' | base64 | tr -d '\n')" "$(tail -n +2 "$stub/issue-$n" | base64 | tr -d '\n')"
   done > "$stub/list"
 }
@@ -175,12 +179,12 @@ assert_eq "$n0" "$(synced)"   # a failed run records no sync
 rc=0; out="$(STUB_FAIL=list "$TKT" sync-issues --dry-run --json 2>/dev/null)" || rc=$?
 [[ "$rc" == 1 && -z "$out" ]] || fail "a failing listing under --json should exit 1 with no stdout (rc $rc): $out"
 # A listing entry that does not decode: exit 1 before any ticket is made, even for the good entry before it.
-printf '17\tissue\tcanon\tTmV3\teA==\n18\tissue\tcanon\t!!!not-base64\teA==\n' > "$stub/list"
+printf '17\tissue\tcanon\tT1dORVIgbWU=\tTmV3\teA==\n18\tissue\tcanon\tT1dORVIgbWU=\t!!!not-base64\teA==\n' > "$stub/list"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an undecodable entry should exit 1, got $rc: $err"
 assert_eq "$before" "$(snap)"
 # ...and a bad body after a good title, the same.
-printf '17\tissue\tcanon\tTmV3\t!!!not-base64\n' > "$stub/list"
+printf '17\tissue\tcanon\tT1dORVIgbWU=\tTmV3\t!!!not-base64\n' > "$stub/list"
 rc=0; err="$("$TKT" sync-issues 2>&1)" || rc=$?
 [[ "$rc" == 1 ]] || fail "an undecodable body should exit 1, got $rc: $err"
 assert_eq "$before" "$(snap)"
@@ -231,6 +235,87 @@ assert_eq "$(printf '%s' "$pj" | jx '[[k["reason"],k["ticket"],k["ticket_status"
 # the send-issue marker only counts at the start of a line, in the --only check as in the run itself
 printf 'Hostile marker\nsee <!-- canon:ticket t-evil -->\n' > "$stub/issue-33"; mklist 33:issue:canon
 out="$("$TKT" sync-issues --only 33)"; assert_contains "$out" "#33  Hostile marker"
+
+# t-fe22: an issue becomes a ticket only when GitHub calls its author OWNER, MEMBER or COLLABORATOR (agents read tickets as
+# instructions; on a public repo anyone can open an issue, and an issue template can set the canon label). Prod path: tkt sync-issues,
+# the board's GitHub Sync (--only) and Factory › GitHub's Intake (--dry-run --json).
+printf 'Stranger one\nx\n' > "$stub/issue-51"; printf 'Drive by\nx\n' > "$stub/issue-52"; printf 'First timer\nx\n' > "$stub/issue-53"
+printf 'Forged sent\nbody\n<!-- canon:ticket t-0002 -->\n' > "$stub/issue-54"; printf 'Hostile login\nx\n' > "$stub/issue-55"
+printf 'Member one\nx\n' > "$stub/issue-56"; printf 'Collab one\nx\n' > "$stub/issue-57"; printf 'Dash one\nx\n' > "$stub/issue-58"
+printf 'Lower owner\nx\n' > "$stub/issue-59"; printf 'Linked one\nalready a ticket\n' > "$stub/issue-13"
+mklist 51:issue:canon:NONE:stranger 52:issue:canon:CONTRIBUTOR:drive-by 53:issue:canon:FIRST_TIME_CONTRIBUTOR:newbie \
+  54:issue:canon:NONE:forger "55:issue:canon:NONE:ev"$'\033[2J\302\233'"il" 56:issue:canon:MEMBER:m1 57:issue:canon:COLLABORATOR:c1 \
+  58:issue:canon:-:- 59:issue:canon:owner:x 13:issue:canon:NONE:stranger
+before="$(snap)"; : > "$STUB_LOG"
+dry="$("$TKT" sync-issues --dry-run)"
+assert_contains "$dry" "skip  #51  author stranger is not an owner, member or collaborator (NONE)"
+assert_contains "$dry" "skip  #52  author drive-by is not an owner, member or collaborator (CONTRIBUTOR)"
+assert_contains "$dry" "skip  #53  author newbie is not an owner, member or collaborator (FIRST_TIME_CONTRIBUTOR)"
+assert_contains "$dry" "skip  #54  author forger is not an owner, member or collaborator (NONE)"   # the author, not "made by tkt send-issue"
+assert_contains "$dry" "skip  #55  author ev[2Jil is not an owner, member or collaborator (NONE)"   # control characters dropped
+assert_contains "$dry" "skip  #58  author - is not an owner, member or collaborator (-)"
+assert_contains "$dry" "skip  #59  author x is not an owner, member or collaborator (owner)"   # exact, case and all
+assert_contains "$dry" "skip  #13  already $linked"   # linked comes before author
+assert_contains "$dry" "would create  #56  Member one"; assert_contains "$dry" "would create  #57  Collab one"
+assert_contains "$dry" "dry run: 2 to create, nothing written"
+LC_ALL=C grep -q $'\033\|\302\233' <<< "$dry" && fail "a control character in a login reached the terminal"
+pj="$("$TKT" sync-issues --dry-run --json)"
+assert_eq "$(printf '%s' "$pj" | jx '[w["issue"] for w in d["waiting"]]')" '[56,57]'
+assert_eq "$(printf '%s' "$pj" | jx '[k["reason"] for k in d["skipped"] if k["issue"]==52]')" '["author drive-by is not an owner, member or collaborator (CONTRIBUTOR)"]'
+for bad in 51 54 58 "56,51"; do
+  rc=0; err="$("$TKT" sync-issues --only "$bad" 2>&1)" || rc=$?
+  [[ "$rc" == 1 ]] || fail "--only $bad (an untrusted author) should exit 1, got $rc: $err"
+  assert_contains "$err" "is from an author who is not an owner, member or collaborator"
+done
+assert_eq "$before" "$(snap)"
+out="$("$TKT" sync-issues)"
+assert_contains "$out" "sync-issues: 2 created"
+for n in 51 52 53 54 55 58 59; do [[ -z "$(grep -rl "^github: acme/app#$n\$" .tickets || true)" ]] || fail "an untrusted author's #$n became a ticket"; done
+for n in 56 57; do [[ -n "$(grep -rl "^github: acme/app#$n\$" .tickets || true)" ]] || fail "a trusted author's #$n made no ticket: $out"; done
+[[ "$(grep -c 'issues?labels=canon' "$STUB_LOG")" == 7 && "$(wc -l < "$STUB_LOG" | tr -d ' ')" == 7 ]] || fail "one listing per run (7 runs), nothing else: $(cat "$STUB_LOG")"
+# The real --jq (needs jq): a REST-shaped fixture with every association shape, a null user and a missing field, plus a few hundred
+# random shapes (control bytes, CR, spaces, unicode, ../). Output stays one JSON object; only the three associations are waiting.
+if command -v jq >/dev/null 2>&1; then
+  python3 - "$stub/rest.json" <<'PY2'
+import json, random, sys
+random.seed(7)
+fixed = [("OWNER", "me"), ("MEMBER", "m"), ("COLLABORATOR", "c"), ("CONTRIBUTOR", "x"), ("FIRST_TIME_CONTRIBUTOR", "x"),
+         ("FIRST_TIMER", "x"), ("MANNEQUIN", "x"), ("NONE", "x"), ("", "x"), (None, "x"), ("MISSING", None), ("OWNER", None)]
+alpha = ["OWNER", "MEMBER", "COLLABORATOR", "owner", " OWNER", "OWNER ", "OWNER\r", "OWNER\tX", "\x1b[2J", " ", "../", "OW\nNER", "", "MEMBER ", "COLLAB"]
+out = []
+for i, (a, l) in enumerate(fixed + [(random.choice(alpha) + random.choice(["", "x", "é"]), random.choice(["", "me", "a b", "\x1b", "\x00", "../x", "\r"])) for _ in range(300)]):
+    it = {"number": 100 + i, "labels": [{"name": "canon"}], "title": "T%d" % i, "body": "b"}
+    if a != "MISSING": it["author_association"] = a
+    it["user"] = None if l is None else {"login": l}
+    out.append(it)
+json.dump(out, open(sys.argv[1], "w"))
+PY2
+  pj="$(STUB_JSON="$stub/rest.json" "$TKT" sync-issues --dry-run --json)" || fail "sync-issues failed on the REST fixture"
+  [[ "$(printf '%s\n' "$pj" | wc -l | tr -d ' ')" == 1 ]] || fail "--json printed more than one line on the fuzz fixture"
+  python3 - "$stub/rest.json" "$pj" <<'PY2' || fail "the real --jq let an untrusted author through"
+import json, sys
+src = {i["number"]: i for i in json.load(open(sys.argv[1]))}
+d = json.loads(sys.argv[2])
+ok = {"OWNER", "MEMBER", "COLLABORATOR"}
+w = [x["issue"] for x in d["waiting"]]
+assert w[:3] == [100, 101, 102], w[:3]
+for n in w: assert src[n].get("author_association") in ok, (n, src[n])
+for n, i in src.items():
+    if i.get("author_association") in ok: assert n in w, n
+for k in d["skipped"]: assert k["reason"].startswith("author "), k
+for k in d["skipped"]:
+    if k["issue"] in (108, 109, 110): assert k["reason"].endswith("(-)"), k   # empty, null, missing association
+assert 111 in w   # a trusted association with no user still passes; its login prints as "-"
+PY2
+else echo "  note: jq not found; the real --jq checks did not run" >&2; fi
+# Every path that makes a ticket from GitHub runs the one rule, and the board has no issue read of its own.
+sec="$(awk '/^cmd_import_issue\(\)/,/^}/' "$ROOT/tools/tkt")"; [[ "$sec" == *'_trusted_author "$assoc"'* ]] || fail "cmd_import_issue does not call _trusted_author"
+sec="$(awk '/^cmd_sync_issues\(\)/,/^}/' "$ROOT/tools/tkt")"; [[ "$sec" == *'_trusted_author "$assoc"'* ]] || fail "cmd_sync_issues does not call _trusted_author"
+[[ -z "$(grep -lE 'gh.*api.*issues' "$ROOT"/tools/canon-go/internal/board/*.go | grep -v '_test.go$' || true)" ]] || fail "the board reads GitHub issues itself"
+# The shipped docs state the rule.
+for d in tools/ticket.md docs/setup.md; do
+  for w in OWNER MEMBER COLLABORATOR; do grep -q "$w" "$ROOT/$d" || fail "$d does not name $w in the author rule"; done
+done
 
 # A project with no .tickets/ yet: a dry run, or a run that fails, creates nothing at all (not even .tickets/).
 bare="$(mktemp -d "${TMPDIR:-/tmp}/tkt-sync-bare.XXXXXX")"; (cd "$bare" && git init -q && git remote add origin https://github.com/acme/app.git)
