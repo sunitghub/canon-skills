@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.4] - 2026-11-27
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Security (board, daemon): a file swapped for a FIFO between the check and the open is now refused everywhere, on Linux too. The ticket loader, the theme list, the Copilot session watcher and the event-log sealer used to check only that the opened file was the same one they first saw (device and inode); Linux hands a deleted file's inode straight to a new FIFO, so a theme read as "not valid JSON" instead of "not a regular file". They now share one check that also requires the opened file to be regular, and the Copilot watcher and the sealer no longer open blocking, so such a swap cannot hang them. canon-skills' go-checks run is green again (t-adcb).
+
 ## [0.90.3] - 2026-11-27
 
 - Security (board): four reads no longer follow a link out of their folder or hang on a FIFO. A ticket doc, image or `.feature` file that is a FIFO now answers 404 instead of blocking the request, because every read through the tickets folder opens without blocking and reads regular files only. The Why tab no longer shows a decision from a `plan.md` linked outside `.tickets/`. The `.worktreeinclude` copy into a new worktree skips an ignored file linked outside the project, never writes through a linked folder in the new checkout, and now copies non-ASCII and leading-space names (`git ls-files -z`) with the source file's mode, which the umask no longer strips. The skill-eval `report.html` is read through canon's own root, so a run folder swapped for a link after the check answers 404 (t-fe8d).
