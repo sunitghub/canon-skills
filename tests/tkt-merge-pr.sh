@@ -235,7 +235,7 @@ if command -v script >/dev/null 2>&1; then
 # BSD and util-linux spellings).
 tty_run() { local a="$1"; shift; local mark="$W/tty.done" rc=0
   # The input stays open until script exits: BSD script sends EOF to the terminal as soon as its input closes, before the
-  # prompt reads. Bounded at 30 s (t-da4c: was a fixed sleep 3, which every short run waited out).
+  # prompt reads. Bounded at 30 s (t-da4c: was a fixed 3 s wait, which every short run sat out).
   rm -f "$mark" "$W/tty.stuck"
   { printf '%s\n' "$a"; for _ in $(seq 300); do [[ -e "$mark" ]] && exit 0; sleep 0.1; done; touch "$W/tty.stuck"; } | {
     r=0
