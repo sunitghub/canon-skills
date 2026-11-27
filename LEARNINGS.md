@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-26-2026 17:21
+learnings-sweep last run: 11-26-2026 21:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-27 | [t-393e](.tickets/t-393e/learnings.md) | An empty GH_CONFIG_DIR does not cut gh off (it falls back to its Keychain login) and stripping GIT_ASKPASS leaves core.askPass: the plan trusted env resets nobody probed, and only break-it/the reviewer ran the real tool; probe every credential fallback live before calling a route closed | UNPROMOTED |
 | 2026-11-26 | [t-4e5c](.tickets/t-4e5c/learnings.md) | A security doc claimed what the old-flags probe "showed" (.claude/agents loaded) when the run died before it could show it (apiKeyHelper swapped the key); only the reviewer caught it: claim only what a probe log actually records | UNPROMOTED |
 | 2026-11-26 | [t-2800](.tickets/t-2800/learnings.md) | The os.Root sweep listed its routes by hand and missed two same-shape writers in another file (writeTags in tags.go, writeBoolField); only break-it found them, and the swap seam graded only the first rootLoc call until each route pinned its call count | UNPROMOTED |
 | 2026-11-26 | [t-ecf8](.tickets/t-ecf8/learnings.md) | The full suite was stamped as `full-suite`, but test-stamp accepts only `test-sh.log`: check-evidence said ok and gate-prompt refused, forcing a second ~9 min run. One rule should own "is this the full suite" (t-b5a6) | `dismissed (covered: standards/efficiency-notes.md)` |
@@ -82,5 +83,4 @@ learnings-sweep last run: 11-26-2026 17:21
 | 2026-11-17 | [t-7ef7](.tickets/t-7ef7/learnings.md) | A cloud session cannot watch its own workflow run, so a CI ticket built there must be landed and graded where the run is visible; and a CI step must match the repo as it is: npm ci needs a committed lockfile, which canon gitignores | `promoted → skills/sprint/reference/complete.md` |
 | 2026-11-17 | [t-4358](.tickets/t-4358/learnings.md) | Check a vendor's brand rules before drawing its mark, at plan time: GitHub allows its logo to "show integration" but needs approval for any public use of its mascots, which changed the ticket's design before a line was written | `dismissed` |
 | 2026-11-17 | [t-45b1](.tickets/t-45b1/learnings.md) | A retrying assertion can wait out the very value it pins: under page.clock.install time still runs, so toHaveText("3s") passed on a 5 s countdown; pause the clock and read once. And a model-id parser needs a date-suffix case: a one-number version took the date as its minor | `promoted → tools/sprint-check-app/CLAUDE.md` |
-| 2026-11-16 | [t-d600](.tickets/t-d600/learnings.md) | A scheduled-only security check lets releases ship a known-vulnerable pin between runs (Node 22.23.5 found five days late, after two releases): run the same check as a release refusal, so the release path owns the freshness | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
