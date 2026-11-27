@@ -739,7 +739,12 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload map[string]any
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, postBodyMax)) // t-5fd2: stop reading at the cap, not after it
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		sendJSONStatus(w, map[string]any{"ok": false, "error": "request body too large"}, http.StatusRequestEntityTooLarge)
+		return
+	}
 	if err != nil || json.Unmarshal(body, &payload) != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -941,7 +946,12 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSONStatus(w, res, st)
 			return
 		}
-		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]), eroot)})
+		status, ferr := statusField(payload)
+		if ferr != nil {
+			sendFieldErr(w, ferr)
+			return
+		}
+		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], status, eroot)})
 		return
 	}
 	if m := apiTicketBodyRe.FindStringSubmatch(path); m != nil {
@@ -949,7 +959,12 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSONStatus(w, res, st)
 			return
 		}
-		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]), eroot)})
+		body, ferr := docField(payload, "body")
+		if ferr != nil {
+			sendFieldErr(w, ferr)
+			return
+		}
+		sendJSON(w, map[string]bool{"ok": writeBody(m[1], body, eroot)})
 		return
 	}
 	if m := apiTicketVisualRe.FindStringSubmatch(path); m != nil {
@@ -1013,7 +1028,12 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			sendJSONStatus(w, res, st)
 			return
 		}
-		sendJSON(w, map[string]bool{"ok": writeDoc(doc, fmt.Sprint(payload["content"]), eroot)})
+		content, ferr := docField(payload, "content")
+		if ferr != nil {
+			sendFieldErr(w, ferr)
+			return
+		}
+		sendJSON(w, map[string]bool{"ok": writeDoc(doc, content, eroot)})
 		return
 	}
 	if path == "/api/github/sync" {
@@ -2082,6 +2102,10 @@ func writeDoc(docFile, content string, root string) bool {
 // t-626d: behaviour pinned by tests/sprint-check-api.sh.
 const maxVisualBytes = 8 * 1024 * 1024
 
+// postBodyMax caps every body the shared POST parser reads: the largest legitimate one is a visual of maxVisualBytes
+// sent as base64 JSON (t-5fd2).
+var postBodyMax = int64(base64.StdEncoding.EncodedLen(maxVisualBytes) + 64<<10)
+
 // dedupeVisualName returns a collision-free filename under .tickets/<id>/visuals/,
 // auto-suffixing before the extension (never overwrites). "" if filename is unsafe.
 func dedupeVisualName(ticketID, filename string, root string) string {
@@ -3044,6 +3068,39 @@ type liveDocErr struct {
 	msg    string
 }
 
+// t-5fd2: the one check of a board doc, description or status write, bound to a worktree or not. A missing or
+// non-string value is refused, never written as fmt.Sprint's "<nil>"/"map[...]"; a status outside the five is refused,
+// so a newline in it can never add a frontmatter line. Doc content is measured as sent, a description after TrimSpace.
+func docField(payload map[string]any, key string) (string, *liveDocErr) {
+	what, noun := "content", "doc"
+	if key == "body" {
+		what, noun = "body", "description"
+	}
+	v, isStr := payload[key].(string)
+	if !isStr {
+		return "", &liveDocErr{http.StatusBadRequest, "bad_content", what + " must be text"}
+	}
+	if key == "body" {
+		v = strings.TrimSpace(v) // what is written is what is measured
+	}
+	if len(v) > liveDocMaxBytes {
+		return "", &liveDocErr{http.StatusBadRequest, "too_large", "that " + noun + " is too large to save from the board"}
+	}
+	return v, nil
+}
+
+func statusField(payload map[string]any) (string, *liveDocErr) {
+	s, isStr := payload["status"].(string)
+	if !isStr || !liveTicketStatuses[s] {
+		return "", &liveDocErr{http.StatusBadRequest, "bad_status", "that is not a ticket status"}
+	}
+	return s, nil
+}
+
+func sendFieldErr(w http.ResponseWriter, e *liveDocErr) {
+	sendJSONStatus(w, map[string]any{"ok": false, "code": e.code, "error": e.msg}, e.status)
+}
+
 // liveDocTargetFrom returns the file a board write to docFile would replace in the bound worktree, or why not.
 // dir is liveWorktreeFull's resolved <worktree>/.tickets/<id>; wtPath is the worktree itself.
 func liveDocTargetFrom(docFile, dir, wtPath string) (rootLoc, *liveDocErr) {
@@ -3115,12 +3172,9 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 	if derr != nil {
 		return fail(derr.status, derr.code, derr.msg)
 	}
-	content, isStr := payload["content"].(string)
-	if !isStr {
-		return fail(http.StatusBadRequest, "bad_content", "content must be text")
-	}
-	if len(content) > liveDocMaxBytes {
-		return fail(http.StatusBadRequest, "too_large", "that doc is too large to save from the board")
+	content, ferr := docField(payload, "content")
+	if ferr != nil {
+		return fail(ferr.status, ferr.code, ferr.msg)
 	}
 	base, _ := payload["base_hash"].(string)
 	liveDocMu.Lock()
@@ -3223,24 +3277,18 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	var active rootLoc
 	switch kind {
 	case "status":
-		var isStr bool
-		newStatus, isStr = payload["status"].(string)
-		if !isStr || !liveTicketStatuses[newStatus] {
-			return fail(http.StatusBadRequest, "bad_status", "that is not a ticket status")
+		var ferr *liveDocErr
+		if newStatus, ferr = statusField(payload); ferr != nil {
+			return fail(ferr.status, ferr.code, ferr.msg)
 		}
 		var ok bool
 		if active, ok = liveActivePath(wtPath); !ok {
 			return fail(http.StatusForbidden, "unsafe_path", "that worktree's ACTIVE file is not a plain file")
 		}
 	case "body":
-		var isStr bool
-		newBody, isStr = payload["body"].(string)
-		if !isStr {
-			return fail(http.StatusBadRequest, "bad_content", "body must be text")
-		}
-		newBody = strings.TrimSpace(newBody) // what is written is what is measured (as in server.py)
-		if len(newBody) > liveDocMaxBytes {
-			return fail(http.StatusBadRequest, "too_large", "that description is too large to save from the board")
+		var ferr *liveDocErr
+		if newBody, ferr = docField(payload, "body"); ferr != nil {
+			return fail(ferr.status, ferr.code, ferr.msg)
 		}
 	}
 	liveDocMu.Lock()
