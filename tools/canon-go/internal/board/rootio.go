@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -52,7 +53,13 @@ var errNotRegular = errors.New("not a regular file")
 
 // read opens with the nonblock flag and reads only a regular file, so a FIFO planted under the root cannot block the
 // request (t-fe8d; Root.ReadFile opened it blocking).
-func (l rootLoc) read() (b []byte, err error) {
+func (l rootLoc) read() ([]byte, error) { return l.readMax(math.MaxInt64 - 1) }
+
+// errTooLarge: readMax refuses a file over its cap (t-f172).
+var errTooLarge = errors.New("too large")
+
+// readMax is read with a size cap (t-f172: repo files a PR controls are read under the Logbook's 4 MB).
+func (l rootLoc) readMax(max int64) (b []byte, err error) {
 	f, err := l.openNonblock()
 	if err != nil {
 		return nil, err
@@ -62,8 +69,13 @@ func (l rootLoc) read() (b []byte, err error) {
 		return nil, err
 	} else if !fi.Mode().IsRegular() {
 		return nil, errNotRegular
+	} else if fi.Size() > max {
+		return nil, errTooLarge
 	}
-	return io.ReadAll(f)
+	if b, err = io.ReadAll(io.LimitReader(f, max+1)); err == nil && int64(len(b)) > max {
+		return nil, errTooLarge
+	}
+	return b, err
 }
 
 func (l rootLoc) stat() (fi os.FileInfo, err error) {

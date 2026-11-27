@@ -454,7 +454,7 @@ func scanReader(f io.Reader, from int64, fn func(ev Event, end int64, terminated
 func latestIn(path, kind, project string, valid func(Event) bool) (Event, bool) {
 	var found Event
 	ok := false
-	EachIn(path, func(ev Event) {
+	EachIn(path, func(ev Event) { // t-6278: an over-cap .gz day is read up to the bound; EachIn's too-large error is ignored here
 		if ev.Kind == kind && ev.Project == project && (valid == nil || valid(ev)) {
 			found, ok = ev, true
 		}

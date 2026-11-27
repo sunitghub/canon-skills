@@ -1330,6 +1330,12 @@ func readTicketFile(path string) ([]byte, error) {
 	return raw, err
 }
 
+// readTicketDoc reads tdir/rel (a ticket folder's ticket.md or .cockpit-cwd) through an os.Root on tdir (t-f172): a ticket
+// folder linked out of .tickets, or an id that climbs with "..", cannot leave it; a FIFO never blocks; 4 MB cap.
+func readTicketDoc(tdir, rel string) ([]byte, error) {
+	return rootLoc{dir: tdir, rel: filepath.ToSlash(rel)}.readMax(ticketFileMax)
+}
+
 func parseTicket(path string) (ticket, error) {
 	raw, err := readTicketFile(path)
 	if err != nil {
@@ -1606,7 +1612,7 @@ func loadHandoff(root string) map[string]any {
 	if root != "" {
 		loc = rootLoc{dir: root, rel: "HANDOFF.md"} // t-f172: a link out of the project is refused, a FIFO does not block
 	}
-	raw, err := loc.read()
+	raw, err := loc.readMax(ticketFileMax)
 	if err != nil {
 		return map[string]any{"focus": nil, "raw": ""}
 	}
@@ -2992,7 +2998,7 @@ func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, stri
 		return "", "", "", false
 	}
 	var cand map[string]any
-	if raw, err := readTicketFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
+	if raw, err := readTicketDoc(ticketsDirForRoot(root), tid+"/.cockpit-cwd"); err == nil {
 		if cwd := strings.TrimSpace(string(raw)); cwd != "" {
 			if common.SamePath(cwd, root) {
 				return "", "", "", false // t-1aa7: bound to the main checkout: no worktree, and no divergence guess
@@ -3423,7 +3429,7 @@ func anyLiveCandidate(tickets []ticket, root string) bool {
 		if d, ok := t["branch_divergence"].(map[string]any); ok && d["where"] == "worktree" && d["status"] == "in_progress" {
 			return true
 		}
-		if raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+		if raw, err := readTicketDoc(tdir, id+"/.cockpit-cwd"); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" && linkedWorktreeOf(cwd, wtDir) {
 				return true
 			}
@@ -3510,8 +3516,8 @@ func worktreeDirty(path string) bool {
 
 // ticketFM returns the status from a ticket.md's frontmatter;
 // ok is false when the file is missing or has no frontmatter.
-func ticketFM(path string) (string, bool) {
-	raw, err := readTicketFile(path)
+func ticketFM(tdir, id string) (string, bool) {
+	raw, err := readTicketDoc(tdir, id+"/ticket.md")
 	if err != nil {
 		return "", false
 	}
@@ -3543,12 +3549,12 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 	}
 	sort.Strings(names)
 	for _, id := range names {
-		st, ok := ticketFM(filepath.Join(tdir, id, "ticket.md"))
+		st, ok := ticketFM(tdir, id)
 		if !ok {
 			continue
 		}
 		mainStatus[id] = st
-		if raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+		if raw, err := readTicketDoc(tdir, id+"/.cockpit-cwd"); err == nil {
 			if cwd := strings.TrimSpace(string(raw)); cwd != "" {
 				k := common.ResolvedKey(cwd)
 				bound[k] = append(bound[k], id)
@@ -3570,7 +3576,7 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		}
 		binders := bound[common.ResolvedKey(path)]
 		statusOf := func(id string) string {
-			if st, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
+			if st, ok := ticketFM(filepath.Join(path, ".tickets"), id); ok && st != "" {
 				return st
 			}
 			return mainStatus[id]
@@ -3748,9 +3754,8 @@ func mainDirtyIgnoringRuntime(root string) bool {
 // checkout only carries committed history.
 // t-1780: root scopes this to the requesting tab's own project.
 func worktreeLockStatus(ticketID, root string) map[string]any {
-	cwdPath := filepath.Join(ticketsDirForRoot(root), ticketID, ".cockpit-cwd")
 	var cwd any
-	if b, err := readTicketFile(cwdPath); err == nil {
+	if b, err := readTicketDoc(ticketsDirForRoot(root), ticketID+"/.cockpit-cwd"); err == nil {
 		if trimmed := strings.TrimSpace(string(b)); trimmed != "" {
 			cwd = trimmed
 		}
@@ -4063,7 +4068,7 @@ func linkSkillsIntoWorktree(path string) {
 }
 
 func worktreeIncludePatterns(root string) []string {
-	data, err := (rootLoc{dir: root, rel: ".worktreeinclude"}).read() // t-f172
+	data, err := (rootLoc{dir: root, rel: ".worktreeinclude"}).readMax(ticketFileMax) // t-f172
 	if err != nil {
 		return nil
 	}
@@ -4568,7 +4573,7 @@ func interruptedReason(id, root, cwd, agent string) string {
 	if strings.HasPrefix(id, "s-") {
 		return "scratch session — its conversation can't be resumed; its changes stay in " + cwd
 	}
-	b, err := readTicketFile(filepath.Join(root, ".tickets", id, "ticket.md"))
+	b, err := readTicketDoc(filepath.Join(root, ".tickets"), id+"/ticket.md")
 	if err != nil {
 		return "ticket no longer exists in " + root
 	}
@@ -4847,7 +4852,7 @@ func ensureCockpit() map[string]any {
 // ticketGate reads a ticket's headless gate mode ("eval" or "full") from
 // frontmatter. Absent = "full" (the default 3-gate pipeline), mirroring ci.
 func ticketGate(ticketID string) string {
-	raw, err := readTicketFile(filepath.Join(ticketsDir, ticketID, "ticket.md"))
+	raw, err := readTicketDoc(ticketsDir, ticketID+"/ticket.md")
 	if err != nil {
 		return "full"
 	}
@@ -6282,7 +6287,7 @@ var aiSkillsBlockRe = regexp.MustCompile(`(?s)<!--\s*AI-SKILLS:BEGIN\s*-->(.*?)<
 
 func registeredSkills(root string) []string {
 	names := []string{}
-	raw, err := (rootLoc{dir: root, rel: "AGENTS.md"}).read() // t-f172: an in-root link (AGENTS.md -> CLAUDE.md) still reads
+	raw, err := (rootLoc{dir: root, rel: "AGENTS.md"}).readMax(ticketFileMax) // t-f172: an in-root link (AGENTS.md -> CLAUDE.md) still reads
 	if err != nil {
 		return names
 	}

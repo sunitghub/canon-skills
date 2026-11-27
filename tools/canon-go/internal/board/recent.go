@@ -261,7 +261,7 @@ func handoffBlockOnly(dir, xy string) bool {
 	if xy != " M" {
 		return false
 	}
-	work, err := (rootLoc{dir: dir, rel: "HANDOFF.md"}).read() // t-f172
+	work, err := (rootLoc{dir: dir, rel: "HANDOFF.md"}).readMax(ticketFileMax) // t-f172
 	if err != nil {
 		return false
 	}

@@ -345,21 +345,23 @@ func TestPostTicketIgnoresWorktreePreference(t *testing.T) {
 // and a legacy worktree_preference line is just another ignored key.
 func TestTicketFMStatusOnly(t *testing.T) {
 	dir := t.TempDir()
-	write := func(name, body string) string {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+	write := func(id, body string) string {
+		if err := os.MkdirAll(filepath.Join(dir, id), 0755); err != nil {
 			t.Fatal(err)
 		}
-		return p
+		if err := os.WriteFile(filepath.Join(dir, id, "ticket.md"), []byte(body), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return id
 	}
-	if st, ok := ticketFM(filepath.Join(dir, "absent.md")); ok || st != "" {
+	if st, ok := ticketFM(dir, "t-absent"); ok || st != "" {
 		t.Fatalf("missing file: got (%q, %v), want (\"\", false)", st, ok)
 	}
-	if st, ok := ticketFM(write("plain.md", "# no frontmatter\n")); ok || st != "" {
+	if st, ok := ticketFM(dir, write("t-plain", "# no frontmatter\n")); ok || st != "" {
 		t.Fatalf("no frontmatter: got (%q, %v), want (\"\", false)", st, ok)
 	}
-	legacy := write("legacy.md", "---\nid: t-x\nstatus: open\nworktree_preference: sprint/x\n---\n# x\n")
-	if st, ok := ticketFM(legacy); !ok || st != "open" {
+	legacy := write("t-legacy", "---\nid: t-x\nstatus: open\nworktree_preference: sprint/x\n---\n# x\n")
+	if st, ok := ticketFM(dir, legacy); !ok || st != "open" {
 		t.Fatalf("legacy line: got (%q, %v), want (\"open\", true)", st, ok)
 	}
 }

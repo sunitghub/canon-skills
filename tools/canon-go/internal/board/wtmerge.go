@@ -2,6 +2,7 @@
 package board
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -36,7 +37,7 @@ func annotateWorktreeMerge(tickets []ticket, root string) {
 		if r, _ := t["runs"].(string); r == "github" {
 			continue
 		}
-		raw, err := readTicketFile(filepath.Join(tdir, id, ".cockpit-cwd"))
+		raw, err := readTicketDoc(tdir, id+"/.cockpit-cwd")
 		cwd := strings.TrimSpace(string(raw))
 		if err != nil || cwd == "" {
 			continue
@@ -117,7 +118,12 @@ func gradedHead(report string) string {
 // linkedWorktreeOf reports whether dir is a linked worktree whose .git file points into wtDir (<repo>/.git/worktrees), read
 // from the file itself so the tickets poll runs no git for it. A main checkout (.git is a folder) or a gone folder is not one.
 func linkedWorktreeOf(dir, wtDir string) bool {
-	raw, err := os.ReadFile(filepath.Join(dir, ".git"))
+	f, _, err := common.OpenRegular(filepath.Join(dir, ".git")) // t-f172: dir comes from .cockpit-cwd; a FIFO .git never blocks the poll
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, 4096))
 	if err != nil {
 		return false
 	}

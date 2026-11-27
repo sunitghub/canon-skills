@@ -120,7 +120,7 @@ func TestTicketFolderFilesFIFOAndLinkOut(t *testing.T) {
 			}
 		}
 		within(t, how+" ticketFM", func() {
-			if st, ok := ticketFM(filepath.Join(dir, "ticket.md")); st != "" || ok {
+			if st, ok := ticketFM(filepath.Join(root, ".tickets"), "t-f172"); st != "" || ok {
 				t.Errorf("%s ticketFM = %q, %v", how, st, ok)
 			}
 		})
@@ -162,5 +162,61 @@ func TestGcoReadAndLogbookFIFO(t *testing.T) {
 	writeFile(t, big, strings.Repeat("x", gcoMaxFile+1))
 	if _, why := gcoRead(big); why != "larger than 256 KB" {
 		t.Errorf("gcoRead over cap: %q", why)
+	}
+}
+
+// t-f172 break-it: a ticket folder that is a link out of .tickets is never read through, on the direct-path reads.
+func TestTicketFolderLinkOutIsNotFollowed(t *testing.T) {
+	root := setupTestProject(t)
+	outside := t.TempDir()
+	writeFile(t, filepath.Join(outside, "ticket.md"), "---\nid: t-f172\nstatus: closed\ngate: eval\n---\n")
+	writeFile(t, filepath.Join(outside, ".cockpit-cwd"), "LEAK\n")
+	if err := os.Symlink(outside, filepath.Join(root, ".tickets", "t-f172")); err != nil {
+		t.Fatal(err)
+	}
+	if s := worktreeLockStatus("t-f172", root); s["cwd"] != nil {
+		t.Errorf("worktreeLockStatus read through the linked folder: %v", s)
+	}
+	if g := ticketGate("t-f172"); g != "full" {
+		t.Errorf("ticketGate read through the linked folder: %q", g)
+	}
+	if r := interruptedReason("t-f172", root, root, "claude"); r != "ticket no longer exists in "+root {
+		t.Errorf("interruptedReason read through the linked folder: %q", r)
+	}
+	if st, ok := ticketFM(filepath.Join(root, ".tickets"), "t-f172"); ok || st != "" {
+		t.Errorf("ticketFM read through the linked folder: %q %v", st, ok)
+	}
+}
+
+// t-f172 break-it: a frontmatter id is not trusted as a path: "../" cannot climb out of .tickets.
+func TestTicketDocRefusesAClimbingID(t *testing.T) {
+	root := setupTestProject(t)
+	writeFile(t, filepath.Join(root, "outside", ".cockpit-cwd"), "LEAK\n")
+	if b, err := readTicketDoc(filepath.Join(root, ".tickets"), "../outside/.cockpit-cwd"); err == nil {
+		t.Errorf("read %q through a climbing id", b)
+	}
+}
+
+// t-f172 break-it: a FIFO at a bound worktree's .git does not block the tickets poll.
+func TestLinkedWorktreeOfFIFO(t *testing.T) {
+	d := t.TempDir()
+	mkfifo(t, filepath.Join(d, ".git"))
+	within(t, "linkedWorktreeOf FIFO", func() {
+		if linkedWorktreeOf(d, filepath.Join(d, "wt")) {
+			t.Error("a FIFO .git read as a linked worktree")
+		}
+	})
+}
+
+// t-f172 break-it: HANDOFF.md and AGENTS.md from a PR are read under the same 4 MB cap as the Logbook's.
+func TestRootFilesOverCap(t *testing.T) {
+	root := setupTestProject(t)
+	writeFile(t, filepath.Join(root, "HANDOFF.md"), "## Current Focus\n"+strings.Repeat("x", ticketFileMax))
+	writeFile(t, filepath.Join(root, "AGENTS.md"), skillsBlock+strings.Repeat("x", ticketFileMax))
+	if h := loadHandoff(root); h["raw"] != "" {
+		t.Errorf("an over-cap HANDOFF.md was served (%d bytes)", len(h["raw"].(string)))
+	}
+	if s := registeredSkills(root); len(s) != 0 {
+		t.Errorf("an over-cap AGENTS.md was read: %v", s)
 	}
 }
