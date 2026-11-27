@@ -17,7 +17,9 @@ export GIT_TERMINAL_PROMPT=0
 # One folder for the run, unless the caller pinned one (a test that needs the default sets CANON_HOME= for its child).
 # t-e042: the log a run must leave alone is the one the caller had before this pin (the user's, or a caller's own pin); a suite that
 # drops the pin (unset CANON_HOME) would write there. Read after the run (leak_check below), never written.
-WATCH="${CANON_HOME:-${HOME:-}/.canon}/events"
+# A caller's pin is watched, and so is $HOME/.canon/events when that differs: a suite that unsets CANON_HOME writes there.
+WATCHES=("${CANON_HOME:-${HOME:-}/.canon}/events")
+if [[ "${HOME:-}/.canon/events" != "${WATCHES[0]}" ]]; then WATCHES+=("${HOME:-}/.canon/events"); fi
 if [[ -z "${CANON_HOME:-}" ]]; then CANON_HOME="$(mktemp -d "${TMPDIR:-/tmp}/canon-test-home.XXXXXX")"; export CANON_HOME; fi
 
 # t-2633: `--list` prints every suite label, one per line: the one list of what this script runs (scripts/test-hermetic.sh reads it).
@@ -414,10 +416,12 @@ _t="${TMPDIR:-/tmp}"   # macOS's TMPDIR ends in "/": a "//" in a suite's TMPDIR 
 RUN="$(mktemp -d "${_t%/}/test-sh-run.XXXXXX")"; mkdir -p "$RUN/jobs" "$RUN/tmp"
 trap 'stop_workers; print_timings; rm -f "$REGISTRY_BEFORE"' EXIT
 : > "$RUN/watch.before"
-for _f in "$WATCH"/*.jsonl; do
-  [[ -f "$_f" ]] || continue
-  _n="$(wc -c < "$_f" 2>/dev/null | tr -d ' ')" || _n=0   # unreadable now: 0, so the check reads it whole and reports it
-  printf '%s\t%s\n' "${_n:-0}" "$_f" >> "$RUN/watch.before"
+for _d in "${WATCHES[@]}"; do
+  for _f in "$_d"/*.jsonl; do
+    [[ -f "$_f" ]] || continue
+    _n="$(wc -c < "$_f" 2>/dev/null | tr -d ' ')" || _n=0   # unreadable now: 0, so the check reads it whole and reports it
+    printf '%s\t%s\n' "${_n:-0}" "$_f" >> "$RUN/watch.before"
+  done
 done
 if (( JOBS == 1 )); then export TMPDIR="$RUN/tmp/serial"; mkdir -p "$TMPDIR"; run_all; else run_parallel; fi
 
@@ -425,9 +429,9 @@ if (( JOBS == 1 )); then export TMPDIR="$RUN/tmp/serial"; mkdir -p "$TMPDIR"; ru
 # macOS). A line from another project (the user's board or daemon, running meanwhile) never counts. Prints the verdict; returns 1 on a leak
 # or an unreadable file. Read-only: tail and grep only.
 leak_check() {
-  local f off chunk n total=0 first="" rp
+  local d f off chunk n total=0 first="" rp where=""
   rp="$(cd "$RUN" && pwd -P)"
-  for f in "$WATCH"/*.jsonl; do
+  for d in "${WATCHES[@]}"; do for f in "$d"/*.jsonl; do
     [[ -f "$f" ]] || continue
     off="$(awk -F'\t' -v p="$f" '$2 == p { print $1; exit }' "$RUN/watch.before")"
     if ! chunk="$(tail -c "+$(( ${off:-0} + 1 ))" "$f" 2>/dev/null)"; then
@@ -436,10 +440,10 @@ leak_check() {
     chunk="$(printf '%s\n' "$chunk" | grep -F -e "\"project\":\"$RUN/" -e "\"project\":\"$rp/" || true)"
     [[ -n "$chunk" ]] || continue
     n="$(printf '%s\n' "$chunk" | wc -l | tr -d ' ')"; total=$(( total + n ))
-    [[ -n "$first" ]] || first="$(printf '%s\n' "$chunk" | awk 'NR == 1')"
-  done
+    [[ -n "$first" ]] || { first="$(printf '%s\n' "$chunk" | awk 'NR == 1')"; where="${d%/events}"; }
+  done; done
   (( total )) || return 0
-  printf 'test-sh: %s event(s) leaked into %s\n%s\n' "$total" "${WATCH%/events}" "$first" >&2
+  printf 'test-sh: %s event(s) leaked into %s\n%s\n' "$total" "$where" "$first" >&2
   return 1
 }
 

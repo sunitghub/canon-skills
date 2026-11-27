@@ -284,6 +284,14 @@ for j in 1 2; do
     leakrun "$j"; chmod 644 "$DAY"; assert_eq 1 "$rc"; assert_contains "$out" "test-sh: cannot read event log $DAY: leak check not run"
   fi
 done
+# a caller that pins CANON_HOME elsewhere still has $HOME/.canon/events watched: a suite that unsets the pin writes there
+for j in 1 2; do
+  rm -rf "${WORK:?}/home" "${WORK:?}/pinned"; mkdir -p "$EV" "$WORK/pinned"
+  printf '%s\n' 'unset CANON_HOME' 'f="$HOME/.canon/events/2026-11-27.jsonl"' \
+    'printf "{\"kind\":\"gate.rejected\",\"project\":\"%s/repo\"}\n" "$(cd "$TMPDIR" && pwd -P)" >> "$f"' > "$LK/tests/leak.sh"
+  set +e; out="$(env CANON_HOME="$WORK/pinned" HOME="$WORK/home" PATH="$WORK/bin" bash "$LK/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
+  assert_eq 1 "$rc"; assert_contains "$out" "test-sh: 1 event(s) leaked into $WORK/home/.canon"
+done
 rm -rf "${WORK:?}/home"
 
 echo "test-sh-runner: ok"
