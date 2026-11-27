@@ -668,11 +668,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			case "/api/skill-eval/report":
 				sendJSON(w, getSkillEvalReport(root, raw))
 			default:
-				rep := getSkillEvalReport(root, raw)
-				var body []byte
-				if rep["ok"] == true {
-					body, _ = os.ReadFile(rep["report_path"].(string))
-				}
+				body := skillEvalReportBody(root, raw)
 				if body == nil {
 					http.NotFound(w, r)
 					return
@@ -1869,7 +1865,7 @@ func loadWhy(file string, root string) map[string]any {
 	results := []map[string]any{}
 	for _, id := range capped {
 		t := byID[id]
-		results = append(results, map[string]any{"id": id, "status": t["status"], "title": t["title"], "decision": planDecision(byPath[id])})
+		results = append(results, map[string]any{"id": id, "status": t["status"], "title": t["title"], "decision": planDecision(root, byPath[id])})
 	}
 	msg := ""
 	if len(results) == 0 {
@@ -2532,7 +2528,7 @@ func unquoteYAMLScalar(value string) string {
 	return value
 }
 
-func planDecision(ticketPath string) string {
+func planDecision(root, ticketPath string) string {
 	if ticketPath == "" {
 		return ""
 	}
@@ -2543,7 +2539,13 @@ func planDecision(ticketPath string) string {
 		stem := strings.TrimSuffix(filepath.Base(ticketPath), filepath.Ext(ticketPath))
 		planPath = filepath.Join(filepath.Dir(ticketPath), stem+"-plan.md")
 	}
-	raw, err := os.ReadFile(planPath)
+	// t-fe8d: through the tickets folder's os.Root, so a plan.md linked outside it is never read
+	td := ticketsDirForRoot(root)
+	rel, err := filepath.Rel(td, planPath)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return ""
+	}
+	raw, err := (rootLoc{dir: td, rel: rel}).read()
 	if err != nil {
 		return ""
 	}
@@ -4094,10 +4096,10 @@ func copyWorktreeIncludeFiles(dest, root string) []string {
 	if len(patterns) == 0 {
 		return nil
 	}
-	ignored := runGitIn(root, "ls-files", "--others", "--ignored", "--exclude-standard")
+	// -z: an unquoted name per entry (without it git C-quotes a non-ASCII name and the copy misses it, t-fe8d)
+	ignored := runGitIn(root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
 	var copied []string
-	for _, relpath := range strings.Split(ignored, "\n") {
-		relpath = strings.TrimSpace(relpath)
+	for _, relpath := range strings.Split(ignored, "\x00") {
 		if relpath == "" {
 			continue
 		}
@@ -4116,21 +4118,18 @@ func copyWorktreeIncludeFiles(dest, root string) []string {
 		if !matched {
 			continue
 		}
-		src := filepath.Join(root, relpath)
-		dst := filepath.Join(dest, relpath)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			continue // best-effort — a copy failure never blocks worktree creation
-		}
-		data, err := os.ReadFile(src)
+		// t-fe8d: read and write through each tree's os.Root, so a link leaving the project or the new checkout is
+		// never followed; best-effort — a copy failure never blocks worktree creation
+		src := rootLoc{dir: root, rel: relpath}
+		data, err := src.read()
 		if err != nil {
 			continue
 		}
-		info, err := os.Stat(src)
 		mode := os.FileMode(0o644)
-		if err == nil {
-			mode = info.Mode()
+		if info, err := src.stat(); err == nil {
+			mode = info.Mode().Perm()
 		}
-		if os.WriteFile(dst, data, mode) == nil {
+		if (rootLoc{dir: dest, rel: relpath}).writeMode(data, mode) == nil {
 			copied = append(copied, relpath)
 		}
 	}

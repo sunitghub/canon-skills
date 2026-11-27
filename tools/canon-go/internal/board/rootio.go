@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -44,8 +45,26 @@ func (l rootLoc) do(fn func(r *os.Root, name string) error) error {
 
 func (l rootLoc) base() string { return filepath.Base(filepath.FromSlash(l.rel)) }
 
+// errNotRegular: read refuses a FIFO, device or folder (t-fe8d).
+var errNotRegular = errors.New("not a regular file")
+
+// read opens with the nonblock flag and reads only a regular file, so a FIFO planted under the root cannot block the
+// request (t-fe8d; Root.ReadFile opened it blocking).
 func (l rootLoc) read() (b []byte, err error) {
-	err = l.do(func(r *os.Root, name string) error { b, err = r.ReadFile(name); return err })
+	err = l.do(func(r *os.Root, name string) error {
+		f, err := r.OpenFile(name, os.O_RDONLY|nonblockFlag, 0)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if fi, err := f.Stat(); err != nil {
+			return err
+		} else if !fi.Mode().IsRegular() {
+			return errNotRegular
+		}
+		b, err = io.ReadAll(f)
+		return err
+	})
 	return b, err
 }
 
@@ -65,12 +84,15 @@ func (l rootLoc) exists() bool {
 }
 
 // write creates the missing parent folders (0755) and writes data (0644), as os.MkdirAll + os.WriteFile did.
-func (l rootLoc) write(data []byte) error {
+func (l rootLoc) write(data []byte) error { return l.writeMode(data, 0644) }
+
+// writeMode is write with the new file's mode (the .worktreeinclude copy keeps the source's, t-fe8d).
+func (l rootLoc) writeMode(data []byte, mode os.FileMode) error {
 	return l.do(func(r *os.Root, name string) error {
 		if err := r.MkdirAll(filepath.Dir(name), 0755); err != nil {
 			return err
 		}
-		return r.WriteFile(name, data, 0644)
+		return r.WriteFile(name, data, mode)
 	})
 }
 

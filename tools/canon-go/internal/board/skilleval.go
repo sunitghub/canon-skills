@@ -1291,9 +1291,7 @@ func getSkillEvalReport(root, raw string) map[string]any {
 	if report == "" {
 		return map[string]any{"ok": false, "error": "no report yet"}
 	}
-	p, _ := validateSkillDir(root, raw)
-	cache := resolvedOrAbs(filepath.Join(canonRootDir(), ".canon-cache", "skill-eval", skillEvalTag(root, p)))
-	if !strictlyInside(resolvedOrAbs(report), cache) {
+	if _, ok := skillEvalReportLoc(root, raw, report); !ok {
 		return map[string]any{"ok": false, "error": "report path outside this run's cache dir"}
 	}
 	summary := st["summary"]
@@ -1301,6 +1299,41 @@ func getSkillEvalReport(root, raw string) map[string]any {
 		summary = map[string]any{}
 	}
 	return map[string]any{"ok": true, "summary": summary, "report_path": report}
+}
+
+// skillEvalReportLoc: the report as a rootLoc under canon's root, with the run's cache folder as a nested root, so a
+// folder on the way swapped for a link after this check is refused at the read (t-fe8d). ok is false outside it.
+func skillEvalReportLoc(root, raw, report string) (rootLoc, bool) {
+	p, _ := validateSkillDir(root, raw)
+	canon := canonRootDir()
+	sub := filepath.Join(".canon-cache", "skill-eval", skillEvalTag(root, p))
+	cache := resolvedOrAbs(filepath.Join(canon, sub))
+	resolved := resolvedOrAbs(report)
+	if canon == "" || !strictlyInside(resolved, cache) {
+		return rootLoc{}, false
+	}
+	rel, err := filepath.Rel(cache, resolved)
+	if err != nil {
+		return rootLoc{}, false
+	}
+	return rootLoc{dir: canon, sub: filepath.ToSlash(sub), rel: filepath.ToSlash(rel)}, true
+}
+
+// skillEvalReportBody is the report.html route's read; nil when there is no report or it cannot be read.
+func skillEvalReportBody(root, raw string) []byte {
+	rep := getSkillEvalReport(root, raw)
+	if rep["ok"] != true {
+		return nil
+	}
+	loc, ok := skillEvalReportLoc(root, raw, rep["report_path"].(string))
+	if !ok {
+		return nil
+	}
+	body, err := loc.read()
+	if err != nil {
+		return nil
+	}
+	return body
 }
 
 // ── Plugin generation (tools/plugin-eval-gen --skill-dir) ──────────────────
