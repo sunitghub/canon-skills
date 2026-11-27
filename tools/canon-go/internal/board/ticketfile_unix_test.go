@@ -196,6 +196,24 @@ func TestFe8dWorktreeIncludeSkipsALinkOutAndKeepsNamesAndModes(t *testing.T) {
 	}
 }
 
+// Break-it (t-fe8d): a first-listed name with a leading space was trimmed and skipped; a 0664 source landed 0644 under
+// umask 022. Protects worktree create's .worktreeinclude copy (POST /api/worktree/create).
+func TestFe8dWorktreeIncludeKeepsLeadingSpaceAndUmaskedMode(t *testing.T) {
+	root, _ := worktreeIncludeFixture(t)
+	writeFile(t, filepath.Join(root, " a.env"), "space")
+	if err := os.Chmod(filepath.Join(root, " a.env"), 0o664); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	got := copyWorktreeIncludeFiles(dest, root)
+	if len(got) != 1 || got[0] != " a.env" {
+		t.Fatalf("copied %q, want only \" a.env\"", got)
+	}
+	if fi, _ := os.Stat(filepath.Join(dest, " a.env")); fi == nil || fi.Mode().Perm() != 0o664 {
+		t.Fatalf("\" a.env\" mode: %v, want 0664", fi)
+	}
+}
+
 func TestFe8dWorktreeIncludeDoesNotWriteThroughALinkedCheckoutFolder(t *testing.T) {
 	root, outside := worktreeIncludeFixture(t)
 	writeFile(t, filepath.Join(root, "config", "x.env"), "secret")

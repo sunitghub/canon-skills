@@ -51,21 +51,17 @@ var errNotRegular = errors.New("not a regular file")
 // read opens with the nonblock flag and reads only a regular file, so a FIFO planted under the root cannot block the
 // request (t-fe8d; Root.ReadFile opened it blocking).
 func (l rootLoc) read() (b []byte, err error) {
-	err = l.do(func(r *os.Root, name string) error {
-		f, err := r.OpenFile(name, os.O_RDONLY|nonblockFlag, 0)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if fi, err := f.Stat(); err != nil {
-			return err
-		} else if !fi.Mode().IsRegular() {
-			return errNotRegular
-		}
-		b, err = io.ReadAll(f)
-		return err
-	})
-	return b, err
+	f, err := l.openNonblock()
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil {
+		return nil, err
+	} else if !fi.Mode().IsRegular() {
+		return nil, errNotRegular
+	}
+	return io.ReadAll(f)
 }
 
 func (l rootLoc) stat() (fi os.FileInfo, err error) {
@@ -86,13 +82,17 @@ func (l rootLoc) exists() bool {
 // write creates the missing parent folders (0755) and writes data (0644), as os.MkdirAll + os.WriteFile did.
 func (l rootLoc) write(data []byte) error { return l.writeMode(data, 0644) }
 
-// writeMode is write with the new file's mode (the .worktreeinclude copy keeps the source's, t-fe8d).
+// writeMode is write with the file's mode (the .worktreeinclude copy keeps the source's, t-fe8d); the chmod sets the
+// bits the umask strips and an existing file's mode, which WriteFile leaves alone.
 func (l rootLoc) writeMode(data []byte, mode os.FileMode) error {
 	return l.do(func(r *os.Root, name string) error {
 		if err := r.MkdirAll(filepath.Dir(name), 0755); err != nil {
 			return err
 		}
-		return r.WriteFile(name, data, mode)
+		if err := r.WriteFile(name, data, mode); err != nil {
+			return err
+		}
+		return r.Chmod(name, mode)
 	})
 }
 

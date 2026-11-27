@@ -4096,10 +4096,13 @@ func copyWorktreeIncludeFiles(dest, root string) []string {
 	if len(patterns) == 0 {
 		return nil
 	}
-	// -z: an unquoted name per entry (without it git C-quotes a non-ASCII name and the copy misses it, t-fe8d)
-	ignored := runGitIn(root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+	// -z: an unquoted name per entry (without it git C-quotes a non-ASCII name and the copy misses it, t-fe8d); not
+	// runGitIn, whose TrimSpace would cut a leading space off the first name
+	cmd := exec.Command("git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard")
+	cmd.Dir = rootOr(root)
+	ignored, _ := cmd.Output()
 	var copied []string
-	for _, relpath := range strings.Split(ignored, "\x00") {
+	for _, relpath := range strings.Split(string(ignored), "\x00") {
 		if relpath == "" {
 			continue
 		}
