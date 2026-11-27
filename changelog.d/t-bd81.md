@@ -1,0 +1,1 @@
+- Standards: `standards/efficiency.md` now asks agents to end a reply that reports work with one line naming what was skipped or unchecked and any risk you must know, and says minimal code never cuts validation at trust boundaries, error handling that prevents data loss, security or accessibility. Projects get both lines through their existing import of the file (t-bd81).
