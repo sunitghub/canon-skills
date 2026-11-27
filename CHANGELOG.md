@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.5] - 2026-11-27
+
+- Standards: `standards/efficiency.md` now asks agents to end a reply that reports work with one line naming what was skipped or unchecked and any risk you must know, and says minimal code never cuts validation at trust boundaries, error handling that prevents data loss, security or accessibility. Projects get both lines through their existing import of the file (t-bd81).
+
 ## [0.90.4] - 2026-11-27
 
 The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
