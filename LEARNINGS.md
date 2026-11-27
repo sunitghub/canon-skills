@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 07:58
+learnings-sweep last run: 11-27-2026 09:11
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-27 | [t-fe8d](.tickets/t-fe8d/learnings.md) | Break-it on a confinement fix found the copy still lost a name (`runGitIn`'s TrimSpace cut the leading space off the first `-z` entry) and dropped mode bits (umask on `WriteFile`): a shared trimming helper and the umask both undo a 'keep the name and mode' promise; test with a leading-space name and a 0664 file. | UNPROMOTED |
 | 2026-11-27 | [t-5fd2](.tickets/t-5fd2/learnings.md) | A type/status check written only in the worktree-bound write path left the plain path writing `fmt.Sprint` of the field (`<nil>`, frontmatter injection): put input validation on the field, shared by every path that writes it. | UNPROMOTED |
 | 2026-11-27 | [t-fe22](.tickets/t-fe22/learnings.md) | jq `test("^[A-Z_]+$")` accepts a value ending in one newline (`$` matches before a final newline); only the reviewer and break-it caught it: anchor a whole-value match with `\A..\z`, and fuzz the real jq expression, not a stub that ignores `--jq` | UNPROMOTED |
 | 2026-11-27 | [t-393e](.tickets/t-393e/learnings.md) | An empty GH_CONFIG_DIR does not cut gh off (it falls back to its Keychain login) and stripping GIT_ASKPASS leaves core.askPass: the plan trusted env resets nobody probed, and only break-it/the reviewer ran the real tool; probe every credential fallback live before calling a route closed | UNPROMOTED |
@@ -80,7 +81,4 @@ learnings-sweep last run: 11-27-2026 07:58
 | 2026-11-17 | [t-5273](.tickets/t-5273/learnings.md) | A list shown to the user and the action on it are two reads: when the second finds an item gone (rewritten back), drop it with a line, keep refusing everything else — the exact-name check is what keeps the old guard | `dismissed` |
 | 2026-11-17 | [t-7d84](.tickets/t-7d84/learnings.md) | Parsing a unified diff by skipping every `+++ ` line also skips an added line whose text starts `++ `: read headers only before the first `@@`, and check the parsed count against numstat | `promoted → standards/efficiency-notes.md` |
 | 2026-11-17 | [t-597f](.tickets/t-597f/learnings.md) | A test that passes on its own can fail in the full suite from an inherited env var (CANON_TICKETS_DIR from the stamp): a test that resolves tickets must unset it, and a gate-criteria row written "at close" is missing when the evaluator grades | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-17 | [t-96f1](.tickets/t-96f1/learnings.md) | A pass-through test run only from a mktemp folder cannot catch a project check moved in front of it (the check never refuses a temp folder): test a guarded order from a folder the guard refuses (/etc) | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-17 | [t-b809](.tickets/t-b809/learnings.md) | A replay trial must score catches by hand against "a real defect later fixed", not the original report's wording: today's gates found real bugs (t-f7e6's unguarded land markers, t-788f's missing acceptance.md) that no catch regex matched, while a passing criteria row matched one by accident | `promoted → standards/efficiency-notes.md` |
-| 2026-11-17 | [t-7ef7](.tickets/t-7ef7/learnings.md) | A cloud session cannot watch its own workflow run, so a CI ticket built there must be landed and graded where the run is visible; and a CI step must match the repo as it is: npm ci needs a committed lockfile, which canon gitignores | `promoted → skills/sprint/reference/complete.md` |
 <!-- canon:learnings:END -->
