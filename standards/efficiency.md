@@ -19,6 +19,7 @@ updated: 2026-10-19
 - Don't reformat, rename or add type hints to adjacent code.
 - Out-of-scope issues: write `NOTICED: <what>`; don't fix silently.
 - Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials or `.env` files.
+- Minimal code never cuts validation at trust boundaries, error handling that prevents data loss, security or accessibility.
 - No new dependencies for problems existing tools solve.
 - Test at system boundaries; don't mock what's cheap to integration-test. Passing tests prove the code, not the feature: test both. Every test names the prod path it protects (owner: `skills/sprint/reference/start-checklist.md` step 6).
 
@@ -56,6 +57,7 @@ Act on these when you see them.
 ## Token Efficiency
 
 - Most token spend is re-reading history: keep replies tight.
+- End a reply that reports work with one line: what was skipped or unchecked, and any risk the user must know.
 - Before planning, catalog what exists and name what's reusable. Read a file before editing it; grep for callers (and every reader, sibling, test and fixture) before changing a function or a field's owner.
 - Reference `file:line`; don't re-read files already in context. Skip `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`. Use targeted commands, not large dumps.
 - When summarizing or rewriting, preserve code blocks, inline code, paths, URLs, commands, versions and technical terms exactly.
