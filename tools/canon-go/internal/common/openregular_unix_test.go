@@ -117,10 +117,15 @@ func TestOpenRegularOtherRefusals(t *testing.T) {
 	if _, _, err := OpenRegular(filepath.Join(d, "missing")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("a missing path: err %v, want not-exist", err)
 	}
-	sock := filepath.Join(d, "s")
+	sd, err := os.MkdirTemp("/tmp", "or") // a socket path is capped near 104 bytes; t.TempDir under a long TMPDIR passes it
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sd) })
+	sock := filepath.Join(sd, "s")
 	l, err := net.Listen("unix", sock)
 	if err != nil {
-		t.Skip("no unix socket:", err)
+		t.Fatal("unix socket:", err)
 	}
 	defer l.Close()
 	if _, _, err := OpenRegular(sock); !errors.Is(err, ErrNotRegular) {
