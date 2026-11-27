@@ -96,12 +96,13 @@ func TestSessionEnvGitHubStripsAndSets(t *testing.T) {
 			}
 		}
 		count, _ := envValue(env, "GIT_CONFIG_COUNT")
-		gh, hasGH := envValue(env, "GH_TOKEN")
-		if tok == "" && (count != "1" || hasGH) {
-			t.Errorf("no token: GIT_CONFIG_COUNT=%q GH_TOKEN set=%v, want 1 and unset", count, hasGH)
+		gh, _ := envValue(env, "GH_TOKEN")
+		// no token: a placeholder GH_TOKEN, or gh falls back to the user's Keychain login (an empty GH_CONFIG_DIR does not stop it)
+		if tok == "" && (count != "4" || gh != ghNoToken) {
+			t.Errorf("no token: GIT_CONFIG_COUNT=%q GH_TOKEN=%q, want 4 and %q", count, gh, ghNoToken)
 		}
-		if tok != "" && (count != "2" || gh != tok) {
-			t.Errorf("token: GIT_CONFIG_COUNT=%q GH_TOKEN=%q, want 2 and %q", count, gh, tok)
+		if tok != "" && (count != "5" || gh != tok) {
+			t.Errorf("token: GIT_CONFIG_COUNT=%q GH_TOKEN=%q, want 5 and %q", count, gh, tok)
 		}
 	}
 }
@@ -126,7 +127,7 @@ func TestGitHubEnvRealGit(t *testing.T) {
 		}
 	}
 	write(filepath.Join(w, "system"), "[credential]\n\thelper = \"!f() { echo password=PLANTED_SYSTEM; }; f\"\n")
-	write(filepath.Join(home, ".gitconfig"), "[user]\n\tname = Planted Name\n[credential \"https://github.com\"]\n\thelper = \"!f() { echo password=PLANTED_GLOBAL; }; f\"\n")
+	write(filepath.Join(home, ".gitconfig"), "[user]\n\tname = Planted Name\n[core]\n\taskPass = /bin/echo\n[credential \"https://github.com\"]\n\thelper = \"!f() { echo password=PLANTED_GLOBAL; }; f\"\n")
 	write(filepath.Join(home, ".git-credentials"), "https://u:PLANTED_STORE@github.com\n") // canon:allow-secret: a planted fake credential the test proves git never returns
 	base := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home, "GIT_CONFIG_SYSTEM=" + filepath.Join(w, "system"), "GIT_TERMINAL_PROMPT=0"}
 	git := func(env []string, stdin string, args ...string) (string, string, error) {
@@ -147,16 +148,20 @@ func TestGitHubEnvRealGit(t *testing.T) {
 	if out, _, _ := git(base, fill, "credential", "fill"); !strings.Contains(out, "PLANTED_") {
 		t.Fatalf("baseline: the planted helpers answer nothing, so the test proves nothing: %q", out)
 	}
-	for _, tok := range []string{"SESSION_TOK", ""} {
+	askBase := append(append([]string{}, base...), "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=")
+	if out, _, _ := git(askBase, fill, "credential", "fill"); !strings.Contains(out, "Username for") {
+		t.Fatalf("baseline: the planted core.askPass does not answer once helpers are reset, so the test proves nothing: %q", out)
+	}
+	for _, tok := range []string{"SESSION_TOK", `SESSION\nhost=evil.example`, ""} {
 		env := githubEnv(base, &githubAccess{token: tok, ghDir: filepath.Join(w, "gh")})
 		out, errOut, err := git(env, fill, "credential", "fill")
 		if strings.Contains(out, "PLANTED_") {
 			t.Errorf("token %q: an ambient helper answered: %q", tok, out)
 		}
-		if tok != "" && (err != nil || !strings.Contains(out, "password=SESSION_TOK\n")) {
-			t.Errorf("with a token: %v %q %q, want password=SESSION_TOK", err, out, errOut)
+		if tok != "" && (err != nil || !strings.Contains(out, "password="+tok+"\n") || strings.Contains(out, "\nhost=evil")) {
+			t.Errorf("with a token: %v %q %q, want password=%s verbatim", err, out, errOut, tok)
 		}
-		if tok == "" && (err == nil || strings.Contains(out, "password=")) {
+		if tok == "" && (err == nil || strings.Contains(out, "password=") || strings.Contains(out, "Username for")) { // core.askPass answered
 			t.Errorf("no token: git returned a password: %v %q", err, out)
 		}
 		if name, _, _ := git(env, "", "config", "user.name"); strings.TrimSpace(name) != "Planted Name" {

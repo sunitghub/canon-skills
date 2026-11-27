@@ -327,9 +327,12 @@ sprint agent without leaving the browser — no second terminal.
   records the main checkout) adds the project to `github.restricted_projects` in
   `~/.canon/settings.json`. That file is install-wide, so a cloned repo cannot switch it on or off.
   A new Claude session in that project then gets:
-  - an empty `GH_CONFIG_DIR`, so `gh` is not logged in;
+  - an empty `GH_CONFIG_DIR` and a `GH_TOKEN` that is always set (the project's token, or the
+    placeholder `canon-no-token`): an empty config folder alone does not stop `gh`, which still
+    finds a Keychain login;
   - no inherited `GH_TOKEN`/`GITHUB_TOKEN`, `SSH_AUTH_SOCK`, askpass or command-line git config;
-  - an empty `credential.helper` in the session's git config, which drops the system, global
+  - an empty `credential.helper`, `core.askPass` and `http.extraheader` (plus its
+    `https://github.com/` form) in the session's git config, which drops the system, global
     and repo helpers. Your `~/.gitconfig` is still read, so `user.name` works;
   - SSH refused with a `canon:` message;
   - as the one way in, the project's own token from Keychain (service `canon-github`,
@@ -349,6 +352,9 @@ sprint agent without leaving the browser — no second terminal.
   saved is yours to do, and canon never changes it:
   `git config --unset credential.helper` in each repo that uses `store`;
   delete `~/.git-credentials`; `gh auth logout`; and a passphrase on `~/.ssh/id_*`.
+  A credential written into git config itself is not reset either: a token inside a
+  `url.<base>.insteadOf` URL, or an `http.<url>.extraheader` scoped to a path under
+  `https://github.com/`. Remove those yourself.
   pi, Copilot and the Terminal sessions, Windows (Credential Manager) and a board switch are not covered yet.
   A moved project folder no longer matches, so it shows `off` until you run `on` again.
 - **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS,

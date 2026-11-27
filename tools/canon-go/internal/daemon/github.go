@@ -22,8 +22,13 @@ type githubAccess struct {
 // ghSSHRefuse is GIT_SSH_COMMAND: git runs it through sh with the ssh arguments appended, so the function ignores them.
 const ghSSHRefuse = `canon_ssh_off() { echo "canon: SSH is off in this session (github.restricted_projects, t-393e)" >&2; exit 1; }; canon_ssh_off`
 
-// ghCredHelper answers git's `get` with the session's GH_TOKEN; store and erase do nothing.
-const ghCredHelper = `!f() { test "$1" = get || return 0; echo username=x-access-token; echo "password=$GH_TOKEN"; }; f`
+// ghCredHelper answers git's `get` with the session's GH_TOKEN; store and erase do nothing. printf, not echo: sh's echo expands
+// backslash escapes, so a token holding `\n` would add its own protocol lines (t-393e break-it).
+const ghCredHelper = `!f() { test "$1" = get || return 0; printf 'username=x-access-token\npassword=%s\n' "$GH_TOKEN"; }; f`
+
+// ghNoToken is GH_TOKEN when the session has no token: gh reads its Keychain login even with an empty GH_CONFIG_DIR (seen with gh
+// 2.103.3: `gh auth token` still printed it), and a set GH_TOKEN wins over that. GitHub refuses it as bad credentials.
+const ghNoToken = "canon-no-token" // canon:allow-secret: a fixed placeholder GitHub rejects, not a credential
 
 // githubAccessFor is the GitHub setup of a claude session in projectRoot: nil when the project is not opted in. A settings
 // file canon cannot read restricts with state error. It fails only when the session's gh folder cannot be made: starting
@@ -57,7 +62,7 @@ var githubStripped = map[string]bool{
 // githubEnv is env with ga applied. The empty credential.helper resets the helper list built from the system, global and local
 // files (env config comes last); the github.com helper follows only when there is a token. ~/.gitconfig is kept (user.name).
 func githubEnv(env []string, ga *githubAccess) []string {
-	out := make([]string, 0, len(env)+10)
+	out := make([]string, 0, len(env)+16)
 	for _, kv := range env {
 		name, _, _ := strings.Cut(kv, "=")
 		if githubStripped[name] || strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
@@ -65,13 +70,19 @@ func githubEnv(env []string, ga *githubAccess) []string {
 		}
 		out = append(out, kv)
 	}
-	out = append(out, "GH_CONFIG_DIR="+ga.ghDir, "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND="+ghSSHRefuse,
-		"GIT_CONFIG_KEY_0=credential.helper", "GIT_CONFIG_VALUE_0=")
-	if ga.token == "" {
-		return append(out, "GIT_CONFIG_COUNT=1")
+	out = append(out, "GH_CONFIG_DIR="+ga.ghDir, "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND="+ghSSHRefuse)
+	// Empty values reset: core.askPass would answer the prompt GIT_TERMINAL_PROMPT=0 refuses; an extraheader is a stored
+	// Authorization header (actions/checkout writes the github.com form). A path-scoped extraheader beats the reset (docs say so).
+	cfg := [][2]string{{"credential.helper", ""}, {"core.askPass", ""}, {"http.extraheader", ""}, {"http.https://github.com/.extraheader", ""}}
+	tok := ghNoToken
+	if ga.token != "" {
+		cfg = append(cfg, [2]string{"credential.https://github.com.helper", ghCredHelper})
+		tok = ga.token
 	}
-	return append(out, "GIT_CONFIG_KEY_1=credential.https://github.com.helper", "GIT_CONFIG_VALUE_1="+ghCredHelper,
-		"GIT_CONFIG_COUNT=2", "GH_TOKEN="+ga.token)
+	for i, kv := range cfg {
+		out = append(out, fmt.Sprintf("GIT_CONFIG_KEY_%d=%s", i, kv[0]), fmt.Sprintf("GIT_CONFIG_VALUE_%d=%s", i, kv[1]))
+	}
+	return append(out, fmt.Sprintf("GIT_CONFIG_COUNT=%d", len(cfg)), "GH_TOKEN="+tok)
 }
 
 // notice is the line a restricted session's scrollback starts with.

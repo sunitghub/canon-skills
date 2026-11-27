@@ -767,6 +767,13 @@ func TestRestrictedProjects(t *testing.T) {
 			t.Errorf("%s: restricted=%v err=%v, want restricted with an error (fail closed)", bad, on, err)
 		}
 	}
+	for _, doc := range []string{`{"github":"x"}`, `{"github":[]}`, `{"github.restricted_projects":["/tmp"]}`} {
+		home := t.TempDir()
+		write(t, filepath.Join(home, "settings.json"), doc)
+		if on, err := GitHubRestricted(home, t.TempDir()); !on || err == nil {
+			t.Errorf("%s: restricted=%v err=%v, want restricted with an error (a hand edit never fails open)", doc, on, err)
+		}
+	}
 	home := t.TempDir()
 	write(t, filepath.Join(home, "settings.json"), "{broken")
 	if on, err := GitHubRestricted(home, t.TempDir()); !on || err == nil {

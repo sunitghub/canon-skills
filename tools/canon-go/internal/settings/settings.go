@@ -493,9 +493,24 @@ func RestrictedRoots(home string) ([]string, error) {
 	if home == "" {
 		return nil, errors.New("no canon folder (CANON_HOME and the home folder are unknown)")
 	}
-	res, err := InstallSet(home).Load()
+	set := InstallSet(home)
+	res, err := set.Load()
 	if err != nil {
 		return nil, err
+	}
+	// Load skips a key whose parent is not an object, so {"github":"x"} or a flat "github.restricted_projects" would read as an
+	// empty list: a hand edit that meant to opt in must not fail open (t-393e break-it).
+	doc, err := readDoc(set.Local)
+	if err != nil {
+		return nil, err
+	}
+	if _, flat := doc[GitHubKey]; flat {
+		return nil, fmt.Errorf("%s: write %s as {\"github\": {\"restricted_projects\": [...]}}", shortName(set.Local), GitHubKey)
+	}
+	if g, ok := doc["github"]; ok {
+		if _, isObj := g.(map[string]any); !isObj {
+			return nil, fmt.Errorf("%s: github is not an object", shortName(set.Local))
+		}
 	}
 	for _, w := range res.Warnings {
 		if strings.Contains(w, GitHubKey) {
