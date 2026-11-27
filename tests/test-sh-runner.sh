@@ -249,4 +249,49 @@ set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --only 2>&1)"; rc=$?; 
 set +e; out="$(PATH="$WORK/bin" bash "$O/scripts/test.sh" --only tools/canon-go/internal/board 2>&1)"; rc=$?; set -e
 assert_eq 2 "$rc"; assert_contains "$out" "FAIL: --only asked for 1 suite(s), 0 ran"; [[ "$out" != *"All tests passed."* ]] || fail "test.sh passed an --only run that ran nothing: $out"
 
+# t-e042: a suite that drops the run's CANON_HOME pin and writes an event naming a project inside the run folder fails the run (exit 1,
+# the count and the first line printed); events for other projects, a missing log folder and a read-only look at an existing file pass.
+# Each inner run is started with `env -u CANON_HOME HOME=...`, so its watched log is $WORK/home/.canon/events, never this run's folder.
+# Protects the release's full-suite stamp and every metric read from the event log.
+LK="$WORK/leak"; runner_copy "$LK" tests/leak.sh
+leakrun() { set +e; out="$(env -u CANON_HOME HOME="$WORK/home" PATH="$WORK/bin" bash "$LK/scripts/test.sh" --jobs "$1" 2>&1)"; rc=$?; set -e; }
+EV="$WORK/home/.canon/events"; DAY="$EV/2026-11-27.jsonl"; OLD='{"kind":"x","project":"/Users/x/real"}'
+for j in 1 2; do
+  # (a) a fixture drops the pin and appends a line whose project is its own TMPDIR (pwd -P form) to today's file
+  rm -rf "${WORK:?}/home"; mkdir -p "$EV"; echo "$OLD" > "$DAY"
+  printf '%s\n' 'unset CANON_HOME' 'f="$HOME/.canon/events/2026-11-27.jsonl"' \
+    'printf "{\"kind\":\"gate.rejected\",\"project\":\"%s/repo\"}\n" "$(cd "$TMPDIR" && pwd -P)" >> "$f"' > "$LK/tests/leak.sh"
+  leakrun "$j"; assert_eq 1 "$rc"; assert_contains "$out" "test-sh: 1 event(s) leaked into $WORK/home/.canon"; assert_contains "$out" '"kind":"gate.rejected"'
+  # (b) a line for a project outside the run folder (the user's board writing meanwhile) never fails the run
+  printf '%s\n' 'f="$HOME/.canon/events/2026-11-27.jsonl"' 'echo "{\"kind\":\"x\",\"project\":\"/Users/x/other/repo\"}" >> "$f"' > "$LK/tests/leak.sh"
+  leakrun "$j"; assert_eq 0 "$rc"; [[ "$out" != *"leaked into"* ]] || fail "--jobs $j: an outside project failed the run: $out"
+  # (c) the leak goes to a file that did not exist when the run started (a new day)
+  printf '%s\n' 'f="$HOME/.canon/events/new-day-$$.jsonl"' \
+    'printf "{\"kind\":\"gate.rejected\",\"project\":\"%s/repo\"}\n" "$(cd "$TMPDIR" && pwd -P)" > "$f"' > "$LK/tests/leak.sh"
+  leakrun "$j"; assert_eq 1 "$rc"; assert_contains "$out" "test-sh: 1 event(s) leaked into"
+  # (d) no watched log folder at all
+  rm -rf "${WORK:?}/home"; echo 'true' > "$LK/tests/leak.sh"
+  leakrun "$j"; assert_eq 0 "$rc"; assert_contains "$out" "All tests passed."
+  # (e) the check only reads: an existing file is byte for byte what it was, plus the fixture's own append
+  mkdir -p "$EV"; printf '%s\n' "$OLD" "$OLD" > "$DAY"; before="$(cksum < "$DAY")"
+  leakrun "$j"; assert_eq 0 "$rc"; assert_eq "$before" "$(cksum < "$DAY")"; assert_eq 2 "$(wc -l < "$DAY" | tr -d ' ')"
+  printf '%s\n' 'echo "{\"kind\":\"x\",\"project\":\"/Users/x/other\"}" >> "$HOME/.canon/events/2026-11-27.jsonl"' > "$LK/tests/leak.sh"
+  leakrun "$j"; assert_eq 0 "$rc"; assert_eq "$(printf '%s\n%s\n%s\n' "$OLD" "$OLD" '{"kind":"x","project":"/Users/x/other"}' | cksum)" "$(cksum < "$DAY")"
+  # (f) a watched file that cannot be read
+  if [[ "$(id -u)" == 0 ]]; then echo "skip (f): root"
+  else
+    echo 'true' > "$LK/tests/leak.sh"; chmod 000 "$DAY"
+    leakrun "$j"; chmod 644 "$DAY"; assert_eq 1 "$rc"; assert_contains "$out" "test-sh: cannot read event log $DAY: leak check not run"
+  fi
+done
+# a caller that pins CANON_HOME elsewhere still has $HOME/.canon/events watched: a suite that unsets the pin writes there
+for j in 1 2; do
+  rm -rf "${WORK:?}/home" "${WORK:?}/pinned"; mkdir -p "$EV" "$WORK/pinned"
+  printf '%s\n' 'unset CANON_HOME' 'f="$HOME/.canon/events/2026-11-27.jsonl"' \
+    'printf "{\"kind\":\"gate.rejected\",\"project\":\"%s/repo\"}\n" "$(cd "$TMPDIR" && pwd -P)" >> "$f"' > "$LK/tests/leak.sh"
+  set +e; out="$(env CANON_HOME="$WORK/pinned" HOME="$WORK/home" PATH="$WORK/bin" bash "$LK/scripts/test.sh" --jobs "$j" 2>&1)"; rc=$?; set -e
+  assert_eq 1 "$rc"; assert_contains "$out" "test-sh: 1 event(s) leaked into $WORK/home/.canon"
+done
+rm -rf "${WORK:?}/home"
+
 echo "test-sh-runner: ok"

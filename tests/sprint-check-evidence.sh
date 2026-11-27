@@ -81,7 +81,7 @@ assert_eq 2 "$code"
 # t-2ce8: a stale exit-0 log whose stamped argv IS the mutation sweep is a note (the sweep is non-binding), with no stale_evidence event;
 # a wrapper that names the sweep later, a failing or unstamped sweep, and any other stale log beside it still refuse
 use_fresh_board "$WORK/bin"   # canon_event needs a board binary; a plain clone has none (gitignored)
-export CANON_HOME="$WORK/canon-home"; evcount() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -c '"stale_evidence"' || true; }
+_ch0_set="${CANON_HOME+x}"; _ch0="${CANON_HOME-}"; export CANON_HOME="$WORK/canon-home"; evcount() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -c '"stale_evidence"' || true; }
 CS="$(git rev-parse HEAD)"; echo d >> src/a.txt; git commit -qam later; CL="$(git rev-parse HEAD)"
 put a.log "HEAD $CL $T\nexit 0\n"; put b.log "HEAD $CL $T\nexit 0\n"
 for cmd in 'mutant-sweep --map x' 'tools/mutant-sweep --check' './tools/mutant-sweep' '/opt/canon/tools/mutant-sweep --map y' 'python3 tools/mutant-sweep.py' 'python3 /opt/c/tools/mutant-sweep.py --map z'; do
@@ -99,7 +99,9 @@ put sweep.log "HEAD $CL $T\n\$ mutant-sweep --map x\nexit 1\n"; ce "$ID"; assert
 put sweep.log "\$ mutant-sweep --map x\nexit 0\n"; ce "$ID"; assert_eq 1 "$code"; assert_contains "$out" "REFUSE  unstamped sweep.log"
 put sweep.log "HEAD $CS $T\n\$ mutant-sweep --map x\nexit 0\n"; put b.log "HEAD $CS $T\n\$ bash tests/x.sh\nexit 0\n"; ce "$ID"
 assert_eq 1 "$code"; assert_contains "$out" "  note    stale sweep.log"; assert_contains "$out" "REFUSE  stale b.log"
-rm "$ED/sweep.log"; put b.log "HEAD $CL $T\nexit 0\n"; unset CANON_HOME
+rm "$ED/sweep.log"; put b.log "HEAD $CL $T\nexit 0\n"
+# t-e042: restore the run's pinned CANON_HOME (scripts/test.sh), never unset it: later ce calls would write to the user's real log
+if [[ -n "$_ch0_set" ]]; then export CANON_HOME="$_ch0"; else unset CANON_HOME; fi
 
 # t-ef9c: a stale full-suite log's `  hint:` line is shown as the recipe under it, never as a REFUSE or a counted log
 rm -rf "$ED"; mkdir -p scripts tests; printf 'tests=(\n  "$ROOT/tests/h.sh"\n)\n' > scripts/test.sh; echo 'echo h' > tests/h.sh
