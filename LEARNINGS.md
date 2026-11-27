@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 11:18
+learnings-sweep last run: 11-27-2026 12:43
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-27 | [t-e042](.tickets/t-e042/learnings.md) | One `unset CANON_HOME` in a test sent 85 fake events into the real log because the run's isolation was a single env var with no check; the cure is a post-run guard that reads the log the caller had (and `$HOME/.canon/events` when the caller pinned elsewhere, a gap only the Mac revert proof found) for events naming the run folder, not a rule that every suite must pin. | UNPROMOTED |
 | 2026-11-27 | [t-adcb](.tickets/t-adcb/learnings.md) | A FIFO-only test set left OpenRegular's identity check and swap branch unkilled, and a socket case that skips on `net.Listen` failure went silent under the sweep's long TMPDIR (macOS 104-byte socket path): give each reject clause its own fixture and never Skip a guard case on setup failure. | UNPROMOTED |
 | 2026-11-27 | [t-fe8d](.tickets/t-fe8d/learnings.md) | Break-it on a confinement fix found the copy still lost a name (`runGitIn`'s TrimSpace cut the leading space off the first `-z` entry) and dropped mode bits (umask on `WriteFile`): a shared trimming helper and the umask both undo a 'keep the name and mode' promise; test with a leading-space name and a 0664 file. | UNPROMOTED |
 | 2026-11-27 | [t-5fd2](.tickets/t-5fd2/learnings.md) | A type/status check written only in the worktree-bound write path left the plain path writing `fmt.Sprint` of the field (`<nil>`, frontmatter injection): put input validation on the field, shared by every path that writes it. | UNPROMOTED |
