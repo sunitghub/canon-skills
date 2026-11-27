@@ -354,7 +354,7 @@ sprint agent without leaving the browser — no second terminal.
   delete `~/.git-credentials`; `gh auth logout`; and a passphrase on `~/.ssh/id_*`.
   A credential written into git config itself is not reset either: a token inside a
   `url.<base>.insteadOf` URL, or an `http.<url>.extraheader` scoped to a path under
-  `https://github.com/`. Remove those yourself.
+  `https://github.com/`, or a `github.com` entry in `~/.netrc` (git's HTTP layer reads it). Remove those yourself.
   pi, Copilot and the Terminal sessions, Windows (Credential Manager) and a board switch are not covered yet.
   A moved project folder no longer matches, so it shows `off` until you run `on` again.
 - **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS,
