@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.2] - 2026-11-27
+
+- Security (board): a doc, description or status save on a ticket not bound to a worktree now refuses a missing or non-text value (400 `bad_content`, it used to save the text `<nil>`) and any status outside open, in_progress, closed, cancelled and archived (400 `bad_status`; a newline in it could add a frontmatter line such as `eval_override: true`). Off-worktree docs and descriptions get the worktree path's 1 MiB limit (400 `too_large`), and every board POST stops reading at the largest visual's size plus 64 KiB (413) (t-5fd2).
+
 ## [0.90.1] - 2026-11-27
 
 - Security: a GitHub issue becomes a canon ticket only when its author is the repo's owner, an org member or a collaborator (GitHub's `author_association`, read in the same call as the issue text). `tkt sync-issues` (and the board's GitHub Sync and Factory › GitHub Intake) skips anyone else with `skip  #<n>  author <login> is not an owner, member or collaborator (<association>)`; `tkt import-issue` / `sprint import-issue` refuse such an issue before writing anything. On a public repo anyone can open an issue, and agents later read tickets as instructions. To trust someone, make them a collaborator or create the ticket by hand. Factory's Intake line now reads "N skipped:" (t-fe22; cloud-session check: t-71eb).
