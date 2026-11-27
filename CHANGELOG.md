@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-11-27
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Security: restricted GitHub access for Cockpit agent sessions, opt-in per project (`canon github on|off|status`, macOS, Claude sessions). An opted-in project's new sessions get no saved `gh` login, no git credential helper from any config level (Keychain or `store`), no SSH and no inherited GitHub token. The one way in is that project's own token from Keychain (`canon-github`), chosen by the project folder, never by `origin`. The session's first line and a `session.github` event say which state applies. This stops an agent using your account by default; it is not containment, since an agent running as you can still read your saved credentials, so `docs/sprint-check.md` lists the cleanup that is yours to do (t-393e).
+
 ## [0.89.11] - 2026-11-26
 
 - Security: `sprint-headless` and `sprint-headless-eval` run `claude -p` with `--setting-sources user --strict-mcp-config`, so a graded PR's `.claude/settings.json` and `settings.local.json` (hooks, `apiKeyHelper`, `env`), `.mcp.json` servers and `.claude/agents` no longer load. A probe on the CI gate's pinned CLI showed four of them running a command with `ANTHROPIC_API_KEY` in its environment. This applies to local runs too: a project's own `.claude/settings.json` no longer shapes a headless gate run, while your `~/.claude` settings still do. An existing `canon-gate.yml` picks this up only when you delete it and run Set up CI gate again. `docs/ci-security.md` now says who can reach the gate's key and what is still open (t-4e5c; Read outside the project: t-5d68).
