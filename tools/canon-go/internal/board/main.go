@@ -1315,23 +1315,13 @@ const ticketFileMax = 4 << 20
 // blocking. .tickets/ can come from a cloned repo, and a symlink there reads a file outside the project while a FIFO blocks the read
 // (and the request) forever. A file that fails any check is an error, which the callers treat as absent.
 func readTicketFile(path string) ([]byte, error) {
-	fi, err := os.Lstat(path)
+	f, fi, err := common.OpenRegular(path) // t-adcb: non-blocking, and the opened file must still be regular
 	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s is not a regular file", filepath.Base(path))
-	}
-	if fi.Size() > ticketFileMax {
-		return nil, fmt.Errorf("%s is larger than 4 MB", filepath.Base(path))
-	}
-	f, err := os.OpenFile(path, os.O_RDONLY|common.NonblockFlag, 0) // a file swapped for a FIFO after the Lstat cannot block
-	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", filepath.Base(path), err)
 	}
 	defer f.Close()
-	if fi2, err := f.Stat(); err != nil || !os.SameFile(fi, fi2) {
-		return nil, fmt.Errorf("%s changed while it was opened", filepath.Base(path))
+	if fi.Size() > ticketFileMax {
+		return nil, fmt.Errorf("%s is larger than 4 MB", filepath.Base(path))
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, ticketFileMax+1))
 	if err == nil && len(raw) > ticketFileMax {
@@ -5842,8 +5832,8 @@ func themeRead(dir, name string) (userTheme, string) {
 		return userTheme{}, "cannot be read"
 	}
 	defer f.Close()
-	// the file must still be the one Lstat saw (swapped for a link in between: refused)
-	if fst, err := f.Stat(); err != nil || !os.SameFile(st, fst) {
+	// the file must still be the one Lstat saw and still regular (swapped for a link or a FIFO in between: refused, t-adcb)
+	if fst, err := f.Stat(); err != nil || !common.SameRegular(st, fst) {
 		return userTheme{}, "not a regular file"
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, themeMaxBytes+1))

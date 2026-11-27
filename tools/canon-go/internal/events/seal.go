@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"canon/internal/common"
 	"canon/internal/settings"
 )
 
@@ -55,9 +56,9 @@ var (
 	dayOnly  = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	hexRe    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-	errNotRegular = errors.New("not a regular file")
+	errNotRegular = common.ErrNotRegular // t-adcb: OpenRegular's refusals, same texts
 	errTooBig     = errors.New("too large")
-	errChanged    = errors.New("changed while opening")
+	errChanged    = common.ErrChanged
 )
 
 // DayResult is one line of Verify. Day is a validated YYYY-MM-DD, or "seals.jsonl" (with Result broken) for a fault in the seal file.
@@ -72,21 +73,9 @@ func hashHex(b []byte) string {
 
 // openRegular opens path only when it is a regular file (never a symlink) no larger than max.
 func openRegular(path string, max int64) (*os.File, error) {
-	fi, err := os.Lstat(path)
+	f, fi2, err := common.OpenRegular(path) // t-adcb: non-blocking, and the opened file must still be regular
 	if err != nil {
 		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, errNotRegular
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	fi2, err := f.Stat()
-	if err != nil || !os.SameFile(fi, fi2) {
-		f.Close()
-		return nil, errChanged
 	}
 	if fi2.Size() > max {
 		f.Close()

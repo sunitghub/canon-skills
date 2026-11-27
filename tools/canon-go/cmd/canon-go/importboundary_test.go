@@ -16,7 +16,7 @@ var allowedInternalImports = map[string][]string{
 	"board":      {"artifact", "common", "events", "machine", "settings", "transcript", "walk"},
 	"daemon":     {"common", "events", "settings", "term", "transcript"}, // settings: t-393e github.restricted_projects
 	"term":       {"events", "settings"},
-	"events":     {"machine", "settings"},
+	"events":     {"common", "machine", "settings"}, // common: t-adcb OpenRegular
 	"artifact":   {},
 	"common":     {},
 	"machine":    {},

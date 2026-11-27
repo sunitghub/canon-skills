@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"time"
+
+	"canon/internal/common"
 )
 
 // t-c723: a Copilot session has no canon hook (copilot hooks are file-configured, not per-launch), so nothing ever posted
@@ -98,21 +100,14 @@ var errNotRegular = errors.New("copilot events log is not a regular file")
 // read consumes the whole lines written since the last call and returns the statuses they imply, in order. A partial last line
 // is left for the next call; a malformed line is skipped.
 func (t *copilotTurn) read(path string) ([]string, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
+	f, fi, err := common.OpenRegular(path) // t-adcb: non-blocking; swapped between the Lstat and the open: refused
+	if errors.Is(err, common.ErrNotRegular) || errors.Is(err, common.ErrChanged) {
 		return nil, errNotRegular
 	}
-	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	if ofi, err := f.Stat(); err != nil || !os.SameFile(fi, ofi) { // swapped between the Lstat and the open
-		return nil, errNotRegular
-	}
 	if fi.Size() < t.off { // the log was replaced or truncated: start over
 		t.off, t.skipping = 0, false
 	}
