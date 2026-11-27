@@ -1711,7 +1711,8 @@ cmd_import_issue() {
 # t-fe22: who wrote an issue decides whether it may become a ticket (agents read tickets as instructions). One rule for both commands:
 # GitHub's author_association, read in the same call as the text; OWNER, MEMBER and COLLABORATOR pass, anything else (empty: "-") fails.
 # jq itself cleans both halves (an association is [A-Z_]+ or "-", a login keeps login characters), so the space between them is the only one.
-_ISSUE_AUTHOR_JQ='((.author_association // "") | if test("^[A-Z_]+$") then . else "-" end) + " " + ((.user.login // "") | gsub("[^A-Za-z0-9_.\\[\\]-]"; "") | if . == "" then "-" else . end)'
+# \A..\z, not ^..$: jq's $ also matches before a newline, so "OWNER\nX" would pass (gh's gojq agrees on \A..\z).
+_ISSUE_AUTHOR_JQ='((.author_association // "") | if test("\\A[A-Z_]+\\z") then . else "-" end) + " " + ((.user.login // "") | gsub("[^A-Za-z0-9_.\\[\\]-]"; "") | if . == "" then "-" else . end)'
 _trusted_author() { case "$1" in OWNER|MEMBER|COLLABORATOR) return 0 ;; *) return 1 ;; esac; }
 _author_text() {   # _author_text <login or association>: only the characters a GitHub login or association uses reach the terminal
   local t; t="$(printf '%s' "$1" | LC_ALL=C sed 's/[^][A-Za-z0-9_.-]//g')"; printf '%s' "${t:--}"

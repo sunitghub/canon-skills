@@ -280,7 +280,8 @@ if command -v jq >/dev/null 2>&1; then
 import json, random, sys
 random.seed(7)
 fixed = [("OWNER", "me"), ("MEMBER", "m"), ("COLLABORATOR", "c"), ("CONTRIBUTOR", "x"), ("FIRST_TIME_CONTRIBUTOR", "x"),
-         ("FIRST_TIMER", "x"), ("MANNEQUIN", "x"), ("NONE", "x"), ("", "x"), (None, "x"), ("MISSING", None), ("OWNER", None)]
+         ("FIRST_TIMER", "x"), ("MANNEQUIN", "x"), ("NONE", "x"), ("", "x"), (None, "x"), ("MISSING", None), ("OWNER", None),
+         ("OWNER\n", "x"), ("OWNER\nNONE", "x")]   # break-it: jq's $ also matches before a final newline
 alpha = ["OWNER", "MEMBER", "COLLABORATOR", "owner", " OWNER", "OWNER ", "OWNER\r", "OWNER\tX", "\x1b[2J", " ", "../", "OW\nNER", "", "MEMBER ", "COLLAB"]
 out = []
 for i, (a, l) in enumerate(fixed + [(random.choice(alpha) + random.choice(["", "x", "é"]), random.choice(["", "me", "a b", "\x1b", "\x00", "../x", "\r"])) for _ in range(300)]):
@@ -304,7 +305,7 @@ for n, i in src.items():
     if i.get("author_association") in ok: assert n in w, n
 for k in d["skipped"]: assert k["reason"].startswith("author "), k
 for k in d["skipped"]:
-    if k["issue"] in (108, 109, 110): assert k["reason"].endswith("(-)"), k   # empty, null, missing association
+    if k["issue"] in (108, 109, 110, 112, 113): assert k["reason"].endswith("(-)"), k   # empty, null, missing, multi-line association
 assert 111 in w   # a trusted association with no user still passes; its login prints as "-"
 PY2
 else echo "  note: jq not found; the real --jq checks did not run" >&2; fi
