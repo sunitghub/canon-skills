@@ -297,7 +297,7 @@ export function setupLine(started, presets, pipe) {
   return [a, b].filter(Boolean).join(' · ');
 }
 
-// live (t-5ef8, the rail's card): { cur, reached, tone, status, closed, times (node id → epoch ms, t-985c), rows (rowStates, t-bcc1) }. Without it the card is the
+// live (t-5ef8, the rail's card): { cur, reached, tone, status, closed, times (node id → epoch ms, t-985c), rows (rowStates, t-bcc1), setup (setupLine, t-e7f6), now (epoch ms for the date rule; tests) }. Without it the card is the
 // Pipeline tab's preview, unchanged.
 export function progressCardHtml(nodes, mode, live) {
   const title = (MODES.find(m => m[0] === mode) || MODES[0])[1];
