@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 18:00
+learnings-sweep last run: 11-27-2026 19:02
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-28 | [t-e371](.tickets/t-e371/learnings.md) | A "written exactly once" source guard that lists files (grep -l) cannot fail on a second copy inside the same file; count occurrences, and revert-prove it with a duplicate in a scratch copy. | UNPROMOTED |
 | 2026-11-27 | [t-f172](.tickets/t-f172/learnings.md) | A read-only break-it agent returns leads, not findings: the lead re-ran all 7 and reproduced 5; one 'fix' contradicted a pinned earlier decision (t-6278's Latest bound), which only the full test package surfaced, so run the whole package before keeping a break-it fix. | UNPROMOTED |
 | 2026-11-27 | [t-da4c](.tickets/t-da4c/learnings.md) | A guard's `fail` inside `out="$(f ...)" \|\| true` ends only the subshell and is swallowed; a bounded wait needs a call site that surfaces it (`\|\| fail`) or it is a guard that cannot fail. | UNPROMOTED |
 | 2026-11-27 | [t-e042](.tickets/t-e042/learnings.md) | One `unset CANON_HOME` in a test sent 85 fake events into the real log because the run's isolation was a single env var with no check; the cure is a post-run guard that reads the log the caller had (and `$HOME/.canon/events` when the caller pinned elsewhere, a gap only the Mac revert proof found) for events naming the run folder, not a rule that every suite must pin. | UNPROMOTED |
