@@ -284,7 +284,7 @@ run_fail "$SPRINT" relay-report "$gid" reviewer >/dev/null   # no canon-reviewer
 assert_eq 0 "$(nfins "$gid" reviewer)" "a refused relay logs nothing"
 drop
 # one emitter: the gate.finished emit is written once under tools/ (platform-lib.sh's gate_finished_event)
-assert_eq "tools/platform-lib.sh" "$(cd "$ROOT" && grep -rlF 'canon_event gate.finished' tools | sort | tr '\n' ' ' | sed 's/ $//')" "one gate.finished emitter"
+assert_eq "tools/platform-lib.sh" "$(cd "$ROOT" && grep -rF 'canon_event gate.finished' tools | cut -d: -f1 | sort | tr '\n' ' ' | sed 's/ $//')" "one gate.finished emitter"
 
 # 8. Copilot's files were only read
 assert_eq "$sum_before" "$(find "$COPILOT_HOME/session-state/s1" -type f -exec cksum {} + | sort)" "Copilot's session record is never written"
