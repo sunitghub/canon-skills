@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-11-28
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Changed: the Sprint progress card groups its gates into **Wrapup gates** and **Close gates**, each with *n of m* done, its worst step's state and a start–end time; a row from another day shows its date (*11/25 6:48 PM*, hover for the full date); a running gate shows its model, Close reads *Session: <model>*, and a first line names the run's Model tiers preset and pipeline template (t-e7f6). `gate.started` gains a `model` field.
+- Changed: Factory › Pipeline's template cards are one short line each, with the reasons and figures behind *Why these three?*; *Using: …* sits on the heading row and Reset below it (t-e7f6, from t-7a51).
+
 ## [0.90.9] - 2026-11-28
 
 - Fixed: under Copilot CLI, `sprint relay-report` now logs the gate's finish with its verdict, model and cost, so the Sprint progress card's Spec check, Reviewer and Evaluator rows show a finish instead of a start time only; `sprint subagent-log` after it writes no second finish (t-e371).
