@@ -6,6 +6,12 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.8] - 2026-11-28
+
+The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
+
+- Fixed: the board no longer follows a link out of your project, or hangs on a FIFO, when it reads HANDOFF.md, AGENTS.md, .worktreeinclude, a ticket's ticket.md or .cockpit-cwd, the Logbook files or the gate corpus; a link inside the project (AGENTS.md -> CLAUDE.md) still reads. A gzipped event day over its size cap is now reported as too large instead of being read short (t-f172).
+
 ## [0.90.7] - 2026-11-27
 
 - Tests: `tests/tkt-merge-pr.sh` now checks that Check & merge runs your tests in its scratch clone of main + the PR, never in your checkout, and its stand-in `gh pr list` refuses a call that does not search for the `Fixes #` line and print number, state and head, as real `gh` does. Six code changes the suite used to miss now fail it. The suite runs about 7 s faster (fixed waits replaced by waiting for the prompt to finish) (t-da4c).
