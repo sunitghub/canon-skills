@@ -133,26 +133,7 @@ if [[ "$(wc -l < "$LOG")" -gt 500 ]]; then
 fi
 
 # t-8854: a close gate's run is also a gate.finished event, with the verdict its own report states (unknown if none yet).
-# t-9b13: so is the spec check's at sprint start (spec-review.md, READY or GAPS). Observer-only: canon_event never fails and never prints.
+# t-9b13: so is the spec check's at sprint start (spec-review.md, READY or GAPS).
 if [[ $SEEN -eq 0 && -n "$TICKET" ]] && gate_role_ok "$AGENT_TYPE"; then
-  _tdir="$REPO_ROOT/.tickets/$TICKET" _verdict=unknown _rep="$REPO_ROOT/.tickets/$TICKET/$(gate_report "$AGENT_TYPE")"
-  [[ -f "$_rep" ]] && _verdict="$(gate_verdict "$AGENT_TYPE" "$_rep")"
-  [[ "$_verdict" =~ ^(YES|NO|pass|fail|partial|not-run|READY|GAPS)$ ]] || _verdict=unknown
-  # t-ff14: which agent really ran the evaluator (canon-evaluator, or a general-purpose/Plan fallback), from the harness's own
-  # transcript holding its run-id (the agent id here), never from what the caller says. Absent when none is found.
-  # t-9113: how many Act On items the reviewer raised (an `Act On: none` line is 0; the rule of tools/sprint's review check), so the log can say
-  # whether the reviewer changed the outcome. Absent when the report has no Act On line (an evaluator run, or no report).
-  _act=""
-  if [[ "$AGENT_TYPE" == reviewer && -f "$_tdir/review-notes.md" ]]; then
-    _acts="$(grep -E "^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*[^[:space:]]" "$_tdir/review-notes.md" | sed -E 's/^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*//; s/\r$//' | tr '[:upper:]' '[:lower:]')" || _acts=""
-    [[ -z "$_acts" ]] || _act="$(grep -cvE '^none([^[:alnum:]_]|$)' <<< "$_acts" || true)"
-  fi
-  _agent=""
-  if [[ ( "$AGENT_TYPE" == evaluator || "$AGENT_TYPE" == evaluator2 ) && -n "${CLAUDECODE:-}" ]]; then
-    _cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
-    _tx="$(find "$_cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec grep -lF -e "evaluator-run-id: $AGENT_ID" {} + 2>/dev/null | head -1 || true)"   # grep exits 1 on non-matching files
-    [[ -n "$_tx" && -f "${_tx%.jsonl}.meta.json" ]] && _agent="$(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]{1,32})".*/\1/p' "${_tx%.jsonl}.meta.json" | head -1)"
-  fi
-  canon_event gate.finished subagent-log "$REPO_ROOT" "ticket=$TICKET" "role=$AGENT_TYPE" "verdict=$_verdict" \
-    "model=$MODEL" "tokens=$TOKENS" "minutes=$MINUTES" ${_agent:+"agent=$_agent"} ${_act:+"act_on=$_act"}
+  gate_finished_event subagent-log "$REPO_ROOT" "$TICKET" "$AGENT_TYPE" "$MODEL" "$TOKENS" "$MINUTES" "$AGENT_ID"
 fi

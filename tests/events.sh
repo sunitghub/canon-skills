@@ -201,7 +201,7 @@ assert_contains "$(event_line gate.finished "$gid")" '"data":{"minutes":"2.5","m
 assert_contains "$(event_line gate.finished "$gid")" '"verdict":"unknown"'   # no eval-report.md yet
 printf 'evaluator-run-id: 1-2\n\npartial: half done\n' > "$gt/eval-report.md"
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id 123-5 --agent-type evaluator --ticket "$gid" --outcome fail >/dev/null)
-assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","tokens":"","verdict":"partial"'
+assert_contains "$(event_line gate.finished "$gid")" '"role":"evaluator","ticket":"'"$gid"'","verdict":"partial"'   # t-e371: an empty field is left out
 (cd "$G" && "$ROOT/tools/subagent-log.sh" --agent-id plain --agent-type general-purpose --ticket "$gid" >/dev/null)
 [[ "$(cat "$EV"/*.jsonl | grep -c '"kind":"gate.finished"')" == 3 ]] || fail "a non-gate subagent run made a gate.finished event"
 # t-7c89: a second log call for the same agent id (the totals arrive late) replaces that run's row and writes no second gate.finished.

@@ -201,6 +201,31 @@ gate_verdict() {
   esac
 }
 
+# gate_finished_event <source> <root> <ticket> <role> <model> <tokens> <minutes> [<agent id>] — the one gate.finished writer (t-e371): the verdict its report states (unknown if none yet), the reviewer's Act On count, and under Claude Code which
+# agent really ran the evaluator. Observer-only, like canon_event.
+gate_finished_event() {
+  local src="$1" root="$2" t="$3" role="$4" model="$5" tokens="$6" minutes="$7" aid="${8:-}" tdir rep verdict=unknown acts act="" agent="" cfg tx
+  tdir="$root/.tickets/$t"; rep="$tdir/$(gate_report "$role")"
+  [ -f "$rep" ] && verdict="$(gate_verdict "$role" "$rep" 2>/dev/null)"
+  [[ "$verdict" =~ ^(YES|NO|pass|fail|partial|not-run|READY|GAPS)$ ]] || verdict=unknown
+  # t-9113: how many Act On items the reviewer raised (an `Act On: none` line is 0; the rule of tools/sprint's review check), so the log can
+  # say whether the reviewer changed the outcome. Absent when the report has no Act On line (an evaluator run, or no report).
+  if [[ "$role" == reviewer && -f "$tdir/review-notes.md" ]]; then
+    acts="$(grep -E "^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*[^[:space:]]" "$tdir/review-notes.md" | sed -E 's/^[[:space:]]*[-*]?[[:space:]]*Act On:[[:space:]]*//; s/\r$//' | tr '[:upper:]' '[:lower:]')" || acts=""
+    [[ -z "$acts" ]] || act="$(grep -cvE '^none([^[:alnum:]_]|$)' <<< "$acts" || true)"
+  fi
+  # t-ff14: which agent really ran the evaluator (canon-evaluator, or a general-purpose/Plan fallback), from the harness's own transcript
+  # holding its run-id (the agent id here), never from what the caller says. Absent when none is found.
+  if [[ ( "$role" == evaluator || "$role" == evaluator2 ) && -n "${CLAUDECODE:-}" && -n "$aid" ]]; then
+    cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+    tx="$(find "$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin -180 -exec grep -lF -e "evaluator-run-id: $aid" {} + 2>/dev/null | head -1 || true)"   # grep exits 1 on non-matching files
+    [[ -n "$tx" && -f "${tx%.jsonl}.meta.json" ]] && agent="$(sed -nE 's/.*"agentType"[[:space:]]*:[[:space:]]*"([A-Za-z0-9-]{1,32})".*/\1/p' "${tx%.jsonl}.meta.json" | head -1)"
+  fi
+  canon_event gate.finished "$src" "$root" "ticket=$t" "role=$role" "verdict=$verdict" \
+    ${model:+"model=$model"} ${tokens:+"tokens=$tokens"} ${minutes:+"minutes=$minutes"} ${agent:+"agent=$agent"} ${act:+"act_on=$act"}
+  return 0
+}
+
 # canon_event <kind> <source> <project dir> key=value... — one event line (t-f182) through the board binary, after the write it
 # describes succeeded. Observer-only: never prints, never fails, never waits on a missing or older board (it is skipped).
 # The board is checked once per shell (_CANON_EVENT_BOARD: a path, or "-" for none), through its --help: a board from
