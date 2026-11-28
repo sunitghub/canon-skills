@@ -264,7 +264,8 @@ export function when(t, now = Date.now()) {
   const d = new Date(t);
   return sameDay(d, new Date(now)) ? clock(d) : `${d.getMonth() + 1}/${d.getDate()} ${clock(d)}`;
 }
-export const fullWhen = t => new Date(t).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+// built from its two halves: dateStyle+timeStyle joins them with "at" in WebKit and "," in Chromium
+export const fullWhen = t => { const d = new Date(t); return `${d.toLocaleDateString('en-US', { dateStyle: 'medium' })}, ${clock(d)}`; };
 
 // t-e7f6: the card's two groups, by position so they keep the pipeline's order (a project's wrapup order moves the children): Wrapup
 // gates = after Build (Your test stays its own row) and before the Reviewer; Close gates = the Reviewer to the row before Close. Returns
