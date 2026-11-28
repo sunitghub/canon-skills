@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.90.9] - 2026-11-28
+
+- Fixed: under Copilot CLI, `sprint relay-report` now logs the gate's finish with its verdict, model and cost, so the Sprint progress card's Spec check, Reviewer and Evaluator rows show a finish instead of a start time only; `sprint subagent-log` after it writes no second finish (t-e371).
+
 ## [0.90.8] - 2026-11-28
 
 The Cockpit daemon changed: after `canon update`, restart it (Admin's **Restart Daemon**).
