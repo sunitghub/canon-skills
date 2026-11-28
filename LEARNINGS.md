@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 15:58
+learnings-sweep last run: 11-27-2026 18:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-27 | [t-f172](.tickets/t-f172/learnings.md) | A read-only break-it agent returns leads, not findings: the lead re-ran all 7 and reproduced 5; one 'fix' contradicted a pinned earlier decision (t-6278's Latest bound), which only the full test package surfaced, so run the whole package before keeping a break-it fix. | UNPROMOTED |
 | 2026-11-27 | [t-da4c](.tickets/t-da4c/learnings.md) | A guard's `fail` inside `out="$(f ...)" \|\| true` ends only the subshell and is swallowed; a bounded wait needs a call site that surfaces it (`\|\| fail`) or it is a guard that cannot fail. | UNPROMOTED |
 | 2026-11-27 | [t-e042](.tickets/t-e042/learnings.md) | One `unset CANON_HOME` in a test sent 85 fake events into the real log because the run's isolation was a single env var with no check; the cure is a post-run guard that reads the log the caller had (and `$HOME/.canon/events` when the caller pinned elsewhere, a gap only the Mac revert proof found) for events naming the run folder, not a rule that every suite must pin. | UNPROMOTED |
 | 2026-11-27 | [t-adcb](.tickets/t-adcb/learnings.md) | A FIFO-only test set left OpenRegular's identity check and swap branch unkilled, and a socket case that skips on `net.Listen` failure went silent under the sweep's long TMPDIR (macOS 104-byte socket path): give each reject clause its own fixture and never Skip a guard case on setup failure. | UNPROMOTED |
@@ -80,5 +81,4 @@ learnings-sweep last run: 11-27-2026 15:58
 | 2026-11-18 | [t-edda](.tickets/t-edda/learnings.md) | Git Bash rewrites any argument that looks like an absolute path (`!/.tickets/` became `!C:/Program Files/Git/.tickets/`) before calling a native git: set MSYS_NO_PATHCONV/MSYS2_ARG_CONV_EXCL on such calls and read the stored value back. | `promoted → standards/efficiency-notes.md` |
 | 2026-11-18 | [t-25f1](.tickets/t-25f1/learnings.md) | A "session is gone" check that reads a list must never tear down a live tab the list misses: the full board spec caught two existing tests failing; scope such a check to the state that proves an end began (mid-End). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-18 | [t-8bd8](.tickets/t-8bd8/learnings.md) | A guard keyed on the cwd misses a command that runs elsewhere: `tkt land --finish` runs from the main checkout, so the land-worktree check must take the worktree path (the spec check caught it before code). | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-18 | [t-8990](.tickets/t-8990/learnings.md) | A record step that takes its base from the branch checked out cannot refuse "another branch": derive the base from the default branch (origin/HEAD), or the guard is a tautology (the reviewer caught it publishing a feature branch). | `promoted → standards/efficiency-notes.md` |
 <!-- canon:learnings:END -->
