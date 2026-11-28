@@ -90,12 +90,15 @@ emit_gate_started() {
   fails="$(sed -n 's/^eval_fail_count:[[:space:]]*//p' "$tdir/ticket.md" | head -1)"
   [[ "$fails" =~ ^[0-9]+$ ]] || fails=0
   docs="$(cat "$tdir/acceptance.md" "$tdir/plan.md" 2>/dev/null | digest | cut -c1-12)"
-  canon_event gate.started gate-snapshot "$(dirname "$(dirname "$tdir")")" "ticket=$id" "role=$role" "attempt=$((fails + 1))" "docs=$docs"
+  canon_event gate.started gate-snapshot "$(dirname "$(dirname "$tdir")")" "ticket=$id" "role=$role" "attempt=$((fails + 1))" "docs=$docs" \
+    ${GATE_MODEL:+"model=$GATE_MODEL"}
 }
 
 # print_gate_model — t-c723: the model to dispatch this gate with, resolved by `sprint gate-model` for the ticket whose folder holds the
 # snapshot file, printed right before the dispatch so the agent passes it (a Copilot session that skipped complete.md's lookup ran its
-# gates on the agent file's floor). Nothing for another role or a file outside a ticket.
+# gates on the agent file's floor). Nothing for another role or a file outside a ticket. t-e7f6: a `model: <m>` line's <m> is kept in
+# GATE_MODEL for gate.started, so the card shows the model while the gate runs; a ticket rule or a none line names none.
+GATE_MODEL=""
 print_gate_model() {
   local tdir id line agent
   [[ "$role" =~ ^(reviewer|evaluator|speccheck)$ ]] || return 0
@@ -109,7 +112,7 @@ print_gate_model() {
     return 0
   }
   case "$line" in
-    "model: "*) echo "gate-snapshot: dispatch $agent with $line" ;;
+    "model: "*) echo "gate-snapshot: dispatch $agent with $line"; GATE_MODEL="${line#model: }"; GATE_MODEL="${GATE_MODEL%% *}" ;;
     ?*) echo "gate-snapshot: dispatch $agent: $line" ;;
   esac
 }

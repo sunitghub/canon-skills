@@ -57,6 +57,10 @@ EXIT 1" "$("$SPRINT" gate-model t-zzzz reviewer 2>&1 || echo "EXIT $?")"
 assert_eq "gate-snapshot: dispatch canon-reviewer with model: opus (Admin Reviewer default, claude)" "$(snap reviewer)"
 assert_eq "gate-snapshot: dispatch canon-evaluator with model: gpt-6-luna (Admin Evaluator default, copilot)" "$(COPILOT_CLI=1 snap evaluator)"
 assert_eq "gate-snapshot: dispatch canon-spec-checker with model: sonnet (Admin Spec check default, claude)" "$(snap speccheck)"
+# t-e7f6: gate.started carries that model, so the rail's card shows it while the gate runs (the same resolution, never a second one)
+assert_contains "$(event_line gate.started "$id")" '"model":"sonnet","role":"speccheck"'
+COPILOT_CLI=1 snap evaluator >/dev/null
+assert_contains "$(event_line gate.started "$id")" '"model":"gpt-6-luna","role":"evaluator"'
 assert_eq "" "$(snap evaluator2)"                                                                       # second-eval names its own model
 # no line, and pre still succeeds, for another role or a snapshot outside a ticket folder
 "$ROOT/tools/gate-snapshot.sh" pre "$t/gate-snapshot.txt" --role evaluator2 >/dev/null || fail "pre --role evaluator2 failed"
@@ -107,6 +111,9 @@ assert_eq "ticket rule: the ticket's Gate model line — complete.md \"Model tie
 signoff "Tier: normal | Risk: x"
 awk 'NR==1 { print; print "demo: true"; next } 1' "$t/ticket.md" > "$t/ticket.tmp" && mv "$t/ticket.tmp" "$t/ticket.md"
 assert_eq "ticket rule: Lite (demo: true) evaluator — complete.md \"Model tier for gates\"" "$(gm evaluator)"
+snap evaluator >/dev/null   # t-e7f6: a ticket rule names no model, so its gate.started has none
+started="$(event_line gate.started "$id")"; assert_contains "$started" '"role":"evaluator"'
+[[ "$started" != *'"model"'* ]] || fail "a ticket rule's gate.started must carry no model: $started"
 assert_eq "model: opus (Admin Reviewer default, claude)" "$(gm reviewer)"                           # Lite changes only the evaluator
 
 # 4. complete-checklist.md tells the agent to dispatch with canon's printed prompt, whose stderr names the model (t-63c6), inside its cap
