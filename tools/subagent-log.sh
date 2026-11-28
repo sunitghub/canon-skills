@@ -133,7 +133,8 @@ if [[ "$(wc -l < "$LOG")" -gt 500 ]]; then
 fi
 
 # t-8854: a close gate's run is also a gate.finished event, with the verdict its own report states (unknown if none yet).
-# t-9b13: so is the spec check's at sprint start (spec-review.md, READY or GAPS).
-if [[ $SEEN -eq 0 && -n "$TICKET" ]] && gate_role_ok "$AGENT_TYPE"; then
+# t-9b13: so is the spec check's at sprint start (spec-review.md, READY or GAPS). t-e371: not when Copilot's relay-report already logged
+# this run (its gate.finished is the newest for the role).
+if [[ $SEEN -eq 0 && -n "$TICKET" ]] && gate_role_ok "$AGENT_TYPE" && ! gate_finished_relayed "$TICKET" "$AGENT_TYPE"; then
   gate_finished_event subagent-log "$REPO_ROOT" "$TICKET" "$AGENT_TYPE" "$MODEL" "$TOKENS" "$MINUTES" "$AGENT_ID"
 fi

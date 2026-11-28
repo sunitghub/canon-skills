@@ -209,6 +209,83 @@ assert_contains "$out" "no tokens or minutes from Copilot's session record: gate
 [[ "$(grep -F "\"agent_id\":\"$rid-c\"" .claude/subagent-runs.jsonl)" != *'"tokens":0'* ]] || fail "subagent-log wrote 0 tokens for an unread record"
 rm -rf "$COPILOT_HOME/session-state/s9"; drop
 
+# 7c. t-e371: a Copilot session skips `sprint subagent-log`, so the relay logs the gate's gate.finished itself: one per gate run (a
+# subagent-log after it writes its row but no second event), with the report's verdict and Model word and the record's tokens/minutes.
+# Protects the Sprint progress card's gate rows, HANDOFF Recent activity and gate insights under Copilot CLI.
+fins() { cat "$CANON_HOME"/events/*.jsonl 2>/dev/null | grep -F '"kind":"gate.finished"' | grep -F "\"ticket\":\"$1\"" | grep -F "\"role\":\"$2\"" || true; }
+nfins() { local n; n="$(fins "$1" "$2" | grep -c . || true)"; printf '%s' "${n:-0}"; }
+started() { "$SPRINT_CHECK_BIN" event gate.started --source gate-snapshot --project "$PWD" "ticket=$1" "role=$2" >/dev/null; }
+# spec check: GAPS, Model word kept, no usage in the record -> no tokens (minutes come from the task's own times); subagent-log adds none
+gate_ticket evspec
+assert_eq 0 "$(nfins "$gid" speccheck)" "no gate.finished before the relay"
+session s7c p1 canon-spec-checker "Spec check $gid. Follow skills/sprint/reference/spec-check.md." "# Spec check: $gid
+Model: sonnet (Admin Spec check default, copilot)
+
+## Verdict
+GAPS" "$now"
+"$SPRINT" relay-report "$gid" speccheck >/dev/null
+assert_eq 1 "$(nfins "$gid" speccheck)" "the relay logs one gate.finished"
+ev="$(fins "$gid" speccheck)"
+assert_contains "$ev" '"source":"sprint"'; assert_contains "$ev" '"verdict":"GAPS"'; assert_contains "$ev" '"model":"sonnet"'
+[[ "$ev" != *'"tokens"'* ]] || fail "tokens logged from a record with no usage: $ev"
+assert_contains "$ev" '"minutes":"1"'
+"$SPRINT" subagent-log --agent-id spec-7c --agent-type speccheck --ticket "$gid" --model sonnet >/dev/null 2>&1
+assert_eq 1 "$(nfins "$gid" speccheck)" "subagent-log after the relay writes no second gate.finished"
+assert_contains "$(cat .claude/subagent-runs.jsonl)" '"agent_id":"spec-7c"'
+"$SPRINT" relay-report "$gid" speccheck >/dev/null   # the same report again, for a run already logged
+assert_eq 1 "$(nfins "$gid" speccheck)" "a repeat relay of the same report logs nothing"
+started "$gid" speccheck; "$SPRINT" relay-report "$gid" speccheck >/dev/null   # a re-run (gate.started) whose report is byte-identical
+assert_eq 2 "$(nfins "$gid" speccheck)" "a re-run with the same bytes still logs its finish"
+drop
+# reviewer: YES, act_on 0, a Model line that is not an id -> no model
+gate_ticket evrev
+session s7c r1 canon-reviewer "Review $gid. Follow skills/sprint/reference/review.md." "# Review Notes
+Model: Claude Sonnet 5.5
+Act On: none
+
+## Verdict
+YES" "$now"
+"$SPRINT" relay-report "$gid" reviewer >/dev/null
+ev="$(fins "$gid" reviewer)"
+assert_eq 1 "$(nfins "$gid" reviewer)" "the reviewer relay logs one gate.finished"
+assert_contains "$ev" '"verdict":"YES"'; assert_contains "$ev" '"act_on":"0"'
+[[ "$ev" != *'"model"'* ]] || fail "a Model line that is not a model id was logged: $ev"
+drop
+# evaluator: usage in the record -> tokens/minutes; a second run with no gate.started between logs a second event, pass then fail
+gate_ticket evev; rid="$now-7c01"
+mkdir -p "$COPILOT_HOME/session-state/s7e"
+node -e '
+  const [f, prompt, r1, at] = process.argv.slice(1); const t = s => new Date((Number(at) + s) * 1000).toISOString();
+  const task = (id, s, e, result) => [
+    { type: "tool.execution_start", timestamp: t(s), data: { toolCallId: id, toolName: "task", arguments: { agent_type: "canon-evaluator", prompt, name: "gate", mode: "sync" } } },
+    { type: "subagent.started", timestamp: t(s + 1), agentId: "ag-" + id, data: { toolCallId: id, agentName: "canon-evaluator", agentType: "canon-evaluator" } },
+    { type: "session.usage_record", timestamp: t(s + 30), agentId: "ag-" + id, data: { usage: { model: "claude-sonnet-5.5", inputTokens: 4000, outputTokens: 200, apiCallId: "u-" + id } } },
+    { type: "tool.execution_complete", timestamp: t(e), data: { toolCallId: id, success: true, result: { content: result } } },
+  ];
+  require("fs").writeFileSync(f, task("e1", 0, 130, r1).map(l => JSON.stringify(l)).join("\n") + "\n");' \
+  "$COPILOT_HOME/session-state/s7e/events.jsonl" "$(evp "$gid")" "$(body "$rid" "pass: all criteria met")" "$((now - 600))"
+"$SPRINT" relay-report "$gid" >/dev/null
+ev="$(fins "$gid" evaluator)"
+assert_contains "$ev" '"verdict":"pass"'; assert_contains "$ev" '"tokens":"4200"'; assert_contains "$ev" '"minutes":"3"'; assert_contains "$ev" '"model":"test-model"'
+"$SPRINT" subagent-log --agent-id "$rid" --agent-type evaluator --ticket "$gid" >/dev/null 2>&1
+session s7e e2 canon-evaluator "$(evp "$gid")" "$(body "$rid-2" "fail: criterion 2 not met")" "$now"
+"$SPRINT" relay-report "$gid" >/dev/null
+"$SPRINT" subagent-log --agent-id "$rid-2" --agent-type evaluator --ticket "$gid" >/dev/null 2>&1
+assert_eq 2 "$(nfins "$gid" evaluator)" "two evaluator runs, two gate.finished"
+assert_eq "pass fail" "$(fins "$gid" evaluator | sed -nE 's/.*"verdict":"([a-z-]+)".*/\1/p' | tr '\n' ' ' | sed 's/ $//')" "verdicts in run order"
+rm -rf "$COPILOT_HOME/session-state/s7e"; drop
+# evaluator2: the second evaluator's relay logs under its own role; a refused relay logs nothing
+gate_ticket evev2
+session s7c e3 canon-evaluator "$(evp "$gid") Write .tickets/$gid/eval-report-2.md." "$(body "$now-7c03" "pass: all criteria met")" "$now"
+"$SPRINT" relay-report "$gid" evaluator2 >/dev/null
+assert_eq 1 "$(nfins "$gid" evaluator2)" "the second evaluator's relay logs its own gate.finished"
+assert_eq 0 "$(nfins "$gid" evaluator)" "never under the binding evaluator's role"
+run_fail "$SPRINT" relay-report "$gid" reviewer >/dev/null   # no canon-reviewer task for this ticket
+assert_eq 0 "$(nfins "$gid" reviewer)" "a refused relay logs nothing"
+drop
+# one emitter: the gate.finished emit is written once under tools/ (platform-lib.sh's gate_finished_event)
+assert_eq "tools/platform-lib.sh" "$(cd "$ROOT" && grep -rlF 'canon_event gate.finished' tools | sort | tr '\n' ' ' | sed 's/ $//')" "one gate.finished emitter"
+
 # 8. Copilot's files were only read
 assert_eq "$sum_before" "$(find "$COPILOT_HOME/session-state/s1" -type f -exec cksum {} + | sort)" "Copilot's session record is never written"
 echo "sprint-relay-report-copilot: ok"

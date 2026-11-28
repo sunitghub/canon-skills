@@ -1606,6 +1606,7 @@ tx_cfg="$(mktemp -d)"
   [[ ! -f ".tickets/$gid/eval-report.md" ]] || fail "relay-report wrote a report through an old board"
   out="$("$SPRINT" relay-report "$gid")"; assert_contains "$out" "relay-report: wrote"; assert_contains "$out" "(Plan)"
   assert_eq "$rel" "$(cat ".tickets/$gid/eval-report.md")"   # byte for byte, from the run-id line on
+  [[ -z "$(event_line gate.finished "$gid")" ]] || fail "Claude Code's relay logged a gate.finished (t-e371: subagent-log owns it there)"
   # t-864c: a newer second-evaluator transcript (its dispatch names .tickets/<id>/eval-report-2.md) is never relayed as the binding report,
   # and `relay-report <id> evaluator2` relays only that one, into eval-report-2.md
   rel2="$(printf 'evaluator-run-id: %s\nModel: other-model\n## Verdict\nfail: criterion 2' "$rid6")"

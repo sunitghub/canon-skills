@@ -1992,8 +1992,23 @@ _relay_report_copilot() {
     exit 1
   fi
   wt_write_ok "$tdir/$dest" || exit 1   # t-f7e6
+  local same=0
+  [[ -f "$tdir/$dest" ]] && [[ "$(cat "$tdir/$dest")" == "$report" ]] && same=1
   printf '%s\n' "$report" > "$tdir/$dest"
   echo "relay-report: wrote $tdir/$dest from Copilot's session record ($cagent)"
+  # t-e371: a Copilot session skips `sprint subagent-log`, so the relay logs the gate's finish itself (the card's row end, Recent activity,
+  # gate insights); subagent-log then sees it and writes none. A repeat relay of the same report for an already-logged run logs nothing.
+  if (( same == 0 )) || ! gate_finished_relayed "$id" "$role"; then
+    local model use tokens="" minutes=""
+    model="$(awk '/^Model:/ { print $2; exit }' "$tdir/$dest")"
+    [[ "$model" =~ ^[a-z0-9][a-z0-9._:/-]{0,79}$ ]] || model=""
+    if use="$("$bin" copilot-report --usage ${cextra[@]+"${cextra[@]}"} "$chome" "$cagent" "$id" "$proto" "$marker" 2>/dev/null)" && [[ "$use" == *$'\t'* ]]; then
+      tokens="${use%%$'\t'*}" minutes="${use#*$'\t'}"
+      [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=""
+      [[ "$minutes" =~ ^[0-9]+$ ]] || minutes=""
+    fi
+    gate_finished_event sprint "$(dirname "$(dirname "$tdir")")" "$id" "$role" "$model" "$tokens" "$minutes"
+  fi
 }
 
 # _signoff_option <plan.md> <label> — t-864c: the lowercased value of a `| <Label>: <value>` segment of the Sign-off Tier line (the label in

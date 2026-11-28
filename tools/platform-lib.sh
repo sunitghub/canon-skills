@@ -201,7 +201,8 @@ gate_verdict() {
   esac
 }
 
-# gate_finished_event <source> <root> <ticket> <role> <model> <tokens> <minutes> [<agent id>] — the one gate.finished writer (t-e371): the verdict its report states (unknown if none yet), the reviewer's Act On count, and under Claude Code which
+# gate_finished_event <source> <root> <ticket> <role> <model> <tokens> <minutes> [<agent id>] — the one gate.finished writer (t-e371: subagent-log and
+# Copilot's relay-report): the verdict its report states (unknown if none yet), the reviewer's Act On count, and under Claude Code which
 # agent really ran the evaluator. Observer-only, like canon_event.
 gate_finished_event() {
   local src="$1" root="$2" t="$3" role="$4" model="$5" tokens="$6" minutes="$7" aid="${8:-}" tdir rep verdict=unknown acts act="" agent="" cfg tx
@@ -224,6 +225,19 @@ gate_finished_event() {
   canon_event gate.finished "$src" "$root" "ticket=$t" "role=$role" "verdict=$verdict" \
     ${model:+"model=$model"} ${tokens:+"tokens=$tokens"} ${minutes:+"minutes=$minutes"} ${agent:+"agent=$agent"} ${act:+"act_on=$act"}
   return 0
+}
+
+# gate_finished_relayed <ticket> <role> — t-e371: true when the newest gate.started/gate.finished for that ticket and role is Copilot's
+# relay-report gate.finished (source sprint): that run is already logged, so subagent-log writes no second event for it.
+gate_finished_relayed() {
+  local d="${CANON_HOME:-${HOME:-}/.canon}/events" f files=()
+  for f in "$d"/*.jsonl; do [[ -f "$f" ]] && files+=("$f"); done
+  (( ${#files[@]} )) || return 1
+  T="\"ticket\":\"$1\"" R="\"role\":\"$2\"" awk '
+    index($0, ENVIRON["T"]) && index($0, ENVIRON["R"]) {
+      if (index($0, "\"kind\":\"gate.started\"")) s = 0
+      else if (index($0, "\"kind\":\"gate.finished\"")) s = index($0, "\"source\":\"sprint\"") > 0
+    } END { exit !s }' "${files[@]}"
 }
 
 # canon_event <kind> <source> <project dir> key=value... — one event line (t-f182) through the board binary, after the write it

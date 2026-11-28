@@ -327,7 +327,7 @@ Tiers owns the defaults; `AGENTS.md`'s `## Model Tiers` only points here).
   run id. Copilot's `task` call needs `name` (without it Copilot refuses the call: `"name": Required`). The dispatch prompt
   (`sprint gate-prompt <id> <role>`, t-63c6: pass it verbatim) itself says "under Copilot CLI write no file; your final message is the report, first line first, nothing after the verdict":
   the gate has a shell, and on the Windows VM a reviewer tried to write its report through it although review.md said not to
-  (t-2986). `sprint relay-report` takes no input: it reads Copilot's own session record, so never pipe or type the report into it.
+  (t-2986). `sprint relay-report` takes no input: it reads Copilot's own session record, so never pipe or type the report into it. Under Copilot it also logs the gate's finish (`gate.finished`, t-e371); `sprint subagent-log` after it adds the cost row only.
   When it refuses, its message names the check that failed; fix that before dispatching again.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from

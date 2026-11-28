@@ -270,7 +270,7 @@ Start checklist — rules that need no reference read (each owned by the step na
    `sprint gate-snapshot pre .tickets/<id>/gate-snapshot.txt --role speccheck`; the `Agent` tool with
    `subagent_type: "canon-spec-checker"` (fallback `general-purpose`), given `sprint gate-prompt <id> speccheck`'s output verbatim
    (t-63c6: it names spec-check.md, the `Model:` line and the absolute report path, or under Copilot the write-no-file rule; add
-   nothing of your own); under Copilot `sprint relay-report <id> speccheck` then saves the review; then `sprint gate-snapshot post …` (exit 1: stop and show the person what it names,
+   nothing of your own); under Copilot `sprint relay-report <id> speccheck` then saves the review and logs the gate's finish (t-e371); then `sprint gate-snapshot post …` (exit 1: stop and show the person what it names,
    as for a close gate) and `sprint subagent-log --agent-id <id>
    --agent-type speccheck --ticket <id>` with the cost flags and `--model`. Model: the one `sprint gate-prompt` names on stderr (`sprint gate-model`, t-c723): a ticket's `Gate model:`, else Admin > Model tiers' Spec check default for the agent; none means omit it (the agent file's floor). Its findings never block and you never apply them yourself: put them in the brief, and the person decides. A failed or
    refused dispatch is said in the brief, not retried in a loop. Then produce:
