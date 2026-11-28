@@ -291,7 +291,7 @@ export function setupLine(started, presets, pipe) {
   else if (pr && Array.isArray(presets)) { const p = presets.find(x => x && x.id === pr); a = p && p.name ? String(p.name) : pr; }
   if (pl === 'canon-default') b = "canon's default";
   else if (/^[0-9a-f]{12}$/.test(pl) && pipe && typeof pipe.digest === 'string') {
-    const t = pl === pipe.digest && Array.isArray(pipe.templates) ? pipe.templates.find(x => x && x.id === pipe.template && pipe.template) : null;
+    const t = pl === pipe.digest && pipe.template && Array.isArray(pipe.templates) ? pipe.templates.find(x => x && x.id === pipe.template) : null;
     b = t && t.name ? String(t.name) : 'Custom pipeline';
   }
   return [a, b].filter(Boolean).join(' · ');
