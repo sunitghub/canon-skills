@@ -304,6 +304,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('today: the clock alone', when(t, sameDay) === '6:48 PM', when(t, sameDay));
     ok('an earlier day: M/D then the clock', when(t, nextDay) === '11/25 6:48 PM', when(t, nextDay));
     ok('the full date and time', fullWhen(t) === 'Nov 25, 2026, 6:48 PM', fullWhen(t));
+    ok('the same day of another month or year is another day', when(t, new Date(2026, 11, 25, 9, 0).getTime()) === '11/25 6:48 PM' && when(t, new Date(2027, 10, 25, 9, 0).getTime()) === '11/25 6:48 PM');
     const live = { ...sprintProgress(NODES, []), times: { start: t }, now: nextDay };
     ok('a row from an earlier day shows its date, the tooltip the full date', progressCardHtml(NODES, 'normal', live).includes('<span class="spc-t" title="Nov 25, 2026, 6:48 PM">11/25 6:48 PM</span>'));
   }
@@ -316,6 +317,9 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     [swapped[i], swapped[j]] = [swapped[j], swapped[i]];
     ok('a project\'s wrapup order moves the children', shape(swapped).includes('wrapup[doc-audit,code-reviewer,code-simplifier,skill-eval,break-it]'), shape(swapped));
     ok('no Build or Close: flat', shape(NODES.filter(n => n.id !== 'close')) === NODES.filter(n => n.id !== 'close').map(n => n.id).join(' '));
+    ok('no Reviewer node: every gate is a Wrapup gate', shape(NODES.filter(n => n.id !== 'reviewer')).includes('wrapup[code-simplifier,code-reviewer,doc-audit,skill-eval,break-it,security-review,mutation-test,test-stamp,eval] close'), shape(NODES.filter(n => n.id !== 'reviewer')));
+    const pl = progressCardHtml(NODES, 'normal');
+    ok('the parents are named Wrapup gates and Close gates', /data-spc-grp="wrapup"><span class="spc-dot" aria-hidden="true"><\/span><span class="spc-n">Wrapup gates<\/span>/.test(pl) && /data-spc-grp="close"><span class="spc-dot" aria-hidden="true"><\/span><span class="spc-n">Close gates<\/span>/.test(pl));
     const off = NODES.map(n => n.id === 'doc-audit' ? { ...n, on: false } : n);
     const pv = progressCardHtml(off, 'normal');
     ok('the preview draws both parents with their children nested, an off child struck through', /data-spc-grp="wrapup"[^]*?<ol class="spc-rail spc-kids">[^]*?data-spc-row="doc-audit"/.test(pv)
@@ -344,6 +348,16 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     const failed = [...rev, ev('gate.finished', 31, { role: 'reviewer', verdict: 'YES' }), ev('gate.started', 32, { role: 'evaluator' }), ev('gate.finished', 40, { role: 'evaluator', verdict: 'fail' })];
     [, cls] = grp(draw(failed), 'close');
     ok('a failed child makes its parent failed', / grp-fail/.test(cls), cls);
+    // Close gates' end: the latest of its children's end events, whichever kind ends it (a gate's finish, the test-sh stamp)
+    const hm = m => new Date(T(m)).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const closeDone = last => [...rev, ev('gate.finished', 31, { role: 'reviewer', verdict: 'YES' }), ev('wrapup.gate_finished', 33, { gate: 'security-review', result: 'ran' }),
+      ev('wrapup.gate_finished', 34, { gate: 'mutation-test', result: 'skipped' }), ev('gate.started', 40, { role: 'evaluator' }),
+      ev('evidence.stamped', last === 'stamp' ? 55 : 38, { name: 'test-sh', exit: '0' }), ev('evidence.stamped', 57, { name: 'board-spec', exit: '0' }),
+      ev('gate.finished', last === 'stamp' ? 45 : 50, { role: 'evaluator', verdict: 'pass' })];
+    [g, cls] = grp(draw(closeDone('eval')), 'close');
+    ok('Close gates all through: ends at the evaluator\'s finish', / grp-done/.test(cls) && g.includes(`–${hm(50)}</span>`), g);
+    [g] = grp(draw(closeDone('stamp')), 'close');
+    ok('a later test-sh stamp is the end; another stamp is not', g.includes(`–${hm(55)}</span>`), g);
     const art = { wrapup: Object.fromEntries(wrap.map(id => [id, 'skipped'])) };
     [g, cls] = grp(draw([ev('plan.approved', 1)], { art }), 'wrapup');
     ok('skips read from acceptance.md: done, with no end time', / grp-done/.test(cls) && g.includes('5 of 5') && !g.includes('–'), g);
@@ -374,6 +388,7 @@ import(pathToFileURL(CARD).href).then(({ sprintProgress, progressCardHtml, ticke
     ok('a digest equal to the project\'s names its template', setupLine(st({ run_preset: 'balanced', run_pipeline: 'abcdef012345' }), presets, pipe) === 'Balanced · Trimmed close');
     ok('a matching digest with no template: Custom pipeline', setupLine(st({ run_pipeline: 'abcdef012345' }), presets, { ...pipe, template: '' }) === 'Custom pipeline');
     ok('a digest that differs (changed since start): Custom pipeline', setupLine(st({ run_pipeline: '999999999999' }), presets, pipe) === 'Custom pipeline');
+    ok('a run_pipeline that is not exactly 12 hex names nothing', setupLine(st({ run_pipeline: 'xabcdef012345' }), presets, pipe) === '' && setupLine(st({ run_pipeline: 'abcdef0123456' }), presets, pipe) === '');
     ok('custom preset; an unknown preset id shown as its id', setupLine(st({ run_preset: 'custom' }), null, null) === 'Custom' && setupLine(st({ run_preset: 'mine-1' }), presets, null) === 'mine-1');
     ok('failed reads leave that half out', setupLine(st({ run_preset: 'economy', run_pipeline: 'abcdef012345' }), null, null) === '' && setupLine(st({ run_preset: 'economy', run_pipeline: 'canon-default' }), null, null) === "canon's default");
     ok('no sprint.started: no line', setupLine(undefined, presets, pipe) === '' && !progressCardHtml(NODES, 'normal', { ...sprintProgress(NODES, []), setup: '' }).includes('spc-setup'));

@@ -1089,6 +1089,11 @@ func TestPipelineTemplateBlurbs(t *testing.T) {
 			}
 		}
 	}
+	// the page reads the keys blurb and why (cockpit-pipeline.js tplPicker, tplWhy)
+	var got []map[string]any
+	if b, err := json.Marshal(pipelineTemplates); err != nil || json.Unmarshal(b, &got) != nil || len(got) == 0 || got[0]["why"] != pipelineTemplates[0].Why || got[0]["blurb"] != pipelineTemplates[0].Blurb {
+		t.Errorf("template JSON lacks blurb/why: %v", got)
+	}
 }
 
 // t-e7f6: GET /api/pipeline's digest is the value `sprint start` records as run_pipeline for a project with a file (tools/sprint's
