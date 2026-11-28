@@ -11,6 +11,8 @@ package board
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -190,19 +192,22 @@ func pipelineSame(a, b []string) bool {
 type pipelineTemplate struct {
 	ID    string   `json:"id"`
 	Name  string   `json:"name"`
-	Blurb string   `json:"blurb"`
+	Blurb string   `json:"blurb"` // t-e7f6 (t-7a51 part 1): one short line on the card
+	Why   string   `json:"why"`   // the long reason with its figures, behind the page's "Why these three?"
 	off   []string // in pipeline.yaml's node order, as pipelineOff lists them
 }
 
 var pipelineTemplates = []pipelineTemplate{
-	{ID: "canon-default", Name: "canon's default", off: []string{},
-		Blurb: "Every optional gate runs: spec check, the wrapup gates, the reviewer, mutation testing and the evaluator."},
+	{ID: "canon-default", Name: "canon's default", off: []string{}, Blurb: "Every check runs. The safest choice.",
+		Why: "Every optional gate runs: spec check, the wrapup gates, the reviewer, mutation testing and the evaluator."},
 	{ID: "trimmed-close", Name: "Trimmed close", off: []string{"code-simplifier", "skill-eval"},
-		Blurb: "Switches off code-simplifier and skill-eval; the reviewer, spec check, the other wrapup gates and the evaluator stay. " +
+		Blurb: "Skips two tidy-up checks that rarely change anything.",
+		Why: "Switches off code-simplifier and skill-eval; the reviewer, spec check, the other wrapup gates and the evaluator stay. " +
 			"In canon's own tickets the simplifier changed the code in about 1 run in 6, as tidying (dead code, duplication), " +
 			"and skill-eval failed none of its 28 reports."},
 	{ID: "lean-close", Name: "Lean close", off: []string{"reviewer"},
-		Blurb: "Switches off the reviewer; spec check, the wrapup gates and the evaluator stay. It saves about 53k fresh tokens " +
+		Blurb: "Skips the second reviewer. Faster, but it catches less.",
+		Why: "Switches off the reviewer; spec check, the wrapup gates and the evaluator stay. It saves about 53k fresh tokens " +
 			"and 2-6 min a step (to-do bench, Sonnet 5.5) and gives up the gate that catches most: in canon's own tickets the " +
 			"reviewer said NO on 37% of its verdicts (332 of 907) and on 53% of high-risk tickets."},
 }
@@ -330,7 +335,22 @@ func pipelineView(root string) map[string]any {
 	out["changed"] = len(pipelineOff(nodes)) > 0 || !pipelineSame(pipelineWrapup(nodes), pipelineWrapup(def))
 	out["templates"] = pipelineTemplates
 	out["template"] = pipelineTemplateOf(nodes, def)
+	if dg, err := pipelineDigest(root); err == nil {
+		out["digest"] = dg // t-e7f6: names a ticket's run_pipeline on the rail's card; left out when the reader fails (never a guess)
+	}
 	return out
+}
+
+// pipelineDigest is the digest `sprint start` records as a ticket's run_pipeline for a project with a file (tools/sprint's
+// _pipeline_state): the first 12 hex of the sha256 of `pipeline.sh resolve --project <root>`'s output, as bash's printf '%s\n' "$(…)"
+// hashes it (trailing newlines trimmed, one added).
+func pipelineDigest(root string) (string, error) {
+	plain, err := runPipeline("resolve", "--project", root)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(strings.TrimRight(plain, "\n") + "\n"))
+	return hex.EncodeToString(sum[:])[:12], nil
 }
 
 // pipelineRoot is the project root for ?project=: a registered path that is empty or relative is not a root (a join onto it would

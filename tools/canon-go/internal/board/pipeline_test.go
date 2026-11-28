@@ -1061,9 +1061,19 @@ func TestPipelineTemplateRefusalsWriteNothing(t *testing.T) {
 	}
 }
 
-// The blurbs are what a person reads before switching a gate off: each names what it gives up, with the figures research.md's
-// commands reproduce (t-2087).
+// The why texts are what a person reads before switching a gate off: each names what it gives up, with the figures research.md's
+// commands reproduce (t-2087); t-e7f6 moved them behind "Why these three?" and gave each card one short line.
 func TestPipelineTemplateBlurbs(t *testing.T) {
+	short := map[string]string{
+		"canon-default": "Every check runs. The safest choice.",
+		"trimmed-close": "Skips two tidy-up checks that rarely change anything.",
+		"lean-close":    "Skips the second reviewer. Faster, but it catches less.",
+	}
+	for tid, b := range short {
+		if tp := pipelineTemplateByID(tid); tp == nil || tp.Blurb != b || tp.Why == "" {
+			t.Errorf("%s: blurb %+v, want %q and a why", tid, tp, b)
+		}
+	}
 	want := map[string][]string{
 		"lean-close":    {"reviewer", "53k", "2-6 min", "37%", "evaluator"},
 		"trimmed-close": {"code-simplifier", "skill-eval", "1 run in 6", "28", "reviewer"},
@@ -1074,9 +1084,34 @@ func TestPipelineTemplateBlurbs(t *testing.T) {
 			t.Fatalf("no template %s", tid)
 		}
 		for _, w := range words {
-			if !strings.Contains(tp.Blurb, w) {
-				t.Errorf("%s blurb lacks %q: %s", tid, w, tp.Blurb)
+			if !strings.Contains(tp.Why, w) {
+				t.Errorf("%s why lacks %q: %s", tid, w, tp.Why)
 			}
 		}
+	}
+}
+
+// t-e7f6: GET /api/pipeline's digest is the value `sprint start` records as run_pipeline for a project with a file (tools/sprint's
+// _pipeline_state; tests/sprint-models-line.sh pins sprint to the same formula), so the rail's card names the ticket's template. Prod
+// path: the Sprint progress card's setup line.
+func TestPipelineDigestIsRunPipeline(t *testing.T) {
+	id, root := pipelineEnv(t)
+	for _, file := range []string{"", "extends: canon-default\noff: [code-simplifier, skill-eval]\n"} {
+		if file != "" {
+			os.MkdirAll(filepath.Join(root, "canon-config"), 0o755)
+			os.WriteFile(filepath.Join(root, "canon-config", "pipeline.yaml"), []byte(file), 0o644)
+		}
+		out, err := exec.Command("bash", "-c", `printf '%s\n' "$("$0" resolve --project "$1")" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12`,
+			os.Getenv("PIPELINE_BIN"), root).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, m := pipelineGetReq(id)
+		if want := strings.TrimSpace(string(out)); code != 200 || m["digest"] != want || len(want) != 12 {
+			t.Errorf("file %q: digest %v, bash %q (%d)", file, m["digest"], want, code)
+		}
+	}
+	if _, m := pipelineGetReq(id); m["template"] != "trimmed-close" {
+		t.Errorf("the trimmed file is the Trimmed close template: %v", m["template"])
 	}
 }

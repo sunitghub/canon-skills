@@ -253,9 +253,12 @@
                 <div class="pl-head">
                   <div class="setting-k">Pipeline &middot; the steps and gates of a sprint</div>
                   <span class="pl-src" id="fac-pipe-src"></span>
-                  <button type="button" class="btn b-neutral pl-reset" id="fac-pipe-reset" disabled>Reset to canon&rsquo;s default</button>
                 </div>
+                <button type="button" class="btn b-neutral pl-reset" id="fac-pipe-reset" disabled>Reset to canon&rsquo;s default</button>
+                <div class="setting-d pl-tpl-q">How thorough should the checks be when a ticket closes? You can change this any time.</div>
                 <div class="pl-tpl" id="fac-pipe-tpl" role="radiogroup" aria-label="Pipeline template"></div>
+                <button type="button" class="pl-why-t" id="fac-pipe-why-t" aria-expanded="false" aria-controls="fac-pipe-why" hidden>Why these three?</button>
+                <div class="pl-why" id="fac-pipe-why" hidden></div>
                 <div class="setting-d pl-tpl-d" id="fac-pipe-tpl-d" hidden><b>Custom (your changes):</b> no template matches; the rows below show what is off and the wrapup order.</div>
                 <div class="pl-prev" id="fac-pipe-prev" role="group" aria-label="Preview this pipeline for a ticket"></div>
                 <div class="pl-split"><div id="fac-pipe-rows" aria-live="polite"></div>

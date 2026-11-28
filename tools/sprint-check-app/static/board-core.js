@@ -368,8 +368,8 @@ export function initCore() {
     // otherwise showed the shell's launch-time project's worktrees under any tab.
     // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
     // resolveMockupSrc scopes it itself — t-7d83.)
-    // t-5ef8: the rail's Sprint progress card reads v1 pipeline, sprint/<id> and events for the tab's project.
-    const READ_RE = /^\/api\/(settings$|tickets|handoff|logbook|tags$|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|ticket-machines$|cockpit-changes$|ticket\/[^/]+\/github\/|github\/|v1\/(pipeline$|sprint\/|events$))/;
+    // t-5ef8: the rail's Sprint progress card reads v1 pipeline, sprint/<id> and events for the tab's project; t-e7f6: + pipeline (its setup line).
+    const READ_RE = /^\/api\/(settings$|pipeline$|tickets|handoff|logbook|tags$|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|ticket-machines$|cockpit-changes$|ticket\/[^/]+\/github\/|github\/|v1\/(pipeline$|sprint\/|events$))/;
     // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
     // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
     // create/unlock done inside a project tab target THAT project. Deliberately

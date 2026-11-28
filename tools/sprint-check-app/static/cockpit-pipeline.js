@@ -57,6 +57,7 @@ function renderEmpty() {
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: a card for a project that is gone must not stay
   $('fac-pipe-src').innerHTML = '';
   $('fac-pipe-tpl').innerHTML = ''; $('fac-pipe-tpl-d').hidden = true;
+  $('fac-pipe-why-t').hidden = true; $('fac-pipe-why').hidden = true;
   $('fac-pipe-reset').disabled = true;
   $('fac-pipe-yaml').textContent = '';
 }
@@ -86,6 +87,17 @@ function rowHtml(n, group) {
 
 // t-2087: the templates are a row of choices under the heading, each with its blurb. The board owns the list and what each one
 // switches off; the page only names the pick. No choice is checked when the state matches no template (custom).
+// t-e7f6 (t-7a51 part 1): each card is one short line; each template's why (the figures) sits behind "Why these three?".
+let pipeWhy = false;
+function tplWhy(d) {
+  return (d.templates || []).map(t => `<p><b>${esc(t.name)}.</b> ${esc(t.why || '')}</p>`).join('');
+}
+function showWhy(open) {
+  pipeWhy = open;
+  const b = $('fac-pipe-why-t');
+  b.setAttribute('aria-expanded', String(open)); b.textContent = open ? 'Hide why' : 'Why these three?';
+  $('fac-pipe-why').hidden = !open;
+}
 function tplPicker(d) {
   return (d.templates || []).map(t => `<label class="pl-tpl-o"><input type="radio" name="fac-pipe-tpl" value="${escAttr(t.id)}"${t.id === d.template ? ' checked' : ''}>`
     + `<span class="pl-tpl-n">${esc(t.name)}</span><span class="pl-tpl-b">${esc(t.blurb)}</span></label>`).join('');
@@ -117,13 +129,17 @@ function render(d) {
   sum.textContent = d.exists ? 'The file in canon-config/' : 'The file a first change would write';
   $('fac-pipe-cardprev').innerHTML = '';   // t-2755: cleared first, so an unreadable file never leaves the last project's card
   $('fac-pipe-tpl').innerHTML = ''; $('fac-pipe-tpl-d').hidden = true;   // t-2087: an unreadable file shows no choices
+  $('fac-pipe-why-t').hidden = true; $('fac-pipe-why').hidden = true; $('fac-pipe-why').innerHTML = '';
   if (!d.ok) {
     src.innerHTML = d.exists ? `Using: <b>${FILE}</b> (not readable)` : '';
     rows.innerHTML = `<div class="pl-row pl-err"><span></span><div><span class="pl-n">${esc(d.error || 'The pipeline could not be read.')}</span><span class="pl-w">Fix or remove ${FILE}, or press Reset to rewrite it as canon's default.</span></div><span></span><span></span></div>`;
     return;
   }
-  src.innerHTML = d.exists ? `Saved in <b>${FILE}</b>` : '(no project file)';
+  // t-e7f6: what the project uses, on the heading row (mockup): the file and its template, or canon's default with no file yet
+  const tn = ((d.templates || []).find(t => t.id === d.template) || {}).name;
+  src.innerHTML = d.exists ? `Using: <b>${FILE}</b> (${esc(tn || 'your changes')}${d.changed ? '' : ', no changes'})` : `Using: <b>canon&rsquo;s default</b> (no project file)`;
   $('fac-pipe-tpl').innerHTML = tplPicker(d);
+  $('fac-pipe-why').innerHTML = tplWhy(d); $('fac-pipe-why-t').hidden = !(d.templates || []).length; showWhy(pipeWhy);
   $('fac-pipe-tpl-d').hidden = d.template !== '';   // custom: no choice is checked, this line says why
   const group = d.nodes.filter(n => n.group === 'wrapup').map(n => n.id);
   rows.innerHTML = d.nodes.map(n => rowHtml(n, group)).join('');
@@ -163,6 +179,7 @@ export function initPipeline() {
     $('fac-pipe-project').addEventListener('change', () => loadPipeline(false));
     $('fac-pipe-reset').addEventListener('click', () => send({ op: 'reset' }, "Reset: canon-config/pipeline.yaml now holds canon's default."));
     $('fac-pipe-tpl').addEventListener('change', e => { if (e.target.name === 'fac-pipe-tpl') pickTemplate(e.target); });
+    $('fac-pipe-why-t').addEventListener('click', () => showWhy(!pipeWhy));
     $('fac-pipe-prev').innerHTML = '<span class="pl-prev-k">Preview a ticket</span><span class="pl-prev-seg">'
       + MODES.map(([k, v]) => `<button type="button" data-pl-prev="${k}" aria-pressed="${k === pipePrev}">${v}</button>`).join('')
       + '</span><span class="pl-prev-h">Lite and Manual are set per ticket (New Ticket, Options). They only skip optional gates: a gate this project switched off stays off, and locked rows always run. Nothing here saves the preview.</span>';

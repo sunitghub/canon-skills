@@ -8786,7 +8786,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(sub('eval')).toHaveText('Opus 5.5 · Run 2');
         await expect(sub('eval')).toHaveAttribute('title', 'claude-opus-5-5');
         await expect(sub('build')).toHaveText('Sonnet 5.5');
-        await expect(sub('close')).toHaveText('Sonnet 5.5');
+        await expect(sub('close')).toHaveText('Session: Sonnet 5.5');   // t-e7f6: the session's model, never read as the Evaluator's
         await expect(sub('reviewer')).toHaveCount(0);   // running, not finished: no model guessed
         await expect(sub('spec-check')).toHaveCount(0);
         // line 1 keeps the name whole, the chip and the time; line 2 sits under the name, smaller and muted, in both themes
@@ -8804,6 +8804,47 @@ test.describe('cockpit in board (t-ddc8)', () => {
           const ratio = (Math.max(lum(fg), lum(bg)) + 0.05) / (Math.min(lum(fg), lum(bg)) + 0.05);
           expect(ratio, `the model line reads against the card, ${theme} (${fg} on ${bg})`).toBeGreaterThanOrEqual(4.5);
         }
+      } finally {
+        removeTestTicket(PROJECT_ROOT, id);
+      }
+    });
+
+    // t-e7f6: the card's setup line (the run's preset and pipeline template, named from sprint.started), the two gate groups with their
+    // children indented under them, a running gate's model from its gate.started, and a date on a row from an earlier day. Protects the
+    // Cockpit rail's Sprint progress card.
+    test('the setup line, the Wrapup and Close gates groups, a running gate\'s model and an earlier day\'s date (t-e7f6) @webkit', async ({ page }) => {
+      const id = newTicketId(PROJECT_ROOT, 'e7f6');
+      const at = mm => `2026-11-19T10:${mm}:00.000Z`;
+      try {
+        await page.route('**/api/admin/model-tiers/options', json({ presets: [{ id: 'economy', name: 'Economy' }] }));
+        await page.route('**/api/pipeline**', json({ ok: true, digest: 'abcdef012345', template: 'trimmed-close', templates: [{ id: 'canon-default', name: "canon's default" }, { id: 'trimmed-close', name: 'Trimmed close' }] }));
+        await openRail(page, id, { sprint: [
+          ev('sprint.started', { run_preset: 'economy', run_pipeline: 'abcdef012345' }, at('00'), id), ev('plan.approved', {}, at('05'), id), ev('close.started', {}, at('20'), id),
+          ev('wrapup.gate_finished', { gate: 'code-simplifier', result: 'ran' }, at('22'), id), ev('gate.started', { role: 'reviewer', attempt: '1', model: 'sonnet' }, at('30'), id),
+        ] });
+        const live = card(page).locator('.spc-live');
+        await expect(live.locator('> .spc-setup')).toHaveText('Economy · Trimmed close');
+        await expect(live.locator('> :first-child')).toHaveClass('spc-setup');   // the card's first line, under the rail's label
+        await expect(live.locator('> .spc-setup')).toHaveAttribute('title', /Admin › Model tiers.*Factory › Pipeline/);
+        await expect(page.locator('#ck-progress-section .ck-section-label')).toHaveText('Sprint progress');   // the label itself is unchanged
+        const wrap = card(page).locator('[data-spc-grp="wrapup"]'), close = card(page).locator('[data-spc-grp="close"]');
+        await expect(wrap.locator('> .spc-n')).toHaveText('Wrapup gates');
+        expect(await wrap.locator('.spc-kids > .spc-row').evaluateAll(r => r.map(x => x.dataset.spcRow))).toEqual(['code-simplifier', 'code-reviewer', 'doc-audit', 'skill-eval', 'break-it']);
+        expect(await close.locator('.spc-kids > .spc-row').evaluateAll(r => r.map(x => x.dataset.spcRow))).toEqual(['reviewer', 'security-review', 'mutation-test', 'test-stamp', 'eval']);
+        await expect(wrap.locator('> .spc-count')).toHaveText('1 of 5');
+        await expect(close).toHaveClass(/grp-cur/);
+        await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'reviewer');   // one current row: the parent is not a row
+        await expect(card(page).locator('[data-spc-row="reviewer"] .spc-sub')).toHaveText('Sonnet');   // running: the model from gate.started
+        // 11-19 is an earlier day than the run: date and clock; the tooltip is the full date and time
+        await expect(card(page).locator('[data-spc-row="approve-plan"] .spc-t')).toHaveText(/^11\/19 \d{1,2}:\d{2} [AP]M$/);
+        await expect(card(page).locator('[data-spc-row="approve-plan"] .spc-t')).toHaveAttribute('title', /^Nov 19, 2026, \d{1,2}:\d{2} [AP]M$/);
+        // the children sit indented under their parent's name, all inside the rail
+        const box = async l => l.evaluate(e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right }; });
+        const parentName = await box(wrap.locator('> .spc-n')), childName = await box(wrap.locator('[data-spc-row="code-simplifier"] > .spc-n'));
+        expect(childName.l).toBeGreaterThan(parentName.l);
+        const rail = await box(card(page));
+        // every child row ends inside the rail (a nested list once took its nowrap rows' width and ran 49 px past it)
+        for (const right of await card(page).locator('.spc-kids > .spc-row').evaluateAll(r => r.map(e => e.getBoundingClientRect().right))) expect(right).toBeLessThanOrEqual(rail.r + 0.5);
       } finally {
         removeTestTicket(PROJECT_ROOT, id);
       }
@@ -8923,7 +8964,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
             ev('gate.started', { role: 'evaluator', attempt: '1' }, at(30), id), ev('plan.approved', {}, at(59), 't-zzzz')],
         });
         await expect(card(page).locator('.spc-row.cur')).toHaveAttribute('data-spc-row', 'eval');
-        const hm = t => page.evaluate(x => new Date(x).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), t);
+        // t-e7f6: the card's rule: the clock alone for today, the date first for an earlier day
+        const hm = t => page.evaluate(x => { const d = new Date(x), n = new Date(), c = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          return d.toDateString() === n.toDateString() ? c : `${d.getMonth() + 1}/${d.getDate()} ${c}`; }, t);
         await expect(card(page).locator('[data-spc-row="approve-plan"] .spc-t')).toHaveText(await hm(at('05')));   // not t-zzzz's 10:59
         await expect(card(page).locator('[data-spc-row="security-review"] .spc-t')).toHaveText(await hm(at(20)));   // Lite: the close's first row
         await expect(card(page).locator('[data-spc-row="eval"] .spc-t')).toHaveText(await hm(at(30)));
@@ -8967,6 +9010,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
 
     test('requests: the pipeline once per tab, the events only when the snapshot changes; never HANDOFF or worktrees from the rail', async ({ page }) => {
+      test.setTimeout(60000);   // t-e7f6: it waits out five 5 s rail ticks; at the 30 s default it timed out on the base too (28.9 s)
       const id = newTicketId(PROJECT_ROOT, '5ef8');
       let snap = [ev('sprint.started', {}, '2026-11-19T10:00:00.000Z', id)];
       try {
@@ -22915,7 +22959,7 @@ test.describe('Factory Pipeline (t-3a58)', () => {
       });
       const changed = s.off.size > 0 || s.wrapup.join() !== wrapupIds.join();
       return { ok: true, file: 'canon-config/pipeline.yaml', exists: s.exists, text: s.text, can_reset: s.exists, changed, nodes, created,
-        templates: TPL.map(([id, name]) => ({ id, name, blurb: 'blurb of ' + name })), template: tplOf(s) };
+        templates: TPL.map(([id, name]) => ({ id, name, blurb: 'blurb of ' + name, why: 'why of ' + name })), template: tplOf(s) };
     };
     const render = s => { s.text = 'extends: canon-default\n' + (s.off.size ? `off: [${[...s.off].join(', ')}]\n` : '') + (s.wrapup.join() !== wrapupIds.join() ? `wrapup-order: [${s.wrapup.join(', ')}]\n` : ''); };
     return page.route('**/api/pipeline**', async r => {
@@ -23260,6 +23304,38 @@ test.describe('Factory Pipeline (t-3a58)', () => {
     await page.locator('#fac-pipe-reset').click();
     await expect(page.locator('#fac-pipe-rows .pl-row')).toHaveCount(17);
     await expect(page.locator('#fac-pipe-rows .pl-err')).toHaveCount(0);
+  });
+
+  // t-e7f6 (t-7a51 part 1, mockup .tickets/t-7a51/visuals/pasted-1.png): the question above one short line per card, each template's why
+  // behind "Why these three?", the file in use on the heading row's right and Reset under it on the left. Protects Factory > Pipeline.
+  test('the template cards are one line each, the why behind a link, Using right and Reset below (t-e7f6) @webkit', async ({ page }) => {
+    await board(page);
+    await open(page);
+    await expect(page.locator('.pl-tpl-q')).toHaveText('How thorough should the checks be when a ticket closes? You can change this any time.');
+    await expect(page.locator('#fac-pipe-src')).toContainText("Using: canon’s default");
+    const why = page.locator('#fac-pipe-why'), link = page.locator('#fac-pipe-why-t');
+    await expect(why).toBeHidden();
+    await expect(link).toHaveText('Why these three?');
+    await expect(link).toHaveAttribute('aria-expanded', 'false');
+    await link.click();
+    await expect(why).toBeVisible();
+    await expect(why.locator('p')).toHaveText(["canon's default. why of canon's default", 'Trimmed close. why of Trimmed close', 'Lean close. why of Lean close']);
+    await expect(link).toHaveText('Hide why');
+    await expect(link).toHaveAttribute('aria-expanded', 'true');
+    await link.click();
+    await expect(why).toBeHidden();
+    const r = async sel => page.locator(sel).evaluate(e => { const b = e.getBoundingClientRect(); return { t: b.top, b: b.bottom, l: b.left, r: b.right }; });
+    const head = await r('.pl-head .setting-k'), src = await r('#fac-pipe-src'), reset = await r('#fac-pipe-reset'), q = await r('.pl-tpl-q'), cards = await r('#fac-pipe-tpl'), card0 = await r('#fac-pipe-card');
+    expect(Math.abs(src.t - head.t)).toBeLessThan(12);   // Using: on the heading row
+    expect(src.l).toBeGreaterThan(head.l + 100);          // ... at its right
+    expect(reset.t).toBeGreaterThanOrEqual(head.b);       // Reset on the next row
+    expect(Math.abs(reset.l - head.l)).toBeLessThan(2);   // ... at the left
+    expect(q.t).toBeGreaterThanOrEqual(reset.b);          // the question, then the cards
+    expect(cards.t).toBeGreaterThanOrEqual(q.b);
+    for (const o of await page.locator('#fac-pipe-tpl .pl-tpl-o').evaluateAll(els => els.map(e => ({ s: e.scrollHeight, c: e.clientHeight, r: e.getBoundingClientRect().right })))) {
+      expect(o.s).toBeLessThanOrEqual(o.c + 1);   // no card text clipped
+      expect(o.r).toBeLessThanOrEqual(card0.r + 0.5);
+    }
   });
 
   // t-2087: the template choices under the heading. The board owns the templates; the page sends op "template" and confirms before replacing custom changes.

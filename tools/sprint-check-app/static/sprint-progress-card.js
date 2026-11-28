@@ -153,10 +153,22 @@ export function rowStates(nodes, events, artifacts = {}) {
   // t-3df9: the model a row ran on: the gate event's, else its report's Model line; Build from implement.started, Close from the Close switch
   const modelOf = id => {
     const role = GATE_ROLE[id];
-    if (role) { const e = last('gate.finished', x => String(x.role || '') === role); return (e && d(e).model) || (byReport(role) || {}).model || ''; }
+    if (role) {
+      const e = last('gate.finished', x => String(x.role || '') === role), s = last('gate.started', x => String(x.role || '') === role);
+      if (s && d(s).model && (!e || tsOf(s) > tsOf(e))) return String(d(s).model);   // t-e7f6: the running gate's model, from its gate.started
+      return (e && d(e).model) || (byReport(role) || {}).model || '';
+    }
     if (id === 'build') { const e = last('implement.started'); return (e && d(e).model) || ''; }
     if (id === 'close') { const e = last('build.switch', x => x.stage === 'close' && x.outcome === 'started'); return (e && d(e).model) || ''; }
     return '';
+  };
+  // t-e7f6: when a row ended, from the event that ended it (a group's end time); undefined when no event did
+  const endOf = id => {
+    const role = GATE_ROLE[id];
+    const e = role ? last('gate.finished', x => String(x.role || '') === role)
+      : id === 'test-stamp' ? last('evidence.stamped', x => String(x.name || '') === 'test-sh')
+      : INLINE_GATES.includes(id) ? last('wrapup.gate_finished', x => String(x.gate || '') === id) : null;
+    return e && Number.isFinite(tsOf(e)) ? tsOf(e) : undefined;
   };
   for (const n of (nodes || [])) {
     const id = n.id;
@@ -178,7 +190,7 @@ export function rowStates(nodes, events, artifacts = {}) {
       const r = e ? String(d(e).result || '') : String(wrap[id] || '');   // t-e371: else the Wrapup Gates row in acceptance.md
       state = r === 'ran' ? 'done' : r === 'skipped' ? 'skipped' : '';
     }
-    out[id] = { state, runs: GATE_ROLE[id] ? count('gate.started', role(GATE_ROLE[id])) : 0, model: modelOf(id) };
+    out[id] = { state, runs: GATE_ROLE[id] ? count('gate.started', role(GATE_ROLE[id])) : 0, model: modelOf(id), end: endOf(id) };
   }
   return out;
 }
@@ -244,42 +256,116 @@ export function stepStartTimes(nodes, events, mode = 'normal') {
   return out;
 }
 
-const hm = t => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+// t-e7f6: a row's time: the clock alone for today, the date first for an earlier day (a ticket resumed on another day read as today);
+// the full date and time is the time's tooltip. Local time zone and calendar date.
+const clock = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+export function when(t, now = Date.now()) {
+  const d = new Date(t);
+  return sameDay(d, new Date(now)) ? clock(d) : `${d.getMonth() + 1}/${d.getDate()} ${clock(d)}`;
+}
+export const fullWhen = t => new Date(t).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+
+// t-e7f6: the card's two groups, by position so they keep the pipeline's order (a project's wrapup order moves the children): Wrapup
+// gates = after Build (Your test stays its own row) and before the Reviewer; Close gates = the Reviewer to the row before Close. Returns
+// the shown list with each group's run of nodes replaced by { group, label, kids } (kids marks it: a node has a group field too); flat when Build or Close is missing.
+export const GROUPS = { wrapup: 'Wrapup gates', close: 'Close gates' };
+export function groupRows(shown) {
+  const ids = shown.map(n => n.id), b = ids.indexOf('build'), c = ids.indexOf('close');
+  if (b < 0 || c < b) return shown;
+  const r = ids.indexOf('reviewer'), split = r > b && r < c ? r : c;
+  const head = shown.slice(0, b + 1), mid = shown.slice(b + 1, c), lone = mid.filter(n => n.id === 'your-test');
+  const kids = mid.filter(n => n.id !== 'your-test');
+  const w = kids.filter(n => ids.indexOf(n.id) < split), cl = kids.filter(n => ids.indexOf(n.id) >= split);
+  return [...head, ...lone, ...(w.length ? [{ group: 'wrapup', label: GROUPS.wrapup, kids: w }] : []),
+    ...(cl.length ? [{ group: 'close', label: GROUPS.close, kids: cl }] : []), ...shown.slice(c)];
+}
+
+// t-e7f6: the line under the rail's "Sprint progress" label: the run's Model tiers preset and pipeline template, from the ticket's
+// sprint.started (run_preset, run_pipeline). presets: /api/admin/model-tiers/options' presets (null when that read failed); pipe:
+// /api/pipeline's reply (null when it failed). A half that cannot be named from what was read is left out, never guessed.
+export function setupLine(started, presets, pipe) {
+  const d = (started && started.data) || {}, pr = String(d.run_preset || ''), pl = String(d.run_pipeline || '');
+  let a = '', b = '';
+  if (pr === 'custom') a = 'Custom';
+  else if (pr && Array.isArray(presets)) { const p = presets.find(x => x && x.id === pr); a = p && p.name ? String(p.name) : pr; }
+  if (pl === 'canon-default') b = "canon's default";
+  else if (/^[0-9a-f]{12}$/.test(pl) && pipe && typeof pipe.digest === 'string') {
+    const t = pl === pipe.digest && Array.isArray(pipe.templates) ? pipe.templates.find(x => x && x.id === pipe.template && pipe.template) : null;
+    b = t && t.name ? String(t.name) : 'Custom pipeline';
+  }
+  return [a, b].filter(Boolean).join(' · ');
+}
 
 // live (t-5ef8, the rail's card): { cur, reached, tone, status, closed, times (node id → epoch ms, t-985c), rows (rowStates, t-bcc1) }. Without it the card is the
 // Pipeline tab's preview, unchanged.
 export function progressCardHtml(nodes, mode, live) {
   const title = (MODES.find(m => m[0] === mode) || MODES[0])[1];
   const shown = (nodes || []).filter(n => !(n.only === 'manual' && !isManual(mode)));
-  const curAt = live ? shown.findIndex(n => n.id === live.cur) : -1;
-  const times = (live && live.times) || {};
-  const rows = shown.map((n, i) => {
+  const times = (live && live.times) || {}, now = (live && live.now) || Date.now();
+  const at = t => Number.isFinite(t) ? when(t, now) : '';
+  const timeSpan = (text, tip) => text ? `<span class="spc-t" title="${esc(tip)}">${esc(text)}</span>` : '';
+  // one row's facts: what the ticket of this kind does there and, live, its state from its own end event (t-bcc1)
+  const facts = n => {
     const [cls, text] = note(n, mode);
     const gone = cls === 'skip' || cls === 'off';
-    const cur = !!live && i === curAt;
-    // t-bcc1: done only from the row's own end event (rowStates)
+    const cur = !!live && n.id === live.cur;
     const rs = (live && live.rows && live.rows[n.id]) || { state: '', runs: 0 };
     const done = !!live && !gone && !cur && (live.closed || rs.state === 'done');
+    return { cls, text, gone, cur, rs, done };
+  };
+  const row = n => {
+    const { cls, text, gone, cur, rs, done } = facts(n);
     const [ncls, ntext] = cls === 'wait' && rs.state === 'done' ? ['', ''] : text || !live || gone ? [cls, text]
       : rs.state === 'skipped' ? ['skip', 'skipped'] : rs.state === 'notrun' && !cur ? ['skip', 'not run'] : rs.state === 'failed' && !cur ? ['fail', 'failed']
       : ['', ''];
-    const at = live && !gone && Number.isFinite(times[n.id]) ? hm(times[n.id]) : '';
+    const t = live && !gone ? times[n.id] : undefined, hm = at(t);
     // t-985c: the current step's status is its tooltip and accessible name, not a line under it (user: pulse only, no box)
-    const say = cur ? esc(`${label(n.id)}: ${live.status}${at ? ' · started ' + at : ''}`) : '';
+    const say = cur ? esc(`${label(n.id)}: ${live.status}${hm ? ' · started ' + hm : ''}`) : '';
     const tip = cur ? ` title="${say}" aria-label="${say}"` : '';
-    // t-3df9 (user 11-23): line 2, muted and indented under the name: the model the row ran on, and the run count from run 2 (never a guess)
-    const sub = !live || gone ? [] : [shortModel(rs.model), rs.runs > 1 ? `Run ${rs.runs}` : ''].filter(Boolean);
+    // t-3df9 (user 11-23): line 2, muted and indented under the name: the model the row ran on, and the run count from run 2 (never a guess);
+    // t-e7f6: Close's model is the session's, said so it never reads as the Evaluator's
+    const m = shortModel(rs.model);
+    const sub = !live || gone ? [] : [m && n.id === 'close' ? 'Session: ' + m : m, rs.runs > 1 ? `Run ${rs.runs}` : ''].filter(Boolean);
     return `<li class="spc-row${gone ? ' gone' : ''}${done ? ' done' : ''}${cur ? ' cur' : ''}" data-spc-row="${esc(n.id)}"${tip}><span class="spc-dot" aria-hidden="true"></span>`
       + `<span class="spc-n">${esc(label(n.id))}</span><span class="spc-k ${n.kind === 'you' ? 'you' : n.kind === 'agent' ? 'agent' : ''}">${esc(TAG[n.kind] || n.kind)}</span>`
       + (ntext ? `<span class="spc-note ${ncls}">${esc(ntext)}</span>` : '')
-      + (at ? `<span class="spc-t">${esc(at)}</span>` : '')
+      + timeSpan(hm, Number.isFinite(t) ? fullWhen(t) : '')
       + (sub.length ? `<span class="spc-sub"${rs.model ? ` title="${esc(rs.model)}"` : ''}>${esc(sub.join(' · '))}</span>` : '')
       + (n.id === 'close' && isManual(mode) ? '<span class="spc-line">Your sign-off closes: the question reads your record back.</span>' : '')
       + '</li>';
-  }).join('');
+  };
+  // t-e7f6: a group's parent row: n of m (m = children that run for this ticket, n = those done or skipped), the worst child state, and
+  // its time from the earliest child start to the latest child end once all are through. Nothing counts: struck through, no count.
+  const group = g => {
+    const fs = g.kids.map(n => ({ n, ...facts(n) })), counted = fs.filter(f => !f.gone);
+    const through = counted.filter(f => f.done || (!!live && !f.cur && f.rs.state === 'skipped'));
+    const failed = counted.some(f => f.rs.state === 'failed'), cur = counted.some(f => f.cur);   // failed outranks current
+    const all = counted.length > 0 && through.length === counted.length;
+    const gone = counted.length === 0;
+    let state = '';
+    if (live && !gone) state = failed ? ' grp-fail' : cur ? ' grp-cur' : all ? ' grp-done' : '';
+    let tm = '', tip = '';
+    if (live && !gone) {
+      const starts = counted.map(f => times[f.n.id]).filter(Number.isFinite), ends = all ? counted.map(f => f.rs.end).filter(Number.isFinite) : [];
+      if (starts.length) {
+        const s0 = Math.min(...starts), e0 = ends.length ? Math.max(...ends) : NaN;
+        tm = at(s0); tip = fullWhen(s0);
+        if (Number.isFinite(e0)) { tm += '–' + (sameDay(new Date(s0), new Date(e0)) ? clock(new Date(e0)) : at(e0)); tip += ' – ' + fullWhen(e0); }
+      }
+    }
+    const count = live && !gone ? `<span class="spc-note spc-count">${through.length} of ${counted.length}</span>` : '';
+    // its own class and grp-* states, not a row's (spc-row, done, cur, gone): a locator or count of rows never matches a parent
+    return `<li class="spc-grp${gone ? ' grp-gone' : ''}${state}" data-spc-grp="${esc(g.group)}"><span class="spc-dot" aria-hidden="true"></span>`
+      + `<span class="spc-n">${esc(g.label)}</span>${count}${timeSpan(tm, tip)}`
+      + `<ol class="spc-rail spc-kids">${g.kids.map(row).join('')}</ol></li>`;
+  };
+  const rows = groupRows(shown).map(x => x.kids ? group(x) : row(x)).join('');
   if (!live) return `<div class="spc-head">Sprint progress &middot; a ${esc(title)} ticket</div><ol class="spc-rail">${rows}</ol>`;
+  const curShown = shown.some(n => n.id === live.cur);
+  const setup = live.setup ? `<div class="spc-setup" title="Model tiers preset (Admin › Model tiers) · pipeline template (Factory › Pipeline)">${esc(live.setup)}</div>` : '';
   // the rail's section label already says "Sprint progress": the head names only a ticket option
-  return `<div class="spc-live" data-tone="${esc(live.tone)}">${mode === 'normal' ? '' : `<div class="spc-head">a ${esc(title)} ticket</div>`}`
-    + (curAt < 0 ? `<div class="spc-status">${esc(live.status)}</div>` : '')
+  return `<div class="spc-live" data-tone="${esc(live.tone)}">${setup}${mode === 'normal' ? '' : `<div class="spc-head">a ${esc(title)} ticket</div>`}`
+    + (curShown ? '' : `<div class="spc-status">${esc(live.status)}</div>`)
     + `<ol class="spc-rail">${rows}</ol></div>`;
 }

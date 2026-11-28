@@ -110,6 +110,10 @@ mkdir -p canon-config && printf 'extends: canon-default\noff: [code-simplifier]\
 id="$("$TKT" create "Trimmed pipeline" | awk '{ print $NF }')"
 "$SPRINT" start "$id" >/dev/null 2>&1; end "$id"
 [[ "$(fm "$id" run_pipeline)" =~ ^[0-9a-f]{12}$ ]] || fail "run_pipeline with a project pipeline is '$(fm "$id" run_pipeline)', not 12 hex"
+# t-e7f6: the formula the board's GET /api/pipeline `digest` uses (pipeline_test.go TestPipelineDigestIsRunPipeline pins the board to it),
+# so the rail's card can name the template a ticket started on
+want="$(printf '%s\n' "$("$ROOT/tools/pipeline.sh" resolve --project "$PWD")" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+assert_eq "$want" "$(fm "$id" run_pipeline)"
 # a pipeline file the resolver refuses: no run_pipeline, and the start still succeeds
 printf 'extends: canon-default\noff: [no-such-node]\n' > canon-config/pipeline.yaml
 id="$("$TKT" create "Bad pipeline" | awk '{ print $NF }')"

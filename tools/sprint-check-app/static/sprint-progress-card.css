@@ -2,7 +2,7 @@
    (its .spc box stays in cockpit-factory.css) and a ticket's live card in the board's Cockpit rail. Theme variables only. */
 .spc-head{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px}
 .spc-rail{list-style:none;margin:0;padding:0 0 0 4px;border-left:1px solid var(--border-muted)}
-.spc-row{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:5px 0 5px 14px;font-size:13px}
+.spc-row,.spc-grp{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;padding:5px 0 5px 14px;font-size:13px}
 /* t-985c: a long step name gives way (ellipsis) so the time keeps its right edge */
 .spc-live .spc-row{flex-wrap:nowrap}
 .spc-live .spc-row:has(.spc-line){flex-wrap:wrap}   /* reviewer: the Manual Close row's sentence goes under it, the name stays whole */
@@ -16,7 +16,7 @@
 .spc-note + .spc-t{margin-left:0}
 .spc-dot{position:absolute;left:-5px;top:11px;width:9px;height:9px;border-radius:50%;border:1px solid var(--border);background:var(--bg)}
 .spc-n{color:var(--text)}
-.spc-row.gone .spc-n{text-decoration:line-through;color:var(--text-muted)}
+.spc-row.gone > .spc-n{text-decoration:line-through;color:var(--text-muted)}
 .spc-k{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--border);color:var(--text-muted);border-radius:6px;padding:0 6px}
 .spc-k.you{border-color:var(--amber);color:var(--amber)}
 .spc-k.agent{border-color:var(--accent);color:var(--accent)}
@@ -33,14 +33,27 @@
 .spc-live[data-tone="red"]{--spc-tone:var(--th-bad-ink, var(--col-discarded))}
 .spc-live[data-tone="green"]{--spc-tone:var(--th-ok, var(--ok))}
 .spc-live > .spc-status{margin:0 0 8px;color:var(--spc-tone)}
-.spc-live .spc-row:not(.done):not(.cur) .spc-n{color:var(--text-muted)}
-.spc-live .spc-row.done .spc-dot{background:var(--th-ok, var(--ok));border-color:var(--th-ok, var(--ok))}
-.spc-live .spc-row.cur .spc-n{font-weight:700;color:var(--text)}
-.spc-live .spc-row.cur .spc-dot{background:var(--spc-tone);border-color:var(--spc-tone)}
+.spc-live .spc-row:not(.done):not(.cur) > .spc-n{color:var(--text-muted)}
+.spc-live .spc-row.done > .spc-dot{background:var(--th-ok, var(--ok));border-color:var(--th-ok, var(--ok))}
+.spc-live .spc-row.cur > .spc-n{font-weight:700;color:var(--text)}
+.spc-live .spc-row.cur > .spc-dot{background:var(--spc-tone);border-color:var(--spc-tone)}
 /* the pulse exists only for a person who has not asked for less motion: nothing to override under reduce */
 @media (prefers-reduced-motion: no-preference){
-.spc-live[data-tone="blue"] .spc-row.cur .spc-dot,.spc-live[data-tone="amber"] .spc-row.cur .spc-dot{animation:spc-pulse 1.6s ease-in-out infinite}
-.spc-live[data-tone="red"] .spc-row.cur .spc-dot{animation:spc-pulse 2.6s ease-in-out infinite}   /* t-985c: needs you pulses too, slower */
+.spc-live[data-tone="blue"] .spc-row.cur > .spc-dot,.spc-live[data-tone="amber"] .spc-row.cur > .spc-dot{animation:spc-pulse 1.6s ease-in-out infinite}
+.spc-live[data-tone="red"] .spc-row.cur > .spc-dot{animation:spc-pulse 2.6s ease-in-out infinite}   /* t-985c: needs you pulses too, slower */
 }
 @keyframes spc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
+.spc-live .spc-grp.grp-fail > .spc-dot{background:var(--th-bad-ink, var(--col-discarded));border-color:var(--th-bad-ink, var(--col-discarded))}
+/* t-e7f6: a group's parent row (Wrapup gates, Close gates) holds its gates as an indented list under its name; the parent keeps its own
+   dot, count and time on line 1 */
+.spc-grp.grp-gone > .spc-n{text-decoration:line-through;color:var(--text-muted)}
+.spc-live .spc-grp:not(.grp-cur) > .spc-n{color:var(--text-muted)}
+.spc-live .spc-grp:is(.grp-done,.grp-fail) > .spc-n{color:var(--text)}
+.spc-live .spc-grp.grp-cur > .spc-n{font-weight:700;color:var(--text)}
+.spc-live .spc-grp.grp-done > .spc-dot{background:var(--th-ok, var(--ok));border-color:var(--th-ok, var(--ok))}
+.spc-live .spc-grp.grp-cur > .spc-dot{background:var(--spc-tone);border-color:var(--spc-tone)}
+.spc-kids{order:3;flex-basis:100%;min-width:0;margin:2px 0 0 2px}   /* min-width: the nowrap rows inside may not widen it past the rail */
+.spc-kids .spc-row{font-size:12.5px}
+.spc-count{font-variant-numeric:tabular-nums}
+.spc-setup{margin:0 0 6px;font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .spc-ev-empty{margin-top:10px;font-size:11.5px;color:var(--text-muted)}

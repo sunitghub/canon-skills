@@ -5,7 +5,7 @@ import { activateDoc, modalState, openModal } from './board-modal.js';
 import { fetchSessions } from './sessions-api.js';
 import { hasFilledCheckbox, hasUsefulSectionText, sectionContent } from './board-docs.js';
 import { applyPane, initPane } from './board-pane.js';
-import { progressCardHtml, reportFacts, rowStates, sprintProgress, stepStartTimes, ticketMode, wrapupRows } from './sprint-progress-card.js';
+import { progressCardHtml, reportFacts, rowStates, setupLine, sprintProgress, stepStartTimes, ticketMode, wrapupRows } from './sprint-progress-card.js';
 import { activeTabId, announceActiveSession, closeTab, cockpitState, cockpitTabs, newCockpitTabState, openLeaveConfirm, openTerminalCloseConfirm, refreshSessionStateChip, renderSessionStateChip, sessionIsLive, sessionNeedsYou, setActiveTab, teardownCockpit, unmountTab } from './board-cockpit.js';
 import { cockpitPathKey, maybeMountCockpitTerminal, renderCockpitWorktree, syncGithubPanel } from './board-worktree.js';
 
@@ -619,6 +619,11 @@ async function v1List(url, key) {
   } catch { return null; }
 }
 
+// t-e7f6: the board's JSON at url, or null for a failed request or a non-JSON body (the setup line then leaves that half out)
+async function jsonOrNull(url) {
+  try { const r = await fetch(url); return r.ok ? await r.json() : null; } catch { return null; }
+}
+
 export async function renderCockpitProgress(t) {
   const cs = cockpitState, box = document.getElementById('ck-progress');
   if (!cs || !box) return;
@@ -651,12 +656,18 @@ export async function renderCockpitProgress(t) {
     p.key = key;
     p.eventsAt = Date.now();
   }
+  // t-e7f6: the preset and template names, read once per tab (a failed read is retried next tick)
+  if (!p.setupSrc) p.setupSrc = Promise.all([jsonOrNull('/api/admin/model-tiers/options'), jsonOrNull('/api/pipeline')])
+    .then(([o, pipe]) => { if (!o || !pipe) p.setupSrc = null; return { presets: o && Array.isArray(o.presets) ? o.presets : null, pipe: pipe && pipe.ok ? pipe : null }; });
+  const src = await p.setupSrc;
+  if (cs !== cockpitState) return;
   const planWritten = ckDocHasSubstance('plan', (cs.docSeen || {}).plan);
   const mode = ticketMode(t);
   // t-985c: start times from the ticket's events, the snapshot's (one per kind) filling what the events window no longer holds
   const times = { ...stepStartTimes(nodes, snap, mode), ...stepStartTimes(nodes, p.events || [], mode) };
   const rows = rowStates(nodes, [...snap, ...(p.events || [])], { reports: p.reports || {}, wrapup: wrapupRows((cs.docSeen || {}).acceptance) });   // t-bcc1; t-e371: + reports, Wrapup Gates
-  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times, rows };
+  const setup = setupLine(snap.find(e => e && e.kind === 'sprint.started'), src.presets, src.pipe);
+  const live = { ...sprintProgress(nodes, snap, { planWritten, needsYou, mode }), times, rows, setup };
   const html = progressCardHtml(nodes, mode, live);
   if (html !== p.html || !box.firstChild) { box.innerHTML = html; p.html = html; }   // an unchanged card is not redrawn: the pulse keeps running, a screen reader is not re-told
 }

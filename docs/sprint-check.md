@@ -381,17 +381,23 @@ sprint agent without leaving the browser — no second terminal.
   the cockpit is open, so edits the running agent (or anyone else) makes to
   `acceptance.md` show up without closing/reopening the cockpit.
 - **Sprint progress (`t-5ef8`):** under **WORKTREE**, the rail's **SPRINT PROGRESS** card shows where the ticket's sprint is: the
-  steps of the project's pipeline (Start, Plan, Spec check, Approve plan, Build, the wrapup gates, Reviewer, Evaluator, Close), each
-  with its Step, Gate, Agent or You tag. Steps already passed have a green dot; the current step's dot pulses in its colour and its
+  steps of the project's pipeline (Start, Plan, Spec check, Approve plan, Build, the gates, Close), each with its Step, Gate, Agent or
+  You tag. The gates sit in two groups, in the pipeline's order (`t-e7f6`): **Wrapup gates** (the ones before the Reviewer) and
+  **Close gates** (the Reviewer through the Evaluator); each group shows *n of m* done, its worst step's state and its start–end
+  time. The card's first line names the run's Model tiers preset and pipeline template, e.g. *Economy · canon's default* (a
+  pipeline changed since the sprint started reads *Custom pipeline*). Steps already passed have a green dot; the current step's dot pulses in its colour and its
   name is bold, with no box (`t-985c`); hover it for the status ("Reviewer: Running · attempt 2 · started 10:30 AM", "Waiting on
   you: record your manual check"). Its colour says what is happening: blue while you or the agent work in the session, amber while
   a gate agent runs, red when it waits on you (the plan to approve, a refused close, your manual check, a Build switch whose
   "continue" line did not land, a session that needs you; red pulses more slowly), green once closed, grey before the sprint
-  starts; no pulse when your system asks for reduced motion. Each step that has started shows its start time on the right. A Lite
+  starts; no pulse when your system asks for reduced motion. Each step that has started shows its start time on the right, with the
+  date in front when it was another day (*11/25 6:48 PM*; hover for the full date). A gate shows the model it runs on from its
+  start, and Close the session's (*Session: Sonnet*). A Lite
   or Manual ticket strikes through the steps its option skips. The card moves to the close when `sprint pre-gate-check` first runs.
   A step is ticked only by its own finishing event (t-bcc1; inline gates by `sprint wrapup-row`); it may read *skipped*, *not run*
-  or *run N*. The card is read-only: it reads only the public API (`/api/v1/pipeline`,
-  `/api/v1/sprint/<id>`, `/api/v1/events`), so another tool can draw the same card, and when one of them cannot be read it says
+  or *run N*. The card is read-only: its steps come only from the public API (`/api/v1/pipeline`,
+  `/api/v1/sprint/<id>`, `/api/v1/events`), so another tool can draw the same card (the first line's names come from the board's
+  own `/api/admin/model-tiers/options` and `/api/pipeline`, and are left out when either cannot be read), and when one of them cannot be read it says
   *Sprint progress unavailable*. It replaced the rail's STATUS box (the HANDOFF.md text): that text is in **Logbook › Handoff**.
 - **Several sessions, several agents:** one project can run more than one session at a time, and each session picks its
   own agent (Claude Code, Pi or Copilot CLI) — for example Claude Code on one ticket while Pi takes another. The Agents
