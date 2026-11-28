@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 11-27-2026 19:02
+learnings-sweep last run: 11-28-2026 15:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-11-28 | [t-e7f6](.tickets/t-e7f6/learnings.md) | `toLocaleString({dateStyle, timeStyle})` differs by engine (WebKit joins with "at", Chromium with a comma): build a shown date from its date and time halves, and tag the test `@webkit`, since only the WebKit board-spec pass caught it. | UNPROMOTED |
 | 2026-11-28 | [t-e371](.tickets/t-e371/learnings.md) | A "written exactly once" source guard that lists files (grep -l) cannot fail on a second copy inside the same file; count occurrences, and revert-prove it with a duplicate in a scratch copy. | UNPROMOTED |
 | 2026-11-27 | [t-f172](.tickets/t-f172/learnings.md) | A read-only break-it agent returns leads, not findings: the lead re-ran all 7 and reproduced 5; one 'fix' contradicted a pinned earlier decision (t-6278's Latest bound), which only the full test package surfaced, so run the whole package before keeping a break-it fix. | UNPROMOTED |
 | 2026-11-27 | [t-da4c](.tickets/t-da4c/learnings.md) | A guard's `fail` inside `out="$(f ...)" \|\| true` ends only the subshell and is swallowed; a bounded wait needs a call site that surfaces it (`\|\| fail`) or it is a guard that cannot fail. | UNPROMOTED |
@@ -80,6 +81,4 @@ learnings-sweep last run: 11-27-2026 19:02
 | 2026-11-18 | [t-00d3](.tickets/t-00d3/learnings.md) | A format rule that is really a style (bold in a DECISIONS row) refused a correct cloud close and forced a local re-run; validate the lines canon parses by their meaning, not their styling (t-c2de schema). | `dismissed (covered: standards/efficiency-notes.md)` |
 | 2026-11-18 | [t-99d2](.tickets/t-99d2/learnings.md) | A rule repeated in seven tools and seven docs (`merge-base HEAD origin/main`) failed every master repo at once; one owner command (`sprint base-ref`) plus a grep test keeps it from growing back. Test the fallback routes separately, or equivalent routes hide each other (71 survivors). | `dismissed (covered: standards/efficiency.md)` |
 | 2026-11-18 | [t-edda](.tickets/t-edda/learnings.md) | Git Bash rewrites any argument that looks like an absolute path (`!/.tickets/` became `!C:/Program Files/Git/.tickets/`) before calling a native git: set MSYS_NO_PATHCONV/MSYS2_ARG_CONV_EXCL on such calls and read the stored value back. | `promoted → standards/efficiency-notes.md` |
-| 2026-11-18 | [t-25f1](.tickets/t-25f1/learnings.md) | A "session is gone" check that reads a list must never tear down a live tab the list misses: the full board spec caught two existing tests failing; scope such a check to the state that proves an end began (mid-End). | `dismissed (covered: standards/efficiency-notes.md)` |
-| 2026-11-18 | [t-8bd8](.tickets/t-8bd8/learnings.md) | A guard keyed on the cwd misses a command that runs elsewhere: `tkt land --finish` runs from the main checkout, so the land-worktree check must take the worktree path (the spec check caught it before code). | `dismissed (covered: standards/efficiency-notes.md)` |
 <!-- canon:learnings:END -->
